@@ -16,6 +16,7 @@ export default defineConfig({
         'icons/icon-512-maskable.png'
       ],
       manifest: false,
+      // Keep localhost development SW-free to prevent stale caches while iterating.
       devOptions: {
         enabled: false
       },

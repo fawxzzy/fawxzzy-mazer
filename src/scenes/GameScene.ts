@@ -32,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   private queuedTouchDirection: 0 | 1 | 2 | 3 | null = null;
   private pointerDownAt: Phaser.Math.Vector2 | null = null;
   private readonly minSwipeDistancePx = 24;
+  private readonly touchControlsEnabled = window.matchMedia('(pointer: coarse)').matches;
   private hud?: ReturnType<typeof createHudRenderer>;
   private runSeed = 9001;
 
@@ -45,13 +46,15 @@ export class GameScene extends Phaser.Scene {
     this.events.on('pause-action', (data: PauseActionData) => this.handlePauseAction(data));
     this.events.on('win-action', (data: WinActionData) => this.handleWinAction(data));
 
-    this.input.addPointer(1);
-    this.input.on('pointerdown', this.handlePointerDown, this);
-    this.input.on('pointerup', this.handlePointerUp, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.off('pointerdown', this.handlePointerDown, this);
-      this.input.off('pointerup', this.handlePointerUp, this);
-    });
+    if (this.touchControlsEnabled) {
+      this.input.addPointer(1);
+      this.input.on('pointerdown', this.handlePointerDown, this);
+      this.input.on('pointerup', this.handlePointerUp, this);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.input.off('pointerdown', this.handlePointerDown, this);
+        this.input.off('pointerup', this.handlePointerUp, this);
+      });
+    }
   }
 
   public update(time: number): void {

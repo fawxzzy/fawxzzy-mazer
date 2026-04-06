@@ -1,7 +1,9 @@
 {
+  "id": "/",
   "name": "Mazer",
   "short_name": "Mazer",
   "description": "Laptop-first maze runs with optional touch support.",
+  "lang": "en-US",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

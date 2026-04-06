@@ -26,20 +26,20 @@ body {
 #app {
   display: grid;
   place-items: center;
-  padding: clamp(8px, 1.4vw, 18px);
+  padding: clamp(10px, 1.6vw, 20px);
 }
 
 canvas {
   display: block;
-  width: min(100vw - 32px, 1320px);
-  height: min(100vh - 32px, 860px);
+  width: min(100vw - 40px, 1360px);
+  height: min(100vh - 40px, 900px);
   margin: 0 auto;
   image-rendering: crisp-edges;
   border: 1px solid #312a5a;
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.06) inset,
-    0 18px 32px rgba(0, 0, 0, 0.45);
+    0 22px 36px rgba(0, 0, 0, 0.45);
   touch-action: none;
 }
 
@@ -51,6 +51,7 @@ canvas {
     max-height: 100vh;
     border-radius: 0;
     border: none;
+    box-shadow: none;
   }
 
   #app {

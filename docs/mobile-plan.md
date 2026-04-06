@@ -1,11 +1,11 @@
 # Mobile + PWA Plan
 
 ## Current status (April 6, 2026)
-- The web app is still tuned for laptop keyboard-first play.
-- Touch support is intentionally secondary (swipe to move, tap to pause) so desktop gameplay pacing remains primary.
-- PWA installability wiring is in place via:
+- The web app remains tuned for laptop keyboard-first play and board readability.
+- Touch support stays intentionally secondary (swipe to move, tap to pause) and should only be active for coarse-pointer environments.
+- PWA installability plumbing is wired to repository-supplied assets via:
   - `public/manifest.webmanifest`
-  - icon links in `index.html`
+  - icon/meta links in `index.html`
   - `vite-plugin-pwa` integration in `vite.config.ts`
 
 ## Service worker stance
@@ -13,13 +13,19 @@
 - Enable service worker only in production builds/deploys.
 
 ## Asset policy
-- Treat these as provided repository assets (do not generate in code tasks):
+- Treat these as provided repository assets (do not generate, re-encode, or replace in implementation tasks):
   - `/public/favicon.svg`
   - `/public/apple-touch-icon.png`
   - `/public/icons/icon-192.png`
   - `/public/icons/icon-512.png`
   - `/public/icons/icon-192-maskable.png`
   - `/public/icons/icon-512-maskable.png`
+
+## Installability checks
+- Confirm `manifest.webmanifest` references all provided icon binaries.
+- Confirm `index.html` links include favicon, apple-touch icon, and manifest.
+- Confirm production build emits PWA registration plumbing.
+- Confirm localhost development does not register a service worker.
 
 ## Capacitor / app-store path (later)
 When web gameplay and UI stabilization are complete:
