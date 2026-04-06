@@ -29,6 +29,9 @@ export class GameScene extends Phaser.Scene {
   };
   private readonly moveCooldownMs = 100;
   private lastMoveAtMs = 0;
+  private queuedTouchDirection: 0 | 1 | 2 | 3 | null = null;
+  private pointerDownAt: Phaser.Math.Vector2 | null = null;
+  private readonly minSwipeDistancePx = 24;
   private hud?: ReturnType<typeof createHudRenderer>;
   private runSeed = 9001;
 
@@ -41,6 +44,14 @@ export class GameScene extends Phaser.Scene {
 
     this.events.on('pause-action', (data: PauseActionData) => this.handlePauseAction(data));
     this.events.on('win-action', (data: WinActionData) => this.handleWinAction(data));
+
+    this.input.addPointer(1);
+    this.input.on('pointerdown', this.handlePointerDown, this);
+    this.input.on('pointerup', this.handlePointerUp, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off('pointerdown', this.handlePointerDown, this);
+      this.input.off('pointerup', this.handlePointerUp, this);
+    });
   }
 
   public update(time: number): void {
@@ -116,7 +127,43 @@ export class GameScene extends Phaser.Scene {
     if (left) return 2;
     if (right) return 3;
 
-    return null;
+    return this.consumeTouchDirection();
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    this.pointerDownAt = new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    if (!this.pointerDownAt || this.overlayKey !== null) {
+      this.pointerDownAt = null;
+      return;
+    }
+
+    const deltaX = pointer.worldX - this.pointerDownAt.x;
+    const deltaY = pointer.worldY - this.pointerDownAt.y;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+
+    this.pointerDownAt = null;
+
+    if (absX < this.minSwipeDistancePx && absY < this.minSwipeDistancePx) {
+      this.openPause();
+      return;
+    }
+
+    if (absX > absY) {
+      this.queuedTouchDirection = deltaX > 0 ? 3 : 2;
+      return;
+    }
+
+    this.queuedTouchDirection = deltaY > 0 ? 1 : 0;
+  }
+
+  private consumeTouchDirection(): 0 | 1 | 2 | 3 | null {
+    const direction = this.queuedTouchDirection;
+    this.queuedTouchDirection = null;
+    return direction;
   }
 
   private tryMove(direction: 0 | 1 | 2 | 3): void {
