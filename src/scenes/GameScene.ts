@@ -3,6 +3,7 @@ import { generateMaze, type MazeBuildResult } from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
+import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
@@ -46,6 +47,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   public create(): void {
+    attachSfxInputUnlock(this);
     this.bootstrapRun(this.runSeed);
 
     this.events.on('pause-action', this.handlePauseAction, this);
@@ -113,6 +115,7 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer.drawBoardChrome();
     this.boardRenderer.drawBase();
     this.boardRenderer.drawGoal();
+    this.boardRenderer.startAmbientMotion(1.25, 2800);
 
     this.playerIndex = this.maze.startIndex;
     this.trailIndices = [this.playerIndex];
@@ -229,6 +232,7 @@ export class GameScene extends Phaser.Scene {
     const nextIndex = this.maze.tiles[this.playerIndex].neighbors[direction];
     if (nextIndex === -1 || !this.maze.tiles[nextIndex].floor) {
       this.lastMoveDirection = direction;
+      playSfx('blocked');
       return;
     }
 
@@ -242,8 +246,10 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer.drawTrail(this.trailIndices);
     this.boardRenderer.drawActor(this.playerIndex);
     this.hud?.setGoalArrow(this.playerIndex);
+    playSfx('move');
 
     if (this.playerIndex === this.maze.endIndex) {
+      playSfx('win');
       this.overlayKey = 'WinScene';
       this.paused = true;
       this.bufferedDirection = null;
@@ -256,6 +262,7 @@ export class GameScene extends Phaser.Scene {
     if (this.overlayKey !== null) {
       return;
     }
+    playSfx('pause');
 
     this.overlayKey = 'PauseScene';
     this.paused = true;

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { legacyTuning } from '../config/tuning';
 import { createOverlaySheet } from '../ui/overlaySheet';
 import { createMenuButton } from '../ui/menuButton';
+import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 export class WinScene extends Phaser.Scene {
   public constructor() {
@@ -9,6 +10,7 @@ export class WinScene extends Phaser.Scene {
   }
 
   public create(): void {
+    attachSfxInputUnlock(this);
     const { width } = this.scale;
     const { container, contentY } = createOverlaySheet(this, 'Maze Complete', 'You reached the goal');
 
@@ -16,21 +18,24 @@ export class WinScene extends Phaser.Scene {
       x: width / 2,
       y: contentY,
       label: 'Reset Run',
-      onClick: () => this.emitAction('reset-run')
+      onClick: () => this.emitAction('reset-run'),
+      clickSfx: 'confirm'
     });
 
     const newMazeButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'New Maze',
-      onClick: () => this.emitAction('new-maze')
+      onClick: () => this.emitAction('new-maze'),
+      clickSfx: 'confirm'
     });
 
     const menuButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
-      onClick: () => this.emitAction('menu')
+      onClick: () => this.emitAction('menu'),
+      clickSfx: 'cancel'
     });
 
     container.setAlpha(0);
@@ -41,7 +46,8 @@ export class WinScene extends Phaser.Scene {
       scaleX: 1,
       scaleY: 1,
       duration: legacyTuning.overlays.intro.panelDurationMs,
-      ease: 'Quad.easeOut'
+      y: '-=6',
+      ease: 'Back.easeOut'
     });
 
     [resetButton, newMazeButton, menuButton].forEach((button, index) => {
@@ -57,7 +63,10 @@ export class WinScene extends Phaser.Scene {
       });
     });
 
-    this.input.keyboard?.once('keydown-ESC', () => this.emitAction('menu'));
+    this.input.keyboard?.once('keydown-ESC', () => {
+      playSfx('cancel');
+      this.emitAction('menu');
+    });
   }
 
   private emitAction(action: 'reset-run' | 'new-maze' | 'menu'): void {
