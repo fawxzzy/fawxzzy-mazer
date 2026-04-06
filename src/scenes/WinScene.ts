@@ -14,14 +14,14 @@ export class WinScene extends Phaser.Scene {
     createMenuButton(this, {
       x: width / 2,
       y: contentY,
-      label: 'Reset run',
+      label: 'Reset Run',
       onClick: () => this.emitAction('reset-run')
     });
 
     createMenuButton(this, {
       x: width / 2,
       y: contentY + 54,
-      label: 'New maze',
+      label: 'New Maze',
       onClick: () => this.emitAction('new-maze')
     });
 
@@ -32,17 +32,10 @@ export class WinScene extends Phaser.Scene {
       onClick: () => this.emitAction('menu')
     });
 
-    createMenuButton(this, {
-      x: width / 2,
-      y: contentY + 162,
-      label: 'Share',
-      onClick: () => this.emitAction('share')
-    });
-
     this.input.keyboard?.once('keydown-ESC', () => this.emitAction('menu'));
   }
 
-  private emitAction(action: 'reset-run' | 'new-maze' | 'menu' | 'share'): void {
+  private emitAction(action: 'reset-run' | 'new-maze' | 'menu'): void {
     this.scene.get('GameScene').events.emit('win-action', { action });
   }
 }

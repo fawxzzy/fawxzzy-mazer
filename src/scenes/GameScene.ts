@@ -4,11 +4,11 @@ import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 
 interface PauseActionData {
-  action: 'resume' | 'menu' | 'reset' | 'features' | 'cam-scale';
+  action: 'resume' | 'menu' | 'reset';
 }
 
 interface WinActionData {
-  action: 'reset-run' | 'new-maze' | 'menu' | 'share';
+  action: 'reset-run' | 'new-maze' | 'menu';
 }
 
 export class GameScene extends Phaser.Scene {
@@ -92,6 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.bufferedDirection = null;
 
     const { width, height } = this.scale;
+    this.cameras.main.fadeIn(120, 0, 0, 0);
     this.cameras.main.setBackgroundColor('#0b1020');
     this.add.rectangle(width / 2, height / 2, width, height, 0x090f1d, 1).setDepth(-10);
 
@@ -102,7 +103,11 @@ export class GameScene extends Phaser.Scene {
       shortcutCountModifier: 0.18
     });
 
-    const layout = createBoardLayout(this, this.maze, 0.83);
+    const layout = createBoardLayout(this, this.maze, {
+      boardScale: 0.83,
+      topReserve: 64,
+      bottomPadding: 20
+    });
     this.boardRenderer = new BoardRenderer(this, this.maze, layout);
     this.boardRenderer.drawBoardChrome();
     this.boardRenderer.drawBase();
@@ -288,9 +293,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (data.action === 'features' || data.action === 'cam-scale') {
-      return;
-    }
   }
 
   private handleWinAction(data: WinActionData): void {
@@ -317,14 +319,5 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (data.action === 'share') {
-      this.game.canvas.toBlob((blob) => {
-        if (!blob) {
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank', 'noopener,noreferrer');
-      });
-    }
   }
 }

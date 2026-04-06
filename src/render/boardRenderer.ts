@@ -9,15 +9,33 @@ export interface BoardLayout {
   tileSize: number;
 }
 
-export const createBoardLayout = (scene: Phaser.Scene, maze: MazeBuildResult, boardScale = 0.82): BoardLayout => {
+interface BoardLayoutOptions {
+  boardScale?: number;
+  topReserve?: number;
+  sidePadding?: number;
+  bottomPadding?: number;
+}
+
+export const createBoardLayout = (
+  scene: Phaser.Scene,
+  maze: MazeBuildResult,
+  options: BoardLayoutOptions | number = {}
+): BoardLayout => {
+  const normalizedOptions: BoardLayoutOptions = typeof options === 'number'
+    ? { boardScale: options }
+    : options;
+
+  const boardScale = normalizedOptions.boardScale ?? 0.82;
+  const topReserve = normalizedOptions.topReserve ?? 64;
+  const sidePadding = normalizedOptions.sidePadding ?? 20;
+  const bottomPadding = normalizedOptions.bottomPadding ?? sidePadding;
+
   const { width, height } = scene.scale;
-  const topHudReserve = 64;
-  const sidePadding = 20;
   const availableWidth = width - (sidePadding * 2);
-  const availableHeight = height - topHudReserve - sidePadding;
+  const availableHeight = height - topReserve - bottomPadding;
   const boardSize = Math.min(availableWidth, availableHeight) * boardScale;
   const boardX = width / 2 - boardSize / 2;
-  const boardY = topHudReserve + ((availableHeight - boardSize) / 2);
+  const boardY = topReserve + ((availableHeight - boardSize) / 2);
 
   return {
     boardX,

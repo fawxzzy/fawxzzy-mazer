@@ -12,7 +12,7 @@ export class ModesScene extends Phaser.Scene {
 
   public create(): void {
     const { width } = this.scale;
-    const { container, contentY } = createOverlaySheet(this, 'Game Modes', 'Choose a run style');
+    const { container, contentY } = createOverlaySheet(this, 'Modes', 'Choose a run style');
 
     this.modeText = this.add
       .text(width / 2, contentY, '', {
@@ -55,9 +55,9 @@ export class ModesScene extends Phaser.Scene {
 
     createMenuButton(this, {
       x: width / 2,
-      y: contentY + 242,
-      label: 'Back to Options',
-      width: 280,
+      y: contentY + 250,
+      label: 'Back',
+      width: 220,
       onClick: () => this.scene.get('MenuScene').events.emit('overlay-open', 'OptionsScene')
     });
 
@@ -72,6 +72,6 @@ export class ModesScene extends Phaser.Scene {
   }
 
   private refreshCopy(): void {
-    this.modeText.setText(`Current: ${this.activeMode}`);
+    this.modeText.setText(`Current Mode: ${this.activeMode}`);
   }
 }

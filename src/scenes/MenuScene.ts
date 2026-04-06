@@ -23,6 +23,7 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.overlayManager = new OverlayManager(this, ['OptionsScene', 'FeaturesScene', 'ModesScene']);
 
+    this.cameras.main.fadeIn(200, 0, 0, 0);
     this.drawStarfield(width, height);
 
     const maze = generateMaze({
@@ -32,7 +33,11 @@ export class MenuScene extends Phaser.Scene {
       shortcutCountModifier: 0.13
     });
 
-    const layout = createBoardLayout(this, maze, width < 900 ? 0.62 : 0.66);
+    const layout = createBoardLayout(this, maze, {
+      boardScale: width < 900 ? 0.68 : 0.72,
+      topReserve: Math.max(74, Math.round(height * 0.12)),
+      bottomPadding: 112
+    });
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
@@ -44,21 +49,30 @@ export class MenuScene extends Phaser.Scene {
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const title = this.add
-      .text(width / 2, layout.boardY + layout.boardSize * 0.15, 'Mazer', {
+      .text(width / 2, layout.boardY - 28, 'MAZER', {
         color: '#22af3f',
         fontFamily: 'monospace',
-        fontSize: `${Math.round(layout.boardSize * 0.21)}px`,
+        fontSize: `${Math.round(layout.boardSize * 0.18)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
-      .setAlpha(0.42)
-      .setStroke('#0a561b', 7)
+      .setAlpha(0.48)
+      .setStroke('#0a561b', 6)
       .setShadow(0, 0, '#0f631f', 12, true, true)
+      .setDepth(10);
+
+    const subtitle = this.add
+      .text(width / 2, title.y + 34, 'Board-first maze runner', {
+        color: '#aeb6d9',
+        fontFamily: 'monospace',
+        fontSize: '16px'
+      })
+      .setOrigin(0.5)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
       targets: [title, boardShade],
-      alpha: { from: 0.35, to: 0.49 },
+      alpha: { from: 0.36, to: 0.52 },
       duration: 2000,
       yoyo: true,
       repeat: -1,
@@ -86,15 +100,19 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    const buttonY = Math.min(height - 44, layout.boardY + layout.boardSize - 24);
-    const spacing = Math.min(layout.boardSize * 0.42, width * 0.33);
+    const buttonY = height - 48;
+    const spacing = 214;
 
     createMenuButton(this, {
       x: width / 2,
       y: buttonY,
-      label: 'Start',
+      label: 'Play',
       width: 196,
-      onClick: () => this.scene.start('GameScene')
+      onClick: () => {
+        this.overlayManager.closeAll();
+        this.cameras.main.fadeOut(120, 0, 0, 0);
+        this.time.delayedCall(120, () => this.scene.start('GameScene'));
+      }
     });
 
     createMenuButton(this, {
@@ -108,9 +126,10 @@ export class MenuScene extends Phaser.Scene {
     createMenuButton(this, {
       x: width / 2 - spacing,
       y: buttonY,
-      label: 'Exit',
+      label: 'Quit',
       width: 164,
       onClick: () => {
+        this.overlayManager.closeAll();
         this.game.destroy(true);
       }
     });
@@ -124,7 +143,10 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
+      this.overlayManager.closeAll();
     });
+
+    subtitle.setDepth(11);
   }
 
   private drawStarfield(width: number, height: number): void {

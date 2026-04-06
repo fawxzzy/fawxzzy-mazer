@@ -26,7 +26,7 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .text(18, 13, '00:00', {
       color: '#9fffb0',
       fontFamily: 'monospace',
-      fontSize: '24px'
+      fontSize: '22px'
     })
     .setScrollFactor(0)
     .setDepth(1000);
@@ -35,33 +35,21 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .text(scene.scale.width - 18, 13, 'Goal ▲', {
       color: '#ff6574',
       fontFamily: 'monospace',
-      fontSize: '24px'
+      fontSize: '22px'
     })
     .setOrigin(1, 0)
     .setScrollFactor(0)
     .setDepth(1000);
 
-  if (isTouchPrimary) {
-    scene.add
-      .text(scene.scale.width / 2, 15, 'Tap pause • swipe move', {
-        color: '#d8e6ff',
-        fontFamily: 'monospace',
-        fontSize: '14px'
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(1000);
-  } else {
-    scene.add
-      .text(scene.scale.width / 2, 15, 'P / Esc pause', {
-        color: '#d8e6ff',
-        fontFamily: 'monospace',
-        fontSize: '14px'
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(1000);
-  }
+  scene.add
+    .text(scene.scale.width / 2, 15, isTouchPrimary ? 'Tap to pause • swipe to move' : 'Arrow Keys / WASD • P or Esc pause', {
+      color: '#d8e6ff',
+      fontFamily: 'monospace',
+      fontSize: '13px'
+    })
+    .setOrigin(0.5, 0)
+    .setScrollFactor(0)
+    .setDepth(1000);
 
   return {
     setElapsedMs(elapsedMs: number): void {
