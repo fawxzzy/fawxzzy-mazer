@@ -17,7 +17,7 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 22% 18%, #261248 0, #121127 36%, #08040f 100%)
+    radial-gradient(circle at 18% 20%, #3a2169 0, #1a1137 42%, #090410 100%)
     fixed;
   color: #f8f8ff;
   overflow: hidden;
@@ -35,11 +35,11 @@ canvas {
   height: min(100vh - 40px, 900px);
   margin: 0 auto;
   image-rendering: crisp-edges;
-  border: 1px solid #2f2950;
-  border-radius: 2px;
+  border: 1px solid #37295b;
+  border-radius: 0;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 20px 32px rgba(0, 0, 0, 0.42);
+    0 22px 36px rgba(0, 0, 0, 0.5);
   touch-action: none;
 }
 

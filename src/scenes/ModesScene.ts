@@ -4,6 +4,7 @@ import { createOverlaySheet } from '../ui/overlaySheet';
 
 export class ModesScene extends Phaser.Scene {
   private activeMode: 'Classic' | 'Timed' | 'Endless' = 'Classic';
+  private modeText!: Phaser.GameObjects.Text;
 
   public constructor() {
     super('ModesScene');
@@ -11,20 +12,16 @@ export class ModesScene extends Phaser.Scene {
 
   public create(): void {
     const { width } = this.scale;
-    const { contentY } = createOverlaySheet(this, 'Modes', 'Choose a run style');
+    const { container, contentY } = createOverlaySheet(this, 'Game Modes', 'Choose a run style');
 
-    const modeText = this.add
+    this.modeText = this.add
       .text(width / 2, contentY, '', {
-        color: '#d8dcf3',
+        color: '#d8f5ff',
         fontFamily: 'monospace',
-        fontSize: '18px'
+        fontSize: '20px'
       })
       .setOrigin(0.5);
-
-    const refreshCopy = () => {
-      modeText.setText(`Current: ${this.activeMode}`);
-    };
-    refreshCopy();
+    this.refreshCopy();
 
     createMenuButton(this, {
       x: width / 2,
@@ -32,7 +29,7 @@ export class ModesScene extends Phaser.Scene {
       label: 'Classic',
       onClick: () => {
         this.activeMode = 'Classic';
-        refreshCopy();
+        this.refreshCopy();
       }
     });
 
@@ -42,7 +39,7 @@ export class ModesScene extends Phaser.Scene {
       label: 'Timed',
       onClick: () => {
         this.activeMode = 'Timed';
-        refreshCopy();
+        this.refreshCopy();
       }
     });
 
@@ -52,7 +49,7 @@ export class ModesScene extends Phaser.Scene {
       label: 'Endless',
       onClick: () => {
         this.activeMode = 'Endless';
-        refreshCopy();
+        this.refreshCopy();
       }
     });
 
@@ -64,10 +61,17 @@ export class ModesScene extends Phaser.Scene {
       onClick: () => this.scene.get('MenuScene').events.emit('overlay-open', 'OptionsScene')
     });
 
+    container.setDepth(10);
+    this.modeText.setDepth(11);
+
     const escHandler = () => this.scene.get('MenuScene').events.emit('overlay-open', 'OptionsScene');
     this.input.keyboard?.on('keydown-ESC', escHandler);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', escHandler);
     });
+  }
+
+  private refreshCopy(): void {
+    this.modeText.setText(`Current: ${this.activeMode}`);
   }
 }

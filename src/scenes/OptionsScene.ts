@@ -3,41 +3,111 @@ import { createMenuButton } from '../ui/menuButton';
 import { createOverlaySheet } from '../ui/overlaySheet';
 
 export class OptionsScene extends Phaser.Scene {
+  private scaleIndex = 1;
+  private camScaleIndex = 1;
+  private readonly scaleOptions = [0.75, 1.0, 1.25] as const;
+  private readonly camScaleOptions = [0.9, 1.0, 1.1] as const;
+
   public constructor() {
     super('OptionsScene');
   }
 
   public create(): void {
     const { width } = this.scale;
-    const { container, contentY } = createOverlaySheet(this, 'Options', 'Menu-time settings');
+    const { container, contentY } = createOverlaySheet(this, 'Options', 'Compact control deck');
 
-    this.add
-      .text(width / 2, contentY - 6, 'Compact options first. Advanced tuning is nested.', {
-        color: '#c5c9e8',
-        fontFamily: 'monospace',
-        fontSize: '14px'
-      })
+    const rowStyle: Phaser.Types.GameObjects.Text.TextStyle = {
+      color: '#d7ddf7',
+      fontFamily: 'monospace',
+      fontSize: '18px'
+    };
+
+    const scaleText = this.add
+      .text(width / 2, contentY + 2, '', rowStyle)
       .setOrigin(0.5);
+    const camScaleText = this.add
+      .text(width / 2, contentY + 50, '', rowStyle)
+      .setOrigin(0.5);
+
+    const refresh = () => {
+      scaleText.setText(`Scale: x${this.scaleOptions[this.scaleIndex].toFixed(2)}`);
+      camScaleText.setText(`Cam Scale: x${this.camScaleOptions[this.camScaleIndex].toFixed(2)}`);
+    };
+    refresh();
+
+    createMenuButton(this, {
+      x: width / 2 - 140,
+      y: contentY + 98,
+      width: 164,
+      label: 'Scale -',
+      onClick: () => {
+        this.scaleIndex = (this.scaleIndex + this.scaleOptions.length - 1) % this.scaleOptions.length;
+        refresh();
+      }
+    });
+
+    createMenuButton(this, {
+      x: width / 2 + 140,
+      y: contentY + 98,
+      width: 164,
+      label: 'Scale +',
+      onClick: () => {
+        this.scaleIndex = (this.scaleIndex + 1) % this.scaleOptions.length;
+        refresh();
+      }
+    });
+
+    createMenuButton(this, {
+      x: width / 2 - 140,
+      y: contentY + 150,
+      width: 164,
+      label: 'Cam -',
+      onClick: () => {
+        this.camScaleIndex = (this.camScaleIndex + this.camScaleOptions.length - 1) % this.camScaleOptions.length;
+        refresh();
+      }
+    });
+
+    createMenuButton(this, {
+      x: width / 2 + 140,
+      y: contentY + 150,
+      width: 164,
+      label: 'Cam +',
+      onClick: () => {
+        this.camScaleIndex = (this.camScaleIndex + 1) % this.camScaleOptions.length;
+        refresh();
+      }
+    });
 
     createMenuButton(this, {
       x: width / 2,
-      y: contentY + 38,
+      y: contentY + 202,
       label: 'Features',
+      width: 248,
       onClick: () => this.scene.get('MenuScene').events.emit('overlay-open', 'FeaturesScene')
     });
 
     createMenuButton(this, {
       x: width / 2,
-      y: contentY + 94,
+      y: contentY + 254,
       label: 'Game Modes',
+      width: 248,
       onClick: () => this.scene.get('MenuScene').events.emit('overlay-open', 'ModesScene')
     });
 
+    const advancedLabel = this.add
+      .text(width / 2, contentY + 296, 'Advanced appearance is intentionally secondary.', {
+        color: '#aab3d8',
+        fontFamily: 'monospace',
+        fontSize: '14px'
+      })
+      .setOrigin(0.5);
+
     const advancedButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 150,
+      y: contentY + 330,
       label: 'Advanced Appearance',
-      width: 320,
+      width: 300,
       onClick: () => {
         advancedSheet.setVisible(true);
         advancedSheet.setDepth(20);
@@ -46,7 +116,7 @@ export class OptionsScene extends Phaser.Scene {
 
     createMenuButton(this, {
       x: width / 2,
-      y: contentY + 214,
+      y: contentY + 382,
       label: 'Back',
       onClick: () => this.scene.get('MenuScene').events.emit('overlay-close')
     });
@@ -68,7 +138,7 @@ export class OptionsScene extends Phaser.Scene {
       .text(
         width / 2,
         panel.y - 18,
-        ['Path RGB channels', 'Wall RGB channels', 'Camera/Maze scale sliders', '', 'These controls stay here to keep Options compact.'].join('\n'),
+        ['Path RGB channels', 'Wall RGB channels', 'future art tuning', '', 'Kept off the main Options flow by design.'].join('\n'),
         {
           color: '#d9ddf3',
           fontFamily: 'monospace',
@@ -86,6 +156,9 @@ export class OptionsScene extends Phaser.Scene {
     });
     advancedSheet.add([dim, panel, title, copy, closeButton]);
     container.setDepth(10);
+    scaleText.setDepth(11);
+    camScaleText.setDepth(11);
+    advancedLabel.setDepth(11);
     advancedButton.setDepth(11);
 
     const escHandler = () => {

@@ -13,6 +13,7 @@ const OVERLAY_EVENTS = {
 
 export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
+  private titlePulseTween?: Phaser.Tweens.Tween;
 
   public constructor() {
     super('MenuScene');
@@ -31,23 +32,38 @@ export class MenuScene extends Phaser.Scene {
       shortcutCountModifier: 0.13
     });
 
-    const layout = createBoardLayout(this, maze, width < 900 ? 0.56 : 0.6);
+    const layout = createBoardLayout(this, maze, width < 900 ? 0.62 : 0.66);
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
 
-    this.add
+    const boardShade = this.add
+      .rectangle(layout.boardX + layout.boardSize / 2, layout.boardY + layout.boardSize / 2, layout.boardSize, layout.boardSize, 0x8a8a9a, 0.2)
+      .setOrigin(0.5)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
+
+    const title = this.add
       .text(width / 2, layout.boardY + layout.boardSize * 0.15, 'Mazer', {
         color: '#22af3f',
         fontFamily: 'monospace',
-        fontSize: `${Math.round(layout.boardSize * 0.24)}px`,
+        fontSize: `${Math.round(layout.boardSize * 0.21)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
-      .setAlpha(0.44)
-      .setStroke('#0b5f1e', 8)
-      .setShadow(0, 0, '#0b5f1e', 10, true, true);
+      .setAlpha(0.42)
+      .setStroke('#0a561b', 7)
+      .setShadow(0, 0, '#0f631f', 12, true, true)
+      .setDepth(10);
+
+    this.titlePulseTween = this.tweens.add({
+      targets: [title, boardShade],
+      alpha: { from: 0.35, to: 0.49 },
+      duration: 2000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
     const demo = createDemoWalkerState(maze);
     boardRenderer.drawTrail(demo.trailIndices);
@@ -70,13 +86,14 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    const buttonY = Math.min(height - 52, layout.boardY + layout.boardSize + 54);
-    const spacing = Math.min(220, width * 0.24);
+    const buttonY = Math.min(height - 44, layout.boardY + layout.boardSize - 24);
+    const spacing = Math.min(layout.boardSize * 0.42, width * 0.33);
 
     createMenuButton(this, {
       x: width / 2,
       y: buttonY,
       label: 'Start',
+      width: 196,
       onClick: () => this.scene.start('GameScene')
     });
 
@@ -84,6 +101,7 @@ export class MenuScene extends Phaser.Scene {
       x: width / 2 + spacing,
       y: buttonY,
       label: 'Options',
+      width: 204,
       onClick: () => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene')
     });
 
@@ -91,6 +109,7 @@ export class MenuScene extends Phaser.Scene {
       x: width / 2 - spacing,
       y: buttonY,
       label: 'Exit',
+      width: 164,
       onClick: () => {
         this.game.destroy(true);
       }
@@ -101,6 +120,10 @@ export class MenuScene extends Phaser.Scene {
 
     this.input.keyboard?.on('keydown-ESC', () => {
       this.overlayManager.closeActive();
+    });
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.titlePulseTween?.remove();
     });
   }
 

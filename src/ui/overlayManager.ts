@@ -13,11 +13,7 @@ export class OverlayManager {
       return;
     }
 
-    for (const key of this.overlays) {
-      if (key !== overlayKey && this.hostScene.scene.isActive(key)) {
-        this.hostScene.scene.stop(key);
-      }
-    }
+    this.stopAllExcept(overlayKey);
 
     if (this.hostScene.scene.isActive(overlayKey)) {
       this.hostScene.scene.stop(overlayKey);
@@ -52,5 +48,16 @@ export class OverlayManager {
 
   public getActiveOverlay(): string | null {
     return this.activeOverlay;
+  }
+
+  private stopAllExcept(exemptKey: string): void {
+    for (const key of this.overlays) {
+      if (key !== exemptKey && this.hostScene.scene.isActive(key)) {
+        this.hostScene.scene.stop(key);
+        if (this.activeOverlay === key) {
+          this.activeOverlay = null;
+        }
+      }
+    }
   }
 }
