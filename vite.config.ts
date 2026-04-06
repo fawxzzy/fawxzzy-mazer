@@ -5,17 +5,24 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      injectRegister: 'auto',
+      manifestFilename: 'manifest.webmanifest',
+      includeAssets: [
+        'favicon.svg',
+        'apple-touch-icon.png',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+        'icons/icon-192-maskable.png',
+        'icons/icon-512-maskable.png'
+      ],
+      manifest: false,
       devOptions: {
         enabled: false
       },
-      manifest: {
-        name: 'Mazer',
-        short_name: 'Mazer',
-        description: 'Mazer rebuild foundation',
-        theme_color: '#101018',
-        background_color: '#101018',
-        display: 'standalone'
+      workbox: {
+        navigateFallbackDenylist: [/^\/__/, /^\/@vite\//],
+        skipWaiting: true,
+        clientsClaim: true
       }
     })
   ]

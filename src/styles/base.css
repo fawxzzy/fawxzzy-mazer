@@ -16,12 +16,45 @@ body,
 
 body {
   margin: 0;
-  background: #08040f;
+  background:
+    radial-gradient(circle at 20% 20%, #1a1433 0, #0f0f1f 32%, #08040f 100%)
+    fixed;
   color: #f8f8ff;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  place-items: center;
+  padding: clamp(8px, 1.4vw, 18px);
 }
 
 canvas {
   display: block;
+  width: min(100vw - 32px, 1320px);
+  height: min(100vh - 32px, 860px);
   margin: 0 auto;
   image-rendering: crisp-edges;
+  border: 1px solid #312a5a;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    0 18px 32px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+}
+
+@media (pointer: coarse) {
+  canvas {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    border: none;
+  }
+
+  #app {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
 }
