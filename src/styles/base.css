@@ -17,7 +17,7 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 18% 20%, #3a2169 0, #1a1137 42%, #090410 100%)
+    radial-gradient(circle at 18% 18%, #3f2572 0, #1a1137 40%, #090410 100%)
     fixed;
   color: #f8f8ff;
   overflow: hidden;
@@ -39,8 +39,19 @@ canvas {
   border-radius: 0;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 22px 36px rgba(0, 0, 0, 0.5);
+    0 18px 30px rgba(0, 0, 0, 0.48),
+    0 0 22px rgba(77, 133, 255, 0.08);
   touch-action: none;
+  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+
+canvas:focus-visible {
+  outline: none;
+  border-color: #5f90bf;
+  box-shadow:
+    0 0 0 1px rgba(173, 212, 255, 0.18) inset,
+    0 20px 32px rgba(0, 0, 0, 0.54),
+    0 0 28px rgba(96, 176, 255, 0.18);
 }
 
 @media (pointer: coarse) {
