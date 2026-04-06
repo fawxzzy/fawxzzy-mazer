@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { legacyTuning } from '../config/tuning';
 import { createOverlaySheet } from '../ui/overlaySheet';
 import { createMenuButton } from '../ui/menuButton';
 
@@ -20,38 +21,38 @@ export class PauseScene extends Phaser.Scene {
 
     const resetButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 54,
+      y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'Reset Run',
       onClick: () => this.emitAction('reset')
     });
 
     const menuButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 108,
+      y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
       onClick: () => this.emitAction('menu')
     });
 
     container.setAlpha(0);
-    container.setScale(0.98);
+    container.setScale(legacyTuning.overlays.intro.pauseScaleStart);
     this.tweens.add({
       targets: container,
       alpha: 1,
       scaleX: 1,
       scaleY: 1,
-      duration: 170,
+      duration: legacyTuning.overlays.intro.panelDurationMs,
       ease: 'Quad.easeOut'
     });
 
     [resumeButton, resetButton, menuButton].forEach((button, index) => {
       button.setAlpha(0);
-      button.y += 6;
+      button.y += legacyTuning.overlays.intro.buttonRisePausePx;
       this.tweens.add({
         targets: button,
         alpha: 1,
-        y: button.y - 6,
-        duration: 150,
-        delay: 70 + (index * 40),
+        y: button.y - legacyTuning.overlays.intro.buttonRisePausePx,
+        duration: legacyTuning.overlays.intro.buttonDurationMs,
+        delay: legacyTuning.overlays.intro.buttonDelayStartMs + (index * legacyTuning.overlays.intro.buttonDelayStepMs),
         ease: 'Quad.easeOut'
       });
     });

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { generateMaze, type MazeBuildResult } from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
-import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/defaults';
+import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
@@ -28,15 +28,15 @@ export class GameScene extends Phaser.Scene {
     d: Phaser.Input.Keyboard.Key;
     p: Phaser.Input.Keyboard.Key;
   };
-  private readonly moveCooldownMs = 82;
-  private readonly directionSwitchBypassMs = 20;
+  private readonly moveCooldownMs = legacyTuning.game.playerMovement.cooldownMs;
+  private readonly directionSwitchBypassMs = legacyTuning.game.playerMovement.directionSwitchBypassMs;
   private lastMoveAtMs = 0;
   private lastMoveDirection: 0 | 1 | 2 | 3 | null = null;
   private bufferedDirection: 0 | 1 | 2 | 3 | null = null;
   private trailIndices: number[] = [];
   private queuedTouchDirection: 0 | 1 | 2 | 3 | null = null;
   private pointerDownAt: Phaser.Math.Vector2 | null = null;
-  private readonly minSwipeDistancePx = 24;
+  private readonly minSwipeDistancePx = legacyTuning.game.playerMovement.minSwipeDistancePx;
   private readonly touchControlsEnabled = window.matchMedia('(pointer: coarse)').matches;
   private hud?: ReturnType<typeof createHudRenderer>;
   private runSeed = 9001;
@@ -236,7 +236,7 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveAtMs = this.time.now;
     this.lastMoveDirection = direction;
     this.trailIndices.push(this.playerIndex);
-    if (this.trailIndices.length > 30) {
+    if (this.trailIndices.length > legacyTuning.board.trail.maxLength) {
       this.trailIndices.shift();
     }
     this.boardRenderer.drawTrail(this.trailIndices);

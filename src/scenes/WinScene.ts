@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { legacyTuning } from '../config/tuning';
 import { createOverlaySheet } from '../ui/overlaySheet';
 import { createMenuButton } from '../ui/menuButton';
 
@@ -20,38 +21,38 @@ export class WinScene extends Phaser.Scene {
 
     const newMazeButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 54,
+      y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'New Maze',
       onClick: () => this.emitAction('new-maze')
     });
 
     const menuButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 108,
+      y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
       onClick: () => this.emitAction('menu')
     });
 
     container.setAlpha(0);
-    container.setScale(0.975);
+    container.setScale(legacyTuning.overlays.intro.winScaleStart);
     this.tweens.add({
       targets: container,
       alpha: 1,
       scaleX: 1,
       scaleY: 1,
-      duration: 180,
+      duration: legacyTuning.overlays.intro.panelDurationMs,
       ease: 'Quad.easeOut'
     });
 
     [resetButton, newMazeButton, menuButton].forEach((button, index) => {
       button.setAlpha(0);
-      button.y += 8;
+      button.y += legacyTuning.overlays.intro.buttonRiseWinPx;
       this.tweens.add({
         targets: button,
         alpha: 1,
-        y: button.y - 8,
-        duration: 160,
-        delay: 80 + (index * 45),
+        y: button.y - legacyTuning.overlays.intro.buttonRiseWinPx,
+        duration: legacyTuning.overlays.intro.buttonDurationMs,
+        delay: legacyTuning.overlays.intro.buttonDelayStartMs + (index * legacyTuning.overlays.intro.buttonDelayStepMs),
         ease: 'Quad.easeOut'
       });
     });
