@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: 'Courier New', Courier, monospace;
 }
 
 * {
@@ -16,11 +16,12 @@ body,
 
 body {
   margin: 0;
-  background: #101018;
+  background: #08040f;
   color: #f8f8ff;
 }
 
 canvas {
   display: block;
   margin: 0 auto;
+  image-rendering: crisp-edges;
 }

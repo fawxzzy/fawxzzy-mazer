@@ -33,3 +33,35 @@ The maze generation lane is implemented as an index-based, renderer-agnostic dom
 - deterministic seed + budget counters (`checkpointCount`, `shortcutsCreated`)
 
 No Phaser scene code is used inside this lane.
+
+## Scene map
+
+Current scene flow keeps menu-first startup with overlay-only option sheets:
+
+- `BootScene`
+  - one-step startup scene that always routes into `MenuScene`.
+- `MenuScene`
+  - renders the purple starfield, centered square maze demo, translucent green `Mazer` title, and the three primary actions (`Start`, `Options`, `Exit`).
+  - owns the overlay event bus and enforces one active overlay at a time through `OverlayManager`.
+- `GameScene`
+  - gameplay placeholder entered by `Start`.
+- `OptionsScene`
+  - primary options sheet opened from `MenuScene`.
+  - menu structure: `Features`, `Modes`, `Advanced Appearance` (subordinate path), `Back`.
+- `FeaturesScene`
+  - options sub-sheet shell.
+- `ModesScene`
+  - options sub-sheet shell.
+
+Overlay behavior is explicit and centralized: only one of `OptionsScene`, `FeaturesScene`, or `ModesScene` can be active at once.
+
+## UI + render support modules
+
+- `src/render/palette.ts`
+  - retro color tokens for background, board, and UI composition.
+- `src/ui/menuButton.ts`
+  - reusable retro action button primitive.
+- `src/ui/overlaySheet.ts`
+  - shared dimmer + panel composition for overlay scenes.
+- `src/ui/overlayManager.ts`
+  - scene-level overlay guard (`open`, `close`, `closeActive`) that prevents multi-overlay stacking.
