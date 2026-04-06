@@ -24,12 +24,17 @@ export const createBoardLayout = (scene: Phaser.Scene, maze: MazeBuildResult, bo
 };
 
 export class BoardRenderer {
-  private readonly base = this.scene.add.graphics();
-  private readonly goal = this.scene.add.graphics();
-  private readonly trail = this.scene.add.graphics();
-  private readonly actor = this.scene.add.graphics();
+  private readonly base: Phaser.GameObjects.Graphics;
+  private readonly goal: Phaser.GameObjects.Graphics;
+  private readonly trail: Phaser.GameObjects.Graphics;
+  private readonly actor: Phaser.GameObjects.Graphics;
 
-  public constructor(private readonly scene: Phaser.Scene, private readonly maze: MazeBuildResult, private readonly layout: BoardLayout) {}
+  public constructor(private readonly scene: Phaser.Scene, private readonly maze: MazeBuildResult, private readonly layout: BoardLayout) {
+    this.base = this.scene.add.graphics();
+    this.goal = this.scene.add.graphics();
+    this.trail = this.scene.add.graphics();
+    this.actor = this.scene.add.graphics();
+  }
 
   public drawBoardChrome(): void {
     const { boardX, boardY, boardSize } = this.layout;

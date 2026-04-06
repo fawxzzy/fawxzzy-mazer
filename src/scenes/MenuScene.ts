@@ -31,20 +31,23 @@ export class MenuScene extends Phaser.Scene {
       shortcutCountModifier: 0.13
     });
 
-    const layout = createBoardLayout(this, maze, width < 900 ? 0.58 : 0.62);
+    const layout = createBoardLayout(this, maze, width < 900 ? 0.56 : 0.6);
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
 
     this.add
-      .text(width / 2, height / 2 - layout.boardSize * 0.24, 'Mazer', {
-        color: '#8cffa4',
+      .text(width / 2, layout.boardY + layout.boardSize * 0.15, 'Mazer', {
+        color: '#22af3f',
         fontFamily: 'monospace',
-        fontSize: `${Math.round(layout.boardSize * 0.2)}px`
+        fontSize: `${Math.round(layout.boardSize * 0.24)}px`,
+        fontStyle: 'bold'
       })
       .setOrigin(0.5)
-      .setAlpha(0.42);
+      .setAlpha(0.44)
+      .setStroke('#0b5f1e', 8)
+      .setShadow(0, 0, '#0b5f1e', 10, true, true);
 
     const demo = createDemoWalkerState(maze);
     boardRenderer.drawTrail(demo.trailIndices);
@@ -67,25 +70,25 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    const buttonY = Math.min(height - 64, layout.boardY + layout.boardSize + 58);
+    const buttonY = Math.min(height - 52, layout.boardY + layout.boardSize + 54);
     const spacing = Math.min(220, width * 0.24);
 
     createMenuButton(this, {
-      x: width / 2 - spacing,
+      x: width / 2,
       y: buttonY,
       label: 'Start',
       onClick: () => this.scene.start('GameScene')
     });
 
     createMenuButton(this, {
-      x: width / 2,
+      x: width / 2 + spacing,
       y: buttonY,
       label: 'Options',
       onClick: () => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene')
     });
 
     createMenuButton(this, {
-      x: width / 2 + spacing,
+      x: width / 2 - spacing,
       y: buttonY,
       label: 'Exit',
       onClick: () => {
@@ -106,8 +109,17 @@ export class MenuScene extends Phaser.Scene {
     bg.fillGradientStyle(palette.background.deepSpace, palette.background.deepSpace, palette.background.nebula, palette.background.nebula, 1);
     bg.fillRect(0, 0, width, height);
 
+    const clouds = this.add.graphics();
+    for (let i = 0; i < 5; i += 1) {
+      const x = Phaser.Math.Between(width * 0.12, width * 0.88);
+      const y = Phaser.Math.Between(height * 0.16, height * 0.84);
+      const radius = Phaser.Math.Between(120, 300);
+      clouds.fillStyle(0x51308d, Phaser.Math.FloatBetween(0.1, 0.24));
+      clouds.fillCircle(x, y, radius);
+    }
+
     const stars = this.add.graphics();
-    for (let i = 0; i < 240; i += 1) {
+    for (let i = 0; i < 280; i += 1) {
       const x = Phaser.Math.Between(0, width);
       const y = Phaser.Math.Between(0, height);
       const r = Phaser.Math.FloatBetween(0.5, 1.7);
