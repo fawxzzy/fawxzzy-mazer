@@ -1,46 +1,50 @@
 # Legacy tuning defaults (Unreal -> rebuild)
 
-This document centralizes feel-defining defaults used by the rebuild and records which values are direct legacy truth vs approximations.
+This pass locks feel-defining defaults into one module (`src/config/tuning.ts`) and records which values are direct legacy truth vs screenshot-derived approximations.
 
-## Source of truth used
+## Source references used
 - Legacy code: `legacy/old-project.zip` (`Source/Mazer/**/*.cpp|*.h`).
-- Legacy visual references: `legacy/screenshots/menu-01.png` ... `menu-04.png`.
-- Rebuild central module: `src/config/defaults.ts`.
+- Legacy visual references: `legacy/screenshots/menu-01.png` to `menu-04.png`.
+- Rebuild tuning source: `src/config/tuning.ts`.
 
-## Directly extracted from legacy code
+## Direct-from-legacy values
 
 ### Board + generation
 - Grid scale default: `_Scale = 50` when unset.
-- Checkpoint modifier: `_CheckPointModifier = 0.35` usage is preserved.
-- Shortcut modifiers used by rebuild lanes:
+- Checkpoint modifier: `_CheckPointModifier = 0.35`.
+- Shortcut modifiers carried by rebuild lanes:
   - menu/demo: `0.13`
   - in-run: `0.18`
 
 ### Camera scale behavior
-- Camera scale edit range in options/pause: `-50..50`.
-- Camera distance formula:
-  - `buffer = (scale + (camScale * 2)) * preScalar`
-- Rebuild maps this behavior into normalized board-scale tuning via `resolveBoardScaleFromCamScale(...)`.
+- Camera scale edit range: `-50..50`.
+- Camera buffer formula: `(scale + (camScale * 2)) * preScalar`.
+- Rebuild mapping keeps this via `resolveBoardScaleFromCamScale(...)`.
 
-### Menu/pause/options labels + ordering
-- Main menu labels/order (legacy): `Start`, `Options`, `Exit`.
-- Menu-time options submenu order: `Features`, `Game Modes`, `Back`.
-- In-game pause menu order: `Back`, `Reset`, `Main Menu`, `Features`.
+### Label ordering from legacy UI bindings
+- Main menu labels/order: `Start`, `Options`, `Exit`.
+- Menu options submenu order: `Features`, `Game Modes`, `Back`.
+- In-run pause order: `Back`, `Reset`, `Main Menu`, `Features`.
 
-### Path/wall color defaults
-- Path original linear RGB: `(0.19099, 0.192708, 0.18769)`.
-- Wall original linear RGB: `(0.067708, 0.067708, 0.067708)`.
+### Legacy color truth
+- Path linear RGB: `(0.19099, 0.192708, 0.18769)`.
+- Wall linear RGB: `(0.067708, 0.067708, 0.067708)`.
 
-## Approximated from screenshots/material intent
-- Title proportion and placement over board.
-- Bottom button lane spacing/offset values.
-- Demo cadence (`70ms`) and goal pulse cadence (`120ms`) preserved from current lane as closest practical timing match to timer-driven legacy demo behavior.
-- Floor/player/goal hex accents where explicit raw legacy material constants were not recoverable from C++.
+## Screenshot-derived approximations
+These were tuned by matching the menu screenshots:
+- Menu board dominance (`boardScaleWide: 0.79`, `boardScaleNarrow: 0.74`) to keep the square board visually large and centered.
+- Title feel (`"Mazer"`, scale `0.19`, alpha/pulse range `0.42..0.56`, raised near board top).
+- Legacy menu lane spacing (wide left/right action separation via `spacingRatio: 0.33`, clamped up to `454px`).
+- Starfield density and motion (`320` stars, subtle drift, restrained cloud alpha).
+- Board frame thickness/insets and top highlight treatment.
+- Goal pulse profile and trail fade/line alpha curve.
+- HUD vertical offsets and spacing rhythm.
 
-## Wiring summary
-- All feel defaults are centralized in `src/config/defaults.ts`.
-- `MenuScene` and `GameScene` now consume board/camera/menu/demo tuning from that module.
-- `palette.ts` now derives board path/wall colors from legacy linear RGB values.
+## Intentional deviations
+- Demo cadence remains `70ms` step + `120ms` goal pulse from current lane as practical parity with legacy timer-driven AI (exact BP timer value not recoverable from C++ source).
+- Player movement input cadence tuned tighter than previous rebuild defaults (`cooldownMs: 76`, switch bypass `18`) for a more responsive board-first feel.
+- Trail color remains a readable cyan accent while preserving legacy path/wall base colors.
 
 ## Rule enforced
-> Legacy truth lives in one tuning module, not scattered magic numbers.
+- Feel-defining values live in one module: `src/config/tuning.ts`.
+- Scenes/renderers consume tuning imports instead of local magic numbers.

@@ -1,28 +1,40 @@
-import { legacyTuning, toHex } from '../config/defaults';
+import { legacyTuning, toHex } from '../config/tuning';
 
 export const palette = {
   background: {
-    deepSpace: 0x140a2a,
-    nebula: 0x3b1b63,
-    vignette: 0x090511,
-    star: 0xf0ecff
+    deepSpace: legacyTuning.colors.background.deepSpace,
+    nebula: legacyTuning.colors.background.nebula,
+    vignette: legacyTuning.colors.background.vignette,
+    star: legacyTuning.colors.background.star,
+    cloud: legacyTuning.colors.background.cloud
   },
   board: {
-    panel: 0x1f1b2c,
-    panelStroke: 0x23212d,
+    panel: legacyTuning.colors.frame.panel,
+    panelStroke: legacyTuning.colors.frame.panelStroke,
+    shadow: legacyTuning.colors.frame.shadow,
+    outer: legacyTuning.colors.frame.outer,
+    outerStroke: legacyTuning.colors.frame.outerStroke,
+    innerStroke: legacyTuning.colors.frame.innerStroke,
+    topHighlight: legacyTuning.colors.frame.topHighlight,
     wall: toHex(
-      legacyTuning.palette.wallLinearRgb.r,
-      legacyTuning.palette.wallLinearRgb.g,
-      legacyTuning.palette.wallLinearRgb.b
+      legacyTuning.colors.wall.linearRgb.r,
+      legacyTuning.colors.wall.linearRgb.g,
+      legacyTuning.colors.wall.linearRgb.b
     ),
-    floor: legacyTuning.palette.floorHex,
+    floor: legacyTuning.colors.floor,
     path: toHex(
-      legacyTuning.palette.pathLinearRgb.r,
-      legacyTuning.palette.pathLinearRgb.g,
-      legacyTuning.palette.pathLinearRgb.b
+      legacyTuning.colors.path.linearRgb.r,
+      legacyTuning.colors.path.linearRgb.g,
+      legacyTuning.colors.path.linearRgb.b
     ),
-    goal: legacyTuning.palette.goalHex,
-    player: legacyTuning.palette.playerHex
+    trail: legacyTuning.colors.trail,
+    goal: legacyTuning.colors.goal,
+    player: legacyTuning.colors.player
+  },
+  hud: {
+    panel: legacyTuning.colors.hud.panel,
+    panelStroke: legacyTuning.colors.hud.panelStroke,
+    accent: legacyTuning.colors.hud.accent
   },
   ui: {
     title: 0x1fab3a,

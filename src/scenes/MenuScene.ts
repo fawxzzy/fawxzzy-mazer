@@ -3,7 +3,7 @@ import { createDemoWalkerState, stepDemoWalker } from '../domain/ai';
 import { generateMaze } from '../domain/maze/generator';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
-import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/defaults';
+import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { createMenuButton } from '../ui/menuButton';
 
@@ -15,6 +15,7 @@ const OVERLAY_EVENTS = {
 export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
   private titlePulseTween?: Phaser.Tweens.Tween;
+  private starDriftTween?: Phaser.Tweens.Tween;
   private boardGoalPulse?: Phaser.Time.TimerEvent;
 
   public constructor() {
@@ -47,7 +48,14 @@ export class MenuScene extends Phaser.Scene {
     boardRenderer.drawGoal();
 
     const boardShade = this.add
-      .rectangle(layout.boardX + layout.boardSize / 2, layout.boardY + layout.boardSize / 2, layout.boardSize, layout.boardSize, 0x8a8a9a, 0.2)
+      .rectangle(
+        layout.boardX + layout.boardSize / 2,
+        layout.boardY + layout.boardSize / 2,
+        layout.boardSize,
+        layout.boardSize,
+        0x8a8a9a,
+        0.2
+      )
       .setOrigin(0.5)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
@@ -60,23 +68,26 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setAlpha(legacyTuning.menu.title.alpha)
-      .setStroke('#0a561b', 6)
-      .setShadow(0, 0, '#123f1d', 8, true, true)
+      .setStroke('#0a561b', legacyTuning.menu.title.strokePx)
+      .setShadow(0, 0, '#123f1d', legacyTuning.menu.title.shadowBlur, true, true)
       .setDepth(10);
 
     const subtitle = this.add
       .text(width / 2, title.y + legacyTuning.menu.subtitle.yOffsetFromTitle, legacyTuning.menu.subtitle.text, {
         color: '#aeb6d9',
         fontFamily: 'monospace',
-        fontSize: '16px'
+        fontSize: `${legacyTuning.menu.subtitle.fontSizePx}px`
       })
       .setOrigin(0.5)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
       targets: [title, boardShade],
-      alpha: { from: 0.38, to: 0.5 },
-      duration: 2300,
+      alpha: {
+        from: legacyTuning.menu.title.pulseMinAlpha,
+        to: legacyTuning.menu.title.pulseMaxAlpha
+      },
+      duration: legacyTuning.menu.title.pulseDurationMs,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -112,7 +123,11 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const buttonY = height - legacyTuning.menu.buttons.laneBottomOffset;
-    const spacing = legacyTuning.menu.buttons.spacing;
+    const spacing = Phaser.Math.Clamp(
+      Math.round(width * legacyTuning.menu.buttons.spacingRatio),
+      legacyTuning.menu.buttons.spacingMinPx,
+      legacyTuning.menu.buttons.spacingMaxPx
+    );
 
     const playButton = createMenuButton(this, {
       x: width / 2,
@@ -148,14 +163,14 @@ export class MenuScene extends Phaser.Scene {
     const buttons = [quitButton, playButton, optionsButton];
     buttons.forEach((button, index) => {
       button.setAlpha(0);
-      button.y += 10;
+      button.y += legacyTuning.menu.buttons.introRisePx;
       this.tweens.add({
         targets: button,
         alpha: 1,
-        y: button.y - 10,
-        duration: 220,
+        y: button.y - legacyTuning.menu.buttons.introRisePx,
+        duration: legacyTuning.menu.buttons.introDurationMs,
         ease: 'Quad.easeOut',
-        delay: 70 + (index * 50)
+        delay: legacyTuning.menu.buttons.introDelayStartMs + (index * legacyTuning.menu.buttons.introDelayStepMs)
       });
     });
 
@@ -168,6 +183,7 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
+      this.starDriftTween?.remove();
       this.boardGoalPulse?.remove(false);
       this.overlayManager.closeAll();
     });
@@ -181,26 +197,35 @@ export class MenuScene extends Phaser.Scene {
     bg.fillRect(0, 0, width, height);
 
     const clouds = this.add.graphics();
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < legacyTuning.menu.starfield.cloudCount; i += 1) {
       const x = Phaser.Math.Between(width * 0.12, width * 0.88);
       const y = Phaser.Math.Between(height * 0.16, height * 0.84);
-      const radius = Phaser.Math.Between(120, 300);
-      clouds.fillStyle(0x51308d, Phaser.Math.FloatBetween(0.1, 0.24));
+      const radius = Phaser.Math.Between(legacyTuning.menu.starfield.cloudRadiusMin, legacyTuning.menu.starfield.cloudRadiusMax);
+      clouds.fillStyle(palette.background.cloud, Phaser.Math.FloatBetween(legacyTuning.menu.starfield.cloudAlphaMin, legacyTuning.menu.starfield.cloudAlphaMax));
       clouds.fillCircle(x, y, radius);
     }
 
     const stars = this.add.graphics();
-    for (let i = 0; i < 280; i += 1) {
+    for (let i = 0; i < legacyTuning.menu.starfield.starCount; i += 1) {
       const x = Phaser.Math.Between(0, width);
       const y = Phaser.Math.Between(0, height);
-      const r = Phaser.Math.FloatBetween(0.5, 1.7);
-      stars.fillStyle(palette.background.star, Phaser.Math.FloatBetween(0.25, 0.95));
+      const r = Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starRadiusMin, legacyTuning.menu.starfield.starRadiusMax);
+      stars.fillStyle(palette.background.star, Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starAlphaMin, legacyTuning.menu.starfield.starAlphaMax));
       stars.fillCircle(x, y, r);
     }
 
+    this.starDriftTween = this.tweens.add({
+      targets: stars,
+      y: legacyTuning.menu.starfield.starsDriftRangePx,
+      duration: legacyTuning.menu.starfield.starsDriftDurationMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
     const vignette = this.add.graphics();
-    vignette.fillStyle(palette.background.vignette, 0.24);
-    vignette.fillRect(0, 0, width, height * 0.14);
-    vignette.fillRect(0, height * 0.86, width, height * 0.14);
+    vignette.fillStyle(palette.background.vignette, legacyTuning.menu.starfield.vignetteAlpha);
+    vignette.fillRect(0, 0, width, height * legacyTuning.menu.starfield.vignetteBandRatio);
+    vignette.fillRect(0, height * (1 - legacyTuning.menu.starfield.vignetteBandRatio), width, height * legacyTuning.menu.starfield.vignetteBandRatio);
   }
 }
