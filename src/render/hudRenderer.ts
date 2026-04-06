@@ -79,6 +79,20 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .setScrollFactor(0)
     .setDepth(1000);
 
+  const hudElements = [timerText, arrowText];
+  hudElements.forEach((element, index) => {
+    element.setAlpha(0);
+    element.y -= 3;
+    scene.tweens.add({
+      targets: element,
+      alpha: 1,
+      y: element.y + 3,
+      duration: 170,
+      delay: 60 + (index * 30),
+      ease: 'Quad.easeOut'
+    });
+  });
+
   scene.tweens.add({
     targets: arrowText,
     alpha: {

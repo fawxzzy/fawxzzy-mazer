@@ -6,6 +6,7 @@ import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { createMenuButton } from '../ui/menuButton';
+import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 const OVERLAY_EVENTS = {
   open: 'overlay-open',
@@ -24,6 +25,7 @@ export class MenuScene extends Phaser.Scene {
 
   public create(): void {
     const { width, height } = this.scale;
+    attachSfxInputUnlock(this);
     this.overlayManager = new OverlayManager(this, ['OptionsScene', 'FeaturesScene', 'ModesScene']);
 
     this.cameras.main.fadeIn(280, 0, 0, 0);
@@ -92,6 +94,14 @@ export class MenuScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+    this.tweens.add({
+      targets: [title, subtitle],
+      y: '+=3',
+      duration: 2400,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
     const demo = createDemoWalkerState(maze);
     boardRenderer.drawTrail(demo.trailIndices);
@@ -136,9 +146,17 @@ export class MenuScene extends Phaser.Scene {
       width: legacyTuning.menu.buttons.widths.center,
       onClick: () => {
         this.overlayManager.closeAll();
-        this.cameras.main.fadeOut(120, 0, 0, 0);
-        this.time.delayedCall(120, () => this.scene.start('GameScene'));
-      }
+        this.tweens.add({
+          targets: this.cameras.main,
+          zoom: 1.015,
+          duration: 120,
+          yoyo: true,
+          ease: 'Sine.easeOut'
+        });
+        this.cameras.main.fadeOut(140, 0, 0, 0);
+        this.time.delayedCall(140, () => this.scene.start('GameScene'));
+      },
+      clickSfx: 'confirm'
     });
 
     const optionsButton = createMenuButton(this, {
@@ -146,7 +164,10 @@ export class MenuScene extends Phaser.Scene {
       y: buttonY,
       label: legacyTuning.menu.labels[1],
       width: legacyTuning.menu.buttons.widths.right,
-      onClick: () => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene')
+      onClick: () => {
+        this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
+      },
+      clickSfx: 'confirm'
     });
 
     const quitButton = createMenuButton(this, {
@@ -155,9 +176,11 @@ export class MenuScene extends Phaser.Scene {
       label: legacyTuning.menu.labels[2],
       width: legacyTuning.menu.buttons.widths.left,
       onClick: () => {
+        playSfx('cancel');
         this.overlayManager.closeAll();
         this.game.destroy(true);
-      }
+      },
+      clickSfx: 'cancel'
     });
 
     const buttons = [quitButton, playButton, optionsButton];
@@ -178,6 +201,7 @@ export class MenuScene extends Phaser.Scene {
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
 
     this.input.keyboard?.on('keydown-ESC', () => {
+      playSfx('cancel');
       this.overlayManager.closeActive();
     });
 

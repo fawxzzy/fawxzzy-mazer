@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { legacyTuning } from '../config/tuning';
 import { createOverlaySheet } from '../ui/overlaySheet';
 import { createMenuButton } from '../ui/menuButton';
+import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 export class PauseScene extends Phaser.Scene {
   public constructor() {
@@ -9,6 +10,7 @@ export class PauseScene extends Phaser.Scene {
   }
 
   public create(): void {
+    attachSfxInputUnlock(this);
     const { width } = this.scale;
     const { container, contentY } = createOverlaySheet(this, 'Paused', 'Run is paused');
 
@@ -16,21 +18,24 @@ export class PauseScene extends Phaser.Scene {
       x: width / 2,
       y: contentY,
       label: 'Resume',
-      onClick: () => this.emitAction('resume')
+      onClick: () => this.emitAction('resume'),
+      clickSfx: 'cancel'
     });
 
     const resetButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'Reset Run',
-      onClick: () => this.emitAction('reset')
+      onClick: () => this.emitAction('reset'),
+      clickSfx: 'confirm'
     });
 
     const menuButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
-      onClick: () => this.emitAction('menu')
+      onClick: () => this.emitAction('menu'),
+      clickSfx: 'cancel'
     });
 
     container.setAlpha(0);
@@ -41,6 +46,7 @@ export class PauseScene extends Phaser.Scene {
       scaleX: 1,
       scaleY: 1,
       duration: legacyTuning.overlays.intro.panelDurationMs,
+      y: '-=4',
       ease: 'Quad.easeOut'
     });
 
@@ -57,8 +63,14 @@ export class PauseScene extends Phaser.Scene {
       });
     });
 
-    this.input.keyboard?.once('keydown-P', () => this.emitAction('resume'));
-    this.input.keyboard?.once('keydown-ESC', () => this.emitAction('resume'));
+    this.input.keyboard?.once('keydown-P', () => {
+      playSfx('cancel');
+      this.emitAction('resume');
+    });
+    this.input.keyboard?.once('keydown-ESC', () => {
+      playSfx('cancel');
+      this.emitAction('resume');
+    });
   }
 
   private emitAction(action: 'resume' | 'menu' | 'reset'): void {

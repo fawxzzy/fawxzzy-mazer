@@ -52,13 +52,16 @@ export class BoardRenderer {
   private readonly goal: Phaser.GameObjects.Graphics;
   private readonly trail: Phaser.GameObjects.Graphics;
   private readonly actor: Phaser.GameObjects.Graphics;
+  private readonly ambientContainer: Phaser.GameObjects.Container;
 
   public constructor(private readonly scene: Phaser.Scene, private readonly maze: MazeBuildResult, private readonly layout: BoardLayout) {
+    this.ambientContainer = this.scene.add.container(0, 0);
     this.base = this.scene.add.graphics();
     this.grid = this.scene.add.graphics();
     this.goal = this.scene.add.graphics();
     this.trail = this.scene.add.graphics();
     this.actor = this.scene.add.graphics();
+    this.ambientContainer.add([this.base, this.grid, this.goal, this.trail, this.actor]);
   }
 
   public drawBoardChrome(): void {
@@ -147,6 +150,7 @@ export class BoardRenderer {
     const centerY = boardY + goalTile.y * tileSize + tileSize / 2;
     const pulse = legacyTuning.board.goalPulse.basePulse
       + (Math.sin(this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed) * legacyTuning.board.goalPulse.waveAmplitude);
+    const sparkPulse = 0.65 + (Math.sin((this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed * 0.66) + 0.85) * 0.35);
 
     this.goal.fillStyle(palette.board.goal, legacyTuning.board.goalPulse.glowAlpha * pulse);
     this.goal.fillCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.glowRadiusRatio);
@@ -167,6 +171,10 @@ export class BoardRenderer {
 
     this.goal.fillStyle(palette.board.goal, 1);
     this.goal.fillCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.coreRadiusRatio);
+
+    this.goal.lineStyle(Math.max(1, tileSize * 0.035), palette.board.goal, 0.45 * sparkPulse);
+    this.goal.lineBetween(centerX - tileSize * 0.1, centerY, centerX + tileSize * 0.1, centerY);
+    this.goal.lineBetween(centerX, centerY - tileSize * 0.1, centerX, centerY + tileSize * 0.1);
   }
 
   public drawTrail(indices: number[]): void {
@@ -226,5 +234,16 @@ export class BoardRenderer {
 
     this.actor.lineStyle(Math.max(2, tileSize * 0.09), palette.board.player, 0.95);
     this.actor.strokeCircle(centerX, centerY, tileSize * 0.27);
+  }
+
+  public startAmbientMotion(distancePx: number, durationMs: number): void {
+    this.scene.tweens.add({
+      targets: this.ambientContainer,
+      y: distancePx,
+      duration: durationMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 }
