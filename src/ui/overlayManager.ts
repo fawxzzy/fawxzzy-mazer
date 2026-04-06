@@ -8,17 +8,19 @@ export class OverlayManager {
     private readonly overlays: readonly string[]
   ) {}
 
-  public open(overlayKey: string, data?: unknown): void {
+  public open(overlayKey: string, data?: object): void {
     if (!this.overlays.includes(overlayKey)) {
       return;
     }
 
-    if (this.activeOverlay === overlayKey) {
-      return;
+    for (const key of this.overlays) {
+      if (key !== overlayKey && this.hostScene.scene.isActive(key)) {
+        this.hostScene.scene.stop(key);
+      }
     }
 
-    if (this.activeOverlay) {
-      this.hostScene.scene.stop(this.activeOverlay);
+    if (this.hostScene.scene.isActive(overlayKey)) {
+      this.hostScene.scene.stop(overlayKey);
     }
 
     const launchData = (data !== null && typeof data === 'object')
@@ -35,7 +37,10 @@ export class OverlayManager {
       return;
     }
 
-    this.hostScene.scene.stop(key);
+    if (this.hostScene.scene.isActive(key)) {
+      this.hostScene.scene.stop(key);
+    }
+
     if (this.activeOverlay === key) {
       this.activeOverlay = null;
     }

@@ -47,11 +47,12 @@ Current scene flow keeps menu-first startup with overlay-only option sheets:
   - gameplay placeholder entered by `Start`.
 - `OptionsScene`
   - primary options sheet opened from `MenuScene`.
-  - menu structure: `Features`, `Modes`, `Advanced Appearance` (subordinate path), `Back`.
+  - compact first-view controls: `Features`, `Game Modes`, `Advanced Appearance`, `Back`.
+  - `Advanced Appearance` opens a nested sheet inside `OptionsScene` so RGB/material tuning does not dominate first paint.
 - `FeaturesScene`
-  - options sub-sheet shell.
+  - compact submenu with legacy-style feature toggles (camera follow, trail fade) and return action.
 - `ModesScene`
-  - options sub-sheet shell.
+  - compact submenu with `Classic`, `Timed`, `Endless` mode selection and return action.
 
 Overlay behavior is explicit and centralized: only one of `OptionsScene`, `FeaturesScene`, or `ModesScene` can be active at once.
 
