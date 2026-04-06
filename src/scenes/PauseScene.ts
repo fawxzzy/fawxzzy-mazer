@@ -9,27 +9,51 @@ export class PauseScene extends Phaser.Scene {
 
   public create(): void {
     const { width } = this.scale;
-    const { contentY } = createOverlaySheet(this, 'Paused', 'Run is paused');
+    const { container, contentY } = createOverlaySheet(this, 'Paused', 'Run is paused');
 
-    createMenuButton(this, {
+    const resumeButton = createMenuButton(this, {
       x: width / 2,
       y: contentY,
       label: 'Resume',
       onClick: () => this.emitAction('resume')
     });
 
-    createMenuButton(this, {
+    const resetButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + 54,
       label: 'Reset Run',
       onClick: () => this.emitAction('reset')
     });
 
-    createMenuButton(this, {
+    const menuButton = createMenuButton(this, {
       x: width / 2,
       y: contentY + 108,
       label: 'Main Menu',
       onClick: () => this.emitAction('menu')
+    });
+
+    container.setAlpha(0);
+    container.setScale(0.98);
+    this.tweens.add({
+      targets: container,
+      alpha: 1,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 170,
+      ease: 'Quad.easeOut'
+    });
+
+    [resumeButton, resetButton, menuButton].forEach((button, index) => {
+      button.setAlpha(0);
+      button.y += 6;
+      this.tweens.add({
+        targets: button,
+        alpha: 1,
+        y: button.y - 6,
+        duration: 150,
+        delay: 70 + (index * 40),
+        ease: 'Quad.easeOut'
+      });
     });
 
     this.input.keyboard?.once('keydown-P', () => this.emitAction('resume'));

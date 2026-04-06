@@ -14,6 +14,7 @@ const OVERLAY_EVENTS = {
 export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
   private titlePulseTween?: Phaser.Tweens.Tween;
+  private boardGoalPulse?: Phaser.Time.TimerEvent;
 
   public constructor() {
     super('MenuScene');
@@ -23,7 +24,7 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.overlayManager = new OverlayManager(this, ['OptionsScene', 'FeaturesScene', 'ModesScene']);
 
-    this.cameras.main.fadeIn(200, 0, 0, 0);
+    this.cameras.main.fadeIn(280, 0, 0, 0);
     this.drawStarfield(width, height);
 
     const maze = generateMaze({
@@ -58,7 +59,7 @@ export class MenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setAlpha(0.48)
       .setStroke('#0a561b', 6)
-      .setShadow(0, 0, '#0f631f', 12, true, true)
+      .setShadow(0, 0, '#123f1d', 8, true, true)
       .setDepth(10);
 
     const subtitle = this.add
@@ -72,8 +73,8 @@ export class MenuScene extends Phaser.Scene {
 
     this.titlePulseTween = this.tweens.add({
       targets: [title, boardShade],
-      alpha: { from: 0.36, to: 0.52 },
-      duration: 2000,
+      alpha: { from: 0.38, to: 0.5 },
+      duration: 2300,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -100,10 +101,18 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
+    this.boardGoalPulse = this.time.addEvent({
+      delay: 120,
+      loop: true,
+      callback: () => {
+        boardRenderer.drawGoal();
+      }
+    });
+
     const buttonY = height - 48;
     const spacing = 214;
 
-    createMenuButton(this, {
+    const playButton = createMenuButton(this, {
       x: width / 2,
       y: buttonY,
       label: 'Play',
@@ -115,7 +124,7 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    createMenuButton(this, {
+    const optionsButton = createMenuButton(this, {
       x: width / 2 + spacing,
       y: buttonY,
       label: 'Options',
@@ -123,7 +132,7 @@ export class MenuScene extends Phaser.Scene {
       onClick: () => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene')
     });
 
-    createMenuButton(this, {
+    const quitButton = createMenuButton(this, {
       x: width / 2 - spacing,
       y: buttonY,
       label: 'Quit',
@@ -132,6 +141,20 @@ export class MenuScene extends Phaser.Scene {
         this.overlayManager.closeAll();
         this.game.destroy(true);
       }
+    });
+
+    const buttons = [quitButton, playButton, optionsButton];
+    buttons.forEach((button, index) => {
+      button.setAlpha(0);
+      button.y += 10;
+      this.tweens.add({
+        targets: button,
+        alpha: 1,
+        y: button.y - 10,
+        duration: 220,
+        ease: 'Quad.easeOut',
+        delay: 70 + (index * 50)
+      });
     });
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
@@ -143,6 +166,7 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
+      this.boardGoalPulse?.remove(false);
       this.overlayManager.closeAll();
     });
 
