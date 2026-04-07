@@ -1,14 +1,14 @@
 :root {
   color-scheme: dark;
   font-family: 'Courier New', Courier, monospace;
-  --mazer-bg-a: #4a2976;
-  --mazer-bg-b: #251242;
+  --mazer-bg-a: #472b78;
+  --mazer-bg-b: #24133d;
   --mazer-bg-c: #0a0713;
   --mazer-bg-d: #13081f;
-  --mazer-frame-stroke: #3a5170;
-  --mazer-frame-focus: #86b2da;
-  --mazer-canvas-shadow: rgba(0, 0, 0, 0.56);
-  --mazer-canvas-glow: rgba(104, 138, 255, 0.14);
+  --mazer-frame-stroke: #36455f;
+  --mazer-frame-focus: #8eb9df;
+  --mazer-canvas-shadow: rgba(0, 0, 0, 0.58);
+  --mazer-canvas-glow: rgba(110, 138, 226, 0.16);
 }
 
 * {
@@ -25,8 +25,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 50% 18%, rgba(146, 110, 219, 0.22) 0, rgba(146, 110, 219, 0) 36%),
-    radial-gradient(circle at 50% 42%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 42%, var(--mazer-bg-c) 100%),
+    radial-gradient(circle at 50% 16%, rgba(121, 88, 194, 0.18) 0, rgba(121, 88, 194, 0) 34%),
+    radial-gradient(circle at 50% 42%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 44%, var(--mazer-bg-c) 100%),
     linear-gradient(180deg, var(--mazer-bg-d) 0, var(--mazer-bg-c) 100%)
     fixed;
   color: #f8f8ff;
@@ -44,9 +44,9 @@ body::after {
 
 body::before {
   background:
-    radial-gradient(circle at 50% 50%, rgba(178, 140, 255, 0.1) 0, rgba(178, 140, 255, 0) 48%),
+    radial-gradient(circle at 50% 50%, rgba(188, 160, 255, 0.08) 0, rgba(188, 160, 255, 0) 48%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0) 82%, rgba(255, 255, 255, 0.018) 100%);
-  opacity: 0.8;
+  opacity: 0.74;
 }
 
 body::after {
@@ -74,7 +74,7 @@ canvas {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.04) inset,
     0 24px 42px var(--mazer-canvas-shadow),
-    0 0 28px var(--mazer-canvas-glow);
+    0 0 32px var(--mazer-canvas-glow);
   touch-action: none;
   transition: box-shadow 200ms ease, border-color 200ms ease;
   animation: mazer-canvas-breathe 6.2s ease-in-out infinite;
@@ -95,13 +95,13 @@ canvas:focus-visible {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.04) inset,
       0 24px 42px var(--mazer-canvas-shadow),
-      0 0 24px rgba(104, 138, 255, 0.1);
+      0 0 24px rgba(104, 138, 255, 0.12);
   }
   50% {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.05) inset,
       0 28px 46px rgba(0, 0, 0, 0.6),
-      0 0 32px rgba(120, 184, 255, 0.18);
+      0 0 36px rgba(120, 184, 255, 0.2);
   }
 }
 

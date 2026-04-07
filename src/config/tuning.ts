@@ -88,38 +88,37 @@ export const legacyTuning = {
   },
   menu: {
     layout: {
-      boardScaleNarrow: 0.79,
-      boardScaleWide: 0.88,
-      topReserveRatio: 0.095,
-      topReserveMinPx: 56,
-      bottomPaddingPx: 96
+      boardScaleNarrow: 0.84,
+      boardScaleWide: 0.91,
+      topReserveRatio: 0.045,
+      topReserveMinPx: 24,
+      bottomPaddingPx: 82,
+      sidePaddingPx: 18
     },
     title: {
       text: 'Mazer',
-      fontScaleToBoard: 0.165,
-      yOffsetFromBoardTop: 68,
-      alpha: 0.36,
-      strokePx: 6,
-      shadowBlur: 10,
-      pulseMinAlpha: 0.3,
-      pulseMaxAlpha: 0.4,
-      pulseDurationMs: 2600
-    },
-    subtitle: {
-      text: 'Board-first maze runner',
-      yOffsetFromTitle: 38,
-      fontSizePx: 13
+      fontScaleToBoard: 0.15,
+      yOffsetFromBoardTop: 52,
+      alpha: 0.86,
+      strokePx: 5,
+      shadowBlur: 16,
+      pulseMinAlpha: 0.78,
+      pulseMaxAlpha: 0.98,
+      pulseDurationMs: 2800,
+      plateWidthRatio: 0.52,
+      plateHeightPx: 82,
+      plateAlpha: 0.16
     },
     buttons: {
-      laneBottomOffset: 54,
-      spacingRatio: 0.34,
-      spacingMinPx: 240,
-      spacingMaxPx: 500,
+      laneBottomOffset: 30,
+      spacingRatio: 0.43,
+      spacingMinPx: 220,
+      spacingMaxPx: 420,
       widths: {
-        left: 164,
-        center: 196,
-        right: 204
+        left: 160,
+        right: 172
       },
+      alpha: 0.76,
       introRisePx: 10,
       introDurationMs: 220,
       introDelayStartMs: 70,
@@ -138,11 +137,11 @@ export const legacyTuning = {
       starAlphaMax: 0.98,
       starsDriftRangePx: 14,
       starsDriftDurationMs: 15000,
-      vignetteAlpha: 0.3,
+      vignetteAlpha: 0.38,
       vignetteBandRatio: 0.18
     },
-    // Legacy menu labels/order from Unreal bindings.
-    labels: ['Start', 'Options', 'Exit'] as const
+    // Attract-mode-first shell keeps only secondary actions visible.
+    labels: ['Options', 'Exit'] as const
   },
   game: {
     layout: {
@@ -176,8 +175,8 @@ export const legacyTuning = {
     hintFontPx: 11
   },
   overlays: {
-    optionsLabels: ['Features', 'Game Modes', 'Back'] as const,
-    pauseLabels: ['Back', 'Reset', 'Main Menu', 'Features'] as const,
+    optionsLabels: ['Manual Play', 'Back'] as const,
+    pauseLabels: ['Back', 'Reset', 'Main Menu'] as const,
     listSpacingPx: 54,
     intro: {
       pauseScaleStart: 0.98,
@@ -191,29 +190,42 @@ export const legacyTuning = {
     }
   },
   demo: {
-    // Legacy AI was timer-driven (`_PlayerAiDelayDuration`); exact value was BP-driven.
-    stepMs: 70,
-    goalPulseMs: 120
+    seed: 1988,
+    cadence: {
+      // Legacy AI was timer-driven (`_PlayerAiDelayDuration`); exact value was BP-driven.
+      exploreStepMs: 78,
+      backtrackStepMs: 52,
+      goalHoldMs: 720,
+      resetHoldMs: 360,
+      goalPulseMs: 110
+    },
+    behavior: {
+      trailMaxLength: 36,
+      goalBias: 0.34,
+      branchBias: 0.88,
+      forwardBias: 0.28,
+      jitter: 0.22
+    }
   },
   colors: {
     background: {
-      deepSpace: 0x140a2a,
-      nebula: 0x3b1b63,
-      nebulaCore: 0x58358a,
-      vignette: 0x090511,
-      star: 0xf0ecff,
-      cloud: 0x51308d
+      deepSpace: 0x130d23,
+      nebula: 0x31184f,
+      nebulaCore: 0x56357d,
+      vignette: 0x090510,
+      star: 0xf5efff,
+      cloud: 0x5a348b
     },
     frame: {
       shadow: 0x02040a,
-      outer: 0x090d16,
-      outerStroke: 0x364f6f,
-      innerStroke: 0x79a9d8,
-      topHighlight: 0xc4edff,
-      panel: 0x181823,
-      panelStroke: 0x2f3444,
-      glow: 0x657fe0,
-      well: 0x0a0d14
+      outer: 0x0d1118,
+      outerStroke: 0x32445c,
+      innerStroke: 0x7ca5d0,
+      topHighlight: 0xd8ecff,
+      panel: 0x16161d,
+      panelStroke: 0x30374a,
+      glow: 0x7287d8,
+      well: 0x090c12
     },
     wall: {
       // Direct legacy defaults from `MazerGameInstance.h` originals.
@@ -223,23 +235,23 @@ export const legacyTuning = {
       // Direct legacy defaults from `MazerGameInstance.h` originals.
       linearRgb: { r: 0.19099, g: 0.192708, b: 0.18769 }
     },
-    player: 0x69c2ff,
+    player: 0x79d7ff,
     playerCore: 0xf6fbff,
-    playerHalo: 0x9cdcff,
+    playerHalo: 0xa4e4ff,
     playerShadow: 0x05070f,
-    trail: 0x26c8ff,
-    trailCore: 0x8feaff,
-    trailGlow: 0x0f6fb3,
-    goal: 0xff4855,
-    goalCore: 0xffd7db,
+    trail: 0x42b4ff,
+    trailCore: 0xb7f0ff,
+    trailGlow: 0x15598b,
+    goal: 0xff6274,
+    goalCore: 0xffe6ea,
     floor: 0xb2b2b2,
     hud: {
       panel: 0x07101a,
-      panelStroke: 0x7ca6dd,
+      panelStroke: 0x6e9bd6,
       accent: 0x7bc1ff,
       shadow: 0x01050c,
-      timerText: 0xb9ffbf,
-      goalText: 0xff8b93,
+      timerText: 0xc8ffd0,
+      goalText: 0xffa3ab,
       hintText: 0xb8c4d8
     }
   }

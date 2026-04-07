@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createDemoWalkerState, stepDemoWalker } from '../domain/ai';
+import { advanceDemoWalker, createDemoWalkerState } from '../domain/ai';
 import { generateMaze } from '../domain/maze/generator';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
@@ -10,7 +10,8 @@ import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 const OVERLAY_EVENTS = {
   open: 'overlay-open',
-  close: 'overlay-close'
+  close: 'overlay-close',
+  manualPlay: 'overlay-manual-play'
 } as const;
 
 export class MenuScene extends Phaser.Scene {
@@ -18,6 +19,7 @@ export class MenuScene extends Phaser.Scene {
   private titlePulseTween?: Phaser.Tweens.Tween;
   private starDriftTween?: Phaser.Tweens.Tween;
   private boardGoalPulse?: Phaser.Time.TimerEvent;
+  private demoStepTimer?: Phaser.Time.TimerEvent;
   private transitionLocked = false;
 
   public constructor() {
@@ -28,14 +30,14 @@ export class MenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
     attachSfxInputUnlock(this);
     this.transitionLocked = false;
-    this.overlayManager = new OverlayManager(this, ['OptionsScene', 'FeaturesScene', 'ModesScene']);
+    this.overlayManager = new OverlayManager(this, ['OptionsScene']);
 
     this.cameras.main.fadeIn(280, 0, 0, 0);
     this.drawStarfield(width, height);
 
     const maze = generateMaze({
       scale: legacyTuning.board.scale,
-      seed: 1988,
+      seed: legacyTuning.demo.seed,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     });
@@ -44,12 +46,14 @@ export class MenuScene extends Phaser.Scene {
       boardScale: (width < 900 ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
         + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
       topReserve: Math.max(legacyTuning.menu.layout.topReserveMinPx, Math.round(height * legacyTuning.menu.layout.topReserveRatio)),
+      sidePadding: legacyTuning.menu.layout.sidePaddingPx,
       bottomPadding: legacyTuning.menu.layout.bottomPaddingPx
     });
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
+    boardRenderer.startAmbientMotion(1.5, 2600);
 
     const boardShade = this.add
       .rectangle(
@@ -58,10 +62,23 @@ export class MenuScene extends Phaser.Scene {
         layout.boardSize,
         layout.boardSize,
         0x8a8a9a,
-        0.14
+        0.09
       )
       .setOrigin(0.5)
       .setBlendMode(Phaser.BlendModes.SCREEN);
+
+    const titlePlateWidth = layout.boardSize * legacyTuning.menu.title.plateWidthRatio;
+    this.add
+      .rectangle(
+        width / 2,
+        layout.boardY + legacyTuning.menu.title.yOffsetFromBoardTop,
+        titlePlateWidth,
+        legacyTuning.menu.title.plateHeightPx,
+        palette.board.well,
+        legacyTuning.menu.title.plateAlpha
+      )
+      .setStrokeStyle(1, palette.board.innerStroke, 0.2)
+      .setDepth(9);
 
     const title = this.add
       .text(width / 2, layout.boardY + legacyTuning.menu.title.yOffsetFromBoardTop, legacyTuning.menu.title.text, {
@@ -74,16 +91,6 @@ export class MenuScene extends Phaser.Scene {
       .setAlpha(legacyTuning.menu.title.alpha)
       .setStroke('#133f1c', legacyTuning.menu.title.strokePx)
       .setShadow(0, 0, '#2d8e3f', legacyTuning.menu.title.shadowBlur, true, true)
-      .setDepth(10);
-
-    const subtitle = this.add
-      .text(width / 2, title.y + legacyTuning.menu.subtitle.yOffsetFromTitle, legacyTuning.menu.subtitle.text, {
-        color: '#bcc7e4',
-        fontFamily: 'monospace',
-        fontSize: `${legacyTuning.menu.subtitle.fontSizePx}px`
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.84)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
@@ -109,37 +116,38 @@ export class MenuScene extends Phaser.Scene {
       ease: 'Sine.easeInOut'
     });
     this.tweens.add({
-      targets: [title, subtitle],
-      y: '+=3',
-      duration: 2400,
+      targets: title,
+      y: '+=2',
+      duration: 2600,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
 
-    const demo = createDemoWalkerState(maze);
-    boardRenderer.drawTrail(demo.trailIndices);
-    boardRenderer.drawActor(demo.currentIndex);
+    let demo = createDemoWalkerState(maze);
+    const renderDemo = (): void => {
+      boardRenderer.drawTrail(demo.trailIndices.slice(-legacyTuning.demo.behavior.trailMaxLength));
+      boardRenderer.drawActor(demo.currentIndex, demo.lastDirection);
+    };
+    const scheduleDemoAdvance = (delayMs: number): void => {
+      this.demoStepTimer?.remove(false);
+      this.demoStepTimer = this.time.delayedCall(delayMs, () => {
+        if (!this.scene.isActive()) {
+          return;
+        }
 
-    this.time.addEvent({
-      delay: legacyTuning.demo.stepMs,
-      loop: true,
-      callback: () => {
-        const next = stepDemoWalker(maze, demo);
-        demo.currentIndex = next.currentIndex;
-        demo.trailIndices = next.trailIndices;
-        demo.alternatives = next.alternatives;
-        demo.visited = next.visited;
-        demo.loops = next.loops;
-        demo.reachedGoal = next.reachedGoal;
+        const next = advanceDemoWalker(maze, demo, legacyTuning.demo);
+        demo = next.state;
+        renderDemo();
+        scheduleDemoAdvance(next.delayMs);
+      });
+    };
 
-        boardRenderer.drawTrail(demo.trailIndices);
-        boardRenderer.drawActor(demo.currentIndex);
-      }
-    });
+    renderDemo();
+    scheduleDemoAdvance(legacyTuning.demo.cadence.exploreStepMs);
 
     this.boardGoalPulse = this.time.addEvent({
-      delay: legacyTuning.demo.goalPulseMs,
+      delay: legacyTuning.demo.cadence.goalPulseMs,
       loop: true,
       callback: () => {
         boardRenderer.drawGoal();
@@ -152,7 +160,6 @@ export class MenuScene extends Phaser.Scene {
       legacyTuning.menu.buttons.spacingMinPx,
       legacyTuning.menu.buttons.spacingMaxPx
     );
-    let overlayActionQueued = false;
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
@@ -167,49 +174,31 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-    const queueOverlayAction = (action: () => void, delayMs = 52): void => {
-      if (overlayActionQueued || this.transitionLocked) {
-        return;
-      }
-
-      overlayActionQueued = true;
-      this.time.delayedCall(delayMs, () => {
-        overlayActionQueued = false;
-        if (this.scene.isActive()) {
-          action();
-        }
+    const launchManualPlay = (): void => {
+      queueTransition(() => {
+        this.overlayManager.closeAll();
+        this.tweens.add({
+          targets: this.cameras.main,
+          zoom: 1.015,
+          duration: 120,
+          yoyo: true,
+          ease: 'Sine.easeOut'
+        });
+        this.cameras.main.fadeOut(140, 0, 0, 0);
+        this.time.delayedCall(140, () => this.scene.start('GameScene'));
       });
     };
-
-    const playButton = createMenuButton(this, {
-      x: width / 2,
-      y: buttonY,
-      label: legacyTuning.menu.labels[0],
-      width: legacyTuning.menu.buttons.widths.center,
-      onClick: () => {
-        queueTransition(() => {
-          this.overlayManager.closeAll();
-          this.tweens.add({
-            targets: this.cameras.main,
-            zoom: 1.015,
-            duration: 120,
-            yoyo: true,
-            ease: 'Sine.easeOut'
-          });
-          this.cameras.main.fadeOut(140, 0, 0, 0);
-          this.time.delayedCall(140, () => this.scene.start('GameScene'));
-        });
-      },
-      clickSfx: 'confirm'
-    });
 
     const optionsButton = createMenuButton(this, {
       x: width / 2 + spacing,
       y: buttonY,
-      label: legacyTuning.menu.labels[1],
+      label: legacyTuning.menu.labels[0],
       width: legacyTuning.menu.buttons.widths.right,
       onClick: () => {
-        queueOverlayAction(() => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene'));
+        if (this.transitionLocked) {
+          return;
+        }
+        this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
       },
       clickSfx: 'confirm'
     });
@@ -217,7 +206,7 @@ export class MenuScene extends Phaser.Scene {
     const quitButton = createMenuButton(this, {
       x: width / 2 - spacing,
       y: buttonY,
-      label: legacyTuning.menu.labels[2],
+      label: legacyTuning.menu.labels[1],
       width: legacyTuning.menu.buttons.widths.left,
       onClick: () => {
         queueTransition(() => {
@@ -228,13 +217,15 @@ export class MenuScene extends Phaser.Scene {
       clickSfx: 'cancel'
     });
 
-    const buttons = [quitButton, playButton, optionsButton];
+    const buttons = [quitButton, optionsButton];
     buttons.forEach((button, index) => {
+      button.setAlpha(legacyTuning.menu.buttons.alpha);
+      const targetAlpha = button.alpha;
       button.setAlpha(0);
       button.y += legacyTuning.menu.buttons.introRisePx;
       this.tweens.add({
         targets: button,
-        alpha: 1,
+        alpha: targetAlpha,
         y: button.y - legacyTuning.menu.buttons.introRisePx,
         duration: legacyTuning.menu.buttons.introDurationMs,
         ease: 'Quad.easeOut',
@@ -244,26 +235,36 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
+    this.events.on(OVERLAY_EVENTS.manualPlay, launchManualPlay);
 
     const escHandler = () => {
       if (!this.overlayManager.isOverlayActive()) {
-        return;
+        this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
+      } else {
+        playSfx('cancel');
+        this.overlayManager.closeActive();
       }
-
-      playSfx('cancel');
-      this.overlayManager.closeActive();
+    };
+    const enterHandler = () => {
+      if (!this.overlayManager.isOverlayActive()) {
+        launchManualPlay();
+      }
     };
     this.input.keyboard?.on('keydown-ESC', escHandler);
+    this.input.keyboard?.on('keydown-ENTER', enterHandler);
+    this.input.keyboard?.on('keydown-M', enterHandler);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
       this.starDriftTween?.remove();
       this.boardGoalPulse?.remove(false);
+      this.demoStepTimer?.remove(false);
       this.overlayManager.closeAll();
       this.input.keyboard?.off('keydown-ESC', escHandler);
+      this.input.keyboard?.off('keydown-ENTER', enterHandler);
+      this.input.keyboard?.off('keydown-M', enterHandler);
+      this.events.off(OVERLAY_EVENTS.manualPlay, launchManualPlay);
     });
-
-    subtitle.setDepth(11);
   }
 
   private drawStarfield(width: number, height: number): void {

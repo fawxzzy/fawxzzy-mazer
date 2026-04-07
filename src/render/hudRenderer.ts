@@ -69,7 +69,8 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .text(panelLeft + legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, '00:00', {
       color: toCssColor(palette.hud.timerText),
       fontFamily: '"Courier New", monospace',
-      fontSize: `${legacyTuning.hud.timerFontPx}px`
+      fontSize: `${legacyTuning.hud.timerFontPx}px`,
+      fontStyle: 'bold'
     })
     .setScrollFactor(0)
     .setDepth(1000);
@@ -78,7 +79,8 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .text(panelRight - legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, 'Goal ^', {
       color: toCssColor(palette.hud.goalText),
       fontFamily: '"Courier New", monospace',
-      fontSize: `${legacyTuning.hud.arrowFontPx}px`
+      fontSize: `${legacyTuning.hud.arrowFontPx}px`,
+      fontStyle: 'bold'
     })
     .setOrigin(1, 0)
     .setScrollFactor(0)
@@ -92,11 +94,12 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       {
         color: toCssColor(palette.hud.hintText),
         fontFamily: '"Courier New", monospace',
-        fontSize: `${legacyTuning.hud.hintFontPx}px`
+        fontSize: `${legacyTuning.hud.hintFontPx}px`,
+        letterSpacing: 1
       }
     )
     .setOrigin(0.5, 0)
-    .setAlpha(0.74)
+    .setAlpha(0.68)
     .setScrollFactor(0)
     .setDepth(1000);
 

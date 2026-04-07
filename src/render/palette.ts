@@ -52,10 +52,10 @@ export const palette = {
   ui: {
     title: 0x1fab3a,
     text: 0xe9f0ff,
-    textDim: 0xb5b8d8,
-    buttonFill: 0x151625,
-    buttonStroke: 0x5e577f,
-    buttonHover: 0x23253a,
+    textDim: 0xb9bedc,
+    buttonFill: 0x121222,
+    buttonStroke: 0x565a79,
+    buttonHover: 0x1d1f32,
     overlayFill: 0x0f1020,
     overlayStroke: 0x66608d
   }

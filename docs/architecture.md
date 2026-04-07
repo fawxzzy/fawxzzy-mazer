@@ -36,25 +36,21 @@ No Phaser scene code is used inside this lane.
 
 ## Scene map
 
-Current scene flow keeps menu-first startup with overlay-only option sheets:
+Current scene flow keeps menu-first startup with an attract-mode shell:
 
 - `BootScene`
   - one-step startup scene that always routes into `MenuScene`.
 - `MenuScene`
-  - renders the purple starfield, centered square maze demo, translucent green `Mazer` title, and the three primary actions (`Start`, `Options`, `Exit`).
+  - renders the starfield, centered square maze demo, translucent green `Mazer` title, and only the secondary actions (`Options`, `Exit`).
+  - owns the attract-mode loop by scheduling deterministic demo walker phases (`explore`, `backtrack`, `goal-hold`, `reset-hold`) from the pure AI lane.
   - owns the overlay event bus and enforces one active overlay at a time through `OverlayManager`.
 - `GameScene`
-  - gameplay placeholder entered by `Start`.
+  - manual-play QA run entered from `OptionsScene` or hidden keyboard shortcuts on the menu.
 - `OptionsScene`
-  - primary options sheet opened from `MenuScene`.
-  - compact first-view controls: `Features`, `Game Modes`, `Advanced Appearance`, `Back`.
-  - `Advanced Appearance` opens a nested sheet inside `OptionsScene` so RGB/material tuning does not dominate first paint.
-- `FeaturesScene`
-  - compact submenu with legacy-style feature toggles (camera follow, trail fade) and return action.
-- `ModesScene`
-  - compact submenu with `Classic`, `Timed`, `Endless` mode selection and return action.
+  - compact secondary sheet opened from `MenuScene`.
+  - exposes low-priority manual play for local QA and a single return action.
 
-Overlay behavior is explicit and centralized: only one of `OptionsScene`, `FeaturesScene`, or `ModesScene` can be active at once.
+Overlay behavior is explicit and centralized: only `OptionsScene` can be active over the menu at once.
 
 ## UI + render support modules
 

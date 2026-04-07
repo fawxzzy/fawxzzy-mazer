@@ -131,6 +131,8 @@ export class BoardRenderer {
 
     this.chromeBack.fillStyle(palette.board.panel, panelAlpha);
     this.chromeBack.fillRect(boardX, boardY, boardSize, boardSize);
+    this.chromeBack.lineStyle(1, palette.board.panelStroke, 0.74);
+    this.chromeBack.strokeRect(boardX + 4, boardY + 4, boardSize - 8, boardSize - 8);
     this.chromeBack.lineStyle(innerStrokeWidth, palette.board.innerStroke, 0.66);
     this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardSize - 2, boardSize - 2);
 
@@ -271,19 +273,14 @@ export class BoardRenderer {
   public drawTrail(indices: number[]): void {
     const { boardX, boardY, tileSize } = this.layout;
     this.trail.clear();
-
-    const centerOf = (index: number): Phaser.Math.Vector2 => {
-      const tile = this.maze.tiles[index];
-      return new Phaser.Math.Vector2(
-        boardX + tile.x * tileSize + tileSize / 2,
-        boardY + tile.y * tileSize + tileSize / 2
-      );
-    };
+    let previousCenterX = 0;
+    let previousCenterY = 0;
 
     for (let i = 0; i < indices.length; i += 1) {
       const index = indices[i];
       const tile = this.maze.tiles[index];
-      const center = centerOf(index);
+      const centerX = boardX + tile.x * tileSize + tileSize / 2;
+      const centerY = boardY + tile.y * tileSize + tileSize / 2;
       const t = indices.length <= 1 ? 1 : i / (indices.length - 1);
       const alpha = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
       const glowAlpha = Phaser.Math.Linear(legacyTuning.board.trail.glowMinAlpha, legacyTuning.board.trail.glowMaxAlpha, t);
@@ -298,32 +295,34 @@ export class BoardRenderer {
         tileSize - cellInset * 2
       );
       this.trail.fillStyle(palette.board.trailGlow, glowAlpha * 0.9);
-      this.trail.fillCircle(center.x, center.y, nodeRadius * 1.4);
+      this.trail.fillCircle(centerX, centerY, nodeRadius * 1.4);
       this.trail.fillStyle(palette.board.trailCore, Math.min(1, alpha + 0.28));
-      this.trail.fillCircle(center.x, center.y, nodeRadius);
+      this.trail.fillCircle(centerX, centerY, nodeRadius);
 
       if (i === 0) {
+        previousCenterX = centerX;
+        previousCenterY = centerY;
         continue;
       }
 
-      const prev = centerOf(indices[i - 1]);
-      const curr = center;
       this.trail.lineStyle(
         Math.max(3, tileSize * legacyTuning.board.trail.glowLineWidthRatio),
         palette.board.trailGlow,
         glowAlpha
       );
-      this.trail.lineBetween(prev.x, prev.y, curr.x, curr.y);
+      this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
       this.trail.lineStyle(
         Math.max(2, tileSize * legacyTuning.board.trail.lineWidthRatio),
         palette.board.trailCore,
         Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
       );
-      this.trail.lineBetween(prev.x, prev.y, curr.x, curr.y);
+      this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
+      previousCenterX = centerX;
+      previousCenterY = centerY;
     }
   }
 
-  public drawActor(index: number): void {
+  public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null): void {
     const { boardX, boardY, tileSize } = this.layout;
     const tile = this.maze.tiles[index];
     const centerX = boardX + tile.x * tileSize + (tileSize / 2);
@@ -344,6 +343,22 @@ export class BoardRenderer {
 
     this.actor.fillStyle(palette.board.playerHalo, 0.85);
     this.actor.fillCircle(centerX - tileSize * 0.06, centerY - tileSize * 0.06, tileSize * 0.055);
+
+    if (direction !== null) {
+      const offset = tileSize * 0.14;
+      const directionOffsets = [
+        { x: 0, y: -offset },
+        { x: 0, y: offset },
+        { x: -offset, y: 0 },
+        { x: offset, y: 0 }
+      ] as const;
+      const facing = directionOffsets[direction];
+
+      this.actor.lineStyle(Math.max(2, tileSize * 0.05), palette.board.playerCore, 0.9);
+      this.actor.lineBetween(centerX, centerY, centerX + facing.x, centerY + facing.y);
+      this.actor.fillStyle(palette.board.playerCore, 0.98);
+      this.actor.fillCircle(centerX + facing.x, centerY + facing.y, tileSize * 0.042);
+    }
   }
 
   public startAmbientMotion(distancePx: number, durationMs: number): void {
