@@ -5,6 +5,9 @@ import { createMenuButton } from '../ui/menuButton';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 export class WinScene extends Phaser.Scene {
+  private actionLocked = false;
+  private overlayContainer?: Phaser.GameObjects.Container;
+
   public constructor() {
     super('WinScene');
   }
@@ -13,12 +16,14 @@ export class WinScene extends Phaser.Scene {
     attachSfxInputUnlock(this);
     const { width } = this.scale;
     const { container, contentY } = createOverlaySheet(this, 'Maze Complete', 'You reached the goal');
+    this.actionLocked = false;
+    this.overlayContainer = container;
 
     const resetButton = createMenuButton(this, {
       x: width / 2,
       y: contentY,
       label: 'Reset Run',
-      onClick: () => this.emitAction('reset-run'),
+      onClick: () => this.emitAction('reset-run', 84),
       clickSfx: 'confirm'
     });
 
@@ -26,7 +31,7 @@ export class WinScene extends Phaser.Scene {
       x: width / 2,
       y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'New Maze',
-      onClick: () => this.emitAction('new-maze'),
+      onClick: () => this.emitAction('new-maze', 92),
       clickSfx: 'confirm'
     });
 
@@ -34,7 +39,7 @@ export class WinScene extends Phaser.Scene {
       x: width / 2,
       y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
-      onClick: () => this.emitAction('menu'),
+      onClick: () => this.emitAction('menu', 82),
       clickSfx: 'cancel'
     });
 
@@ -65,11 +70,32 @@ export class WinScene extends Phaser.Scene {
 
     this.input.keyboard?.once('keydown-ESC', () => {
       playSfx('cancel');
-      this.emitAction('menu');
+      this.emitAction('menu', 56);
     });
   }
 
-  private emitAction(action: 'reset-run' | 'new-maze' | 'menu'): void {
-    this.scene.get('GameScene').events.emit('win-action', { action });
+  private emitAction(action: 'reset-run' | 'new-maze' | 'menu', delayMs = 82): void {
+    if (this.actionLocked) {
+      return;
+    }
+
+    this.actionLocked = true;
+    this.input.enabled = false;
+    if (this.overlayContainer) {
+      this.tweens.add({
+        targets: this.overlayContainer,
+        scaleX: 0.991,
+        scaleY: 0.991,
+        duration: Math.max(46, delayMs - 10),
+        yoyo: true,
+        ease: 'Sine.easeOut'
+      });
+    }
+
+    this.time.delayedCall(delayMs, () => {
+      if (this.scene.isActive()) {
+        this.scene.get('GameScene').events.emit('win-action', { action });
+      }
+    });
   }
 }

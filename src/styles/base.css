@@ -1,11 +1,14 @@
 :root {
   color-scheme: dark;
   font-family: 'Courier New', Courier, monospace;
-  --mazer-bg-a: #3b1b63;
-  --mazer-bg-b: #140a2a;
-  --mazer-bg-c: #090511;
-  --mazer-frame-stroke: #2f4f73;
-  --mazer-frame-focus: #5f90bf;
+  --mazer-bg-a: #4a2976;
+  --mazer-bg-b: #251242;
+  --mazer-bg-c: #0a0713;
+  --mazer-bg-d: #13081f;
+  --mazer-frame-stroke: #3a5170;
+  --mazer-frame-focus: #86b2da;
+  --mazer-canvas-shadow: rgba(0, 0, 0, 0.56);
+  --mazer-canvas-glow: rgba(104, 138, 255, 0.14);
 }
 
 * {
@@ -22,30 +25,56 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 50% 40%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 46%, var(--mazer-bg-c) 100%)
+    radial-gradient(circle at 50% 18%, rgba(146, 110, 219, 0.22) 0, rgba(146, 110, 219, 0) 36%),
+    radial-gradient(circle at 50% 42%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 42%, var(--mazer-bg-c) 100%),
+    linear-gradient(180deg, var(--mazer-bg-d) 0, var(--mazer-bg-c) 100%)
     fixed;
   color: #f8f8ff;
   overflow: hidden;
+  position: relative;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body::before {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(178, 140, 255, 0.1) 0, rgba(178, 140, 255, 0) 48%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0) 82%, rgba(255, 255, 255, 0.018) 100%);
+  opacity: 0.8;
+}
+
+body::after {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.024) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black 24%, transparent 76%);
+  opacity: 0.1;
 }
 
 #app {
   display: grid;
   place-items: center;
-  padding: clamp(8px, 1.2vw, 14px);
+  padding: clamp(14px, 2.4vw, 32px);
 }
 
 canvas {
   display: block;
-  width: min(100vw - 24px, 1360px);
-  height: min(100vh - 24px, 900px);
+  width: min(100vw - clamp(28px, 5vw, 92px), 1420px);
+  height: min(100vh - clamp(28px, 6vh, 86px), 920px);
   margin: 0 auto;
   image-rendering: crisp-edges;
   border: 1px solid var(--mazer-frame-stroke);
   border-radius: 0;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 18px 30px rgba(0, 0, 0, 0.48),
-    0 0 22px rgba(77, 133, 255, 0.08);
+    0 24px 42px var(--mazer-canvas-shadow),
+    0 0 28px var(--mazer-canvas-glow);
   touch-action: none;
   transition: box-shadow 200ms ease, border-color 200ms ease;
   animation: mazer-canvas-breathe 6.2s ease-in-out infinite;
@@ -56,8 +85,8 @@ canvas:focus-visible {
   border-color: var(--mazer-frame-focus);
   box-shadow:
     0 0 0 1px rgba(173, 212, 255, 0.18) inset,
-    0 20px 32px rgba(0, 0, 0, 0.54),
-    0 0 28px rgba(96, 176, 255, 0.18);
+    0 28px 44px rgba(0, 0, 0, 0.58),
+    0 0 34px rgba(120, 192, 255, 0.22);
 }
 
 @keyframes mazer-canvas-breathe {
@@ -65,14 +94,14 @@ canvas:focus-visible {
   100% {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-      0 18px 30px rgba(0, 0, 0, 0.48),
-      0 0 20px rgba(77, 133, 255, 0.07);
+      0 24px 42px var(--mazer-canvas-shadow),
+      0 0 24px rgba(104, 138, 255, 0.1);
   }
   50% {
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-      0 20px 34px rgba(0, 0, 0, 0.52),
-      0 0 26px rgba(96, 176, 255, 0.12);
+      0 28px 46px rgba(0, 0, 0, 0.6),
+      0 0 32px rgba(120, 184, 255, 0.18);
   }
 }
 
@@ -83,6 +112,11 @@ canvas:focus-visible {
 }
 
 @media (pointer: coarse) {
+  body::before,
+  body::after {
+    display: none;
+  }
+
   canvas {
     width: 100vw;
     height: 100vh;

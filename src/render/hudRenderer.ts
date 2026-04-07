@@ -8,6 +8,8 @@ interface HudHandle {
   setGoalArrow(playerIndex: number): void;
 }
 
+const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
+
 const formatTime = (elapsedMs: number): string => {
   const totalSeconds = Math.floor(elapsedMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -17,17 +19,35 @@ const formatTime = (elapsedMs: number): string => {
 
 export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): HudHandle => {
   const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
+  const panelWidth = Math.min(
+    scene.scale.width - (legacyTuning.hud.panelInsetX * 2),
+    legacyTuning.hud.panelMaxWidth
+  );
+  const panelLeft = (scene.scale.width - panelWidth) / 2;
+  const panelRight = panelLeft + panelWidth;
+
+  scene.add
+    .rectangle(
+      scene.scale.width / 2,
+      legacyTuning.hud.panelY + legacyTuning.hud.panelShadowOffsetY,
+      panelWidth + 10,
+      legacyTuning.hud.panelHeight + 8,
+      palette.hud.shadow,
+      legacyTuning.hud.panelShadowAlpha
+    )
+    .setScrollFactor(0)
+    .setDepth(994);
 
   scene.add
     .rectangle(
       scene.scale.width / 2,
       legacyTuning.hud.panelY,
-      scene.scale.width - legacyTuning.hud.panelInsetX,
+      panelWidth,
       legacyTuning.hud.panelHeight,
       palette.hud.panel,
       legacyTuning.hud.panelAlpha
     )
-    .setStrokeStyle(1, palette.hud.panelStroke, 0.8)
+    .setStrokeStyle(1, palette.hud.panelStroke, 0.84)
     .setScrollFactor(0)
     .setDepth(995);
 
@@ -35,57 +55,59 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .line(
       scene.scale.width / 2,
       legacyTuning.hud.lineY,
-      -((scene.scale.width - legacyTuning.hud.lineInsetX) / 2),
+      -((panelWidth - legacyTuning.hud.lineInsetX) / 2),
       0,
-      (scene.scale.width - legacyTuning.hud.lineInsetX) / 2,
+      (panelWidth - legacyTuning.hud.lineInsetX) / 2,
       0,
       palette.hud.accent,
-      0.2
+      0.24
     )
     .setScrollFactor(0)
     .setDepth(996);
 
   const timerText = scene.add
-    .text(legacyTuning.hud.timerOffsetX, legacyTuning.hud.timerOffsetY, '00:00', {
-      color: '#9fffb0',
-      fontFamily: 'monospace',
+    .text(panelLeft + legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, '00:00', {
+      color: toCssColor(palette.hud.timerText),
+      fontFamily: '"Courier New", monospace',
       fontSize: `${legacyTuning.hud.timerFontPx}px`
     })
     .setScrollFactor(0)
     .setDepth(1000);
 
   const arrowText = scene.add
-    .text(scene.scale.width - legacyTuning.hud.arrowOffsetX, legacyTuning.hud.arrowOffsetY, 'Goal ▲', {
-      color: '#ff7480',
-      fontFamily: 'monospace',
+    .text(panelRight - legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, 'Goal ^', {
+      color: toCssColor(palette.hud.goalText),
+      fontFamily: '"Courier New", monospace',
       fontSize: `${legacyTuning.hud.arrowFontPx}px`
     })
     .setOrigin(1, 0)
     .setScrollFactor(0)
     .setDepth(1000);
 
-  scene.add
+  const hintText = scene.add
     .text(
       scene.scale.width / 2,
-      legacyTuning.hud.hintY,
-      isTouchPrimary ? 'Tap to pause • swipe to move' : 'Arrow Keys / WASD • P or Esc pause',
+      legacyTuning.hud.secondaryTextY,
+      isTouchPrimary ? 'Swipe to move / tap to pause' : 'Move: Arrows or WASD / Pause: P or Esc',
       {
-        color: '#cbd9f5',
-        fontFamily: 'monospace',
+        color: toCssColor(palette.hud.hintText),
+        fontFamily: '"Courier New", monospace',
         fontSize: `${legacyTuning.hud.hintFontPx}px`
       }
     )
     .setOrigin(0.5, 0)
+    .setAlpha(0.74)
     .setScrollFactor(0)
     .setDepth(1000);
 
-  const hudElements = [timerText, arrowText];
+  const hudElements = [timerText, arrowText, hintText];
   hudElements.forEach((element, index) => {
+    const targetAlpha = element.alpha;
     element.setAlpha(0);
     element.y -= 3;
     scene.tweens.add({
       targets: element,
-      alpha: 1,
+      alpha: targetAlpha,
       y: element.y + 3,
       duration: 170,
       delay: 60 + (index * 30),
@@ -115,7 +137,7 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       const dx = goal.x - player.x;
       const dy = goal.y - player.y;
       const isHorizontal = Math.abs(dx) >= Math.abs(dy);
-      const glyph = isHorizontal ? (dx >= 0 ? '▶' : '◀') : (dy >= 0 ? '▼' : '▲');
+      const glyph = isHorizontal ? (dx >= 0 ? '>' : '<') : (dy >= 0 ? 'v' : '^');
       arrowText.setText(`Goal ${glyph}`);
     }
   };

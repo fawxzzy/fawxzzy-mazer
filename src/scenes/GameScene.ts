@@ -31,7 +31,11 @@ export class GameScene extends Phaser.Scene {
   };
   private readonly moveCooldownMs = legacyTuning.game.playerMovement.cooldownMs;
   private readonly directionSwitchBypassMs = legacyTuning.game.playerMovement.directionSwitchBypassMs;
+  private readonly blockedFeedbackCooldownMs = Math.max(110, legacyTuning.game.playerMovement.cooldownMs + 24);
+  private readonly pauseOverlayDelayMs = 72;
+  private readonly winOverlayDelayMs = 150;
   private lastMoveAtMs = 0;
+  private lastBlockedAtMs = Number.NEGATIVE_INFINITY;
   private lastMoveDirection: 0 | 1 | 2 | 3 | null = null;
   private bufferedDirection: 0 | 1 | 2 | 3 | null = null;
   private trailIndices: number[] = [];
@@ -41,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private readonly touchControlsEnabled = window.matchMedia('(pointer: coarse)').matches;
   private hud?: ReturnType<typeof createHudRenderer>;
   private runSeed = 9001;
+  private pendingOverlayLaunch?: Phaser.Time.TimerEvent;
 
   public constructor() {
     super('GameScene');
@@ -56,6 +61,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off('pause-action', this.handlePauseAction, this);
       this.events.off('win-action', this.handleWinAction, this);
+      this.pendingOverlayLaunch?.remove(false);
+      this.pendingOverlayLaunch = undefined;
     });
 
     if (this.touchControlsEnabled) {
@@ -90,9 +97,12 @@ export class GameScene extends Phaser.Scene {
     this.overlayKey = null;
     this.paused = false;
     this.timerPausedAtMs = 0;
+    this.lastBlockedAtMs = Number.NEGATIVE_INFINITY;
     this.lastMoveDirection = null;
     this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
     this.bufferedDirection = null;
+    this.pendingOverlayLaunch?.remove(false);
+    this.pendingOverlayLaunch = undefined;
 
     const { width, height } = this.scale;
     this.cameras.main.fadeIn(120, 0, 0, 0);
@@ -232,7 +242,10 @@ export class GameScene extends Phaser.Scene {
     const nextIndex = this.maze.tiles[this.playerIndex].neighbors[direction];
     if (nextIndex === -1 || !this.maze.tiles[nextIndex].floor) {
       this.lastMoveDirection = direction;
-      playSfx('blocked');
+      if (this.time.now - this.lastBlockedAtMs >= this.blockedFeedbackCooldownMs) {
+        this.lastBlockedAtMs = this.time.now;
+        playSfx('blocked');
+      }
       return;
     }
 
@@ -254,7 +267,13 @@ export class GameScene extends Phaser.Scene {
       this.paused = true;
       this.bufferedDirection = null;
       this.queuedTouchDirection = null;
-      this.scene.launch('WinScene');
+      this.pendingOverlayLaunch?.remove(false);
+      this.pendingOverlayLaunch = this.time.delayedCall(this.winOverlayDelayMs, () => {
+        this.pendingOverlayLaunch = undefined;
+        if (this.scene.isActive() && this.overlayKey === 'WinScene') {
+          this.scene.launch('WinScene');
+        }
+      });
     }
   }
 
@@ -270,7 +289,13 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveDirection = null;
     this.bufferedDirection = null;
     this.queuedTouchDirection = null;
-    this.scene.launch('PauseScene');
+    this.pendingOverlayLaunch?.remove(false);
+    this.pendingOverlayLaunch = this.time.delayedCall(this.pauseOverlayDelayMs, () => {
+      this.pendingOverlayLaunch = undefined;
+      if (this.scene.isActive() && this.overlayKey === 'PauseScene') {
+        this.scene.launch('PauseScene');
+      }
+    });
   }
 
   private handlePauseAction(data: PauseActionData): void {

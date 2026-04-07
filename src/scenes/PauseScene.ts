@@ -5,6 +5,9 @@ import { createMenuButton } from '../ui/menuButton';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 export class PauseScene extends Phaser.Scene {
+  private actionLocked = false;
+  private overlayContainer?: Phaser.GameObjects.Container;
+
   public constructor() {
     super('PauseScene');
   }
@@ -13,12 +16,14 @@ export class PauseScene extends Phaser.Scene {
     attachSfxInputUnlock(this);
     const { width } = this.scale;
     const { container, contentY } = createOverlaySheet(this, 'Paused', 'Run is paused');
+    this.actionLocked = false;
+    this.overlayContainer = container;
 
     const resumeButton = createMenuButton(this, {
       x: width / 2,
       y: contentY,
       label: 'Resume',
-      onClick: () => this.emitAction('resume'),
+      onClick: () => this.emitAction('resume', 58),
       clickSfx: 'cancel'
     });
 
@@ -26,7 +31,7 @@ export class PauseScene extends Phaser.Scene {
       x: width / 2,
       y: contentY + legacyTuning.overlays.listSpacingPx,
       label: 'Reset Run',
-      onClick: () => this.emitAction('reset'),
+      onClick: () => this.emitAction('reset', 82),
       clickSfx: 'confirm'
     });
 
@@ -34,7 +39,7 @@ export class PauseScene extends Phaser.Scene {
       x: width / 2,
       y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
       label: 'Main Menu',
-      onClick: () => this.emitAction('menu'),
+      onClick: () => this.emitAction('menu', 88),
       clickSfx: 'cancel'
     });
 
@@ -65,15 +70,36 @@ export class PauseScene extends Phaser.Scene {
 
     this.input.keyboard?.once('keydown-P', () => {
       playSfx('cancel');
-      this.emitAction('resume');
+      this.emitAction('resume', 48);
     });
     this.input.keyboard?.once('keydown-ESC', () => {
       playSfx('cancel');
-      this.emitAction('resume');
+      this.emitAction('resume', 48);
     });
   }
 
-  private emitAction(action: 'resume' | 'menu' | 'reset'): void {
-    this.scene.get('GameScene').events.emit('pause-action', { action });
+  private emitAction(action: 'resume' | 'menu' | 'reset', delayMs = 74): void {
+    if (this.actionLocked) {
+      return;
+    }
+
+    this.actionLocked = true;
+    this.input.enabled = false;
+    if (this.overlayContainer) {
+      this.tweens.add({
+        targets: this.overlayContainer,
+        scaleX: 0.992,
+        scaleY: 0.992,
+        duration: Math.max(42, delayMs - 12),
+        yoyo: true,
+        ease: 'Sine.easeOut'
+      });
+    }
+
+    this.time.delayedCall(delayMs, () => {
+      if (this.scene.isActive()) {
+        this.scene.get('GameScene').events.emit('pause-action', { action });
+      }
+    });
   }
 }

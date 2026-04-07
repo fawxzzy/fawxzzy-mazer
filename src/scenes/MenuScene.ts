@@ -18,6 +18,7 @@ export class MenuScene extends Phaser.Scene {
   private titlePulseTween?: Phaser.Tweens.Tween;
   private starDriftTween?: Phaser.Tweens.Tween;
   private boardGoalPulse?: Phaser.Time.TimerEvent;
+  private transitionLocked = false;
 
   public constructor() {
     super('MenuScene');
@@ -26,6 +27,7 @@ export class MenuScene extends Phaser.Scene {
   public create(): void {
     const { width, height } = this.scale;
     attachSfxInputUnlock(this);
+    this.transitionLocked = false;
     this.overlayManager = new OverlayManager(this, ['OptionsScene', 'FeaturesScene', 'ModesScene']);
 
     this.cameras.main.fadeIn(280, 0, 0, 0);
@@ -56,38 +58,50 @@ export class MenuScene extends Phaser.Scene {
         layout.boardSize,
         layout.boardSize,
         0x8a8a9a,
-        0.2
+        0.14
       )
       .setOrigin(0.5)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const title = this.add
       .text(width / 2, layout.boardY + legacyTuning.menu.title.yOffsetFromBoardTop, legacyTuning.menu.title.text, {
-        color: '#22af3f',
+        color: '#66df7c',
         fontFamily: 'monospace',
         fontSize: `${Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
       .setAlpha(legacyTuning.menu.title.alpha)
-      .setStroke('#0a561b', legacyTuning.menu.title.strokePx)
-      .setShadow(0, 0, '#123f1d', legacyTuning.menu.title.shadowBlur, true, true)
+      .setStroke('#133f1c', legacyTuning.menu.title.strokePx)
+      .setShadow(0, 0, '#2d8e3f', legacyTuning.menu.title.shadowBlur, true, true)
       .setDepth(10);
 
     const subtitle = this.add
       .text(width / 2, title.y + legacyTuning.menu.subtitle.yOffsetFromTitle, legacyTuning.menu.subtitle.text, {
-        color: '#aeb6d9',
+        color: '#bcc7e4',
         fontFamily: 'monospace',
         fontSize: `${legacyTuning.menu.subtitle.fontSizePx}px`
       })
       .setOrigin(0.5)
+      .setAlpha(0.84)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
-      targets: [title, boardShade],
+      targets: title,
       alpha: {
         from: legacyTuning.menu.title.pulseMinAlpha,
         to: legacyTuning.menu.title.pulseMaxAlpha
+      },
+      duration: legacyTuning.menu.title.pulseDurationMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    this.tweens.add({
+      targets: boardShade,
+      alpha: {
+        from: legacyTuning.menu.title.pulseMinAlpha * 0.4,
+        to: legacyTuning.menu.title.pulseMaxAlpha * 0.5
       },
       duration: legacyTuning.menu.title.pulseDurationMs,
       yoyo: true,
@@ -138,6 +152,34 @@ export class MenuScene extends Phaser.Scene {
       legacyTuning.menu.buttons.spacingMinPx,
       legacyTuning.menu.buttons.spacingMaxPx
     );
+    let overlayActionQueued = false;
+
+    const queueTransition = (action: () => void, delayMs = 78): void => {
+      if (this.transitionLocked) {
+        return;
+      }
+
+      this.transitionLocked = true;
+      this.time.delayedCall(delayMs, () => {
+        if (this.scene.isActive()) {
+          action();
+        }
+      });
+    };
+
+    const queueOverlayAction = (action: () => void, delayMs = 52): void => {
+      if (overlayActionQueued || this.transitionLocked) {
+        return;
+      }
+
+      overlayActionQueued = true;
+      this.time.delayedCall(delayMs, () => {
+        overlayActionQueued = false;
+        if (this.scene.isActive()) {
+          action();
+        }
+      });
+    };
 
     const playButton = createMenuButton(this, {
       x: width / 2,
@@ -145,16 +187,18 @@ export class MenuScene extends Phaser.Scene {
       label: legacyTuning.menu.labels[0],
       width: legacyTuning.menu.buttons.widths.center,
       onClick: () => {
-        this.overlayManager.closeAll();
-        this.tweens.add({
-          targets: this.cameras.main,
-          zoom: 1.015,
-          duration: 120,
-          yoyo: true,
-          ease: 'Sine.easeOut'
+        queueTransition(() => {
+          this.overlayManager.closeAll();
+          this.tweens.add({
+            targets: this.cameras.main,
+            zoom: 1.015,
+            duration: 120,
+            yoyo: true,
+            ease: 'Sine.easeOut'
+          });
+          this.cameras.main.fadeOut(140, 0, 0, 0);
+          this.time.delayedCall(140, () => this.scene.start('GameScene'));
         });
-        this.cameras.main.fadeOut(140, 0, 0, 0);
-        this.time.delayedCall(140, () => this.scene.start('GameScene'));
       },
       clickSfx: 'confirm'
     });
@@ -165,7 +209,7 @@ export class MenuScene extends Phaser.Scene {
       label: legacyTuning.menu.labels[1],
       width: legacyTuning.menu.buttons.widths.right,
       onClick: () => {
-        this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
+        queueOverlayAction(() => this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene'));
       },
       clickSfx: 'confirm'
     });
@@ -176,9 +220,10 @@ export class MenuScene extends Phaser.Scene {
       label: legacyTuning.menu.labels[2],
       width: legacyTuning.menu.buttons.widths.left,
       onClick: () => {
-        playSfx('cancel');
-        this.overlayManager.closeAll();
-        this.game.destroy(true);
+        queueTransition(() => {
+          this.overlayManager.closeAll();
+          this.game.destroy(true);
+        }, 86);
       },
       clickSfx: 'cancel'
     });
@@ -200,16 +245,22 @@ export class MenuScene extends Phaser.Scene {
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
 
-    this.input.keyboard?.on('keydown-ESC', () => {
+    const escHandler = () => {
+      if (!this.overlayManager.isOverlayActive()) {
+        return;
+      }
+
       playSfx('cancel');
       this.overlayManager.closeActive();
-    });
+    };
+    this.input.keyboard?.on('keydown-ESC', escHandler);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
       this.starDriftTween?.remove();
       this.boardGoalPulse?.remove(false);
       this.overlayManager.closeAll();
+      this.input.keyboard?.off('keydown-ESC', escHandler);
     });
 
     subtitle.setDepth(11);
@@ -217,10 +268,17 @@ export class MenuScene extends Phaser.Scene {
 
   private drawStarfield(width: number, height: number): void {
     const bg = this.add.graphics();
-    bg.fillGradientStyle(palette.background.deepSpace, palette.background.deepSpace, palette.background.nebula, palette.background.nebula, 1);
+    bg.fillGradientStyle(
+      palette.background.deepSpace,
+      palette.background.deepSpace,
+      palette.background.nebulaCore,
+      palette.background.nebula,
+      1
+    );
     bg.fillRect(0, 0, width, height);
 
     const clouds = this.add.graphics();
+    clouds.setBlendMode(Phaser.BlendModes.SCREEN);
     for (let i = 0; i < legacyTuning.menu.starfield.cloudCount; i += 1) {
       const x = Phaser.Math.Between(width * 0.12, width * 0.88);
       const y = Phaser.Math.Between(height * 0.16, height * 0.84);
@@ -229,17 +287,35 @@ export class MenuScene extends Phaser.Scene {
       clouds.fillCircle(x, y, radius);
     }
 
-    const stars = this.add.graphics();
-    for (let i = 0; i < legacyTuning.menu.starfield.starCount; i += 1) {
+    const farStars = this.add.graphics();
+    for (let i = 0; i < Math.floor(legacyTuning.menu.starfield.starCount * 0.58); i += 1) {
+      const x = Phaser.Math.Between(0, width);
+      const y = Phaser.Math.Between(0, height);
+      const r = Phaser.Math.FloatBetween(
+        legacyTuning.menu.starfield.starRadiusMin * 0.8,
+        legacyTuning.menu.starfield.starRadiusMax * 0.72
+      );
+      farStars.fillStyle(
+        palette.background.star,
+        Phaser.Math.FloatBetween(
+          legacyTuning.menu.starfield.starAlphaMin * 0.7,
+          legacyTuning.menu.starfield.starAlphaMax * 0.52
+        )
+      );
+      farStars.fillCircle(x, y, r);
+    }
+
+    const nearStars = this.add.graphics();
+    for (let i = 0; i < Math.ceil(legacyTuning.menu.starfield.starCount * 0.42); i += 1) {
       const x = Phaser.Math.Between(0, width);
       const y = Phaser.Math.Between(0, height);
       const r = Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starRadiusMin, legacyTuning.menu.starfield.starRadiusMax);
-      stars.fillStyle(palette.background.star, Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starAlphaMin, legacyTuning.menu.starfield.starAlphaMax));
-      stars.fillCircle(x, y, r);
+      nearStars.fillStyle(palette.background.star, Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starAlphaMin, legacyTuning.menu.starfield.starAlphaMax));
+      nearStars.fillCircle(x, y, r);
     }
 
     this.starDriftTween = this.tweens.add({
-      targets: stars,
+      targets: nearStars,
       y: legacyTuning.menu.starfield.starsDriftRangePx,
       duration: legacyTuning.menu.starfield.starsDriftDurationMs,
       yoyo: true,
