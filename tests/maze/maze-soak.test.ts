@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest';
 
+import { advanceDemoWalker, createDemoWalkerState } from '../../src/domain/ai';
+import { legacyTuning } from '../../src/config/tuning';
 import { generateMaze, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
@@ -42,6 +44,41 @@ test(
 
       assertMazeInvariants(state.result);
       expect(serializeMaze(state.result)).toEqual(serializeMaze(maze));
+    }
+  },
+  soakIterations > 1000 ? 180000 : 120000
+);
+
+test(
+  'soak: legacy demo walker stays on path tiles through backtracks and resets',
+  () => {
+    const demoIterations = Math.max(24, Math.floor(soakIterations / 8));
+
+    for (let iteration = 0; iteration < demoIterations; iteration += 1) {
+      const scale = soakScales[iteration % soakScales.length];
+      const maze = generateMaze({
+        scale,
+        seed: iteration + 700,
+        checkPointModifier: 0.35,
+        shortcutCountModifier: scale > 35 ? 0.18 : 0.13
+      });
+      let state = createDemoWalkerState(maze);
+      let completedLoop = false;
+
+      for (let step = 0; step < 6000; step += 1) {
+        const advance = advanceDemoWalker(maze, state, legacyTuning.demo);
+        state = advance.state;
+
+        expect(maze.tiles[state.currentIndex].floor).toBe(true);
+        expect(maze.tiles[state.currentIndex].path).toBe(true);
+
+        if (advance.shouldRegenerateMaze || state.loops > 0) {
+          completedLoop = true;
+          break;
+        }
+      }
+
+      expect(completedLoop).toBe(true);
     }
   },
   soakIterations > 1000 ? 180000 : 120000

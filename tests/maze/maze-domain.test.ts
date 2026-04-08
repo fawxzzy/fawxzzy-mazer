@@ -1,6 +1,17 @@
 import { describe, expect, test } from 'vitest';
 
-import { createGrid, generateMaze, isIndexValid, isWithinSameRow, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
+import { createSeededRng } from '../../src/domain/rng/seededRng';
+import {
+  createGrid,
+  createShortcuts,
+  createWallsFromPath,
+  generateMaze,
+  isIndexValid,
+  isWithinSameRow,
+  mapPathWithCheckpoints,
+  resetAndRegenerate,
+  type MazeConfig
+} from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
 const defaultConfig: MazeConfig = {
@@ -41,6 +52,33 @@ describe('maze domain generation', () => {
 
     assertMazeInvariants(maze);
     expect(maze.shortcutsCreated).toBeGreaterThan(0);
+  });
+
+  test('returns the post-shortcut remaining wall list from the legacy pipeline', () => {
+    const config: MazeConfig = {
+      scale: 50,
+      seed: 1988,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.8
+    };
+    const tiles = createGrid(config.scale);
+    const rng = createSeededRng(config.seed);
+    const startIndex = rng.nextInt(0, tiles.length - 1);
+    const checkpointCount = Math.max(1, Math.floor(config.scale + (config.scale * config.checkPointModifier)));
+    const { pathIndices, endIndex } = mapPathWithCheckpoints(tiles, startIndex, config.scale, checkpointCount, rng);
+    const wallIndices = createWallsFromPath(tiles, pathIndices, endIndex);
+    const { shortcutsCreated, wallIndices: remainingWallIndices } = createShortcuts(
+      tiles,
+      wallIndices,
+      Math.max(0, Math.floor(config.scale * config.shortcutCountModifier)),
+      rng
+    );
+    const maze = generateMaze(config);
+
+    expect(shortcutsCreated).toBeGreaterThan(0);
+    expect(remainingWallIndices.length).toBeLessThan(wallIndices.length);
+    expect(maze.shortcutsCreated).toBe(shortcutsCreated);
+    expect(maze.wallIndices).toEqual(remainingWallIndices);
   });
 
   test('neighbor logic does not create out-of-bounds neighbors', () => {

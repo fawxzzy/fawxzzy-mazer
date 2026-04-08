@@ -10,24 +10,22 @@ export interface DemoWalkerConfig {
   };
   behavior: {
     trailMaxLength: number;
-    goalBias: number;
-    branchBias: number;
-    forwardBias: number;
-    jitter: number;
+    aiTilePathAdditionalPaths: number;
+    preserveVisitedOnAiReset: boolean;
+    emulateLogicSwitchPotentialCheckBug: boolean;
+    regenerateSeedStep: number;
   };
 }
 
 export interface DemoWalkerAdvance {
   state: DemoWalkerState;
   delayMs: number;
+  shouldRegenerateMaze?: boolean;
+  nextSeed?: number;
 }
 
 export type DemoWalkerPhase = 'explore' | 'backtrack' | 'goal-hold' | 'reset-hold';
-
-interface BranchDecision {
-  fromTrailLength: number;
-  options: number[];
-}
+type DemoWalkerResetReason = 'goal' | 'ai-reset' | null;
 
 export interface DemoWalkerState {
   currentIndex: number;
@@ -38,15 +36,12 @@ export interface DemoWalkerState {
   phase: DemoWalkerPhase;
   stepsTaken: number;
   lastDirection: 0 | 1 | 2 | 3 | null;
-  branchStack: BranchDecision[];
-  backtrackTargetTrailLength: number | null;
-  pendingBranchIndex: number | null;
-}
-
-interface Candidate {
-  index: number;
-  score: number;
-  direction: 0 | 1 | 2 | 3;
+  potentialBranchIndices: number[];
+  pathStackIndices: number[];
+  targetIndex: number | null;
+  backtrackUndoVisited: boolean;
+  logicSwitch: boolean;
+  resetReason: DemoWalkerResetReason;
 }
 
 const defaultConfig: DemoWalkerConfig = {
@@ -59,35 +54,38 @@ const defaultConfig: DemoWalkerConfig = {
   },
   behavior: {
     trailMaxLength: 36,
-    goalBias: 0.34,
-    branchBias: 0.88,
-    forwardBias: 0.28,
-    jitter: 0.22
+    aiTilePathAdditionalPaths: 0,
+    preserveVisitedOnAiReset: true,
+    emulateLogicSwitchPotentialCheckBug: true,
+    regenerateSeedStep: 1
   }
 };
 
 export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState => ({
   currentIndex: maze.startIndex,
   trailIndices: [maze.startIndex],
-  visited: new Set([maze.startIndex]),
+  visited: new Set<number>(),
   loops: 0,
   reachedGoal: false,
   phase: 'explore',
   stepsTaken: 0,
   lastDirection: null,
-  branchStack: [],
-  backtrackTargetTrailLength: null,
-  pendingBranchIndex: null
+  potentialBranchIndices: [],
+  pathStackIndices: [],
+  targetIndex: null,
+  backtrackUndoVisited: false,
+  logicSwitch: false,
+  resetReason: null
 });
 
-const manhattanDistanceToGoal = (maze: MazeBuildResult, index: number): number => {
+const distanceToGoal = (maze: MazeBuildResult, index: number): number => {
   const tile = maze.tiles[index];
   const goal = maze.tiles[maze.endIndex];
-  return Math.abs(goal.x - tile.x) + Math.abs(goal.y - tile.y);
+  return Math.hypot(goal.x - tile.x, goal.y - tile.y);
 };
 
-const getWalkableNeighbors = (maze: MazeBuildResult, fromIndex: number): number[] => maze.tiles[fromIndex].neighbors
-  .filter((neighborIndex) => neighborIndex !== -1 && maze.tiles[neighborIndex].floor) as number[];
+const getPathNeighbors = (maze: MazeBuildResult, fromIndex: number): number[] => maze.tiles[fromIndex].neighbors
+  .filter((neighborIndex) => neighborIndex !== -1 && maze.tiles[neighborIndex].path) as number[];
 
 const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: number): 0 | 1 | 2 | 3 => {
   const direction = maze.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
@@ -97,103 +95,87 @@ const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: num
   return direction as 0 | 1 | 2 | 3;
 };
 
-const hashNoise = (seed: number, step: number, fromIndex: number, toIndex: number): number => {
-  let value = seed ^ Math.imul(step + 1, 0x45d9f3b) ^ Math.imul(fromIndex + 11, 0x27d4eb2d) ^ Math.imul(toIndex + 17, 0x165667b1);
-  value = Math.imul(value ^ (value >>> 15), 0x2c1b3c6d);
-  value ^= value + Math.imul(value ^ (value >>> 7), 0x297a2d39);
-  return ((value ^ (value >>> 14)) >>> 0) / 4294967295;
-};
+const appendTrailStep = (trailIndices: number[], nextIndex: number, currentIndex: number): number[] => (
+  nextIndex === currentIndex ? [...trailIndices] : [...trailIndices, nextIndex]
+);
 
-const countUnseenWalkableNeighbors = (
-  maze: MazeBuildResult,
-  fromIndex: number,
-  visited: Set<number>,
-  excludeIndex: number
-): number => getWalkableNeighbors(maze, fromIndex)
-  .filter((neighborIndex) => neighborIndex !== excludeIndex && !visited.has(neighborIndex))
-  .length;
+const removeAll = (indices: number[], targetIndex: number): number[] => indices.filter((index) => index !== targetIndex);
 
-const scoreCandidates = (
-  maze: MazeBuildResult,
-  state: DemoWalkerState,
-  neighbors: number[],
-  config: DemoWalkerConfig
-): Candidate[] => {
-  const currentDistance = manhattanDistanceToGoal(maze, state.currentIndex);
-
-  return neighbors
-    .map((index) => {
-      const direction = resolveDirection(maze, state.currentIndex, index);
-      const nextDistance = manhattanDistanceToGoal(maze, index);
-      const progress = currentDistance - nextDistance;
-      const unseenAhead = countUnseenWalkableNeighbors(maze, index, state.visited, state.currentIndex);
-      const forwardBias = state.lastDirection === direction ? config.behavior.forwardBias : 0;
-      const jitter = (hashNoise(config.seed, state.stepsTaken, state.currentIndex, index) - 0.5) * config.behavior.jitter;
-
-      return {
-        index,
-        direction,
-        score: (progress * config.behavior.goalBias)
-          + (unseenAhead * config.behavior.branchBias)
-          + forwardBias
-          + jitter
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-};
-
-const createResetState = (maze: MazeBuildResult, state: DemoWalkerState): DemoWalkerState => ({
-  currentIndex: maze.startIndex,
-  trailIndices: [maze.startIndex],
-  visited: new Set([maze.startIndex]),
-  loops: state.loops + 1,
-  reachedGoal: false,
-  phase: 'reset-hold',
-  stepsTaken: state.stepsTaken + 1,
-  lastDirection: null,
-  branchStack: [],
-  backtrackTargetTrailLength: null,
-  pendingBranchIndex: null
+const createMazeResetFallbackState = (maze: MazeBuildResult, loops: number): DemoWalkerState => ({
+  ...createDemoWalkerState(maze),
+  loops
 });
 
-const resolveNextBacktrack = (state: DemoWalkerState): DemoWalkerState => {
-  const branchStack = state.branchStack.map((entry) => ({
-    fromTrailLength: entry.fromTrailLength,
-    options: [...entry.options]
-  }));
+const aiTilePathCheck = (
+  maze: MazeBuildResult,
+  state: DemoWalkerState,
+  tileIndex: number | null,
+  additionalPaths: number
+): boolean => {
+  if (tileIndex === null) {
+    return false;
+  }
 
-  while (branchStack.length > 0) {
-    const candidateEntry = branchStack[branchStack.length - 1];
-    const nextIndex = candidateEntry.options.shift();
+  if (tileIndex === maze.endIndex) {
+    return true;
+  }
 
-    if (candidateEntry.options.length === 0) {
-      branchStack.pop();
+  let validNeighborCount = additionalPaths;
+  for (const neighborIndex of getPathNeighbors(maze, tileIndex)) {
+    if (neighborIndex !== state.currentIndex && !state.visited.has(neighborIndex)) {
+      validNeighborCount += 1;
     }
+  }
 
-    if (nextIndex === undefined || state.visited.has(nextIndex)) {
-      continue;
-    }
+  return validNeighborCount > additionalPaths;
+};
 
-    return {
-      ...state,
-      phase: 'backtrack',
-      branchStack,
-      backtrackTargetTrailLength: candidateEntry.fromTrailLength,
-      pendingBranchIndex: nextIndex,
-      stepsTaken: state.stepsTaken + 1
-    };
+const applyAiReset = (
+  maze: MazeBuildResult,
+  state: DemoWalkerState,
+  config: DemoWalkerConfig
+): DemoWalkerState => {
+  const nextVisited = new Set(state.visited);
+  if (config.behavior.preserveVisitedOnAiReset) {
+    nextVisited.delete(state.currentIndex);
+    nextVisited.add(maze.startIndex);
+  } else {
+    nextVisited.clear();
   }
 
   return {
     ...state,
-    phase: 'goal-hold',
+    currentIndex: maze.startIndex,
+    trailIndices: [maze.startIndex],
+    visited: nextVisited,
+    loops: state.loops + 1,
     reachedGoal: false,
-    branchStack: [],
-    backtrackTargetTrailLength: null,
-    pendingBranchIndex: null,
-    stepsTaken: state.stepsTaken + 1
+    phase: 'reset-hold',
+    stepsTaken: state.stepsTaken + 1,
+    lastDirection: null,
+    potentialBranchIndices: [],
+    pathStackIndices: [],
+    targetIndex: null,
+    backtrackUndoVisited: false,
+    logicSwitch: !state.logicSwitch,
+    resetReason: 'ai-reset'
   };
 };
+
+const createGoalResetState = (maze: MazeBuildResult, state: DemoWalkerState): DemoWalkerState => ({
+  ...state,
+  currentIndex: maze.endIndex,
+  loops: state.loops + 1,
+  reachedGoal: false,
+  phase: 'reset-hold',
+  stepsTaken: state.stepsTaken + 1,
+  potentialBranchIndices: [],
+  pathStackIndices: [],
+  targetIndex: null,
+  backtrackUndoVisited: false,
+  logicSwitch: false,
+  resetReason: 'goal'
+});
 
 export const advanceDemoWalker = (
   maze: MazeBuildResult,
@@ -202,118 +184,183 @@ export const advanceDemoWalker = (
 ): DemoWalkerAdvance => {
   if (state.phase === 'goal-hold' && state.reachedGoal) {
     return {
-      state: createResetState(maze, state),
+      state: createGoalResetState(maze, state),
       delayMs: config.cadence.resetHoldMs
     };
   }
 
   if (state.phase === 'reset-hold') {
+    if (state.resetReason === 'goal') {
+      return {
+        state: createMazeResetFallbackState(maze, state.loops),
+        delayMs: config.cadence.exploreStepMs,
+        shouldRegenerateMaze: true,
+        nextSeed: config.seed + (state.loops * config.behavior.regenerateSeedStep)
+      };
+    }
+
     return {
       state: {
         ...state,
         phase: 'explore',
-        stepsTaken: state.stepsTaken + 1
+        reachedGoal: false,
+        stepsTaken: state.stepsTaken + 1,
+        resetReason: null
       },
       delayMs: config.cadence.exploreStepMs
     };
   }
 
   if (state.phase === 'backtrack') {
-    if (state.trailIndices.length > (state.backtrackTargetTrailLength ?? 1)) {
-      const nextTrail = state.trailIndices.slice(0, -1);
+    const targetIndex = state.targetIndex ?? maze.startIndex;
+
+    if (state.pathStackIndices.length === 0) {
       return {
-        state: {
-          ...state,
-          currentIndex: nextTrail[nextTrail.length - 1],
-          trailIndices: nextTrail,
-          stepsTaken: state.stepsTaken + 1
-        },
-        delayMs: config.cadence.backtrackStepMs
+        state: applyAiReset(maze, state, config),
+        delayMs: config.cadence.resetHoldMs
       };
     }
 
-    if (state.pendingBranchIndex === null || state.visited.has(state.pendingBranchIndex)) {
-      return {
-        state: resolveNextBacktrack({
-          ...state,
-          phase: 'explore',
-          backtrackTargetTrailLength: null,
-          pendingBranchIndex: null
-        }),
-        delayMs: config.cadence.backtrackStepMs
-      };
+    const nextIndex = state.pathStackIndices[state.pathStackIndices.length - 1];
+
+    for (const neighborIndex of maze.tiles[nextIndex].neighbors) {
+      if (neighborIndex === targetIndex) {
+        const nextVisited = new Set(state.visited);
+        nextVisited.add(nextIndex);
+
+        return {
+          state: {
+            ...state,
+            currentIndex: nextIndex,
+            trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
+            visited: nextVisited,
+            phase: 'explore',
+            stepsTaken: state.stepsTaken + 1,
+            lastDirection: nextIndex === state.currentIndex
+              ? state.lastDirection
+              : resolveDirection(maze, state.currentIndex, nextIndex),
+            targetIndex: null,
+            backtrackUndoVisited: false
+          },
+          delayMs: config.cadence.backtrackStepMs
+        };
+      }
+    }
+
+    let backtrackUndoVisited = false;
+    for (const neighborIndex of getPathNeighbors(maze, nextIndex)) {
+      if (state.potentialBranchIndices.includes(neighborIndex)
+        && aiTilePathCheck(maze, state, neighborIndex, config.behavior.aiTilePathAdditionalPaths)) {
+        backtrackUndoVisited = true;
+        break;
+      }
     }
 
     const nextVisited = new Set(state.visited);
-    nextVisited.add(state.pendingBranchIndex);
-    const nextTrail = [...state.trailIndices, state.pendingBranchIndex];
-    const direction = resolveDirection(maze, state.currentIndex, state.pendingBranchIndex);
-    const reachedGoal = state.pendingBranchIndex === maze.endIndex;
+    nextVisited.add(nextIndex);
+    if (backtrackUndoVisited) {
+      nextVisited.delete(nextIndex);
+    }
 
     return {
       state: {
         ...state,
-        currentIndex: state.pendingBranchIndex,
-        trailIndices: nextTrail,
+        currentIndex: nextIndex,
+        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
         visited: nextVisited,
-        reachedGoal,
-        phase: reachedGoal ? 'goal-hold' : 'explore',
-        lastDirection: direction,
-        backtrackTargetTrailLength: null,
-        pendingBranchIndex: null,
-        stepsTaken: state.stepsTaken + 1
+        phase: 'backtrack',
+        stepsTaken: state.stepsTaken + 1,
+        lastDirection: nextIndex === state.currentIndex
+          ? state.lastDirection
+          : resolveDirection(maze, state.currentIndex, nextIndex),
+        pathStackIndices: state.pathStackIndices.slice(0, -1),
+        backtrackUndoVisited
       },
-      delayMs: reachedGoal ? config.cadence.goalHoldMs : config.cadence.exploreStepMs
+      delayMs: config.cadence.backtrackStepMs
     };
   }
 
-  const neighbors = getWalkableNeighbors(maze, state.currentIndex);
-  const unseenNeighbors = neighbors.filter((index) => !state.visited.has(index));
+  let nextIndex: number | null = null;
+  let smallestDistance = Number.POSITIVE_INFINITY;
+  const potentialBranchIndices = [...state.potentialBranchIndices];
 
-  if (unseenNeighbors.length > 0) {
-    const scored = scoreCandidates(maze, state, unseenNeighbors, config);
-    const [best, ...rest] = scored;
-    const branchStack = rest.length > 0
-      ? [
-        ...state.branchStack,
-        {
-          fromTrailLength: state.trailIndices.length,
-          options: rest.map((item) => item.index)
-        }
-      ]
-      : state.branchStack.map((entry) => ({
-        fromTrailLength: entry.fromTrailLength,
-        options: [...entry.options]
-      }));
-    const nextTrail = [...state.trailIndices, best.index];
+  for (const neighborIndex of getPathNeighbors(maze, state.currentIndex)) {
+    if (state.visited.has(neighborIndex)
+      || !aiTilePathCheck(maze, state, neighborIndex, config.behavior.aiTilePathAdditionalPaths)) {
+      continue;
+    }
+
+    potentialBranchIndices.push(neighborIndex);
+
+    const candidateDistance = distanceToGoal(maze, neighborIndex);
+    if (candidateDistance < smallestDistance) {
+      smallestDistance = candidateDistance;
+      nextIndex = neighborIndex;
+    }
+  }
+
+  if (nextIndex !== null) {
     const nextVisited = new Set(state.visited);
-    nextVisited.add(best.index);
-    const reachedGoal = best.index === maze.endIndex;
+    nextVisited.add(nextIndex);
+    const reachedGoal = nextIndex === maze.endIndex;
 
     return {
       state: {
         ...state,
-        currentIndex: best.index,
-        trailIndices: nextTrail,
+        currentIndex: nextIndex,
+        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
         visited: nextVisited,
         reachedGoal,
         phase: reachedGoal ? 'goal-hold' : 'explore',
         stepsTaken: state.stepsTaken + 1,
-        lastDirection: best.direction,
-        branchStack
+        lastDirection: resolveDirection(maze, state.currentIndex, nextIndex),
+        potentialBranchIndices: removeAll(potentialBranchIndices, nextIndex),
+        pathStackIndices: [...state.pathStackIndices, nextIndex],
+        targetIndex: null,
+        backtrackUndoVisited: false,
+        resetReason: null
       },
       delayMs: reachedGoal ? config.cadence.goalHoldMs : config.cadence.exploreStepMs
     };
   }
 
-  const nextState = resolveNextBacktrack(state);
+  if (config.behavior.emulateLogicSwitchPotentialCheckBug && state.logicSwitch) {
+    return {
+      state: {
+        ...state,
+        phase: 'backtrack',
+        stepsTaken: state.stepsTaken + 1,
+        potentialBranchIndices: [],
+        targetIndex: null,
+        backtrackUndoVisited: false
+      },
+      delayMs: config.cadence.backtrackStepMs
+    };
+  }
+
+  let targetIndex: number | null = null;
+  let remainingPotentialBranches = [...potentialBranchIndices];
+
+  while (targetIndex === null && remainingPotentialBranches.length > 0) {
+    const candidateIndex = remainingPotentialBranches[remainingPotentialBranches.length - 1];
+    remainingPotentialBranches = remainingPotentialBranches.slice(0, -1);
+
+    if (aiTilePathCheck(maze, state, candidateIndex, config.behavior.aiTilePathAdditionalPaths)) {
+      targetIndex = candidateIndex;
+      remainingPotentialBranches = removeAll(remainingPotentialBranches, candidateIndex);
+    }
+  }
+
   return {
-    state: nextState.phase === 'goal-hold' && !nextState.reachedGoal
-      ? createResetState(maze, nextState)
-      : nextState,
-    delayMs: nextState.phase === 'goal-hold' && !nextState.reachedGoal
-      ? config.cadence.resetHoldMs
-      : config.cadence.backtrackStepMs
+    state: {
+      ...state,
+      phase: 'backtrack',
+      stepsTaken: state.stepsTaken + 1,
+      potentialBranchIndices: remainingPotentialBranches,
+      targetIndex,
+      backtrackUndoVisited: false
+    },
+    delayMs: config.cadence.backtrackStepMs
   };
 };
 

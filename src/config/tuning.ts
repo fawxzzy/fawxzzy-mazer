@@ -201,10 +201,10 @@ export const legacyTuning = {
     },
     behavior: {
       trailMaxLength: 36,
-      goalBias: 0.34,
-      branchBias: 0.88,
-      forwardBias: 0.28,
-      jitter: 0.22
+      aiTilePathAdditionalPaths: 0,
+      preserveVisitedOnAiReset: true,
+      emulateLogicSwitchPotentialCheckBug: true,
+      regenerateSeedStep: 1
     }
   },
   colors: {

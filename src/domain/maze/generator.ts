@@ -23,7 +23,7 @@ export const generateMaze = (config: MazeConfig): MazeBuildResult => {
   const wallIndices = createWallsFromPath(tiles, pathIndices, endIndex);
 
   const shortcutBudget = config.scale > 35 ? normalizeShortcutCount(config.scale, config.shortcutCountModifier) : 0;
-  const { shortcutsCreated } = createShortcuts(tiles, wallIndices, shortcutBudget, rng);
+  const { shortcutsCreated, wallIndices: remainingWallIndices } = createShortcuts(tiles, wallIndices, shortcutBudget, rng);
 
   tiles[startIndex].floor = true;
   tiles[startIndex].path = true;
@@ -38,7 +38,7 @@ export const generateMaze = (config: MazeConfig): MazeBuildResult => {
     tiles,
     pathIndices,
     checkpointIndices,
-    wallIndices,
+    wallIndices: remainingWallIndices,
     startIndex,
     endIndex,
     checkpointCount,

@@ -41,6 +41,7 @@ export class MenuScene extends Phaser.Scene {
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     });
+    let demoSeed: number = legacyTuning.demo.seed;
 
     const layout = createBoardLayout(this, maze, {
       boardScale: (width < 900 ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
@@ -137,7 +138,24 @@ export class MenuScene extends Phaser.Scene {
         }
 
         const next = advanceDemoWalker(maze, demo, legacyTuning.demo);
-        demo = next.state;
+        if (next.shouldRegenerateMaze) {
+          demoSeed = next.nextSeed ?? (demoSeed + legacyTuning.demo.behavior.regenerateSeedStep);
+          Object.assign(maze, generateMaze({
+            scale: legacyTuning.board.scale,
+            seed: demoSeed,
+            checkPointModifier: legacyTuning.board.checkPointModifier,
+            shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+          }));
+          boardRenderer.drawBase();
+          boardRenderer.drawGoal();
+          demo = {
+            ...createDemoWalkerState(maze),
+            loops: next.state.loops
+          };
+        } else {
+          demo = next.state;
+        }
+
         renderDemo();
         scheduleDemoAdvance(next.delayMs);
       });
