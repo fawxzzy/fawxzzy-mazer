@@ -116,16 +116,12 @@ export const legacyTuning = {
   menu: {
     layout: {
       narrowBreakpoint: 620,
-      sideButtonsMinGutterPx: 52,
-      boardScaleNarrow: 0.64,
-      boardScaleWide: 0.9,
-      topReserveRatio: 0.1,
-      topReserveMinPx: 88,
-      bottomPaddingPx: 118,
-      sidePaddingPx: 18,
-      buttonBottomInsetPx: 30,
-      buttonRowGapPx: 14,
-      buttonSideInsetPx: 18
+      boardScaleNarrow: 0.9,
+      boardScaleWide: 0.94,
+      topReserveRatio: 0.11,
+      topReserveMinPx: 96,
+      bottomPaddingPx: 40,
+      sidePaddingPx: 16
     },
     title: {
       text: 'Mazer',
@@ -143,21 +139,15 @@ export const legacyTuning = {
       plateHeightMaxPx: 72,
       plateAlpha: 0.1
     },
-    buttons: {
-      laneBottomOffset: 30,
-      spacingRatio: 0.1,
-      spacingMinPx: 12,
-      spacingMaxPx: 28,
-      widths: {
-        left: 130,
-        right: 144
-      },
-      widthNarrowPx: 132,
-      alpha: 0.62,
-      introRisePx: 8,
-      introDurationMs: 220,
-      introDelayStartMs: 70,
-      introDelayStepMs: 50
+    utilityButton: {
+      insetTopPx: 18,
+      insetSidePx: 18,
+      sizePx: 34,
+      hitSizePx: 44,
+      alpha: 0.72,
+      introRisePx: 5,
+      introDurationMs: 180,
+      introDelayMs: 86
     },
     starfield: {
       cloudCount: 10,
@@ -174,9 +164,7 @@ export const legacyTuning = {
       starsDriftDurationMs: 15000,
       vignetteAlpha: 0.38,
       vignetteBandRatio: 0.18
-    },
-    // Attract-mode-first shell keeps only secondary actions visible.
-    labels: ['Options', 'Exit'] as const
+    }
   },
   game: {
     layout: {
@@ -237,8 +225,6 @@ export const legacyTuning = {
     ultraCompactHintFontPx: 9
   },
   overlays: {
-    optionsLabels: ['Manual Play', 'Back'] as const,
-    pauseLabels: ['Back', 'Reset', 'Main Menu'] as const,
     listSpacingPx: 54,
     intro: {
       pauseScaleStart: 0.98,

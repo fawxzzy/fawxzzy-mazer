@@ -9,8 +9,8 @@
   --mazer-frame-focus: #8eb9df;
   --mazer-canvas-shadow: rgba(0, 0, 0, 0.58);
   --mazer-canvas-glow: rgba(110, 138, 226, 0.16);
-  --mazer-shell-pad-x: clamp(12px, 2vw, 28px);
-  --mazer-shell-pad-y: clamp(12px, 2.4vh, 28px);
+  --mazer-shell-pad-x: clamp(10px, 1.6vw, 22px);
+  --mazer-shell-pad-y: clamp(10px, 2vh, 22px);
 }
 
 * {
@@ -125,8 +125,8 @@ canvas:focus-visible {
 
 @media (max-width: 640px) {
   :root {
-    --mazer-shell-pad-x: 4px;
-    --mazer-shell-pad-y: 4px;
+    --mazer-shell-pad-x: 2px;
+    --mazer-shell-pad-y: 2px;
   }
 
   body::before,

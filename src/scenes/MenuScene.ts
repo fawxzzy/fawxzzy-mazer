@@ -5,7 +5,6 @@ import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
-import { createMenuButton } from '../ui/menuButton';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 
 const OVERLAY_EVENTS = {
@@ -43,16 +42,14 @@ export class MenuScene extends Phaser.Scene {
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     });
     let demoSeed: number = legacyTuning.demo.seed;
-    const buttonHeight = 44;
-    const buttonBottomReserve = buttonHeight + legacyTuning.menu.layout.buttonBottomInsetPx + 28;
     const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
       + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
 
     const layout = createBoardLayout(this, maze, {
       boardScale,
       topReserve: Math.max(legacyTuning.menu.layout.topReserveMinPx, Math.round(height * legacyTuning.menu.layout.topReserveRatio)),
-      sidePadding: isNarrow ? legacyTuning.menu.layout.sidePaddingPx + 12 : legacyTuning.menu.layout.sidePaddingPx,
-      bottomPadding: Math.max(legacyTuning.menu.layout.bottomPaddingPx, buttonBottomReserve)
+      sidePadding: isNarrow ? legacyTuning.menu.layout.sidePaddingPx + 4 : legacyTuning.menu.layout.sidePaddingPx,
+      bottomPadding: legacyTuning.menu.layout.bottomPaddingPx
     });
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
@@ -214,40 +211,6 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    const exitButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.left;
-    const optionsButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.right;
-    const buttonY = Math.min(
-      height - legacyTuning.menu.layout.buttonBottomInsetPx,
-      layout.boardY + layout.boardSize + legacyTuning.menu.buttons.laneBottomOffset
-    );
-    const requestedRowGap = Phaser.Math.Clamp(
-      Math.round(width * legacyTuning.menu.buttons.spacingRatio),
-      legacyTuning.menu.buttons.spacingMinPx,
-      legacyTuning.menu.buttons.spacingMaxPx
-    );
-    const rowGap = Math.max(
-      12,
-      Math.min(
-        requestedRowGap,
-        Math.floor(
-          (
-            width
-            - exitButtonWidth
-            - optionsButtonWidth
-            - (legacyTuning.menu.layout.buttonSideInsetPx * 2)
-          ) / 4
-        )
-      )
-    );
-    const exitButtonX = Math.max(
-      legacyTuning.menu.layout.buttonSideInsetPx + (exitButtonWidth / 2),
-      (width / 2) - rowGap - (exitButtonWidth / 2)
-    );
-    const optionsButtonX = Math.min(
-      width - legacyTuning.menu.layout.buttonSideInsetPx - (optionsButtonWidth / 2),
-      (width / 2) + rowGap + (optionsButtonWidth / 2)
-    );
-
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
         return;
@@ -276,48 +239,26 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-    const optionsButton = createMenuButton(this, {
-      x: optionsButtonX,
-      y: buttonY,
-      label: legacyTuning.menu.labels[0],
-      width: optionsButtonWidth,
-      onClick: () => {
+    // CSS shell padding already honors safe-area insets, so the scene only needs a small internal offset.
+    const optionsGear = this.createOptionsGearButton(
+      width - legacyTuning.menu.utilityButton.insetSidePx - (legacyTuning.menu.utilityButton.hitSizePx / 2),
+      legacyTuning.menu.utilityButton.insetTopPx + (legacyTuning.menu.utilityButton.hitSizePx / 2),
+      () => {
         if (this.transitionLocked) {
           return;
         }
         this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
-      },
-      clickSfx: 'confirm'
-    });
-
-    const quitButton = createMenuButton(this, {
-      x: exitButtonX,
-      y: buttonY,
-      label: legacyTuning.menu.labels[1],
-      width: exitButtonWidth,
-      onClick: () => {
-        queueTransition(() => {
-          this.overlayManager.closeAll();
-          this.game.destroy(true);
-        }, 86);
-      },
-      clickSfx: 'cancel'
-    });
-
-    const buttons = [quitButton, optionsButton];
-    buttons.forEach((button, index) => {
-      button.setAlpha(legacyTuning.menu.buttons.alpha);
-      const targetAlpha = button.alpha;
-      button.setAlpha(0);
-      button.y += legacyTuning.menu.buttons.introRisePx;
-      this.tweens.add({
-        targets: button,
-        alpha: targetAlpha,
-        y: button.y - legacyTuning.menu.buttons.introRisePx,
-        duration: legacyTuning.menu.buttons.introDurationMs,
-        ease: 'Quad.easeOut',
-        delay: legacyTuning.menu.buttons.introDelayStartMs + (index * legacyTuning.menu.buttons.introDelayStepMs)
-      });
+      }
+    );
+    optionsGear.setAlpha(0);
+    optionsGear.y += legacyTuning.menu.utilityButton.introRisePx;
+    this.tweens.add({
+      targets: optionsGear,
+      alpha: legacyTuning.menu.utilityButton.alpha,
+      y: optionsGear.y - legacyTuning.menu.utilityButton.introRisePx,
+      duration: legacyTuning.menu.utilityButton.introDurationMs,
+      ease: 'Quad.easeOut',
+      delay: legacyTuning.menu.utilityButton.introDelayMs
     });
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
@@ -332,13 +273,13 @@ export class MenuScene extends Phaser.Scene {
         this.overlayManager.closeActive();
       }
     };
-    const enterHandler = () => {
-      if (!this.overlayManager.isOverlayActive()) {
+    const manualShortcutHandler = (event: KeyboardEvent) => {
+      if (!this.overlayManager.isOverlayActive() && event.code === 'KeyM' && event.shiftKey) {
         launchManualPlay();
       }
     };
     this.input.keyboard?.on('keydown-ESC', escHandler);
-    this.input.keyboard?.on('keydown-M', enterHandler);
+    this.input.keyboard?.on('keydown', manualShortcutHandler);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
@@ -347,9 +288,109 @@ export class MenuScene extends Phaser.Scene {
       this.demoStepTimer?.remove(false);
       this.overlayManager.closeAll();
       this.input.keyboard?.off('keydown-ESC', escHandler);
-      this.input.keyboard?.off('keydown-M', enterHandler);
+      this.input.keyboard?.off('keydown', manualShortcutHandler);
       this.events.off(OVERLAY_EVENTS.manualPlay, launchManualPlay);
     });
+  }
+
+  private createOptionsGearButton(
+    x: number,
+    y: number,
+    onClick: () => void
+  ): Phaser.GameObjects.Container {
+    const size = legacyTuning.menu.utilityButton.sizePx;
+    const hitSize = legacyTuning.menu.utilityButton.hitSizePx;
+    const plate = this.add.graphics();
+    const gloss = this.add.graphics();
+    const icon = this.add.graphics();
+    const hit = this.add
+      .rectangle(0, 0, hitSize, hitSize, 0x000000, 0.001)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const button = this.add.container(x, y, [plate, gloss, icon, hit]).setDepth(12);
+    let hovered = false;
+
+    const draw = (pressed: boolean): void => {
+      const plateSize = pressed ? size - 1 : size;
+      const fillAlpha = hovered ? 0.8 : 0.62;
+      const edgeAlpha = hovered ? 0.9 : 0.6;
+      const gearAlpha = hovered ? 0.96 : 0.76;
+
+      plate.clear();
+      gloss.clear();
+      icon.clear();
+
+      plate.fillStyle(palette.ui.buttonFill, fillAlpha);
+      plate.fillRect(-plateSize / 2, -plateSize / 2, plateSize, plateSize);
+      plate.lineStyle(1, palette.board.outerStroke, edgeAlpha);
+      plate.strokeRect(-plateSize / 2 + 0.5, -plateSize / 2 + 0.5, plateSize - 1, plateSize - 1);
+      plate.lineStyle(1, palette.board.innerStroke, hovered ? 0.38 : 0.24);
+      plate.strokeRect(-plateSize / 2 + 3.5, -plateSize / 2 + 3.5, plateSize - 7, plateSize - 7);
+
+      const tickInset = plateSize / 2 - 3;
+      const tickLength = 6;
+      plate.lineStyle(1, palette.board.topHighlight, hovered ? 0.3 : 0.18);
+      plate.lineBetween(-tickInset, -tickInset, -tickInset + tickLength, -tickInset);
+      plate.lineBetween(-tickInset, -tickInset, -tickInset, -tickInset + tickLength);
+      plate.lineBetween(tickInset, -tickInset, tickInset - tickLength, -tickInset);
+      plate.lineBetween(tickInset, -tickInset, tickInset, -tickInset + tickLength);
+      plate.lineBetween(-tickInset, tickInset, -tickInset + tickLength, tickInset);
+      plate.lineBetween(-tickInset, tickInset, -tickInset, tickInset - tickLength);
+      plate.lineBetween(tickInset, tickInset, tickInset - tickLength, tickInset);
+      plate.lineBetween(tickInset, tickInset, tickInset, tickInset - tickLength);
+
+      gloss.fillStyle(palette.board.topHighlight, hovered ? 0.14 : 0.08);
+      gloss.fillRect(-plateSize / 2 + 4, -plateSize / 2 + 4, plateSize - 8, 2);
+
+      icon.lineStyle(1.8, palette.board.topHighlight, gearAlpha);
+      for (let tooth = 0; tooth < 8; tooth += 1) {
+        const angle = (Math.PI * 2 * tooth) / 8;
+        const innerRadius = 7;
+        const outerRadius = 11;
+        icon.lineBetween(
+          Math.cos(angle) * innerRadius,
+          Math.sin(angle) * innerRadius,
+          Math.cos(angle) * outerRadius,
+          Math.sin(angle) * outerRadius
+        );
+      }
+      icon.strokeCircle(0, 0, 7);
+      icon.fillStyle(palette.ui.text, gearAlpha);
+      icon.fillCircle(0, 0, 2.2);
+    };
+
+    const tweenToState = (pressed: boolean): void => {
+      this.tweens.killTweensOf(button);
+      this.tweens.add({
+        targets: button,
+        scaleX: pressed ? 0.97 : hovered ? 1.04 : 1,
+        scaleY: pressed ? 0.97 : hovered ? 1.04 : 1,
+        duration: pressed ? 45 : 90,
+        ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
+      });
+      draw(pressed);
+    };
+
+    hit.on('pointerover', () => {
+      hovered = true;
+      tweenToState(false);
+      playSfx('move');
+    });
+    hit.on('pointerout', () => {
+      hovered = false;
+      tweenToState(false);
+    });
+    hit.on('pointerdown', () => {
+      tweenToState(true);
+      playSfx('confirm');
+    });
+    hit.on('pointerup', () => {
+      tweenToState(false);
+      onClick();
+    });
+
+    draw(false);
+    return button;
   }
 
   private drawStarfield(width: number, height: number): void {

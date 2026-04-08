@@ -56,13 +56,13 @@ Current scene flow keeps menu-first startup with an attract-mode shell:
 - `BootScene`
   - one-step startup scene that always routes into `MenuScene`.
 - `MenuScene`
-  - renders the starfield, centered square maze demo, translucent green `Mazer` title, and only the secondary actions (`Options`, `Exit`).
+  - renders the starfield, translucent green `Mazer` title, the centered square live maze demo, and one subtle gear utility affordance in the top-right.
   - owns the attract-mode loop by scheduling deterministic demo walker phases (`explore`, `backtrack`, `goal-hold`, `reset-hold`) from the pure AI lane.
   - owns the overlay event bus and enforces one active overlay at a time through `OverlayManager`.
 - `GameScene`
   - manual-play QA run entered from `OptionsScene` or hidden keyboard shortcuts on the menu.
 - `OptionsScene`
-  - compact secondary sheet opened from `MenuScene`.
+  - compact secondary sheet opened from `MenuScene` via the gear affordance or `Esc`.
   - exposes low-priority manual play for local QA and a single return action.
 
 Overlay behavior is explicit and centralized: only `OptionsScene` can be active over the menu at once.

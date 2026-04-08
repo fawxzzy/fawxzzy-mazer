@@ -12,7 +12,7 @@ export class OptionsScene extends Phaser.Scene {
     const compact = width <= 620;
     const buttonWidth = compact ? 220 : 248;
     const copyWrapWidth = compact ? Math.max(240, width * 0.68) : 360;
-    const { container, contentY } = createOverlaySheet(this, 'Options', 'Attract mode stays on the front door');
+    const { container, contentY } = createOverlaySheet(this, 'Options', 'QA utility only. Attract mode stays on the front door');
 
     createMenuButton(this, {
       x: width / 2,
@@ -23,7 +23,7 @@ export class OptionsScene extends Phaser.Scene {
     });
 
     const copy = this.add
-      .text(width / 2, contentY + 166, 'Local QA only. The public surface is the live demo. Shortcut: press M on the menu.', {
+      .text(width / 2, contentY + 166, 'Local QA only. The public surface is the live demo. Hidden shortcut: Shift+M on the menu.', {
         color: '#c7d0e6',
         fontFamily: 'monospace',
         fontSize: compact ? '14px' : '16px',
