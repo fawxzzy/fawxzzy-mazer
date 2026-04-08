@@ -4,6 +4,7 @@ import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
+import { mazerStorage } from '../storage/mazerStorage';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
@@ -265,6 +266,10 @@ export class GameScene extends Phaser.Scene {
     playSfx('move');
 
     if (this.playerIndex === this.maze.endIndex) {
+      mazerStorage.recordBestTime({
+        elapsedMs: this.time.now - this.timerStartMs,
+        seed: this.runSeed
+      });
       playSfx('win');
       this.overlayKey = 'WinScene';
       this.paused = true;

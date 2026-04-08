@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import '../styles/base.css';
 import { phaserConfig } from './phaserConfig';
+import { mazerStorage } from '../storage/mazerStorage';
 
 const isLocalhost =
   window.location.hostname === 'localhost' ||
@@ -15,5 +16,7 @@ if ('serviceWorker' in navigator && isLocalhost) {
       // no-op: we explicitly avoid stale local SW state during development
     });
 }
+
+void mazerStorage.bootstrap().catch(() => undefined);
 
 new Phaser.Game(phaserConfig);

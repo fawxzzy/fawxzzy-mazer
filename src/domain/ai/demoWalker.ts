@@ -107,18 +107,36 @@ const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: num
   return direction as 0 | 1 | 2 | 3;
 };
 
-const appendTrailStep = (trailIndices: number[], nextIndex: number, currentIndex: number): number[] => (
-  nextIndex === currentIndex ? [...trailIndices] : [...trailIndices, nextIndex]
+const boundTrail = <T>(values: T[], maxLength: number): T[] => (
+  values.length <= maxLength ? values : values.slice(values.length - maxLength)
 );
 
 const appendTrailHistory = (
   trailSteps: DemoTrailStep[],
   nextIndex: number,
   currentIndex: number,
-  mode: DemoTrailMode
-): DemoTrailStep[] => (
-  nextIndex === currentIndex ? [...trailSteps] : [...trailSteps, { index: nextIndex, mode }]
-);
+  mode: DemoTrailMode,
+  maxLength: number
+): DemoTrailStep[] => {
+  if (nextIndex === currentIndex) {
+    return boundTrail([...trailSteps], maxLength);
+  }
+
+  return boundTrail([...trailSteps, { index: nextIndex, mode }], maxLength);
+};
+
+const appendTrailStep = (
+  trailIndices: number[],
+  nextIndex: number,
+  currentIndex: number,
+  maxLength: number
+): number[] => {
+  if (nextIndex === currentIndex) {
+    return boundTrail([...trailIndices], maxLength);
+  }
+
+  return boundTrail([...trailIndices, nextIndex], maxLength);
+};
 
 const removeAll = (indices: number[], targetIndex: number): number[] => indices.filter((index) => index !== targetIndex);
 
@@ -254,8 +272,14 @@ export const advanceDemoWalker = (
           state: {
             ...state,
             currentIndex: nextIndex,
-            trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
-            trailSteps: appendTrailHistory(state.trailSteps, nextIndex, state.currentIndex, 'backtrack'),
+            trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex, config.behavior.trailMaxLength),
+            trailSteps: appendTrailHistory(
+              state.trailSteps,
+              nextIndex,
+              state.currentIndex,
+              'backtrack',
+              config.behavior.trailMaxLength
+            ),
             visited: nextVisited,
             phase: 'explore',
             stepsTaken: state.stepsTaken + 1,
@@ -289,8 +313,14 @@ export const advanceDemoWalker = (
       state: {
         ...state,
         currentIndex: nextIndex,
-        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
-        trailSteps: appendTrailHistory(state.trailSteps, nextIndex, state.currentIndex, 'backtrack'),
+        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex, config.behavior.trailMaxLength),
+        trailSteps: appendTrailHistory(
+          state.trailSteps,
+          nextIndex,
+          state.currentIndex,
+          'backtrack',
+          config.behavior.trailMaxLength
+        ),
         visited: nextVisited,
         phase: 'backtrack',
         stepsTaken: state.stepsTaken + 1,
@@ -332,12 +362,13 @@ export const advanceDemoWalker = (
       state: {
         ...state,
         currentIndex: nextIndex,
-        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
+        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex, config.behavior.trailMaxLength),
         trailSteps: appendTrailHistory(
           state.trailSteps,
           nextIndex,
           state.currentIndex,
-          reachedGoal ? 'goal' : 'explore'
+          reachedGoal ? 'goal' : 'explore',
+          config.behavior.trailMaxLength
         ),
         visited: nextVisited,
         reachedGoal,

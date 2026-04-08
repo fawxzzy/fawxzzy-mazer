@@ -77,3 +77,16 @@ Overlay behavior is explicit and centralized: only `OptionsScene` can be active 
   - shared dimmer + panel composition for overlay scenes.
 - `src/ui/overlayManager.ts`
   - scene-level overlay guard (`open`, `close`, `closeActive`) that prevents multi-overlay stacking.
+
+## Local data contract
+
+Persistent browser data is versioned and namespaced under `mazer:v1:*`.
+
+- `mazer:v1:meta`
+  - schema marker used for safe boot cleanup and future migrations.
+- `mazer:v1:bestTimes`
+  - bounded list of best local completion times, deduped by maze seed and sorted fastest-first.
+- `mazer:v1:settings`
+  - reserved for future durable player settings; transient runtime state is intentionally excluded.
+
+Boot cleanup removes only Mazer-owned legacy keys, malformed entries, and prior-version artifacts. Runtime-only state such as live trails, demo history, overlays, and debug noise stays in memory and is capped instead of persisted.

@@ -5,7 +5,11 @@ export const createOverlaySheet = (
   scene: Phaser.Scene,
   title: string,
   subtitle: string
-): { container: Phaser.GameObjects.Container; contentY: number } => {
+): {
+  container: Phaser.GameObjects.Container;
+  contentY: number;
+  panelBounds: { bottom: number; left: number; right: number; top: number };
+} => {
   const { width, height } = scene.scale;
   const compact = width <= 620;
 
@@ -39,6 +43,12 @@ export const createOverlaySheet = (
 
   return {
     container: scene.add.container(0, 0, [dim, panel, titleText, subtitleText]),
-    contentY: subtitleText.y + (subtitleText.height / 2) + (compact ? 32 : 40)
+    contentY: subtitleText.y + (subtitleText.height / 2) + (compact ? 32 : 40),
+    panelBounds: {
+      bottom: (height / 2) + (sheetHeight / 2),
+      left: (width / 2) - (sheetWidth / 2),
+      right: (width / 2) + (sheetWidth / 2),
+      top: (height / 2) - (sheetHeight / 2)
+    }
   };
 };

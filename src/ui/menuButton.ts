@@ -2,6 +2,11 @@ import Phaser from 'phaser';
 import { playSfx, type SfxEvent } from '../audio/proceduralSfx';
 import { palette } from '../render/palette';
 
+export interface MenuButtonHandle extends Phaser.GameObjects.Container {
+  setDisabled(disabled: boolean): MenuButtonHandle;
+  setLabel(label: string): MenuButtonHandle;
+}
+
 interface MenuButtonConfig {
   x: number;
   y: number;
@@ -12,7 +17,7 @@ interface MenuButtonConfig {
   hoverSfx?: boolean;
 }
 
-export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig): Phaser.GameObjects.Container => {
+export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig): MenuButtonHandle => {
   const width = config.width ?? 180;
   const height = 44;
 
@@ -29,11 +34,15 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
     })
     .setOrigin(0.5);
 
-  const container = scene.add.container(config.x, config.y, [rect, text]);
-  const hit = scene.add.rectangle(0, 0, width, height, 0x000000, 0.001).setOrigin(0.5).setInteractive({ useHandCursor: true });
+  const container = scene.add.container(config.x, config.y, [rect, text]) as MenuButtonHandle;
+  const hit = scene.add
+    .rectangle(0, 0, width, height, 0x000000, 0.001)
+    .setOrigin(0.5)
+    .setInteractive({ useHandCursor: true });
   container.add(hit);
 
   let hovered = false;
+  let disabled = false;
 
   const tweenToState = (over: boolean, pressed: boolean): void => {
     const targetScale = pressed ? 0.975 : over ? 1.015 : 1;
@@ -46,8 +55,17 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
       ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
     });
 
+    if (disabled) {
+      rect.setFillStyle(palette.ui.buttonFill, 0.42);
+      rect.setStrokeStyle(1.5, palette.ui.buttonStroke, 0.5);
+      text.setAlpha(0.62);
+      text.clearTint();
+      return;
+    }
+
     rect.setFillStyle(over ? palette.ui.buttonHover : palette.ui.buttonFill, over ? 0.92 : 0.84);
     rect.setStrokeStyle(over ? 2.5 : 2, palette.ui.buttonStroke, over ? 1 : 0.95);
+    text.setAlpha(1);
 
     if (over) {
       text.setTint(palette.ui.title);
@@ -57,6 +75,9 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
   };
 
   hit.on('pointerover', () => {
+    if (disabled) {
+      return;
+    }
     hovered = true;
     tweenToState(true, false);
     if (config.hoverSfx) {
@@ -65,19 +86,45 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
   });
 
   hit.on('pointerout', () => {
+    if (disabled) {
+      return;
+    }
     hovered = false;
     tweenToState(false, false);
   });
 
   hit.on('pointerdown', () => {
+    if (disabled) {
+      return;
+    }
     tweenToState(true, true);
     playSfx(config.clickSfx ?? 'confirm');
   });
 
   hit.on('pointerup', () => {
+    if (disabled) {
+      return;
+    }
     tweenToState(hovered, false);
     config.onClick();
   });
+
+  container.setDisabled = (nextDisabled: boolean): MenuButtonHandle => {
+    disabled = nextDisabled;
+    hovered = false;
+    if (nextDisabled) {
+      hit.disableInteractive();
+    } else if (!hit.input?.enabled) {
+      hit.setInteractive({ useHandCursor: true });
+    }
+    tweenToState(false, false);
+    return container;
+  };
+
+  container.setLabel = (label: string): MenuButtonHandle => {
+    text.setText(label);
+    return container;
+  };
 
   return container;
 };

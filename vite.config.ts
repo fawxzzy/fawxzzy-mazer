@@ -37,6 +37,7 @@ export default defineConfig({
         enabled: false
       },
       workbox: {
+        cacheId: 'mazer-v1',
         navigateFallbackDenylist: [/^\/__/, /^\/@vite\//],
         skipWaiting: true,
         clientsClaim: true

@@ -56,6 +56,15 @@ const createGoalMaze = (): MazeBuildResult => buildMaze([
   createTile(1, 1, 0, [-1, -1, 0, -1], { end: true })
 ], 0, 1);
 
+const createTrailCapMaze = (): MazeBuildResult => buildMaze([
+  createTile(0, 0, 0, [-1, -1, -1, 1]),
+  createTile(1, 1, 0, [-1, -1, 0, 2]),
+  createTile(2, 2, 0, [-1, -1, 1, 3]),
+  createTile(3, 3, 0, [-1, -1, 2, 4]),
+  createTile(4, 4, 0, [-1, -1, 3, 5]),
+  createTile(5, 5, 0, [-1, -1, 4, -1], { end: true })
+], 0, 5);
+
 describe('demo walker', () => {
   test('matches legacy direct-move selection and preserves alternate branches', () => {
     const maze = createBranchChoiceMaze();
@@ -185,5 +194,33 @@ describe('demo walker', () => {
     expect(advance.nextSeed).toBe(1989);
     expect(advance.state.currentIndex).toBe(maze.startIndex);
     expect(advance.state.loops).toBe(1);
+  });
+
+  test('caps demo trail buffers instead of retaining the full run history', () => {
+    const maze = createTrailCapMaze();
+    let state = createDemoWalkerState(maze);
+
+    for (let step = 0; step < 5; step += 1) {
+      state = advanceDemoWalker(maze, state, {
+        seed: 1988,
+        cadence: {
+          exploreStepMs: 1,
+          backtrackStepMs: 1,
+          decisionPauseMs: 1,
+          branchResumeMs: 1,
+          goalHoldMs: 1,
+          resetHoldMs: 1
+        },
+        behavior: {
+          trailMaxLength: 3,
+          aiTilePathAdditionalPaths: 0,
+          preserveVisitedOnAiReset: true,
+          emulateLogicSwitchPotentialCheckBug: true,
+          regenerateSeedStep: 1
+        }
+      }).state;
+      expect(state.trailIndices).toHaveLength(Math.min(step + 2, 3));
+      expect(state.trailSteps).toHaveLength(Math.min(step + 2, 3));
+    }
   });
 });
