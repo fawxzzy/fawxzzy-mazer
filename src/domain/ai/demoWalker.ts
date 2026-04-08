@@ -5,6 +5,8 @@ export interface DemoWalkerConfig {
   cadence: {
     exploreStepMs: number;
     backtrackStepMs: number;
+    decisionPauseMs: number;
+    branchResumeMs: number;
     goalHoldMs: number;
     resetHoldMs: number;
   };
@@ -26,10 +28,17 @@ export interface DemoWalkerAdvance {
 
 export type DemoWalkerPhase = 'explore' | 'backtrack' | 'goal-hold' | 'reset-hold';
 type DemoWalkerResetReason = 'goal' | 'ai-reset' | null;
+export type DemoTrailMode = 'explore' | 'backtrack' | 'goal';
+
+export interface DemoTrailStep {
+  index: number;
+  mode: DemoTrailMode;
+}
 
 export interface DemoWalkerState {
   currentIndex: number;
   trailIndices: number[];
+  trailSteps: DemoTrailStep[];
   visited: Set<number>;
   loops: number;
   reachedGoal: boolean;
@@ -47,13 +56,15 @@ export interface DemoWalkerState {
 const defaultConfig: DemoWalkerConfig = {
   seed: 1988,
   cadence: {
-    exploreStepMs: 78,
-    backtrackStepMs: 52,
-    goalHoldMs: 720,
-    resetHoldMs: 360
+    exploreStepMs: 92,
+    backtrackStepMs: 60,
+    decisionPauseMs: 124,
+    branchResumeMs: 86,
+    goalHoldMs: 960,
+    resetHoldMs: 420
   },
   behavior: {
-    trailMaxLength: 36,
+    trailMaxLength: 44,
     aiTilePathAdditionalPaths: 0,
     preserveVisitedOnAiReset: true,
     emulateLogicSwitchPotentialCheckBug: true,
@@ -64,6 +75,7 @@ const defaultConfig: DemoWalkerConfig = {
 export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState => ({
   currentIndex: maze.startIndex,
   trailIndices: [maze.startIndex],
+  trailSteps: [{ index: maze.startIndex, mode: 'explore' }],
   visited: new Set<number>(),
   loops: 0,
   reachedGoal: false,
@@ -97,6 +109,15 @@ const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: num
 
 const appendTrailStep = (trailIndices: number[], nextIndex: number, currentIndex: number): number[] => (
   nextIndex === currentIndex ? [...trailIndices] : [...trailIndices, nextIndex]
+);
+
+const appendTrailHistory = (
+  trailSteps: DemoTrailStep[],
+  nextIndex: number,
+  currentIndex: number,
+  mode: DemoTrailMode
+): DemoTrailStep[] => (
+  nextIndex === currentIndex ? [...trailSteps] : [...trailSteps, { index: nextIndex, mode }]
 );
 
 const removeAll = (indices: number[], targetIndex: number): number[] => indices.filter((index) => index !== targetIndex);
@@ -147,6 +168,7 @@ const applyAiReset = (
     ...state,
     currentIndex: maze.startIndex,
     trailIndices: [maze.startIndex],
+    trailSteps: [{ index: maze.startIndex, mode: 'explore' }],
     visited: nextVisited,
     loops: state.loops + 1,
     reachedGoal: false,
@@ -233,6 +255,7 @@ export const advanceDemoWalker = (
             ...state,
             currentIndex: nextIndex,
             trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
+            trailSteps: appendTrailHistory(state.trailSteps, nextIndex, state.currentIndex, 'backtrack'),
             visited: nextVisited,
             phase: 'explore',
             stepsTaken: state.stepsTaken + 1,
@@ -242,7 +265,7 @@ export const advanceDemoWalker = (
             targetIndex: null,
             backtrackUndoVisited: false
           },
-          delayMs: config.cadence.backtrackStepMs
+          delayMs: config.cadence.branchResumeMs
         };
       }
     }
@@ -267,6 +290,7 @@ export const advanceDemoWalker = (
         ...state,
         currentIndex: nextIndex,
         trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
+        trailSteps: appendTrailHistory(state.trailSteps, nextIndex, state.currentIndex, 'backtrack'),
         visited: nextVisited,
         phase: 'backtrack',
         stepsTaken: state.stepsTaken + 1,
@@ -309,6 +333,12 @@ export const advanceDemoWalker = (
         ...state,
         currentIndex: nextIndex,
         trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex),
+        trailSteps: appendTrailHistory(
+          state.trailSteps,
+          nextIndex,
+          state.currentIndex,
+          reachedGoal ? 'goal' : 'explore'
+        ),
         visited: nextVisited,
         reachedGoal,
         phase: reachedGoal ? 'goal-hold' : 'explore',
@@ -334,7 +364,7 @@ export const advanceDemoWalker = (
         targetIndex: null,
         backtrackUndoVisited: false
       },
-      delayMs: config.cadence.backtrackStepMs
+      delayMs: config.cadence.decisionPauseMs
     };
   }
 
@@ -360,7 +390,7 @@ export const advanceDemoWalker = (
       targetIndex,
       backtrackUndoVisited: false
     },
-    delayMs: config.cadence.backtrackStepMs
+    delayMs: config.cadence.decisionPauseMs
   };
 };
 

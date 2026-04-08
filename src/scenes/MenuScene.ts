@@ -44,21 +44,34 @@ export class MenuScene extends Phaser.Scene {
     });
     let demoSeed: number = legacyTuning.demo.seed;
     const buttonHeight = 44;
-    const buttonBottomReserve = buttonHeight + legacyTuning.menu.layout.buttonBottomInsetPx + 16;
+    const buttonBottomReserve = buttonHeight + legacyTuning.menu.layout.buttonBottomInsetPx + 28;
     const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
       + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
 
     const layout = createBoardLayout(this, maze, {
       boardScale,
       topReserve: Math.max(legacyTuning.menu.layout.topReserveMinPx, Math.round(height * legacyTuning.menu.layout.topReserveRatio)),
-      sidePadding: legacyTuning.menu.layout.sidePaddingPx,
+      sidePadding: isNarrow ? legacyTuning.menu.layout.sidePaddingPx + 12 : legacyTuning.menu.layout.sidePaddingPx,
       bottomPadding: Math.max(legacyTuning.menu.layout.bottomPaddingPx, buttonBottomReserve)
     });
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
-    boardRenderer.startAmbientMotion(1.5, 2600);
+    boardRenderer.startAmbientMotion(2.2, 2600);
+
+    this.add
+      .ellipse(
+        layout.boardX + layout.boardSize / 2,
+        layout.boardY + layout.boardSize / 2,
+        layout.boardSize * 1.18,
+        layout.boardSize * 1.12,
+        palette.background.nebulaCore,
+        0.11
+      )
+      .setOrigin(0.5)
+      .setDepth(-2)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const boardShade = this.add
       .rectangle(
@@ -66,18 +79,22 @@ export class MenuScene extends Phaser.Scene {
         layout.boardY + layout.boardSize / 2,
         layout.boardSize,
         layout.boardSize,
-        0x8a8a9a,
-        0.05
+        palette.board.topHighlight,
+        0.026
       )
       .setOrigin(0.5)
+      .setDepth(7)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const titlePlateWidth = layout.boardSize * legacyTuning.menu.title.plateWidthRatio;
-    const titleY = layout.boardY + Math.max(32, Math.round(layout.boardSize * legacyTuning.menu.title.yOffsetRatioFromBoardTop));
     const titlePlateHeight = Phaser.Math.Clamp(
       Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio),
       legacyTuning.menu.title.plateHeightMinPx,
       legacyTuning.menu.title.plateHeightMaxPx
+    );
+    const titleY = Math.max(
+      titlePlateHeight / 2 + 10,
+      layout.boardY - Math.round(titlePlateHeight * (isNarrow ? 0.34 : 0.42))
     );
     this.add
       .rectangle(
@@ -93,15 +110,15 @@ export class MenuScene extends Phaser.Scene {
 
     const title = this.add
       .text(width / 2, titleY, legacyTuning.menu.title.text, {
-        color: '#66df7c',
+        color: '#75f78f',
         fontFamily: 'monospace',
-        fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard), 50, 112)}px`,
+        fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard), 38, 84)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
       .setAlpha(legacyTuning.menu.title.alpha)
-      .setStroke('#133f1c', legacyTuning.menu.title.strokePx)
-      .setShadow(0, 0, '#2d8e3f', legacyTuning.menu.title.shadowBlur, true, true)
+      .setStroke('#17381f', legacyTuning.menu.title.strokePx)
+      .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur, true, true)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
@@ -118,8 +135,8 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({
       targets: boardShade,
       alpha: {
-        from: legacyTuning.menu.title.pulseMinAlpha * 0.4,
-        to: legacyTuning.menu.title.pulseMaxAlpha * 0.5
+        from: legacyTuning.menu.title.pulseMinAlpha * 0.06,
+        to: legacyTuning.menu.title.pulseMaxAlpha * 0.08
       },
       duration: legacyTuning.menu.title.pulseDurationMs,
       yoyo: true,
@@ -135,9 +152,24 @@ export class MenuScene extends Phaser.Scene {
       ease: 'Sine.easeInOut'
     });
 
-    let demo = createDemoWalkerState(maze);
+    const primeDemoState = (): ReturnType<typeof createDemoWalkerState> => {
+      let state = createDemoWalkerState(maze);
+      const prerollSteps = legacyTuning.demo.behavior.prerollSteps ?? 0;
+
+      for (let step = 0; step < prerollSteps; step += 1) {
+        const next = advanceDemoWalker(maze, state, legacyTuning.demo);
+        if (next.shouldRegenerateMaze || next.state.phase === 'reset-hold') {
+          break;
+        }
+        state = next.state;
+      }
+
+      return state;
+    };
+
+    let demo = primeDemoState();
     const renderDemo = (): void => {
-      boardRenderer.drawTrail(demo.trailIndices.slice(-legacyTuning.demo.behavior.trailMaxLength));
+      boardRenderer.drawTrail(demo.trailSteps.slice(-legacyTuning.demo.behavior.trailMaxLength));
       boardRenderer.drawActor(demo.currentIndex, demo.lastDirection);
     };
     const scheduleDemoAdvance = (delayMs: number): void => {
@@ -159,7 +191,7 @@ export class MenuScene extends Phaser.Scene {
           boardRenderer.drawBase();
           boardRenderer.drawGoal();
           demo = {
-            ...createDemoWalkerState(maze),
+            ...primeDemoState(),
             loops: next.state.loops
           };
         } else {
@@ -184,11 +216,10 @@ export class MenuScene extends Phaser.Scene {
 
     const exitButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.left;
     const optionsButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.right;
-    const sideButtonsFit = !isNarrow
-      && layout.boardX >= Math.max(exitButtonWidth, optionsButtonWidth) + legacyTuning.menu.layout.sideButtonsMinGutterPx;
-    const buttonY = sideButtonsFit
-      ? Math.min(height - legacyTuning.menu.layout.buttonBottomInsetPx, layout.boardY + layout.boardSize - legacyTuning.menu.buttons.laneBottomOffset)
-      : Math.min(height - legacyTuning.menu.layout.buttonBottomInsetPx, layout.boardY + layout.boardSize + 34);
+    const buttonY = Math.min(
+      height - legacyTuning.menu.layout.buttonBottomInsetPx,
+      layout.boardY + layout.boardSize + legacyTuning.menu.buttons.laneBottomOffset
+    );
     const requestedRowGap = Phaser.Math.Clamp(
       Math.round(width * legacyTuning.menu.buttons.spacingRatio),
       legacyTuning.menu.buttons.spacingMinPx,
@@ -208,18 +239,14 @@ export class MenuScene extends Phaser.Scene {
         )
       )
     );
-    const exitButtonX = sideButtonsFit
-      ? Math.max(
-        (exitButtonWidth / 2) + legacyTuning.menu.layout.buttonSideInsetPx,
-        layout.boardX / 2
-      )
-      : (width / 2) - rowGap - (exitButtonWidth / 2);
-    const optionsButtonX = sideButtonsFit
-      ? Math.min(
-        width - (optionsButtonWidth / 2) - legacyTuning.menu.layout.buttonSideInsetPx,
-        layout.boardX + layout.boardSize + ((width - (layout.boardX + layout.boardSize)) / 2)
-      )
-      : (width / 2) + rowGap + (optionsButtonWidth / 2);
+    const exitButtonX = Math.max(
+      legacyTuning.menu.layout.buttonSideInsetPx + (exitButtonWidth / 2),
+      (width / 2) - rowGap - (exitButtonWidth / 2)
+    );
+    const optionsButtonX = Math.min(
+      width - legacyTuning.menu.layout.buttonSideInsetPx - (optionsButtonWidth / 2),
+      (width / 2) + rowGap + (optionsButtonWidth / 2)
+    );
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {

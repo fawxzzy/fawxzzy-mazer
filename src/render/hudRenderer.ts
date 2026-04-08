@@ -19,17 +19,58 @@ const formatTime = (elapsedMs: number): string => {
 
 export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): HudHandle => {
   const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
+  const ultraCompact = scene.scale.width <= legacyTuning.hud.ultraCompactBreakpoint;
   const compact = scene.scale.width <= legacyTuning.hud.compactBreakpoint;
-  const panelInsetX = compact ? legacyTuning.hud.compactContentPaddingX : legacyTuning.hud.panelInsetX;
-  const panelHeight = compact ? legacyTuning.hud.compactPanelHeight : legacyTuning.hud.panelHeight;
-  const contentPaddingX = compact ? legacyTuning.hud.compactContentPaddingX : legacyTuning.hud.contentPaddingX;
-  const primaryTextY = compact ? legacyTuning.hud.compactPrimaryTextY : legacyTuning.hud.primaryTextY;
-  const secondaryTextY = compact ? legacyTuning.hud.compactSecondaryTextY : legacyTuning.hud.secondaryTextY;
-  const lineY = compact ? legacyTuning.hud.compactLineY : legacyTuning.hud.lineY;
-  const lineInsetX = compact ? legacyTuning.hud.compactLineInsetX : legacyTuning.hud.lineInsetX;
-  const timerFontPx = compact ? legacyTuning.hud.compactTimerFontPx : legacyTuning.hud.timerFontPx;
-  const arrowFontPx = compact ? legacyTuning.hud.compactArrowFontPx : legacyTuning.hud.arrowFontPx;
-  const hintFontPx = compact ? legacyTuning.hud.compactHintFontPx : legacyTuning.hud.hintFontPx;
+  const panelInsetX = ultraCompact
+    ? legacyTuning.hud.ultraCompactPanelInsetX
+    : compact
+      ? legacyTuning.hud.compactPanelInsetX
+      : legacyTuning.hud.panelInsetX;
+  const panelHeight = ultraCompact
+    ? legacyTuning.hud.ultraCompactPanelHeight
+    : compact
+      ? legacyTuning.hud.compactPanelHeight
+      : legacyTuning.hud.panelHeight;
+  const contentPaddingX = ultraCompact
+    ? legacyTuning.hud.ultraCompactContentPaddingX
+    : compact
+      ? legacyTuning.hud.compactContentPaddingX
+      : legacyTuning.hud.contentPaddingX;
+  const primaryTextY = ultraCompact
+    ? legacyTuning.hud.ultraCompactPrimaryTextY
+    : compact
+      ? legacyTuning.hud.compactPrimaryTextY
+      : legacyTuning.hud.primaryTextY;
+  const secondaryTextY = ultraCompact
+    ? legacyTuning.hud.ultraCompactSecondaryTextY
+    : compact
+      ? legacyTuning.hud.compactSecondaryTextY
+      : legacyTuning.hud.secondaryTextY;
+  const lineY = ultraCompact
+    ? legacyTuning.hud.ultraCompactLineY
+    : compact
+      ? legacyTuning.hud.compactLineY
+      : legacyTuning.hud.lineY;
+  const lineInsetX = ultraCompact
+    ? legacyTuning.hud.ultraCompactLineInsetX
+    : compact
+      ? legacyTuning.hud.compactLineInsetX
+      : legacyTuning.hud.lineInsetX;
+  const timerFontPx = ultraCompact
+    ? legacyTuning.hud.ultraCompactTimerFontPx
+    : compact
+      ? legacyTuning.hud.compactTimerFontPx
+      : legacyTuning.hud.timerFontPx;
+  const arrowFontPx = ultraCompact
+    ? legacyTuning.hud.ultraCompactArrowFontPx
+    : compact
+      ? legacyTuning.hud.compactArrowFontPx
+      : legacyTuning.hud.arrowFontPx;
+  const hintFontPx = ultraCompact
+    ? legacyTuning.hud.ultraCompactHintFontPx
+    : compact
+      ? legacyTuning.hud.compactHintFontPx
+      : legacyTuning.hud.hintFontPx;
   const panelWidth = Math.min(
     scene.scale.width - (panelInsetX * 2),
     legacyTuning.hud.panelMaxWidth
@@ -37,8 +78,8 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
   const panelLeft = (scene.scale.width - panelWidth) / 2;
   const panelRight = panelLeft + panelWidth;
   const hintTextValue = isTouchPrimary
-    ? (compact ? 'Swipe / tap pause' : 'Swipe to move / tap to pause')
-    : (compact ? 'Arrows/WASD / Esc' : 'Move: Arrows or WASD / Pause: P or Esc');
+    ? (ultraCompact ? 'Swipe / pause' : compact ? 'Swipe / tap pause' : 'Swipe to move / tap to pause')
+    : (ultraCompact ? 'Move / Esc' : compact ? 'Arrows/WASD / Esc' : 'Move: Arrows or WASD / Pause: P or Esc');
 
   scene.add
     .rectangle(
@@ -113,7 +154,7 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       }
     )
     .setOrigin(0.5, 0)
-    .setAlpha(0.68)
+    .setAlpha(ultraCompact ? 0.58 : 0.68)
     .setScrollFactor(0)
     .setDepth(1000);
 

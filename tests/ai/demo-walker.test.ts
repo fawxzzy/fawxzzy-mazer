@@ -65,6 +65,10 @@ describe('demo walker', () => {
     expect(advance.state.pathStackIndices).toEqual([1]);
     expect(advance.state.potentialBranchIndices).toEqual([5]);
     expect(advance.state.visited).toEqual(new Set([1]));
+    expect(advance.state.trailSteps).toEqual([
+      { index: 0, mode: 'explore' },
+      { index: 1, mode: 'explore' }
+    ]);
   });
 
   test('uses the legacy potential-target backtrack flow before taking a branch', () => {
@@ -73,28 +77,41 @@ describe('demo walker', () => {
       ...createDemoWalkerState(maze),
       currentIndex: 3,
       trailIndices: [0, 1, 3],
+      trailSteps: [
+        { index: 0, mode: 'explore' },
+        { index: 1, mode: 'explore' },
+        { index: 3, mode: 'explore' }
+      ],
       visited: new Set([1, 3]),
       pathStackIndices: [1, 3],
       potentialBranchIndices: [2]
     };
 
-    state = advanceDemoWalker(maze, state).state;
+    let advance = advanceDemoWalker(maze, state);
+    state = advance.state;
+    expect(advance.delayMs).toBe(124);
     expect(state.phase).toBe('backtrack');
     expect(state.targetIndex).toBe(2);
     expect(state.potentialBranchIndices).toEqual([]);
 
-    state = advanceDemoWalker(maze, state).state;
+    advance = advanceDemoWalker(maze, state);
+    state = advance.state;
     expect(state.phase).toBe('backtrack');
     expect(state.currentIndex).toBe(3);
     expect(state.pathStackIndices).toEqual([1]);
+    expect(state.trailSteps.at(-1)).toEqual({ index: 3, mode: 'explore' });
 
-    state = advanceDemoWalker(maze, state).state;
+    advance = advanceDemoWalker(maze, state);
+    state = advance.state;
+    expect(advance.delayMs).toBe(86);
     expect(state.phase).toBe('explore');
     expect(state.currentIndex).toBe(1);
+    expect(state.trailSteps.at(-1)).toEqual({ index: 1, mode: 'backtrack' });
 
     state = advanceDemoWalker(maze, state).state;
     expect(state.currentIndex).toBe(2);
     expect(state.phase).toBe('explore');
+    expect(state.trailSteps.at(-1)).toEqual({ index: 2, mode: 'explore' });
   });
 
   test('preserves visited history across legacy AI resets and flips logic switch', () => {
@@ -103,6 +120,11 @@ describe('demo walker', () => {
       ...createDemoWalkerState(maze),
       currentIndex: 3,
       trailIndices: [0, 1, 3],
+      trailSteps: [
+        { index: 0, mode: 'explore' },
+        { index: 1, mode: 'explore' },
+        { index: 3, mode: 'explore' }
+      ],
       visited: new Set([1, 3]),
       phase: 'backtrack',
       pathStackIndices: [],
@@ -119,6 +141,7 @@ describe('demo walker', () => {
     expect(nextState.visited.has(1)).toBe(true);
     expect(nextState.visited.has(3)).toBe(false);
     expect(nextState.visited.has(maze.startIndex)).toBe(true);
+    expect(nextState.trailSteps).toEqual([{ index: maze.startIndex, mode: 'explore' }]);
   });
 
   test('preserves the legacy logic-switch retarget bug before backtracking', () => {
@@ -127,6 +150,11 @@ describe('demo walker', () => {
       ...createDemoWalkerState(maze),
       currentIndex: 3,
       trailIndices: [0, 1, 3],
+      trailSteps: [
+        { index: 0, mode: 'explore' },
+        { index: 1, mode: 'explore' },
+        { index: 3, mode: 'explore' }
+      ],
       visited: new Set([1, 3]),
       pathStackIndices: [1, 3],
       potentialBranchIndices: [2],
@@ -145,7 +173,8 @@ describe('demo walker', () => {
 
     expect(advance.state.phase).toBe('goal-hold');
     expect(advance.state.reachedGoal).toBe(true);
-    expect(advance.delayMs).toBe(720);
+    expect(advance.delayMs).toBe(960);
+    expect(advance.state.trailSteps.at(-1)).toEqual({ index: maze.endIndex, mode: 'goal' });
 
     advance = advanceDemoWalker(maze, advance.state);
     expect(advance.state.phase).toBe('reset-hold');
