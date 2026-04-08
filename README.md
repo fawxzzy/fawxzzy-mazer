@@ -15,20 +15,16 @@ This repository is a clean rebuild of Mazer using **Vite + TypeScript + Phaser**
 npm install
 ```
 
-### 2) Run development server
+### Scripts / help
 ```bash
-npm run dev
-```
-
-### 3) Build for production
-```bash
+npm run dev -- --open
 npm run build
+npm run preview
+npm run test
+npm run test:soak
 ```
 
-### 4) Run tests
-```bash
-npm run test
-```
+`npm run preview` serves the production build locally on port `4173`.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.

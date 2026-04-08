@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort",
     "test": "vitest run --exclude tests/maze/maze-soak.test.ts",
     "test:soak": "vitest run tests/maze/maze-soak.test.ts",
     "lint": "tsc --noEmit"
