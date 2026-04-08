@@ -83,16 +83,30 @@ export class MenuScene extends Phaser.Scene {
       .setDepth(7)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
-    const titlePlateWidth = layout.boardSize * legacyTuning.menu.title.plateWidthRatio;
+    const titlePlateWidth = Phaser.Math.Clamp(
+      Math.round(layout.boardSize * (isNarrow ? 0.52 : legacyTuning.menu.title.plateWidthRatio)),
+      220,
+      420
+    );
     const titlePlateHeight = Phaser.Math.Clamp(
       Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio),
       legacyTuning.menu.title.plateHeightMinPx,
       legacyTuning.menu.title.plateHeightMaxPx
     );
     const titleY = Math.max(
-      titlePlateHeight / 2 + 10,
-      layout.boardY - Math.round(titlePlateHeight * (isNarrow ? 0.34 : 0.42))
+      titlePlateHeight / 2 + 12,
+      layout.boardY - Math.round(titlePlateHeight * (isNarrow ? 0.18 : 0.3))
     );
+    this.add
+      .rectangle(
+        width / 2,
+        titleY + 7,
+        titlePlateWidth + 10,
+        titlePlateHeight + 12,
+        palette.board.shadow,
+        0.38
+      )
+      .setDepth(8);
     this.add
       .rectangle(
         width / 2,
@@ -100,22 +114,54 @@ export class MenuScene extends Phaser.Scene {
         titlePlateWidth,
         titlePlateHeight,
         palette.board.well,
-        legacyTuning.menu.title.plateAlpha
+        0.22
       )
-      .setStrokeStyle(1, palette.board.innerStroke, 0.2)
+      .setStrokeStyle(1, palette.board.innerStroke, 0.24)
+      .setDepth(9);
+    this.add
+      .rectangle(
+        width / 2,
+        titleY,
+        titlePlateWidth - 14,
+        titlePlateHeight - 12,
+        palette.board.panel,
+        0.36
+      )
+      .setStrokeStyle(1, palette.board.topHighlight, 0.1)
+      .setDepth(9);
+    this.add
+      .rectangle(
+        width / 2,
+        titleY - (titlePlateHeight / 2) + 7,
+        titlePlateWidth - 18,
+        2,
+        palette.board.topHighlight,
+        0.18
+      )
       .setDepth(9);
 
     const title = this.add
-      .text(width / 2, titleY, legacyTuning.menu.title.text, {
+      .text(width / 2, titleY - 5, legacyTuning.menu.title.text, {
         color: '#75f78f',
         fontFamily: 'monospace',
         fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard), 38, 84)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
+      .setLetterSpacing(isNarrow ? 2 : 4)
       .setAlpha(legacyTuning.menu.title.alpha)
       .setStroke('#17381f', legacyTuning.menu.title.strokePx)
-      .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur, true, true)
+      .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 2, true, true)
+      .setDepth(10);
+    this.add
+      .text(width / 2, titleY + (titlePlateHeight * 0.24), 'LIVE DEMO', {
+        color: '#c7d0e6',
+        fontFamily: 'monospace',
+        fontSize: isNarrow ? '11px' : '12px'
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(3)
+      .setAlpha(0.62)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({

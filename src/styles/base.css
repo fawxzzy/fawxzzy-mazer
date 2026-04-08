@@ -1,14 +1,14 @@
 :root {
   color-scheme: dark;
   font-family: 'Courier New', Courier, monospace;
-  --mazer-bg-a: #472b78;
-  --mazer-bg-b: #24133d;
-  --mazer-bg-c: #0a0713;
-  --mazer-bg-d: #13081f;
-  --mazer-frame-stroke: #36455f;
-  --mazer-frame-focus: #8eb9df;
+  --mazer-bg-a: #22345f;
+  --mazer-bg-b: #121b32;
+  --mazer-bg-c: #060913;
+  --mazer-bg-d: #0b1223;
+  --mazer-frame-stroke: #415372;
+  --mazer-frame-focus: #9fd3ff;
   --mazer-canvas-shadow: rgba(0, 0, 0, 0.58);
-  --mazer-canvas-glow: rgba(110, 138, 226, 0.16);
+  --mazer-canvas-glow: rgba(90, 160, 255, 0.14);
   --mazer-shell-pad-x: clamp(10px, 1.6vw, 22px);
   --mazer-shell-pad-y: clamp(10px, 2vh, 22px);
 }
@@ -28,8 +28,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 50% 16%, rgba(121, 88, 194, 0.18) 0, rgba(121, 88, 194, 0) 34%),
-    radial-gradient(circle at 50% 42%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 44%, var(--mazer-bg-c) 100%),
+    radial-gradient(circle at 50% 12%, rgba(112, 176, 255, 0.12) 0, rgba(112, 176, 255, 0) 28%),
+    radial-gradient(circle at 50% 42%, var(--mazer-bg-a) 0, var(--mazer-bg-b) 42%, var(--mazer-bg-c) 100%),
     linear-gradient(180deg, var(--mazer-bg-d) 0, var(--mazer-bg-c) 100%)
     fixed;
   color: #f8f8ff;
@@ -47,17 +47,17 @@ body::after {
 
 body::before {
   background:
-    radial-gradient(circle at 50% 50%, rgba(188, 160, 255, 0.08) 0, rgba(188, 160, 255, 0) 48%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0) 82%, rgba(255, 255, 255, 0.018) 100%);
-  opacity: 0.74;
+    radial-gradient(circle at 50% 48%, rgba(148, 194, 255, 0.07) 0, rgba(148, 194, 255, 0) 46%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0, rgba(255, 255, 255, 0) 22%, rgba(255, 255, 255, 0) 78%, rgba(255, 255, 255, 0.012) 100%);
+  opacity: 0.62;
 }
 
 body::after {
   background-image: linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.024) 1px, transparent 1px);
   background-size: 32px 32px;
-  mask-image: radial-gradient(circle at center, black 24%, transparent 76%);
-  opacity: 0.1;
+  mask-image: radial-gradient(circle at center, black 18%, transparent 74%);
+  opacity: 0.07;
 }
 
 #app {
@@ -84,9 +84,10 @@ canvas {
   border: 1px solid var(--mazer-frame-stroke);
   border-radius: 0;
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 24px 42px var(--mazer-canvas-shadow),
-    0 0 32px var(--mazer-canvas-glow);
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 0 0 6px rgba(5, 9, 18, 0.44),
+    0 22px 42px var(--mazer-canvas-shadow),
+    0 0 28px var(--mazer-canvas-glow);
   touch-action: none;
   transition: box-shadow 200ms ease, border-color 200ms ease;
   animation: mazer-canvas-breathe 6.2s ease-in-out infinite;
@@ -97,6 +98,7 @@ canvas:focus-visible {
   border-color: var(--mazer-frame-focus);
   box-shadow:
     0 0 0 1px rgba(173, 212, 255, 0.18) inset,
+    0 0 0 6px rgba(5, 9, 18, 0.5),
     0 28px 44px rgba(0, 0, 0, 0.58),
     0 0 34px rgba(120, 192, 255, 0.22);
 }
@@ -105,15 +107,17 @@ canvas:focus-visible {
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-      0 24px 42px var(--mazer-canvas-shadow),
-      0 0 24px rgba(104, 138, 255, 0.12);
+      0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+      0 0 0 6px rgba(5, 9, 18, 0.44),
+      0 22px 42px var(--mazer-canvas-shadow),
+      0 0 22px rgba(104, 160, 255, 0.11);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-      0 28px 46px rgba(0, 0, 0, 0.6),
-      0 0 36px rgba(120, 184, 255, 0.2);
+      0 0 0 1px rgba(255, 255, 255, 0.045) inset,
+      0 0 0 6px rgba(5, 9, 18, 0.5),
+      0 26px 46px rgba(0, 0, 0, 0.6),
+      0 0 32px rgba(120, 184, 255, 0.18);
   }
 }
 
@@ -138,6 +142,7 @@ canvas:focus-visible {
     border-color: rgba(126, 153, 192, 0.72);
     box-shadow:
       0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+      0 0 0 3px rgba(5, 9, 18, 0.42),
       0 14px 28px rgba(0, 0, 0, 0.42),
       0 0 18px rgba(98, 136, 255, 0.12);
     animation-duration: 7.4s;

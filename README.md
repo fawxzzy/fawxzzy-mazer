@@ -15,7 +15,7 @@ This repository is a clean rebuild of Mazer using **Vite + TypeScript + Phaser**
 npm install
 ```
 
-### Scripts / help
+### Commands
 ```bash
 npm run dev -- --open
 npm run build

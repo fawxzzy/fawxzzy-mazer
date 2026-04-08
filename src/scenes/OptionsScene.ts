@@ -15,21 +15,55 @@ export class OptionsScene extends Phaser.Scene {
   public create(): void {
     const { width } = this.scale;
     const compact = width <= 620;
-    const buttonWidth = compact ? 220 : 248;
-    const copyWrapWidth = compact ? Math.max(240, width * 0.68) : 360;
-    const { container, contentY, panelBounds } = createOverlaySheet(this, 'Options', 'QA utility only. Attract mode stays on the front door');
     const menuScene = this.scene.get('MenuScene');
+    const buttonWidth = compact ? 232 : 214;
+    const copyWrapWidth = compact ? Math.max(242, width * 0.7) : 388;
+    const statusWrapWidth = compact ? copyWrapWidth + 18 : copyWrapWidth + 28;
+    const requestClose = (): void => {
+      if (this.clearBusy) {
+        return;
+      }
+
+      this.clearConfirmationArmed = false;
+      playSfx('cancel');
+      menuScene.events.emit('overlay-close');
+    };
+    const { container, contentY, panelBounds } = createOverlaySheet(
+      this,
+      'Options',
+      'QA utility only. Attract mode stays on the front door while the live demo remains the public shell.',
+      {
+        allowBackdropClose: true,
+        closeLabel: 'Back',
+        onRequestClose: requestClose
+      }
+    );
+
+    const sectionLabel = this.add
+      .text(panelBounds.left + 24, contentY - 8, 'QA ACCESS', {
+        color: '#86ecad',
+        fontFamily: 'monospace',
+        fontSize: compact ? '12px' : '13px'
+      })
+      .setOrigin(0, 0.5)
+      .setAlpha(0.84)
+      .setDepth(11);
+
+    const sectionRule = this.add
+      .rectangle(width / 2, sectionLabel.y + 18, panelBounds.right - panelBounds.left - 48, 1, 0xa0c8ff, 0.16)
+      .setOrigin(0.5)
+      .setDepth(11);
 
     const manualPlayButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + 104,
-      label: 'QA Manual Play',
+      y: contentY + 48,
+      label: 'Enter QA Manual Play',
       width: buttonWidth,
       onClick: () => menuScene.events.emit('overlay-manual-play')
-    });
+    }).setDepth(11);
 
     const bestTimeText = this.add
-      .text(width / 2, contentY + 168, '', {
+      .text(width / 2, manualPlayButton.y + 66, '', {
         color: '#c7d0e6',
         fontFamily: 'monospace',
         fontSize: compact ? '14px' : '16px',
@@ -37,22 +71,44 @@ export class OptionsScene extends Phaser.Scene {
         wordWrap: { width: copyWrapWidth }
       })
       .setOrigin(0.5)
-      .setAlpha(0.84);
+      .setAlpha(0.84)
+      .setDepth(11);
+
+    const helperText = this.add
+      .text(width / 2, bestTimeText.y + (compact ? 54 : 58), 'Shift+M jumps directly into a manual run. Esc, Backspace, Back, or the backdrop closes this sheet.', {
+        color: '#96a0c1',
+        fontFamily: 'monospace',
+        fontSize: compact ? '12px' : '13px',
+        align: 'center',
+        wordWrap: { width: copyWrapWidth + 24 }
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.76)
+      .setDepth(11);
+
+    const footerRule = this.add
+      .rectangle(width / 2, helperText.y + (compact ? 38 : 42), panelBounds.right - panelBounds.left - 48, 1, 0xa0c8ff, 0.14)
+      .setOrigin(0.5)
+      .setDepth(11);
 
     const statusText = this.add
-      .text(width / 2, contentY + (compact ? 236 : 228), '', {
+      .text(width / 2, footerRule.y + (compact ? 34 : 32), '', {
         color: '#aeb6d9',
         fontFamily: 'monospace',
         fontSize: compact ? '12px' : '14px',
         align: 'center',
-        wordWrap: { width: copyWrapWidth + 26 }
+        wordWrap: { width: statusWrapWidth }
       })
       .setOrigin(0.5)
-      .setAlpha(0.78);
+      .setAlpha(0.8)
+      .setDepth(11);
+
+    const footerRowY = panelBounds.bottom - (compact ? 108 : 64);
+    const footerBackY = panelBounds.bottom - (compact ? 56 : 64);
 
     const clearButton = createMenuButton(this, {
-      x: width / 2,
-      y: panelBounds.bottom - (compact ? 112 : 106),
+      x: compact ? width / 2 : width / 2 - 120,
+      y: footerRowY,
       label: 'Clear Local Data',
       width: buttonWidth,
       onClick: () => {
@@ -80,13 +136,13 @@ export class OptionsScene extends Phaser.Scene {
             refreshOptionsCopy('Unable to clear local data right now.');
           });
       }
-    });
+    }).setDepth(11);
 
     const secondaryButton = createMenuButton(this, {
-      x: width / 2,
-      y: panelBounds.bottom - (compact ? 58 : 54),
-      label: 'Close',
-      width: compact ? 176 : undefined,
+      x: compact ? width / 2 : width / 2 + 120,
+      y: compact ? footerBackY : footerRowY,
+      label: 'Back',
+      width: compact ? 190 : 168,
       onClick: () => {
         if (this.clearBusy) {
           return;
@@ -94,50 +150,23 @@ export class OptionsScene extends Phaser.Scene {
 
         if (this.clearConfirmationArmed) {
           this.clearConfirmationArmed = false;
-          refreshOptionsCopy();
+          refreshOptionsCopy('Clear cancelled. Local data is unchanged.');
           playSfx('cancel');
           return;
         }
 
-        menuScene.events.emit('overlay-close');
+        requestClose();
       }
-    });
-
-    const closeAffordance = this.add
-      .text(panelBounds.right - 18, panelBounds.top + 18, '[X] Close', {
-        color: '#d7ddf0',
-        fontFamily: 'monospace',
-        fontSize: compact ? '12px' : '13px'
-      })
-      .setOrigin(1, 0)
-      .setAlpha(0.74)
-      .setDepth(11)
-      .setInteractive({ useHandCursor: true });
-
-    closeAffordance.on('pointerover', () => {
-      closeAffordance.setAlpha(1);
-    });
-    closeAffordance.on('pointerout', () => {
-      closeAffordance.setAlpha(0.74);
-    });
-    closeAffordance.on('pointerdown', () => {
-      if (this.clearBusy) {
-        return;
-      }
-      playSfx('cancel');
-      menuScene.events.emit('overlay-close');
-    });
+    }).setDepth(11);
 
     container.setDepth(10);
-    bestTimeText.setDepth(11);
-    statusText.setDepth(11);
 
     const refreshOptionsCopy = (feedback?: string): void => {
       const fastest = mazerStorage.getFastestBestTime();
       bestTimeText.setText(
         fastest
-          ? `Best local run ${formatElapsedMs(fastest.elapsedMs)} on maze ${fastest.seed}. Shift+M still jumps straight into QA play.`
-          : 'No local run data stored yet. Shift+M still jumps straight into QA play.'
+          ? `Fastest local clear: ${formatElapsedMs(fastest.elapsedMs)} on maze ${fastest.seed}.`
+          : 'No local run data stored yet for this browser.'
       );
 
       if (feedback) {
@@ -147,7 +176,7 @@ export class OptionsScene extends Phaser.Scene {
       } else if (this.clearConfirmationArmed) {
         statusText.setText('Confirm clear to delete only Mazer-owned local data. Unrelated site data is left alone.');
       } else {
-        statusText.setText('Local QA only. The public surface stays on attract mode.');
+        statusText.setText('Manual play stays behind this panel. The attract loop remains the public-facing shell.');
       }
 
       clearButton
@@ -155,7 +184,7 @@ export class OptionsScene extends Phaser.Scene {
         .setLabel(this.clearBusy ? 'Clearing...' : this.clearConfirmationArmed ? 'Confirm Clear Data' : 'Clear Local Data');
       secondaryButton
         .setDisabled(this.clearBusy)
-        .setLabel(this.clearConfirmationArmed ? 'Cancel' : 'Close');
+        .setLabel(this.clearConfirmationArmed ? 'Cancel Clear' : 'Back');
       manualPlayButton.setDisabled(this.clearBusy);
     };
 
@@ -165,7 +194,7 @@ export class OptionsScene extends Phaser.Scene {
       if (this.clearBusy) {
         return;
       }
-      menuScene.events.emit('overlay-close');
+      requestClose();
     };
     this.input.keyboard?.on('keydown-ESC', escHandler);
     this.input.keyboard?.on('keydown-BACKSPACE', escHandler);
