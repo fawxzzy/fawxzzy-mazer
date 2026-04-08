@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1300,
+    reportCompressedSize: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

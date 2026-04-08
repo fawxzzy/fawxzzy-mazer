@@ -23,12 +23,6 @@ export interface BoardCueOptions {
   targetIndex?: number | null;
 }
 
-const normalizeTrailSteps = (trail: ReadonlyArray<number | DemoTrailStep>): DemoTrailStep[] => trail.map((step) => (
-  typeof step === 'number'
-    ? { index: step, mode: 'explore' }
-    : step
-));
-
 export const createBoardLayout = (
   scene: Phaser.Scene,
   maze: MazeBuildResult,
@@ -249,6 +243,7 @@ export class BoardRenderer {
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
     const { boardX, boardY, tileSize } = this.layout;
     const goalTile = this.maze.tiles[this.maze.endIndex];
+    const now = this.scene.time.now;
     this.goal.clear();
 
     const centerX = boardX + goalTile.x * tileSize + tileSize / 2;
@@ -264,8 +259,8 @@ export class BoardRenderer {
           ? 0.94
           : 1;
     const pulse = legacyTuning.board.goalPulse.basePulse
-      + (Math.sin(this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed) * legacyTuning.board.goalPulse.waveAmplitude * cueBoost);
-    const sparkPulse = 0.65 + (Math.sin((this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed * 0.66) + 0.85) * 0.35);
+      + (Math.sin(now * legacyTuning.board.goalPulse.waveSpeed) * legacyTuning.board.goalPulse.waveAmplitude * cueBoost);
+    const sparkPulse = 0.65 + (Math.sin((now * legacyTuning.board.goalPulse.waveSpeed * 0.66) + 0.85) * 0.35);
     const bracketInset = tileSize * legacyTuning.board.goalPulse.reticleInsetRatio;
     const bracketLength = tileSize * 0.18;
     const beaconRadius = tileSize * legacyTuning.board.goalPulse.beaconRadiusRatio * cueBoost;
@@ -346,15 +341,15 @@ export class BoardRenderer {
 
   public drawTrail(trail: ReadonlyArray<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
     const { boardX, boardY, tileSize } = this.layout;
-    const steps = normalizeTrailSteps(trail);
     const cue = options.cue ?? 'explore';
+    const now = this.scene.time.now;
     this.trail.clear();
     this.signal.clear();
     let previousCenterX = 0;
     let previousCenterY = 0;
-    const headIndex = steps.length - 1;
-    const headPulse = 1 + (Math.sin(this.scene.time.now * 0.008) * legacyTuning.board.trail.headPulseAmplitude);
-    const targetPulse = 0.7 + (Math.sin(this.scene.time.now * 0.01) * 0.3);
+    const headIndex = trail.length - 1;
+    const headPulse = 1 + (Math.sin(now * 0.008) * legacyTuning.board.trail.headPulseAmplitude);
+    const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
 
     if (options.targetIndex !== null && options.targetIndex !== undefined && cue !== 'explore' && cue !== 'spawn' && cue !== 'goal' && cue !== 'reset') {
       const targetTile = this.maze.tiles[options.targetIndex];
@@ -375,16 +370,17 @@ export class BoardRenderer {
       this.signal.lineBetween(targetX + tileSize - bracketInset, targetY + tileSize - bracketInset, targetX + tileSize - bracketInset, targetY + tileSize - bracketInset - bracketLength);
     }
 
-    for (let i = 0; i < steps.length; i += 1) {
-      const step = steps[i];
-      const index = step.index;
+    for (let i = 0; i < trail.length; i += 1) {
+      const step = trail[i];
+      const index = typeof step === 'number' ? step : step.index;
+      const mode = typeof step === 'number' ? 'explore' : step.mode;
       const tile = this.maze.tiles[index];
       const centerX = boardX + tile.x * tileSize + tileSize / 2;
       const centerY = boardY + tile.y * tileSize + tileSize / 2;
-      const t = steps.length <= 1 ? 1 : i / (steps.length - 1);
+      const t = trail.length <= 1 ? 1 : i / (trail.length - 1);
       const isHead = i === headIndex;
-      const isBacktrack = step.mode === 'backtrack';
-      const isGoalStep = step.mode === 'goal';
+      const isBacktrack = mode === 'backtrack';
+      const isGoalStep = mode === 'goal';
       const alphaBase = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
       const alphaScale = isBacktrack ? legacyTuning.board.trail.backtrackAlphaScale : 1;
       const alpha = Phaser.Math.Clamp(
@@ -497,8 +493,10 @@ export class BoardRenderer {
       previousCenterY = centerY;
     }
 
-    if (cue === 'dead-end' && steps[headIndex]) {
-      const headTile = this.maze.tiles[steps[headIndex].index];
+    if (cue === 'dead-end' && trail[headIndex]) {
+      const headStep = trail[headIndex];
+      const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
+      const headTile = this.maze.tiles[headIndexValue];
       const headX = boardX + headTile.x * tileSize;
       const headY = boardY + headTile.y * tileSize;
       const pulseInset = tileSize * 0.14;
@@ -515,12 +513,13 @@ export class BoardRenderer {
   public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null, cue: DemoWalkerCue = 'explore'): void {
     const { boardX, boardY, tileSize } = this.layout;
     const tile = this.maze.tiles[index];
+    const now = this.scene.time.now;
     const tileX = boardX + tile.x * tileSize;
     const tileY = boardY + tile.y * tileSize;
     const centerX = boardX + tile.x * tileSize + (tileSize / 2);
     const centerY = boardY + tile.y * tileSize + (tileSize / 2);
     const actorTuning = legacyTuning.board.actor;
-    const cuePulse = 1 + (Math.sin(this.scene.time.now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
+    const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
     const actorPulse = cue === 'goal'
       ? cuePulse * 1.06
       : cue === 'reacquire'
@@ -603,7 +602,7 @@ export class BoardRenderer {
 
     if (cue === 'dead-end') {
       const inset = tileSize * 0.1;
-      this.actor.lineStyle(Math.max(1, tileSize * 0.04), palette.board.goal, 0.4 + (Math.sin(this.scene.time.now * 0.012) * 0.14));
+      this.actor.lineStyle(Math.max(1, tileSize * 0.04), palette.board.goal, 0.4 + (Math.sin(now * 0.012) * 0.14));
       this.actor.strokeRect(tileX + inset, tileY + inset, tileSize - (inset * 2), tileSize - (inset * 2));
     }
   }

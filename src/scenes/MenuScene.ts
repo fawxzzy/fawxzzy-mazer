@@ -211,7 +211,7 @@ export class MenuScene extends Phaser.Scene {
     let lastCue = demo.cue;
     const syncDemoPresentation = (): void => {
       boardRenderer.drawGoal(demo.cue);
-      boardRenderer.drawTrail(demo.trailSteps.slice(-legacyTuning.demo.behavior.trailMaxLength), {
+      boardRenderer.drawTrail(demo.trailSteps, {
         cue: demo.cue,
         targetIndex: demo.targetIndex
       });
@@ -342,8 +342,16 @@ export class MenuScene extends Phaser.Scene {
       if (!this.overlayManager.isOverlayActive()) {
         this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
       } else {
-        playSfx('cancel');
-        this.overlayManager.closeActive();
+        const activeOverlay = this.overlayManager.getActiveOverlay();
+        if (!activeOverlay) {
+          return;
+        }
+
+        const handled = this.scene.get(activeOverlay).events.emit('overlay-request-close');
+        if (!handled) {
+          playSfx('cancel');
+          this.overlayManager.closeActive();
+        }
       }
     };
     const manualShortcutHandler = (event: KeyboardEvent) => {

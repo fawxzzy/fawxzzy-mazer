@@ -105,6 +105,8 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
   const hintTextValue = isTouchPrimary
     ? (ultraCompact ? 'Swipe / pause' : compact ? 'Swipe / tap pause' : 'Swipe to move / tap to pause')
     : (ultraCompact ? 'Move / Esc' : compact ? 'Arrows/WASD / Esc' : 'Move: Arrows or WASD / Pause: P or Esc');
+  let lastElapsedLabel = '00:00';
+  let lastGoalLabel = 'Goal ^';
 
   scene.add
     .rectangle(
@@ -212,7 +214,11 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
 
   return {
     setElapsedMs(elapsedMs: number): void {
-      timerText.setText(formatTime(elapsedMs));
+      const nextElapsedLabel = formatTime(elapsedMs);
+      if (nextElapsedLabel !== lastElapsedLabel) {
+        lastElapsedLabel = nextElapsedLabel;
+        timerText.setText(nextElapsedLabel);
+      }
     },
     setGoalArrow(playerIndex: number): void {
       const player = maze.tiles[playerIndex];
@@ -221,7 +227,11 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       const dy = goal.y - player.y;
       const isHorizontal = Math.abs(dx) >= Math.abs(dy);
       const glyph = isHorizontal ? (dx >= 0 ? '>' : '<') : (dy >= 0 ? 'v' : '^');
-      arrowText.setText(`Goal ${glyph}`);
+      const nextGoalLabel = `Goal ${glyph}`;
+      if (nextGoalLabel !== lastGoalLabel) {
+        lastGoalLabel = nextGoalLabel;
+        arrowText.setText(nextGoalLabel);
+      }
     }
   };
 };
@@ -239,6 +249,7 @@ export const createDemoStatusHud = (
     maxWidth
   );
   const height = compact ? legacyTuning.menu.status.compactHeightPx : legacyTuning.menu.status.heightPx;
+  let lastCue: DemoWalkerCue = 'spawn';
 
   const shadow = scene.add
     .rectangle(x, y + 3, width + 8, height + 6, palette.hud.shadow, 0.28)
@@ -271,6 +282,11 @@ export const createDemoStatusHud = (
 
   return {
     setCue(cue: DemoWalkerCue): void {
+      if (cue === lastCue) {
+        return;
+      }
+
+      lastCue = cue;
       text.setText(demoCueLabels[cue]);
       text.setColor(toCssColor(demoCueColors[cue]));
       plate.setStrokeStyle(1, demoCueColors[cue], 0.44);

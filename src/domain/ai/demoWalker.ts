@@ -93,14 +93,13 @@ export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState =>
   cue: 'spawn'
 });
 
-const distanceToGoal = (maze: MazeBuildResult, index: number): number => {
+const distanceToGoalSquared = (maze: MazeBuildResult, index: number): number => {
   const tile = maze.tiles[index];
   const goal = maze.tiles[maze.endIndex];
-  return Math.hypot(goal.x - tile.x, goal.y - tile.y);
+  const dx = goal.x - tile.x;
+  const dy = goal.y - tile.y;
+  return (dx * dx) + (dy * dy);
 };
-
-const getPathNeighbors = (maze: MazeBuildResult, fromIndex: number): number[] => maze.tiles[fromIndex].neighbors
-  .filter((neighborIndex) => neighborIndex !== -1 && maze.tiles[neighborIndex].path) as number[];
 
 const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: number): 0 | 1 | 2 | 3 => {
   const direction = maze.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
@@ -110,10 +109,6 @@ const resolveDirection = (maze: MazeBuildResult, fromIndex: number, toIndex: num
   return direction as 0 | 1 | 2 | 3;
 };
 
-const boundTrail = <T>(values: T[], maxLength: number): T[] => (
-  values.length <= maxLength ? values : values.slice(values.length - maxLength)
-);
-
 const appendTrailHistory = (
   trailSteps: DemoTrailStep[],
   nextIndex: number,
@@ -121,11 +116,16 @@ const appendTrailHistory = (
   mode: DemoTrailMode,
   maxLength: number
 ): DemoTrailStep[] => {
+  const nextTrailSteps = trailSteps.slice();
   if (nextIndex === currentIndex) {
-    return boundTrail([...trailSteps], maxLength);
+    return nextTrailSteps;
   }
 
-  return boundTrail([...trailSteps, { index: nextIndex, mode }], maxLength);
+  nextTrailSteps.push({ index: nextIndex, mode });
+  if (nextTrailSteps.length > maxLength) {
+    nextTrailSteps.splice(0, nextTrailSteps.length - maxLength);
+  }
+  return nextTrailSteps;
 };
 
 const appendTrailStep = (
@@ -134,14 +134,27 @@ const appendTrailStep = (
   currentIndex: number,
   maxLength: number
 ): number[] => {
+  const nextTrailIndices = trailIndices.slice();
   if (nextIndex === currentIndex) {
-    return boundTrail([...trailIndices], maxLength);
+    return nextTrailIndices;
   }
 
-  return boundTrail([...trailIndices, nextIndex], maxLength);
+  nextTrailIndices.push(nextIndex);
+  if (nextTrailIndices.length > maxLength) {
+    nextTrailIndices.splice(0, nextTrailIndices.length - maxLength);
+  }
+  return nextTrailIndices;
 };
 
-const removeAll = (indices: number[], targetIndex: number): number[] => indices.filter((index) => index !== targetIndex);
+const removeAllInPlace = (indices: number[], targetIndex: number): number[] => {
+  for (let index = indices.length - 1; index >= 0; index -= 1) {
+    if (indices[index] === targetIndex) {
+      indices.splice(index, 1);
+    }
+  }
+
+  return indices;
+};
 
 const createMazeResetFallbackState = (maze: MazeBuildResult, loops: number): DemoWalkerState => ({
   ...createDemoWalkerState(maze),
@@ -163,7 +176,11 @@ const aiTilePathCheck = (
   }
 
   let validNeighborCount = additionalPaths;
-  for (const neighborIndex of getPathNeighbors(maze, tileIndex)) {
+  for (const neighborIndex of maze.tiles[tileIndex].neighbors) {
+    if (neighborIndex === -1 || !maze.tiles[neighborIndex].path) {
+      continue;
+    }
+
     if (neighborIndex !== state.currentIndex && !state.visited.has(neighborIndex)) {
       validNeighborCount += 1;
     }
@@ -302,7 +319,11 @@ export const advanceDemoWalker = (
     }
 
     let backtrackUndoVisited = false;
-    for (const neighborIndex of getPathNeighbors(maze, nextIndex)) {
+    for (const neighborIndex of maze.tiles[nextIndex].neighbors) {
+      if (neighborIndex === -1 || !maze.tiles[neighborIndex].path) {
+        continue;
+      }
+
       if (state.potentialBranchIndices.includes(neighborIndex)
         && aiTilePathCheck(maze, state, neighborIndex, config.behavior.aiTilePathAdditionalPaths)) {
         backtrackUndoVisited = true;
@@ -346,7 +367,11 @@ export const advanceDemoWalker = (
   let smallestDistance = Number.POSITIVE_INFINITY;
   const potentialBranchIndices = [...state.potentialBranchIndices];
 
-  for (const neighborIndex of getPathNeighbors(maze, state.currentIndex)) {
+  for (const neighborIndex of maze.tiles[state.currentIndex].neighbors) {
+    if (neighborIndex === -1 || !maze.tiles[neighborIndex].path) {
+      continue;
+    }
+
     if (state.visited.has(neighborIndex)
       || !aiTilePathCheck(maze, state, neighborIndex, config.behavior.aiTilePathAdditionalPaths)) {
       continue;
@@ -354,7 +379,7 @@ export const advanceDemoWalker = (
 
     potentialBranchIndices.push(neighborIndex);
 
-    const candidateDistance = distanceToGoal(maze, neighborIndex);
+    const candidateDistance = distanceToGoalSquared(maze, neighborIndex);
     if (candidateDistance < smallestDistance) {
       smallestDistance = candidateDistance;
       nextIndex = neighborIndex;
@@ -383,7 +408,7 @@ export const advanceDemoWalker = (
         phase: reachedGoal ? 'goal-hold' : 'explore',
         stepsTaken: state.stepsTaken + 1,
         lastDirection: resolveDirection(maze, state.currentIndex, nextIndex),
-        potentialBranchIndices: removeAll(potentialBranchIndices, nextIndex),
+        potentialBranchIndices: removeAllInPlace(potentialBranchIndices, nextIndex),
         pathStackIndices: [...state.pathStackIndices, nextIndex],
         targetIndex: null,
         backtrackUndoVisited: false,
@@ -418,7 +443,7 @@ export const advanceDemoWalker = (
 
     if (aiTilePathCheck(maze, state, candidateIndex, config.behavior.aiTilePathAdditionalPaths)) {
       targetIndex = candidateIndex;
-      remainingPotentialBranches = removeAll(remainingPotentialBranches, candidateIndex);
+      remainingPotentialBranches = removeAllInPlace(remainingPotentialBranches, candidateIndex);
     }
   }
 

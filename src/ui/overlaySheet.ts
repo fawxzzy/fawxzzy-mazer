@@ -4,6 +4,8 @@ import { palette } from '../render/palette';
 interface OverlaySheetOptions {
   allowBackdropClose?: boolean;
   closeLabel?: string;
+  heightRatio?: number;
+  maxSheetHeight?: number;
   onRequestClose?: () => void;
 }
 
@@ -16,25 +18,30 @@ export const createOverlaySheet = (
   container: Phaser.GameObjects.Container;
   contentY: number;
   panelBounds: { bottom: number; left: number; right: number; top: number };
+  setCloseDisabled: (disabled: boolean) => void;
 } => {
   const { width, height } = scene.scale;
   const compact = width <= 620;
   const {
     allowBackdropClose = false,
     closeLabel = 'Close',
+    heightRatio = compact ? 0.8 : 0.7,
+    maxSheetHeight = compact ? 492 : 432,
     onRequestClose
   } = options;
+  const closeAction = onRequestClose;
+  const hasCloseAction = typeof closeAction === 'function';
 
   const dim = scene.add
     .rectangle(width / 2, height / 2, width, height, 0x000000, compact ? 0.7 : 0.64)
     .setOrigin(0.5);
-  if (allowBackdropClose && onRequestClose) {
+  if (allowBackdropClose && hasCloseAction) {
     dim.setInteractive({ useHandCursor: true });
-    dim.on('pointerdown', () => onRequestClose());
+    dim.on('pointerdown', () => closeAction?.());
   }
 
   const sheetWidth = Math.min(compact ? width - 56 : width * 0.72, 620);
-  const sheetHeight = Math.min(compact ? height * 0.8 : height * 0.7, compact ? 492 : 432);
+  const sheetHeight = Math.min(height * heightRatio, maxSheetHeight);
   const panelLeft = (width / 2) - (sheetWidth / 2);
   const panelRight = (width / 2) + (sheetWidth / 2);
   const panelTop = (height / 2) - (sheetHeight / 2);
@@ -103,68 +110,120 @@ export const createOverlaySheet = (
       fontFamily: 'monospace',
       fontSize: compact ? '13px' : '15px',
       align: 'left',
-      wordWrap: { width: sheetWidth - (compact ? 116 : 148) }
+      wordWrap: { width: sheetWidth - (compact ? (hasCloseAction ? 116 : 56) : (hasCloseAction ? 148 : 72)) }
     })
     .setOrigin(0, 0);
 
-  const closeWidth = compact ? 72 : 82;
-  const closeHeight = compact ? 28 : 30;
-  const closeX = panelRight - (compact ? 18 : 22) - (closeWidth / 2);
-  const closeY = panelTop + (compact ? 28 : 30);
-  const closePlate = scene.add
-    .rectangle(closeX, closeY, closeWidth, closeHeight, palette.ui.buttonFill, 0.76)
-    .setStrokeStyle(1.5, palette.board.innerStroke, 0.34)
-    .setOrigin(0.5);
-  const closeText = scene.add
-    .text(closeX, closeY, closeLabel, {
-      color: '#dfe7f7',
-      fontFamily: 'monospace',
-      fontSize: compact ? '13px' : '14px'
-    })
-    .setOrigin(0.5)
-    .setAlpha(0.9);
-  const closeHit = scene.add
-    .rectangle(closeX, closeY, closeWidth, closeHeight, 0x000000, 0.001)
-    .setOrigin(0.5);
-  if (onRequestClose) {
+  let closeDisabled = false;
+  let closeHovered = false;
+  const closeControls: Phaser.GameObjects.GameObject[] = [];
+  let syncCloseVisualState: (() => void) | undefined;
+
+  if (hasCloseAction) {
+    const closeWidth = compact ? 78 : 90;
+    const closeHeight = compact ? 28 : 32;
+    const closeX = panelRight - (compact ? 18 : 22) - (closeWidth / 2);
+    const closeY = panelTop + (compact ? 28 : 30);
+    const closePlate = scene.add
+      .rectangle(closeX, closeY, closeWidth, closeHeight, palette.ui.buttonFill, 0.76)
+      .setStrokeStyle(1.5, palette.board.innerStroke, 0.34)
+      .setOrigin(0.5);
+    const closeText = scene.add
+      .text(closeX, closeY, closeLabel, {
+        color: '#dfe7f7',
+        fontFamily: 'monospace',
+        fontSize: compact ? '13px' : '14px'
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.9);
+    const closeHit = scene.add
+      .rectangle(closeX, closeY, closeWidth, closeHeight, 0x000000, 0.001)
+      .setOrigin(0.5);
+
+    syncCloseVisualState = (): void => {
+      if (closeDisabled) {
+        closePlate.setFillStyle(palette.ui.buttonFill, 0.32);
+        closePlate.setStrokeStyle(1.5, palette.board.innerStroke, 0.18);
+        closeText.setAlpha(0.42);
+        return;
+      }
+
+      closePlate.setFillStyle(closeHovered ? palette.ui.buttonHover : palette.ui.buttonFill, closeHovered ? 0.9 : 0.76);
+      closePlate.setStrokeStyle(1.5, closeHovered ? palette.board.topHighlight : palette.board.innerStroke, closeHovered ? 0.56 : 0.34);
+      closeText.setAlpha(closeHovered ? 1 : 0.9);
+    };
+
     closeHit.setInteractive({ useHandCursor: true });
     closeHit.on('pointerover', () => {
-      closePlate.setFillStyle(palette.ui.buttonHover, 0.9);
-      closePlate.setStrokeStyle(1.5, palette.board.topHighlight, 0.56);
-      closeText.setAlpha(1);
+      if (closeDisabled) {
+        return;
+      }
+      closeHovered = true;
+      syncCloseVisualState?.();
     });
     closeHit.on('pointerout', () => {
-      closePlate.setFillStyle(palette.ui.buttonFill, 0.76);
-      closePlate.setStrokeStyle(1.5, palette.board.innerStroke, 0.34);
-      closeText.setAlpha(0.9);
+      closeHovered = false;
+      syncCloseVisualState?.();
     });
-    closeHit.on('pointerdown', () => onRequestClose());
+    closeHit.on('pointerdown', () => {
+      if (!closeDisabled) {
+        closeAction?.();
+      }
+    });
+
+    closeControls.push(closePlate, closeText, closeHit);
+    syncCloseVisualState();
+  }
+
+  const setCloseDisabled = (disabled: boolean): void => {
+    if (!hasCloseAction) {
+      return;
+    }
+
+    closeDisabled = disabled;
+    closeHovered = false;
+
+    const closeHit = closeControls[2] as Phaser.GameObjects.Rectangle | undefined;
+    if (!closeHit) {
+      return;
+    }
+
+    if (disabled) {
+      closeHit.disableInteractive();
+    } else if (!closeHit.input?.enabled) {
+      closeHit.setInteractive({ useHandCursor: true });
+    }
+
+    syncCloseVisualState?.();
+  };
+
+  const sheetChildren: Phaser.GameObjects.GameObject[] = [
+    dim,
+    halo,
+    shadow,
+    panel,
+    panelInset,
+    headerBand,
+    headerGlow,
+    divider,
+    frameAccents,
+    panelHit,
+    titleText,
+    subtitleText
+  ];
+  if (closeControls.length > 0) {
+    sheetChildren.push(...closeControls);
   }
 
   return {
-    container: scene.add.container(0, 0, [
-      dim,
-      halo,
-      shadow,
-      panel,
-      panelInset,
-      headerBand,
-      headerGlow,
-      divider,
-      frameAccents,
-      panelHit,
-      titleText,
-      subtitleText,
-      closePlate,
-      closeText,
-      closeHit
-    ]),
+    container: scene.add.container(0, 0, sheetChildren),
     contentY: subtitleText.y + subtitleText.height + (compact ? 32 : 36),
     panelBounds: {
       bottom: panelBottom,
       left: panelLeft,
       right: panelRight,
       top: panelTop
-    }
+    },
+    setCloseDisabled
   };
 };
