@@ -1,45 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
-import {
-  createGrid,
-  generateMaze,
-  isIndexValid,
-  isWithinSameRow,
-  type MazeBuildResult,
-  resetAndRegenerate
-} from '../../src/domain/maze';
+import { createGrid, generateMaze, isIndexValid, isWithinSameRow, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
+import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
-const defaultConfig = {
+const defaultConfig: MazeConfig = {
   scale: 20,
   seed: 42,
   checkPointModifier: 0.2,
   shortcutCountModifier: 0.2
-};
-
-const hasPathConnection = (maze: MazeBuildResult): boolean => {
-  const queue = [maze.startIndex];
-  const visited = new Set<number>([maze.startIndex]);
-
-  while (queue.length > 0) {
-    const index = queue.shift();
-    if (index === undefined) {
-      continue;
-    }
-
-    if (index === maze.endIndex) {
-      return true;
-    }
-
-    for (const neighborIndex of maze.tiles[index].neighbors) {
-      if (neighborIndex === -1 || visited.has(neighborIndex) || !maze.tiles[neighborIndex].path) {
-        continue;
-      }
-      visited.add(neighborIndex);
-      queue.push(neighborIndex);
-    }
-  }
-
-  return false;
 };
 
 describe('maze domain generation', () => {
@@ -47,35 +15,23 @@ describe('maze domain generation', () => {
     const a = generateMaze(defaultConfig);
     const b = generateMaze(defaultConfig);
 
-    expect(a.startIndex).toBe(b.startIndex);
-    expect(a.endIndex).toBe(b.endIndex);
-    expect(a.pathIndices).toEqual(b.pathIndices);
-    expect(a.tiles.map((t) => ({ floor: t.floor, path: t.path, end: t.end }))).toEqual(
-      b.tiles.map((t) => ({ floor: t.floor, path: t.path, end: t.end }))
-    );
+    expect(serializeMaze(a)).toEqual(serializeMaze(b));
   });
 
-  test('start and end are valid and marked as floor/path', () => {
+  test('preserves core maze invariants', () => {
+    assertMazeInvariants(generateMaze(defaultConfig));
+  });
+
+  test('keeps checkpoint selection aligned with the recovered legacy sampling band', () => {
     const maze = generateMaze(defaultConfig);
 
-    expect(maze.startIndex).toBeGreaterThanOrEqual(0);
-    expect(maze.startIndex).toBeLessThan(maze.tiles.length);
-    expect(maze.endIndex).toBeGreaterThanOrEqual(0);
-    expect(maze.endIndex).toBeLessThan(maze.tiles.length);
-
-    expect(maze.tiles[maze.startIndex].floor).toBe(true);
-    expect(maze.tiles[maze.startIndex].path).toBe(true);
-    expect(maze.tiles[maze.endIndex].floor).toBe(true);
-    expect(maze.tiles[maze.endIndex].path).toBe(true);
-    expect(maze.tiles[maze.endIndex].end).toBe(true);
+    expect(maze.checkpointIndices.length).toBeGreaterThan(0);
+    for (const checkpointIndex of maze.checkpointIndices) {
+      expect(checkpointIndex).toBeGreaterThanOrEqual(defaultConfig.scale * 3);
+    }
   });
 
-  test('main path is traversable from start to end', () => {
-    const maze = generateMaze(defaultConfig);
-    expect(hasPathConnection(maze)).toBe(true);
-  });
-
-  test('shortcuts are created when configured for large scales', () => {
+  test('creates shortcut bridges on larger boards', () => {
     const maze = generateMaze({
       scale: 40,
       seed: 333,
@@ -83,6 +39,7 @@ describe('maze domain generation', () => {
       shortcutCountModifier: 0.8
     });
 
+    assertMazeInvariants(maze);
     expect(maze.shortcutsCreated).toBeGreaterThan(0);
   });
 
@@ -119,5 +76,37 @@ describe('maze domain generation', () => {
     expect(regenerated.resetGame).toBe(false);
     expect(regenerated.processCount).toBe(7);
     expect(regenerated.result.seed).toBe(43);
+    assertMazeInvariants(regenerated.result);
   });
+
+  test('remains stable across repeated regeneration', () => {
+    let state = {
+      processCount: 7,
+      resetGame: false,
+      result: generateMaze(defaultConfig)
+    };
+
+    for (let seed = 44; seed < 84; seed += 1) {
+      state = resetAndRegenerate(
+        {
+          ...state,
+          resetGame: true
+        },
+        {
+          ...defaultConfig,
+          seed
+        }
+      );
+
+      assertMazeInvariants(state.result);
+      expect(serializeMaze(state.result)).toEqual(
+        serializeMaze(
+          generateMaze({
+            ...defaultConfig,
+            seed
+          })
+        )
+      );
+    }
+  }, 20000);
 });

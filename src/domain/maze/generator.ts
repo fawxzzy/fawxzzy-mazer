@@ -13,7 +13,13 @@ export const generateMaze = (config: MazeConfig): MazeBuildResult => {
   const startIndex = rng.nextInt(0, tiles.length - 1);
   const checkpointCount = normalizeCheckpointCount(config.scale, config.checkPointModifier);
 
-  const { pathIndices, endIndex } = mapPathWithCheckpoints(tiles, startIndex, checkpointCount, rng);
+  const { pathIndices, checkpointIndices, endIndex } = mapPathWithCheckpoints(
+    tiles,
+    startIndex,
+    config.scale,
+    checkpointCount,
+    rng
+  );
   const wallIndices = createWallsFromPath(tiles, pathIndices, endIndex);
 
   const shortcutBudget = config.scale > 35 ? normalizeShortcutCount(config.scale, config.shortcutCountModifier) : 0;
@@ -31,6 +37,7 @@ export const generateMaze = (config: MazeConfig): MazeBuildResult => {
     seed: config.seed,
     tiles,
     pathIndices,
+    checkpointIndices,
     wallIndices,
     startIndex,
     endIndex,

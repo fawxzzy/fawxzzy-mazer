@@ -2,7 +2,7 @@ import type { SeededRng } from '../rng/seededRng';
 import type { MazeTile } from './types';
 
 export const createWallsFromPath = (tiles: MazeTile[], pathIndices: number[], endIndex: number): number[] => {
-  const wallSet = new Set<number>();
+  const wallIndices: number[] = [];
 
   for (const pathIndex of pathIndices) {
     for (const neighborIndex of tiles[pathIndex].neighbors) {
@@ -11,11 +11,11 @@ export const createWallsFromPath = (tiles: MazeTile[], pathIndices: number[], en
       }
 
       tiles[neighborIndex].floor = false;
-      wallSet.add(neighborIndex);
+      wallIndices.push(neighborIndex);
     }
   }
 
-  return [...wallSet];
+  return wallIndices;
 };
 
 export const createShortcuts = (

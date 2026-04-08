@@ -3,24 +3,29 @@ import type { MazeTile } from './types';
 
 interface MapPathResult {
   pathIndices: number[];
+  checkpointIndices: number[];
   endIndex: number;
 }
 
-const distanceSquared = (a: MazeTile, b: MazeTile): number => {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return (dx * dx) + (dy * dy);
-};
+interface PathEntry {
+  index: number;
+  pathLength: number;
+}
+
+const distance = (a: MazeTile, b: MazeTile): number => Math.hypot(a.x - b.x, a.y - b.y);
 
 const pickCheckpoint = (
   tiles: MazeTile[],
   startIndex: number,
+  scale: number,
   remainingCheckpoints: number,
   rng: SeededRng
 ): { checkpointIndex: number | null; remainingCheckpoints: number } => {
+  const gridSize = tiles.length;
+  const lowerBound = Math.min(gridSize - 1, Math.max(0, scale * 3));
+  const startNeighbors = new Set(tiles[startIndex].neighbors.filter((neighborIndex) => neighborIndex !== -1));
   let breakCount = 1;
   let remaining = remainingCheckpoints;
-  const startNeighbors = new Set(tiles[startIndex].neighbors.filter((n) => n !== -1));
 
   while (remaining > 0) {
     if (breakCount % 10 === 0) {
@@ -30,17 +35,25 @@ const pickCheckpoint = (
       }
     }
 
-    const randTile = rng.nextInt(0, tiles.length - 1);
-    const tile = tiles[randTile];
+    const candidateIndex = rng.nextInt(lowerBound, gridSize - 1);
+    const candidate = tiles[candidateIndex];
 
-    if (tile.index === startIndex || tile.neighborCount !== 4 || tile.path || startNeighbors.has(tile.index)) {
+    if (
+      candidate.index === startIndex ||
+      candidate.neighborCount !== 4 ||
+      candidate.path ||
+      startNeighbors.has(candidate.index)
+    ) {
       breakCount += 1;
       continue;
     }
 
-    const hasPathNeighbor = tile.neighbors.some((neighborIndex) => neighborIndex === -1 || tiles[neighborIndex].path);
-    if (!hasPathNeighbor) {
-      return { checkpointIndex: tile.index, remainingCheckpoints: remaining - 1 };
+    const hasOnlyNonPathNeighbors = candidate.neighbors.every(
+      (neighborIndex) => neighborIndex !== -1 && !tiles[neighborIndex].path
+    );
+
+    if (hasOnlyNonPathNeighbors) {
+      return { checkpointIndex: candidate.index, remainingCheckpoints: remaining - 1 };
     }
 
     breakCount += 1;
@@ -49,12 +62,23 @@ const pickCheckpoint = (
   return { checkpointIndex: null, remainingCheckpoints: remaining };
 };
 
-const checkNextTile = (tiles: MazeTile[], startIndex: number, currentIndex: number, neighborIndex: number, backtracking: boolean): boolean => {
+const checkNextTile = (
+  tiles: MazeTile[],
+  startIndex: number,
+  currentIndex: number,
+  neighborIndex: number,
+  backtracking: boolean
+): boolean => {
   let pathCount = 0;
   const neighborTile = tiles[neighborIndex];
 
   for (const subNeighborIndex of neighborTile.neighbors) {
-    if (subNeighborIndex === -1 || subNeighborIndex === currentIndex || subNeighborIndex === startIndex || currentIndex === startIndex) {
+    if (
+      subNeighborIndex === -1 ||
+      subNeighborIndex === currentIndex ||
+      subNeighborIndex === startIndex ||
+      currentIndex === startIndex
+    ) {
       continue;
     }
 
@@ -69,12 +93,17 @@ const checkNextTile = (tiles: MazeTile[], startIndex: number, currentIndex: numb
   return true;
 };
 
-const findClosestTile = (tiles: MazeTile[], currentIndex: number, checkpointIndex: number, startIndex: number, backtracking: boolean): number => {
-  const current = tiles[currentIndex];
-  let best = -1;
-  let bestDistance = Number.POSITIVE_INFINITY;
+const findClosestTile = (
+  tiles: MazeTile[],
+  currentIndex: number,
+  checkpointIndex: number,
+  startIndex: number,
+  backtracking: boolean
+): number => {
+  let returnIndex = -1;
+  let smallestDistance = Number.POSITIVE_INFINITY;
 
-  for (const neighborIndex of current.neighbors) {
+  for (const neighborIndex of tiles[currentIndex].neighbors) {
     if (neighborIndex === -1 || tiles[neighborIndex].path) {
       continue;
     }
@@ -84,42 +113,57 @@ const findClosestTile = (tiles: MazeTile[], currentIndex: number, checkpointInde
     }
 
     if (checkNextTile(tiles, startIndex, currentIndex, neighborIndex, backtracking)) {
-      const d = distanceSquared(tiles[neighborIndex], tiles[checkpointIndex]);
-      if (d < bestDistance) {
-        bestDistance = d;
-        best = neighborIndex;
+      const candidateDistance = distance(tiles[neighborIndex], tiles[checkpointIndex]);
+      if (candidateDistance < smallestDistance) {
+        smallestDistance = candidateDistance;
+        returnIndex = neighborIndex;
       }
     }
   }
 
-  return best;
+  return returnIndex;
 };
 
-const findRandomTile = (tiles: MazeTile[], currentIndex: number, checkpointIndex: number, startIndex: number, backtracking: boolean, rng: SeededRng): number => {
-  const candidate = tiles[currentIndex].neighbors[rng.nextInt(0, 3)];
-  if (candidate === -1 || tiles[candidate].path) {
+const findRandomTile = (
+  tiles: MazeTile[],
+  currentIndex: number,
+  checkpointIndex: number,
+  startIndex: number,
+  backtracking: boolean,
+  rng: SeededRng
+): number => {
+  const randomDirection = rng.nextInt(0, 3) as 0 | 1 | 2 | 3;
+  const candidateIndex = tiles[currentIndex].neighbors[randomDirection];
+  if (candidateIndex === -1 || tiles[candidateIndex].path) {
     return -1;
   }
 
-  return checkNextTile(tiles, startIndex, currentIndex, candidate, backtracking) || candidate === checkpointIndex ? candidate : -1;
+  return checkNextTile(tiles, startIndex, currentIndex, candidateIndex, backtracking) || candidateIndex === checkpointIndex
+    ? candidateIndex
+    : -1;
 };
 
-const findPreferredTile = (tiles: MazeTile[], currentIndex: number, checkpointIndex: number, startIndex: number, backtracking: boolean): number => {
-  const current = tiles[currentIndex];
-  const checkpoint = tiles[checkpointIndex];
+const findPreferredTile = (
+  tiles: MazeTile[],
+  currentIndex: number,
+  checkpointIndex: number,
+  startIndex: number,
+  backtracking: boolean
+): number => {
+  const currentTile = tiles[currentIndex];
+  const checkpointTile = tiles[checkpointIndex];
+  const preferredDirection = (Math.abs(checkpointTile.x - currentTile.x) <= Math.abs(checkpointTile.y - currentTile.y)
+    ? (checkpointTile.x > currentTile.x ? 3 : 2)
+    : (checkpointTile.y > currentTile.y ? 0 : 1)) as 0 | 1 | 2 | 3;
 
-  const dx = checkpoint.x - current.x;
-  const dy = checkpoint.y - current.y;
-  const preferredDirection = (Math.abs(dx) <= Math.abs(dy)
-    ? (dx > 0 ? 3 : 2)
-    : (dy > 0 ? 0 : 1)) as 0 | 1 | 2 | 3;
-
-  const candidate = current.neighbors[preferredDirection];
-  if (candidate === -1 || tiles[candidate].path) {
+  const candidateIndex = currentTile.neighbors[preferredDirection];
+  if (candidateIndex === -1 || tiles[candidateIndex].path) {
     return -1;
   }
 
-  return checkNextTile(tiles, startIndex, currentIndex, candidate, backtracking) || candidate === checkpointIndex ? candidate : -1;
+  return checkNextTile(tiles, startIndex, currentIndex, candidateIndex, backtracking) || candidateIndex === checkpointIndex
+    ? candidateIndex
+    : -1;
 };
 
 const findNextTile = (
@@ -130,102 +174,125 @@ const findNextTile = (
   backtracking: boolean,
   rng: SeededRng
 ): number => {
-  const indices = [
+  const candidateIndices = [
     findClosestTile(tiles, currentIndex, checkpointIndex, startIndex, backtracking),
     findRandomTile(tiles, currentIndex, checkpointIndex, startIndex, backtracking, rng),
     findPreferredTile(tiles, currentIndex, checkpointIndex, startIndex, backtracking)
   ];
 
-  while (indices.length > 0) {
-    const randomPick = rng.nextInt(0, indices.length - 1);
-    const index = indices[randomPick];
-    if (index !== -1) {
-      return index;
+  while (candidateIndices.length > 0) {
+    const pickedCandidateOffset = rng.nextInt(0, candidateIndices.length - 1);
+    const pickedIndex = candidateIndices[pickedCandidateOffset];
+    if (pickedIndex !== -1) {
+      return pickedIndex;
     }
-    indices.splice(randomPick, 1);
+
+    candidateIndices.splice(pickedCandidateOffset, 1);
   }
 
   return -1;
 };
 
-const backtrack = (tiles: MazeTile[], pathIndices: number[], checkpointIndex: number, startIndex: number, rng: SeededRng): number => {
-  const scored = pathIndices
-    .map((index) => ({ index, d: distanceSquared(tiles[index], tiles[checkpointIndex]) }))
-    .sort((a, b) => a.d - b.d)
-    .map((entry) => entry.index);
+const backtrack = (
+  tiles: MazeTile[],
+  pathEntries: PathEntry[],
+  checkpointIndex: number,
+  startIndex: number,
+  rng: SeededRng
+): { nextIndex: number; pathLength: number } => {
+  const potentialPathEntries: PathEntry[] = [];
+  let smallestDistance = Number.POSITIVE_INFINITY;
 
-  if (scored.length === 0) {
-    return -1;
-  }
-
-  if (rng.nextInt(0, 3) === 3) {
-    const randomTile = scored[rng.nextInt(0, scored.length - 1)];
-    return findNextTile(tiles, randomTile, checkpointIndex, startIndex, true, rng);
-  }
-
-  for (let i = scored.length - 1; i >= 0; i -= 1) {
-    const candidate = findNextTile(tiles, scored[i], checkpointIndex, startIndex, true, rng);
-    if (candidate !== -1) {
-      return candidate;
+  for (const entry of pathEntries) {
+    const candidateDistance = distance(tiles[entry.index], tiles[checkpointIndex]);
+    if (candidateDistance < smallestDistance) {
+      smallestDistance = candidateDistance;
+      potentialPathEntries.push(entry);
     }
   }
 
-  return -1;
+  if (potentialPathEntries.length === 0) {
+    return { nextIndex: -1, pathLength: 0 };
+  }
+
+  if (rng.nextInt(0, 3) === 3) {
+    const randomEntry = potentialPathEntries[rng.nextInt(0, potentialPathEntries.length - 1)];
+    const nextIndex = findNextTile(tiles, randomEntry.index, checkpointIndex, startIndex, true, rng);
+    if (nextIndex !== -1) {
+      return { nextIndex, pathLength: randomEntry.pathLength };
+    }
+  } else {
+    for (let i = potentialPathEntries.length - 1; i >= 0; i -= 1) {
+      const entry = potentialPathEntries[i];
+      const nextIndex = findNextTile(tiles, entry.index, checkpointIndex, startIndex, true, rng);
+      if (nextIndex !== -1) {
+        return { nextIndex, pathLength: entry.pathLength };
+      }
+    }
+  }
+
+  return { nextIndex: -1, pathLength: 0 };
 };
 
 export const mapPathWithCheckpoints = (
   tiles: MazeTile[],
   startIndex: number,
+  scale: number,
   checkpointCount: number,
   rng: SeededRng
 ): MapPathResult => {
   const pathIndices: number[] = [];
+  const checkpointIndices: number[] = [];
+  const pathEntries: PathEntry[] = [];
   let remaining = checkpointCount;
   let currentIndex = startIndex;
   let pathLengthCount = 0;
-  let longestLength = 0;
+  let longestLength = Number.NEGATIVE_INFINITY;
   let endIndex = startIndex;
 
   while (remaining > 0) {
-    const { checkpointIndex, remainingCheckpoints } = pickCheckpoint(tiles, startIndex, remaining, rng);
+    const { checkpointIndex, remainingCheckpoints } = pickCheckpoint(tiles, startIndex, scale, remaining, rng);
     remaining = remainingCheckpoints;
     if (checkpointIndex === null) {
       break;
     }
 
     while (true) {
-      tiles[currentIndex].path = true;
-      pathIndices.push(currentIndex);
-      pathLengthCount += 1;
-
-      if (currentIndex === checkpointIndex) {
-        break;
-      }
-
-      const tempCurrent = currentIndex;
-      const nextIndex = findNextTile(tiles, currentIndex, checkpointIndex, startIndex, false, rng);
-      if (nextIndex === -1) {
-        if (pathLengthCount > longestLength) {
-          longestLength = pathLengthCount;
-          endIndex = tempCurrent;
-        }
-
-        const backtracked = backtrack(tiles, pathIndices, checkpointIndex, startIndex, rng);
-        if (backtracked === -1) {
+      if (currentIndex === -1) {
+        const { nextIndex, pathLength } = backtrack(tiles, pathEntries, checkpointIndex, startIndex, rng);
+        if (nextIndex === -1) {
           break;
         }
 
-        currentIndex = backtracked;
-        const indexInPath = pathIndices.lastIndexOf(currentIndex);
-        pathLengthCount = indexInPath >= 0 ? indexInPath + 1 : pathLengthCount;
+        currentIndex = nextIndex;
+        pathLengthCount = pathLength;
         continue;
       }
 
-      currentIndex = nextIndex;
+      tiles[currentIndex].path = true;
+      tiles[currentIndex].floor = true;
+      pathLengthCount += 1;
+      pathIndices.push(currentIndex);
+      pathEntries.push({ index: currentIndex, pathLength: pathLengthCount });
+
+      if (currentIndex === checkpointIndex) {
+        checkpointIndices.push(checkpointIndex);
+        break;
+      }
+
+      const previousIndex = currentIndex;
+      currentIndex = findNextTile(tiles, currentIndex, checkpointIndex, startIndex, false, rng);
+
+      if (currentIndex === -1 && pathLengthCount > longestLength) {
+        longestLength = pathLengthCount;
+        endIndex = previousIndex;
+      }
     }
   }
 
   tiles[startIndex].path = true;
+  tiles[startIndex].floor = true;
+
   if (!pathIndices.includes(startIndex)) {
     pathIndices.unshift(startIndex);
   }
@@ -236,10 +303,10 @@ export const mapPathWithCheckpoints = (
 
   tiles[endIndex].end = true;
   tiles[endIndex].floor = true;
-  tiles[startIndex].floor = true;
 
   return {
     pathIndices,
+    checkpointIndices,
     endIndex
   };
 };

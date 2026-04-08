@@ -4,7 +4,11 @@ export interface SeededRng {
 }
 
 /**
- * Deterministic Mulberry32 RNG for stable maze generation from seed.
+ * Deterministic Mulberry32 stream used in place of the legacy mix of
+ * `std::mt19937` and repeated `std::rand(std::time(0))` calls.
+ *
+ * The port preserves legacy control flow while making the output stable for a
+ * given seed.
  */
 export class Mulberry32 implements SeededRng {
   private state: number;

@@ -12,16 +12,31 @@ The maze generation lane is implemented as an index-based, renderer-agnostic dom
   - Grid construction and cardinal neighbor indexing in ordered slots `[top, bottom, left, right]`.
   - Border handling is encoded via `neighborCount` and floor defaults.
 - `src/domain/maze/path.ts`
-  - Checkpoint-driven path carving with mixed neighbor strategy:
+  - Legacy-ported checkpoint-driven path carving with mixed neighbor strategy:
     - closest-to-checkpoint candidate
     - random candidate
     - direction-preferred candidate
-  - Local adjacency validation prevents dense/invalid routing and supports controlled backtracking.
-  - Longest discovered path branch drives end-tile selection.
+  - Local adjacency validation prevents dense/invalid routing and preserves the Unreal backtracking rules.
+  - Checkpoint sampling now follows the recovered legacy banding (`scale * 3 .. scale^2 - 1`) instead of scanning the full board.
+  - Legacy backtracking behavior is preserved, including the "record new closest path entries, then retry from the newest viable one" quirk.
 - `src/domain/maze/shortcuts.ts`
   - Shortcut pass opens qualifying wall bridges only when opposite path corridors exist, matching legacy corridor-bridge behavior.
+  - Wall candidates intentionally remain duplicated because the Unreal `WallArray` accumulated duplicates and that weighting affects shortcut picks.
 - `src/domain/maze/generator.ts`
-  - Orchestrates full generation pipeline in pure functions and provides a reset/regenerate loop API.
+  - Orchestrates the legacy stage order in pure functions and provides a reset/regenerate loop API.
+
+### Legacy parity notes
+
+- Ported directly from recovered Unreal code:
+  - checkpoint count and shortcut budget formulas
+  - checkpoint validity rules
+  - mixed next-tile chooser ordering
+  - backtracking path selection behavior
+  - duplicate wall accumulation before shortcut carving
+  - reset loop semantics of "consume reset flag, rebuild, return ready state"
+- Approximated on purpose:
+  - legacy randomness mixed `std::mt19937`, `std::rand`, and `std::time(0)` reseeding; the rebuild uses one deterministic seeded stream so the same input seed always reproduces the same maze
+  - legacy menu/demo generation yielded partial work across ticks; the pure TS domain runs the same logic to completion in one call
 
 ### Output contract
 

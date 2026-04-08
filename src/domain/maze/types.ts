@@ -23,6 +23,7 @@ export interface MazeBuildResult {
   seed: number;
   tiles: MazeTile[];
   pathIndices: number[];
+  checkpointIndices: number[];
   wallIndices: number[];
   startIndex: number;
   endIndex: number;
