@@ -49,7 +49,7 @@ export class OptionsScene extends Phaser.Scene {
       .setAlpha(0.84)
       .setDepth(11);
 
-    const sectionRule = this.add
+    this.add
       .rectangle(width / 2, sectionLabel.y + 18, panelBounds.right - panelBounds.left - 48, 1, 0xa0c8ff, 0.16)
       .setOrigin(0.5)
       .setDepth(11);

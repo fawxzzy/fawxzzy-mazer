@@ -70,10 +70,12 @@ describe('demo walker', () => {
     const maze = createBranchChoiceMaze();
     const advance = advanceDemoWalker(maze, createDemoWalkerState(maze));
 
+    expect(advance.delayMs).toBe(104);
     expect(advance.state.currentIndex).toBe(1);
     expect(advance.state.pathStackIndices).toEqual([1]);
     expect(advance.state.potentialBranchIndices).toEqual([5]);
     expect(advance.state.visited).toEqual(new Set([1]));
+    expect(advance.state.cue).toBe('explore');
     expect(advance.state.trailSteps).toEqual([
       { index: 0, mode: 'explore' },
       { index: 1, mode: 'explore' }
@@ -98,28 +100,33 @@ describe('demo walker', () => {
 
     let advance = advanceDemoWalker(maze, state);
     state = advance.state;
-    expect(advance.delayMs).toBe(124);
+    expect(advance.delayMs).toBe(228);
     expect(state.phase).toBe('backtrack');
     expect(state.targetIndex).toBe(2);
     expect(state.potentialBranchIndices).toEqual([]);
+    expect(state.cue).toBe('dead-end');
 
     advance = advanceDemoWalker(maze, state);
     state = advance.state;
+    expect(advance.delayMs).toBe(76);
     expect(state.phase).toBe('backtrack');
     expect(state.currentIndex).toBe(3);
     expect(state.pathStackIndices).toEqual([1]);
+    expect(state.cue).toBe('backtrack');
     expect(state.trailSteps.at(-1)).toEqual({ index: 3, mode: 'explore' });
 
     advance = advanceDemoWalker(maze, state);
     state = advance.state;
-    expect(advance.delayMs).toBe(86);
+    expect(advance.delayMs).toBe(148);
     expect(state.phase).toBe('explore');
     expect(state.currentIndex).toBe(1);
+    expect(state.cue).toBe('reacquire');
     expect(state.trailSteps.at(-1)).toEqual({ index: 1, mode: 'backtrack' });
 
     state = advanceDemoWalker(maze, state).state;
     expect(state.currentIndex).toBe(2);
     expect(state.phase).toBe('explore');
+    expect(state.cue).toBe('explore');
     expect(state.trailSteps.at(-1)).toEqual({ index: 2, mode: 'explore' });
   });
 
@@ -144,6 +151,7 @@ describe('demo walker', () => {
 
     expect(nextState.phase).toBe('reset-hold');
     expect(nextState.resetReason).toBe('ai-reset');
+    expect(nextState.cue).toBe('reset');
     expect(nextState.currentIndex).toBe(maze.startIndex);
     expect(nextState.logicSwitch).toBe(false);
     expect(nextState.loops).toBe(1);
@@ -174,6 +182,7 @@ describe('demo walker', () => {
     expect(nextState.phase).toBe('backtrack');
     expect(nextState.targetIndex).toBeNull();
     expect(nextState.potentialBranchIndices).toEqual([]);
+    expect(nextState.cue).toBe('dead-end');
   });
 
   test('requests a maze regeneration after reaching the goal', () => {
@@ -182,18 +191,21 @@ describe('demo walker', () => {
 
     expect(advance.state.phase).toBe('goal-hold');
     expect(advance.state.reachedGoal).toBe(true);
-    expect(advance.delayMs).toBe(960);
+    expect(advance.delayMs).toBe(1180);
+    expect(advance.state.cue).toBe('goal');
     expect(advance.state.trailSteps.at(-1)).toEqual({ index: maze.endIndex, mode: 'goal' });
 
     advance = advanceDemoWalker(maze, advance.state);
     expect(advance.state.phase).toBe('reset-hold');
     expect(advance.state.resetReason).toBe('goal');
+    expect(advance.state.cue).toBe('goal');
 
     advance = advanceDemoWalker(maze, advance.state);
     expect(advance.shouldRegenerateMaze).toBe(true);
     expect(advance.nextSeed).toBe(1989);
     expect(advance.state.currentIndex).toBe(maze.startIndex);
     expect(advance.state.loops).toBe(1);
+    expect(advance.state.cue).toBe('spawn');
   });
 
   test('caps demo trail buffers instead of retaining the full run history', () => {

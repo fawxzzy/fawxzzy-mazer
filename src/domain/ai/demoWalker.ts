@@ -29,6 +29,7 @@ export interface DemoWalkerAdvance {
 export type DemoWalkerPhase = 'explore' | 'backtrack' | 'goal-hold' | 'reset-hold';
 type DemoWalkerResetReason = 'goal' | 'ai-reset' | null;
 export type DemoTrailMode = 'explore' | 'backtrack' | 'goal';
+export type DemoWalkerCue = 'spawn' | 'explore' | 'dead-end' | 'backtrack' | 'reacquire' | 'goal' | 'reset';
 
 export interface DemoTrailStep {
   index: number;
@@ -51,20 +52,21 @@ export interface DemoWalkerState {
   backtrackUndoVisited: boolean;
   logicSwitch: boolean;
   resetReason: DemoWalkerResetReason;
+  cue: DemoWalkerCue;
 }
 
 const defaultConfig: DemoWalkerConfig = {
   seed: 1988,
   cadence: {
-    exploreStepMs: 92,
-    backtrackStepMs: 60,
-    decisionPauseMs: 124,
-    branchResumeMs: 86,
-    goalHoldMs: 960,
-    resetHoldMs: 420
+    exploreStepMs: 104,
+    backtrackStepMs: 76,
+    decisionPauseMs: 228,
+    branchResumeMs: 148,
+    goalHoldMs: 1180,
+    resetHoldMs: 340
   },
   behavior: {
-    trailMaxLength: 44,
+    trailMaxLength: 46,
     aiTilePathAdditionalPaths: 0,
     preserveVisitedOnAiReset: true,
     emulateLogicSwitchPotentialCheckBug: true,
@@ -87,7 +89,8 @@ export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState =>
   targetIndex: null,
   backtrackUndoVisited: false,
   logicSwitch: false,
-  resetReason: null
+  resetReason: null,
+  cue: 'spawn'
 });
 
 const distanceToGoal = (maze: MazeBuildResult, index: number): number => {
@@ -198,7 +201,8 @@ const applyAiReset = (
     targetIndex: null,
     backtrackUndoVisited: false,
     logicSwitch: !state.logicSwitch,
-    resetReason: 'ai-reset'
+    resetReason: 'ai-reset',
+    cue: 'reset'
   };
 };
 
@@ -214,7 +218,8 @@ const createGoalResetState = (maze: MazeBuildResult, state: DemoWalkerState): De
   targetIndex: null,
   backtrackUndoVisited: false,
   logicSwitch: false,
-  resetReason: 'goal'
+  resetReason: 'goal',
+  cue: 'goal'
 });
 
 export const advanceDemoWalker = (
@@ -245,7 +250,8 @@ export const advanceDemoWalker = (
         phase: 'explore',
         reachedGoal: false,
         stepsTaken: state.stepsTaken + 1,
-        resetReason: null
+        resetReason: null,
+        cue: 'explore'
       },
       delayMs: config.cadence.exploreStepMs
     };
@@ -287,7 +293,8 @@ export const advanceDemoWalker = (
               ? state.lastDirection
               : resolveDirection(maze, state.currentIndex, nextIndex),
             targetIndex: null,
-            backtrackUndoVisited: false
+            backtrackUndoVisited: false,
+            cue: 'reacquire'
           },
           delayMs: config.cadence.branchResumeMs
         };
@@ -328,7 +335,8 @@ export const advanceDemoWalker = (
           ? state.lastDirection
           : resolveDirection(maze, state.currentIndex, nextIndex),
         pathStackIndices: state.pathStackIndices.slice(0, -1),
-        backtrackUndoVisited
+        backtrackUndoVisited,
+        cue: 'backtrack'
       },
       delayMs: config.cadence.backtrackStepMs
     };
@@ -379,7 +387,8 @@ export const advanceDemoWalker = (
         pathStackIndices: [...state.pathStackIndices, nextIndex],
         targetIndex: null,
         backtrackUndoVisited: false,
-        resetReason: null
+        resetReason: null,
+        cue: reachedGoal ? 'goal' : 'explore'
       },
       delayMs: reachedGoal ? config.cadence.goalHoldMs : config.cadence.exploreStepMs
     };
@@ -393,7 +402,8 @@ export const advanceDemoWalker = (
         stepsTaken: state.stepsTaken + 1,
         potentialBranchIndices: [],
         targetIndex: null,
-        backtrackUndoVisited: false
+        backtrackUndoVisited: false,
+        cue: 'dead-end'
       },
       delayMs: config.cadence.decisionPauseMs
     };
@@ -419,7 +429,8 @@ export const advanceDemoWalker = (
       stepsTaken: state.stepsTaken + 1,
       potentialBranchIndices: remainingPotentialBranches,
       targetIndex,
-      backtrackUndoVisited: false
+      backtrackUndoVisited: false,
+      cue: 'dead-end'
     },
     delayMs: config.cadence.decisionPauseMs
   };

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { DemoWalkerCue } from '../domain/ai';
 import type { MazeBuildResult } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { palette } from './palette';
@@ -8,6 +9,10 @@ interface HudHandle {
   setGoalArrow(playerIndex: number): void;
 }
 
+interface DemoStatusHandle {
+  setCue(cue: DemoWalkerCue): void;
+}
+
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
 const formatTime = (elapsedMs: number): string => {
@@ -15,6 +20,26 @@ const formatTime = (elapsedMs: number): string => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const demoCueLabels: Record<DemoWalkerCue, string> = {
+  spawn: 'LIVE DEMO: SCANNING',
+  explore: 'LIVE DEMO: EXPLORING',
+  'dead-end': 'LIVE DEMO: DEAD END',
+  backtrack: 'LIVE DEMO: BACKTRACK',
+  reacquire: 'LIVE DEMO: NEW ROUTE',
+  goal: 'LIVE DEMO: GOAL LOCK',
+  reset: 'LIVE DEMO: RESETTING'
+};
+
+const demoCueColors: Record<DemoWalkerCue, number> = {
+  spawn: palette.hud.accent,
+  explore: palette.hud.timerText,
+  'dead-end': palette.hud.goalText,
+  backtrack: palette.board.topHighlight,
+  reacquire: palette.hud.accent,
+  goal: palette.hud.goalText,
+  reset: palette.hud.hintText
 };
 
 export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): HudHandle => {
@@ -197,6 +222,59 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       const isHorizontal = Math.abs(dx) >= Math.abs(dy);
       const glyph = isHorizontal ? (dx >= 0 ? '>' : '<') : (dy >= 0 ? 'v' : '^');
       arrowText.setText(`Goal ${glyph}`);
+    }
+  };
+};
+
+export const createDemoStatusHud = (
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  maxWidth: number
+): DemoStatusHandle => {
+  const compact = scene.scale.width <= legacyTuning.menu.layout.narrowBreakpoint;
+  const width = Phaser.Math.Clamp(
+    maxWidth * legacyTuning.menu.status.maxWidthRatio,
+    legacyTuning.menu.status.minWidthPx,
+    maxWidth
+  );
+  const height = compact ? legacyTuning.menu.status.compactHeightPx : legacyTuning.menu.status.heightPx;
+
+  const shadow = scene.add
+    .rectangle(x, y + 3, width + 8, height + 6, palette.hud.shadow, 0.28)
+    .setDepth(10);
+
+  const plate = scene.add
+    .rectangle(x, y, width, height, palette.hud.panel, 0.62)
+    .setStrokeStyle(1, palette.hud.panelStroke, 0.44)
+    .setDepth(10);
+
+  const text = scene.add
+    .text(x, y, demoCueLabels.spawn, {
+      color: toCssColor(demoCueColors.spawn),
+      fontFamily: '"Courier New", monospace',
+      fontSize: `${compact ? legacyTuning.menu.status.compactFontPx : legacyTuning.menu.status.fontPx}px`,
+      fontStyle: 'bold'
+    })
+    .setOrigin(0.5)
+    .setDepth(11)
+    .setAlpha(0.86);
+
+  scene.tweens.add({
+    targets: [plate, text],
+    alpha: { from: 0.78, to: 1 },
+    duration: legacyTuning.menu.status.pulseDurationMs,
+    yoyo: true,
+    repeat: -1,
+    ease: 'Sine.easeInOut'
+  });
+
+  return {
+    setCue(cue: DemoWalkerCue): void {
+      text.setText(demoCueLabels[cue]);
+      text.setColor(toCssColor(demoCueColors[cue]));
+      plate.setStrokeStyle(1, demoCueColors[cue], 0.44);
+      shadow.setFillStyle(palette.hud.shadow, cue === 'goal' ? 0.34 : 0.28);
     }
   };
 };

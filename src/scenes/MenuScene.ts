@@ -6,6 +6,7 @@ import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
+import { createDemoStatusHud } from '../render/hudRenderer';
 
 const OVERLAY_EVENTS = {
   open: 'overlay-open',
@@ -17,7 +18,7 @@ export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
   private titlePulseTween?: Phaser.Tweens.Tween;
   private starDriftTween?: Phaser.Tweens.Tween;
-  private boardGoalPulse?: Phaser.Time.TimerEvent;
+  private heroRefreshTimer?: Phaser.Time.TimerEvent;
   private demoStepTimer?: Phaser.Time.TimerEvent;
   private transitionLocked = false;
 
@@ -153,16 +154,12 @@ export class MenuScene extends Phaser.Scene {
       .setStroke('#17381f', legacyTuning.menu.title.strokePx)
       .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 2, true, true)
       .setDepth(10);
-    this.add
-      .text(width / 2, titleY + (titlePlateHeight * 0.24), 'LIVE DEMO', {
-        color: '#c7d0e6',
-        fontFamily: 'monospace',
-        fontSize: isNarrow ? '11px' : '12px'
-      })
-      .setOrigin(0.5)
-      .setLetterSpacing(3)
-      .setAlpha(0.62)
-      .setDepth(10);
+    const demoStatusHud = createDemoStatusHud(
+      this,
+      width / 2,
+      titleY + legacyTuning.menu.status.insetY,
+      titlePlateWidth - 18
+    );
 
     this.titlePulseTween = this.tweens.add({
       targets: title,
@@ -211,9 +208,39 @@ export class MenuScene extends Phaser.Scene {
     };
 
     let demo = primeDemoState();
+    let lastCue = demo.cue;
+    const syncDemoPresentation = (): void => {
+      boardRenderer.drawGoal(demo.cue);
+      boardRenderer.drawTrail(demo.trailSteps.slice(-legacyTuning.demo.behavior.trailMaxLength), {
+        cue: demo.cue,
+        targetIndex: demo.targetIndex
+      });
+      boardRenderer.drawActor(demo.currentIndex, demo.lastDirection, demo.cue);
+      demoStatusHud.setCue(demo.cue);
+    };
+    const accentCueBeat = (): void => {
+      if (demo.cue === 'dead-end' || demo.cue === 'goal') {
+        this.tweens.add({
+          targets: boardShade,
+          alpha: { from: 0.16, to: 0.026 },
+          duration: demo.cue === 'goal' ? 340 : 220,
+          ease: 'Quad.easeOut'
+        });
+      } else if (demo.cue === 'reacquire') {
+        this.tweens.add({
+          targets: boardShade,
+          alpha: { from: 0.11, to: 0.026 },
+          duration: 220,
+          ease: 'Quad.easeOut'
+        });
+      }
+    };
     const renderDemo = (): void => {
-      boardRenderer.drawTrail(demo.trailSteps.slice(-legacyTuning.demo.behavior.trailMaxLength));
-      boardRenderer.drawActor(demo.currentIndex, demo.lastDirection);
+      syncDemoPresentation();
+      if (demo.cue !== lastCue) {
+        accentCueBeat();
+        lastCue = demo.cue;
+      }
     };
     const scheduleDemoAdvance = (delayMs: number): void => {
       this.demoStepTimer?.remove(false);
@@ -249,11 +276,11 @@ export class MenuScene extends Phaser.Scene {
     renderDemo();
     scheduleDemoAdvance(legacyTuning.demo.cadence.exploreStepMs);
 
-    this.boardGoalPulse = this.time.addEvent({
-      delay: legacyTuning.demo.cadence.goalPulseMs,
+    this.heroRefreshTimer = this.time.addEvent({
+      delay: legacyTuning.demo.cadence.heroRefreshMs,
       loop: true,
       callback: () => {
-        boardRenderer.drawGoal();
+        syncDemoPresentation();
       }
     });
 
@@ -330,7 +357,7 @@ export class MenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.titlePulseTween?.remove();
       this.starDriftTween?.remove();
-      this.boardGoalPulse?.remove(false);
+      this.heroRefreshTimer?.remove(false);
       this.demoStepTimer?.remove(false);
       this.overlayManager.closeAll();
       this.input.keyboard?.off('keydown-ESC', escHandler);

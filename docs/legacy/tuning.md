@@ -53,10 +53,11 @@ This pass rechecked the rebuilt maze/domain code against the read-only Unreal so
 - Maze randomness is still deterministic/seeded in the rebuild.
   Legacy C++ mixed `std::random_device`, `std::rand`, and `std::srand(time(0))`, so exact roll-for-roll output is not reproducible from source alone.
 - Demo timer values remain approximated.
-  `_PlayerAiDelayDuration` was blueprint-driven in the Unreal project; the rebuild keeps the current calibrated timings:
-  `exploreStepMs: 92`, `backtrackStepMs: 60`, `decisionPauseMs: 124`, `branchResumeMs: 86`, `goalHoldMs: 960`, `resetHoldMs: 420`.
+  `_PlayerAiDelayDuration` was blueprint-driven in the Unreal project; the rebuild now keeps a more staged but still deterministic calibration for readability:
+  `exploreStepMs: 104`, `backtrackStepMs: 76`, `decisionPauseMs: 228`, `branchResumeMs: 148`, `goalHoldMs: 1180`, `resetHoldMs: 340`.
 - Demo maze regeneration uses deterministic seed stepping (`seed + 1` per completed goal maze) as a rebuild approximation for legacy's non-deterministic fresh generation.
 - The menu trail rendering is still a rebuild interpretation of the legacy tile color-revert system rather than a literal material-timer port.
+- The rebuild now carries explicit presentation cues (`spawn`, `explore`, `dead-end`, `backtrack`, `reacquire`, `goal`, `reset`) alongside the recovered AI logic so the menu scene can stage dead ends, backtracking, and branch reacquisition more clearly without changing the underlying path choice.
 - The attract-mode menu now prerolls a small deterministic number of demo steps before first paint so the board reads as active immediately instead of opening on a blank maze.
 - The responsive shell is intentionally a rebuild adaptation, not a literal Unreal widget layout port.
   Exact legacy placement depended on a fixed desktop presentation with a visible Start button.
