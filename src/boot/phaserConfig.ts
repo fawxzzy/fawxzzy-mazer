@@ -9,12 +9,12 @@ import { WinScene } from '../scenes/WinScene';
 export const phaserConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',
-  width: 960,
-  height: 540,
+  width: window.innerWidth,
+  height: window.innerHeight,
   backgroundColor: '#101018',
   scene: [BootScene, MenuScene, GameScene, OptionsScene, PauseScene, WinScene],
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH
   }
 };

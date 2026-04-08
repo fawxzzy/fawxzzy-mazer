@@ -26,15 +26,15 @@ export const createBoardLayout = (
     ? { boardScale: options }
     : options;
 
-  const boardScale = normalizedOptions.boardScale ?? 0.82;
+  const boardScale = normalizedOptions.boardScale ?? 0.9;
   const topReserve = normalizedOptions.topReserve ?? 64;
-  const sidePadding = normalizedOptions.sidePadding ?? 20;
+  const sidePadding = normalizedOptions.sidePadding ?? 16;
   const bottomPadding = normalizedOptions.bottomPadding ?? sidePadding;
 
   const { width, height } = scene.scale;
-  const availableWidth = width - (sidePadding * 2);
-  const availableHeight = height - topReserve - bottomPadding;
-  const boardSize = Math.min(availableWidth, availableHeight) * boardScale;
+  const availableWidth = Math.max(0, width - (sidePadding * 2));
+  const availableHeight = Math.max(0, height - topReserve - bottomPadding);
+  const boardSize = Math.floor(Math.min(availableWidth, availableHeight) * boardScale);
   const boardX = width / 2 - boardSize / 2;
   const boardY = topReserve + ((availableHeight - boardSize) / 2);
 
@@ -72,6 +72,8 @@ export class BoardRenderer {
     const { boardX, boardY, boardSize } = this.layout;
     const centerX = boardX + boardSize / 2;
     const centerY = boardY + boardSize / 2;
+    const frameScale = Phaser.Math.Clamp(boardSize / 560, 0.72, 1.4);
+    const scaleMetric = (value: number, minimum = 1): number => Math.max(minimum, Math.round(value * frameScale));
     const {
       shadowOffsetY,
       shadowExpandPx,
@@ -100,72 +102,89 @@ export class BoardRenderer {
 
     this.chromeBack.fillStyle(palette.board.shadow, shadowAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + shadowExpandPx) / 2,
-      centerY - (boardSize + shadowExpandPx) / 2 + shadowOffsetY,
-      boardSize + shadowExpandPx,
-      boardSize + shadowExpandPx
+      centerX - (boardSize + scaleMetric(shadowExpandPx)) / 2,
+      centerY - (boardSize + scaleMetric(shadowExpandPx)) / 2 + scaleMetric(shadowOffsetY),
+      boardSize + scaleMetric(shadowExpandPx),
+      boardSize + scaleMetric(shadowExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.glow, glowAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + glowExpandPx) / 2,
-      centerY - (boardSize + glowExpandPx) / 2,
-      boardSize + glowExpandPx,
-      boardSize + glowExpandPx
+      centerX - (boardSize + scaleMetric(glowExpandPx)) / 2,
+      centerY - (boardSize + scaleMetric(glowExpandPx)) / 2,
+      boardSize + scaleMetric(glowExpandPx),
+      boardSize + scaleMetric(glowExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.outer, outerAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + outerExpandPx) / 2,
-      centerY - (boardSize + outerExpandPx) / 2,
-      boardSize + outerExpandPx,
-      boardSize + outerExpandPx
+      centerX - (boardSize + scaleMetric(outerExpandPx)) / 2,
+      centerY - (boardSize + scaleMetric(outerExpandPx)) / 2,
+      boardSize + scaleMetric(outerExpandPx),
+      boardSize + scaleMetric(outerExpandPx)
     );
-    this.chromeBack.lineStyle(outerStrokeWidth, palette.board.outerStroke, 0.95);
+    this.chromeBack.lineStyle(scaleMetric(outerStrokeWidth), palette.board.outerStroke, 0.95);
     this.chromeBack.strokeRect(
-      centerX - (boardSize + outerExpandPx) / 2,
-      centerY - (boardSize + outerExpandPx) / 2,
-      boardSize + outerExpandPx,
-      boardSize + outerExpandPx
+      centerX - (boardSize + scaleMetric(outerExpandPx)) / 2,
+      centerY - (boardSize + scaleMetric(outerExpandPx)) / 2,
+      boardSize + scaleMetric(outerExpandPx),
+      boardSize + scaleMetric(outerExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.panel, panelAlpha);
     this.chromeBack.fillRect(boardX, boardY, boardSize, boardSize);
     this.chromeBack.lineStyle(1, palette.board.panelStroke, 0.74);
-    this.chromeBack.strokeRect(boardX + 4, boardY + 4, boardSize - 8, boardSize - 8);
-    this.chromeBack.lineStyle(innerStrokeWidth, palette.board.innerStroke, 0.66);
+    this.chromeBack.strokeRect(
+      boardX + scaleMetric(4),
+      boardY + scaleMetric(4),
+      boardSize - scaleMetric(8),
+      boardSize - scaleMetric(8)
+    );
+    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), palette.board.innerStroke, 0.66);
     this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardSize - 2, boardSize - 2);
 
     this.chromeBack.fillStyle(palette.board.well, wellAlpha);
     this.chromeBack.fillRect(
-      boardX + wellInsetPx,
-      boardY + wellInsetPx,
-      boardSize - (wellInsetPx * 2),
-      boardSize - (wellInsetPx * 2)
+      boardX + scaleMetric(wellInsetPx),
+      boardY + scaleMetric(wellInsetPx),
+      boardSize - (scaleMetric(wellInsetPx) * 2),
+      boardSize - (scaleMetric(wellInsetPx) * 2)
     );
 
     this.chromeBack.fillStyle(palette.board.shadow, edgeShadeAlpha);
-    this.chromeBack.fillRect(boardX, boardY, edgeShadeWidthPx, boardSize);
-    this.chromeBack.fillRect(boardX, boardY + boardSize - edgeShadeWidthPx, boardSize, edgeShadeWidthPx);
-    this.chromeBack.fillRect(boardX + boardSize - edgeShadeWidthPx, boardY, edgeShadeWidthPx, boardSize);
+    this.chromeBack.fillRect(boardX, boardY, scaleMetric(edgeShadeWidthPx), boardSize);
+    this.chromeBack.fillRect(
+      boardX,
+      boardY + boardSize - scaleMetric(edgeShadeWidthPx),
+      boardSize,
+      scaleMetric(edgeShadeWidthPx)
+    );
+    this.chromeBack.fillRect(
+      boardX + boardSize - scaleMetric(edgeShadeWidthPx),
+      boardY,
+      scaleMetric(edgeShadeWidthPx),
+      boardSize
+    );
 
     this.chromeBack.fillStyle(palette.board.topHighlight, topHighlightAlpha);
     this.chromeBack.fillRect(
-      boardX + topHighlightInsetPx,
-      boardY + topHighlightInsetPx,
-      boardSize - (topHighlightInsetPx * 2),
-      topHighlightHeightPx
+      boardX + scaleMetric(topHighlightInsetPx),
+      boardY + scaleMetric(topHighlightInsetPx),
+      boardSize - (scaleMetric(topHighlightInsetPx) * 2),
+      scaleMetric(topHighlightHeightPx)
     );
 
-    this.chromeFront.lineStyle(2, palette.board.outerStroke, cornerTickAlpha);
-    this.chromeFront.lineBetween(boardX + cornerTickInsetPx, boardY + cornerTickInsetPx, boardX + cornerTickInsetPx + cornerTickLengthPx, boardY + cornerTickInsetPx);
-    this.chromeFront.lineBetween(boardX + cornerTickInsetPx, boardY + cornerTickInsetPx, boardX + cornerTickInsetPx, boardY + cornerTickInsetPx + cornerTickLengthPx);
-    this.chromeFront.lineBetween(boardX + boardSize - cornerTickInsetPx, boardY + cornerTickInsetPx, boardX + boardSize - cornerTickInsetPx - cornerTickLengthPx, boardY + cornerTickInsetPx);
-    this.chromeFront.lineBetween(boardX + boardSize - cornerTickInsetPx, boardY + cornerTickInsetPx, boardX + boardSize - cornerTickInsetPx, boardY + cornerTickInsetPx + cornerTickLengthPx);
-    this.chromeFront.lineBetween(boardX + cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx, boardX + cornerTickInsetPx + cornerTickLengthPx, boardY + boardSize - cornerTickInsetPx);
-    this.chromeFront.lineBetween(boardX + cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx, boardX + cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx - cornerTickLengthPx);
-    this.chromeFront.lineBetween(boardX + boardSize - cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx, boardX + boardSize - cornerTickInsetPx - cornerTickLengthPx, boardY + boardSize - cornerTickInsetPx);
-    this.chromeFront.lineBetween(boardX + boardSize - cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx, boardX + boardSize - cornerTickInsetPx, boardY + boardSize - cornerTickInsetPx - cornerTickLengthPx);
+    const tickInset = scaleMetric(cornerTickInsetPx);
+    const tickLength = scaleMetric(cornerTickLengthPx);
+    this.chromeFront.lineStyle(scaleMetric(2), palette.board.outerStroke, cornerTickAlpha);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset + tickLength, boardY + tickInset);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset, boardY + tickInset + tickLength);
+    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + tickInset, boardX + boardSize - tickInset - tickLength, boardY + tickInset);
+    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + tickInset, boardX + boardSize - tickInset, boardY + tickInset + tickLength);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardSize - tickInset, boardX + tickInset + tickLength, boardY + boardSize - tickInset);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardSize - tickInset, boardX + tickInset, boardY + boardSize - tickInset - tickLength);
+    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + boardSize - tickInset, boardX + boardSize - tickInset - tickLength, boardY + boardSize - tickInset);
+    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + boardSize - tickInset, boardX + boardSize - tickInset, boardY + boardSize - tickInset - tickLength);
   }
 
   public drawBase(): void {
@@ -220,9 +239,20 @@ export class BoardRenderer {
 
     const centerX = boardX + goalTile.x * tileSize + tileSize / 2;
     const centerY = boardY + goalTile.y * tileSize + tileSize / 2;
+    const tileX = boardX + goalTile.x * tileSize;
+    const tileY = boardY + goalTile.y * tileSize;
+    const haloSize = tileSize * 0.78;
     const pulse = legacyTuning.board.goalPulse.basePulse
       + (Math.sin(this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed) * legacyTuning.board.goalPulse.waveAmplitude);
     const sparkPulse = 0.65 + (Math.sin((this.scene.time.now * legacyTuning.board.goalPulse.waveSpeed * 0.66) + 0.85) * 0.35);
+
+    this.goal.fillStyle(palette.board.goal, 0.12 * pulse);
+    this.goal.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
+    this.goal.lineStyle(Math.max(1, tileSize * 0.055), palette.board.goalCore, 0.68 * pulse);
+    this.goal.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
+
+    this.goal.fillStyle(palette.board.goal, legacyTuning.board.goalPulse.tileHaloAlpha * pulse);
+    this.goal.fillRect(centerX - haloSize / 2, centerY - haloSize / 2, haloSize, haloSize);
 
     this.goal.fillStyle(palette.board.goal, legacyTuning.board.goalPulse.glowAlpha * pulse);
     this.goal.fillCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.glowRadiusRatio);
@@ -275,6 +305,7 @@ export class BoardRenderer {
     this.trail.clear();
     let previousCenterX = 0;
     let previousCenterY = 0;
+    const headIndex = indices.length - 1;
 
     for (let i = 0; i < indices.length; i += 1) {
       const index = indices[i];
@@ -282,10 +313,24 @@ export class BoardRenderer {
       const centerX = boardX + tile.x * tileSize + tileSize / 2;
       const centerY = boardY + tile.y * tileSize + tileSize / 2;
       const t = indices.length <= 1 ? 1 : i / (indices.length - 1);
-      const alpha = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
-      const glowAlpha = Phaser.Math.Linear(legacyTuning.board.trail.glowMinAlpha, legacyTuning.board.trail.glowMaxAlpha, t);
+      const isHead = i === headIndex;
+      const alphaBase = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
+      const alpha = Phaser.Math.Clamp(
+        alphaBase + (isHead ? legacyTuning.board.trail.headAlphaBoost : 0),
+        0,
+        1
+      );
+      const glowAlpha = Phaser.Math.Clamp(
+        Phaser.Math.Linear(legacyTuning.board.trail.glowMinAlpha, legacyTuning.board.trail.glowMaxAlpha, t)
+          + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.6 : 0),
+        0,
+        1
+      );
       const cellInset = tileSize * legacyTuning.board.trail.insetRatio;
-      const nodeRadius = Math.max(2, tileSize * legacyTuning.board.trail.nodeRadiusRatio);
+      const nodeRadius = Math.max(
+        2,
+        tileSize * (isHead ? legacyTuning.board.trail.headRadiusRatio : legacyTuning.board.trail.nodeRadiusRatio)
+      );
 
       this.trail.fillStyle(palette.board.trail, alpha);
       this.trail.fillRect(
@@ -308,13 +353,18 @@ export class BoardRenderer {
       this.trail.lineStyle(
         Math.max(3, tileSize * legacyTuning.board.trail.glowLineWidthRatio),
         palette.board.trailGlow,
-        glowAlpha
+        glowAlpha * (isHead ? 1 : 0.88)
       );
       this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
       this.trail.lineStyle(
         Math.max(2, tileSize * legacyTuning.board.trail.lineWidthRatio),
         palette.board.trailCore,
-        Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
+        Phaser.Math.Clamp(
+          Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
+            + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.5 : 0),
+          0,
+          1
+        )
       );
       this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
       previousCenterX = centerX;
@@ -325,27 +375,44 @@ export class BoardRenderer {
   public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null): void {
     const { boardX, boardY, tileSize } = this.layout;
     const tile = this.maze.tiles[index];
+    const tileX = boardX + tile.x * tileSize;
+    const tileY = boardY + tile.y * tileSize;
     const centerX = boardX + tile.x * tileSize + (tileSize / 2);
     const centerY = boardY + tile.y * tileSize + (tileSize / 2);
+    const actorTuning = legacyTuning.board.actor;
 
     this.actor.clear();
-    this.actor.fillStyle(palette.board.playerShadow, 0.46);
-    this.actor.fillCircle(centerX, centerY + tileSize * 0.04, tileSize * 0.34);
+    this.actor.fillStyle(palette.board.player, 0.13);
+    this.actor.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.045), palette.board.playerHalo, 0.5);
+    this.actor.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
+    this.actor.fillStyle(palette.board.playerShadow, actorTuning.shadowAlpha);
+    this.actor.fillCircle(
+      centerX,
+      centerY + tileSize * actorTuning.shadowOffsetYRatio,
+      tileSize * actorTuning.shadowRadiusRatio
+    );
 
-    this.actor.fillStyle(palette.board.playerHalo, 0.28);
-    this.actor.fillCircle(centerX, centerY, tileSize * 0.34);
+    this.actor.fillStyle(palette.board.playerHalo, actorTuning.haloAlpha);
+    this.actor.fillCircle(centerX, centerY, tileSize * actorTuning.haloRadiusRatio);
 
     this.actor.fillStyle(palette.board.playerCore, 1);
-    this.actor.fillCircle(centerX, centerY, tileSize * 0.22);
+    this.actor.fillCircle(centerX, centerY, tileSize * actorTuning.coreRadiusRatio);
 
-    this.actor.lineStyle(Math.max(2, tileSize * 0.065), palette.board.player, 0.95);
-    this.actor.strokeCircle(centerX, centerY, tileSize * 0.27);
+    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), palette.board.player, 0.95);
+    this.actor.strokeCircle(centerX, centerY, tileSize * actorTuning.ringRadiusRatio);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.03), palette.board.playerCore, actorTuning.outerRingAlpha);
+    this.actor.strokeCircle(centerX, centerY, tileSize * actorTuning.outerRingRadiusRatio);
 
     this.actor.fillStyle(palette.board.playerHalo, 0.85);
-    this.actor.fillCircle(centerX - tileSize * 0.06, centerY - tileSize * 0.06, tileSize * 0.055);
+    this.actor.fillCircle(
+      centerX - tileSize * actorTuning.highlightOffsetRatio,
+      centerY - tileSize * actorTuning.highlightOffsetRatio,
+      tileSize * actorTuning.highlightRadiusRatio
+    );
 
     if (direction !== null) {
-      const offset = tileSize * 0.14;
+      const offset = tileSize * actorTuning.pointerOffsetRatio;
       const directionOffsets = [
         { x: 0, y: -offset },
         { x: 0, y: offset },
@@ -354,10 +421,10 @@ export class BoardRenderer {
       ] as const;
       const facing = directionOffsets[direction];
 
-      this.actor.lineStyle(Math.max(2, tileSize * 0.05), palette.board.playerCore, 0.9);
+      this.actor.lineStyle(Math.max(2, tileSize * actorTuning.pointerWidthRatio), palette.board.playerCore, 0.92);
       this.actor.lineBetween(centerX, centerY, centerX + facing.x, centerY + facing.y);
       this.actor.fillStyle(palette.board.playerCore, 0.98);
-      this.actor.fillCircle(centerX + facing.x, centerY + facing.y, tileSize * 0.042);
+      this.actor.fillCircle(centerX + facing.x, centerY + facing.y, tileSize * actorTuning.pointerRadiusRatio);
     }
   }
 

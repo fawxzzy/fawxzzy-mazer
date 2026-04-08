@@ -19,19 +19,33 @@ const formatTime = (elapsedMs: number): string => {
 
 export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): HudHandle => {
   const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
+  const compact = scene.scale.width <= legacyTuning.hud.compactBreakpoint;
+  const panelInsetX = compact ? legacyTuning.hud.compactContentPaddingX : legacyTuning.hud.panelInsetX;
+  const panelHeight = compact ? legacyTuning.hud.compactPanelHeight : legacyTuning.hud.panelHeight;
+  const contentPaddingX = compact ? legacyTuning.hud.compactContentPaddingX : legacyTuning.hud.contentPaddingX;
+  const primaryTextY = compact ? legacyTuning.hud.compactPrimaryTextY : legacyTuning.hud.primaryTextY;
+  const secondaryTextY = compact ? legacyTuning.hud.compactSecondaryTextY : legacyTuning.hud.secondaryTextY;
+  const lineY = compact ? legacyTuning.hud.compactLineY : legacyTuning.hud.lineY;
+  const lineInsetX = compact ? legacyTuning.hud.compactLineInsetX : legacyTuning.hud.lineInsetX;
+  const timerFontPx = compact ? legacyTuning.hud.compactTimerFontPx : legacyTuning.hud.timerFontPx;
+  const arrowFontPx = compact ? legacyTuning.hud.compactArrowFontPx : legacyTuning.hud.arrowFontPx;
+  const hintFontPx = compact ? legacyTuning.hud.compactHintFontPx : legacyTuning.hud.hintFontPx;
   const panelWidth = Math.min(
-    scene.scale.width - (legacyTuning.hud.panelInsetX * 2),
+    scene.scale.width - (panelInsetX * 2),
     legacyTuning.hud.panelMaxWidth
   );
   const panelLeft = (scene.scale.width - panelWidth) / 2;
   const panelRight = panelLeft + panelWidth;
+  const hintTextValue = isTouchPrimary
+    ? (compact ? 'Swipe / tap pause' : 'Swipe to move / tap to pause')
+    : (compact ? 'Arrows/WASD / Esc' : 'Move: Arrows or WASD / Pause: P or Esc');
 
   scene.add
     .rectangle(
       scene.scale.width / 2,
       legacyTuning.hud.panelY + legacyTuning.hud.panelShadowOffsetY,
       panelWidth + 10,
-      legacyTuning.hud.panelHeight + 8,
+      panelHeight + 8,
       palette.hud.shadow,
       legacyTuning.hud.panelShadowAlpha
     )
@@ -43,7 +57,7 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       scene.scale.width / 2,
       legacyTuning.hud.panelY,
       panelWidth,
-      legacyTuning.hud.panelHeight,
+      panelHeight,
       palette.hud.panel,
       legacyTuning.hud.panelAlpha
     )
@@ -54,10 +68,10 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
   scene.add
     .line(
       scene.scale.width / 2,
-      legacyTuning.hud.lineY,
-      -((panelWidth - legacyTuning.hud.lineInsetX) / 2),
+      lineY,
+      -((panelWidth - lineInsetX) / 2),
       0,
-      (panelWidth - legacyTuning.hud.lineInsetX) / 2,
+      (panelWidth - lineInsetX) / 2,
       0,
       palette.hud.accent,
       0.24
@@ -66,20 +80,20 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
     .setDepth(996);
 
   const timerText = scene.add
-    .text(panelLeft + legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, '00:00', {
+    .text(panelLeft + contentPaddingX, primaryTextY, '00:00', {
       color: toCssColor(palette.hud.timerText),
       fontFamily: '"Courier New", monospace',
-      fontSize: `${legacyTuning.hud.timerFontPx}px`,
+      fontSize: `${timerFontPx}px`,
       fontStyle: 'bold'
     })
     .setScrollFactor(0)
     .setDepth(1000);
 
   const arrowText = scene.add
-    .text(panelRight - legacyTuning.hud.contentPaddingX, legacyTuning.hud.primaryTextY, 'Goal ^', {
+    .text(panelRight - contentPaddingX, primaryTextY, 'Goal ^', {
       color: toCssColor(palette.hud.goalText),
       fontFamily: '"Courier New", monospace',
-      fontSize: `${legacyTuning.hud.arrowFontPx}px`,
+      fontSize: `${arrowFontPx}px`,
       fontStyle: 'bold'
     })
     .setOrigin(1, 0)
@@ -89,13 +103,13 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
   const hintText = scene.add
     .text(
       scene.scale.width / 2,
-      legacyTuning.hud.secondaryTextY,
-      isTouchPrimary ? 'Swipe to move / tap to pause' : 'Move: Arrows or WASD / Pause: P or Esc',
+      secondaryTextY,
+      hintTextValue,
       {
         color: toCssColor(palette.hud.hintText),
         fontFamily: '"Courier New", monospace',
-        fontSize: `${legacyTuning.hud.hintFontPx}px`,
-        letterSpacing: 1
+        fontSize: `${hintFontPx}px`,
+        letterSpacing: compact ? 0 : 1
       }
     )
     .setOrigin(0.5, 0)

@@ -9,6 +9,8 @@
   --mazer-frame-focus: #8eb9df;
   --mazer-canvas-shadow: rgba(0, 0, 0, 0.58);
   --mazer-canvas-glow: rgba(110, 138, 226, 0.16);
+  --mazer-shell-pad-x: clamp(12px, 2vw, 28px);
+  --mazer-shell-pad-y: clamp(12px, 2.4vh, 28px);
 }
 
 * {
@@ -58,15 +60,22 @@ body::after {
 }
 
 #app {
-  display: grid;
-  place-items: center;
-  padding: clamp(14px, 2.4vw, 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    calc(var(--mazer-shell-pad-y) + env(safe-area-inset-top))
+    calc(var(--mazer-shell-pad-x) + env(safe-area-inset-right))
+    calc(var(--mazer-shell-pad-y) + env(safe-area-inset-bottom))
+    calc(var(--mazer-shell-pad-x) + env(safe-area-inset-left));
 }
 
 canvas {
   display: block;
-  width: min(100vw - clamp(28px, 5vw, 92px), 1420px);
-  height: min(100vh - clamp(28px, 6vh, 86px), 920px);
+  width: 100% !important;
+  height: 100% !important;
+  max-width: min(100%, 1440px);
+  max-height: min(100%, 960px);
   margin: 0 auto;
   image-rendering: crisp-edges;
   border: 1px solid var(--mazer-frame-stroke);
@@ -111,24 +120,23 @@ canvas:focus-visible {
   }
 }
 
-@media (pointer: coarse) {
+@media (max-width: 640px) {
+  :root {
+    --mazer-shell-pad-x: 8px;
+    --mazer-shell-pad-y: 8px;
+  }
+
   body::before,
   body::after {
-    display: none;
+    opacity: 0.4;
   }
 
   canvas {
-    width: 100vw;
-    height: 100vh;
-    max-width: 100vw;
-    max-height: 100vh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-  }
-
-  #app {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-      env(safe-area-inset-left);
+    border-color: rgba(126, 153, 192, 0.72);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+      0 14px 28px rgba(0, 0, 0, 0.42),
+      0 0 18px rgba(98, 136, 255, 0.12);
+    animation-duration: 7.4s;
   }
 }

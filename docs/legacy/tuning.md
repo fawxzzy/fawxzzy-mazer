@@ -1,6 +1,6 @@
 # Legacy tuning defaults (Unreal -> rebuild)
 
-This pass rechecked the rebuilt maze/domain code against the read-only Unreal source in `../mazer-legacy-unreal.zip` (`Mazer/Source/**` and `Mazer/Config/**`) and tightens the rebuild where the earlier lane still differed.
+This pass rechecked the rebuilt maze/domain code against the read-only Unreal source in `../mazer-legacy-unreal/Mazer` (`Source/**` and `Config/**`) and tightens the rebuild where the earlier lane still differed.
 
 ## Source references used
 - Legacy maze lifecycle: `Mazer/Source/Mazer/MazerGameModeBase.cpp`
@@ -17,7 +17,7 @@ This pass rechecked the rebuilt maze/domain code against the read-only Unreal so
 - Shortcut budget remains `_Scale * _ShortcutCountModifier`.
 - Shortcut carving still only runs when `scale > 35`.
 - The rebuilt `wallIndices` now mirror the legacy `_WallArray` lifecycle:
-  shortcut tiles are removed from the remaining wall list after carving, instead of staying behind as stale wall entries.
+  only the selected wall-array entry is removed during shortcut carving, so duplicate references to the same tile can remain behind as stale wall entries.
 
 ### Reset / regenerate loop
 - Legacy reset still has two distinct branches:
@@ -55,14 +55,20 @@ This pass rechecked the rebuilt maze/domain code against the read-only Unreal so
 - Demo timer values remain approximated.
   `_PlayerAiDelayDuration` was blueprint-driven in the Unreal project; the rebuild keeps the current calibrated timings:
   `exploreStepMs: 78`, `backtrackStepMs: 52`, `goalHoldMs: 720`, `resetHoldMs: 360`.
-- Demo maze regeneration uses deterministic seed stepping (`seed + 1` per completed goal maze) as a rebuild approximation for legacy’s non-deterministic fresh generation.
+- Demo maze regeneration uses deterministic seed stepping (`seed + 1` per completed goal maze) as a rebuild approximation for legacy's non-deterministic fresh generation.
 - The menu trail rendering is still a rebuild interpretation of the legacy tile color-revert system rather than a literal material-timer port.
+- The responsive shell is intentionally a rebuild adaptation, not a literal Unreal widget layout port.
+  Exact legacy placement depended on a fixed desktop presentation with a visible Start button.
+  The rebuild keeps the legacy board-first composition, title-over-board treatment, and side-action feel, but adapts spacing and button placement by breakpoint so the same shell works at `1366x900` and `390x844` without a separate mobile UI.
+- Menu-time manual play access is intentionally productized away from the legacy front door.
+  Legacy exposed a visible Start button; the rebuild keeps manual play behind the Options overlay and the hidden `M` shortcut so attract mode remains the public default.
 
 ## Verification coverage added
-- Maze tests now assert that remaining `wallIndices` are still real walls after shortcut creation.
+- Maze tests now assert the legacy wall-array duplicate quirk after shortcut creation.
 - Demo walker tests now cover:
   - direct candidate choice
   - legacy branch backtracking
   - visited-preserving AI reset
+  - the legacy `AiLogicSwitch` retarget bug
   - goal-driven maze regeneration requests
 - Soak coverage now exercises the recovered demo walker reset/backtrack loop across generated mazes.

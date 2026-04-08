@@ -121,6 +121,24 @@ describe('demo walker', () => {
     expect(nextState.visited.has(maze.startIndex)).toBe(true);
   });
 
+  test('preserves the legacy logic-switch retarget bug before backtracking', () => {
+    const maze = createBacktrackMaze();
+    const state: DemoWalkerState = {
+      ...createDemoWalkerState(maze),
+      currentIndex: 3,
+      trailIndices: [0, 1, 3],
+      visited: new Set([1, 3]),
+      pathStackIndices: [1, 3],
+      potentialBranchIndices: [2],
+      logicSwitch: true
+    };
+    const nextState = advanceDemoWalker(maze, state).state;
+
+    expect(nextState.phase).toBe('backtrack');
+    expect(nextState.targetIndex).toBeNull();
+    expect(nextState.potentialBranchIndices).toEqual([]);
+  });
+
   test('requests a maze regeneration after reaching the goal', () => {
     const maze = createGoalMaze();
     let advance = advanceDemoWalker(maze, createDemoWalkerState(maze));

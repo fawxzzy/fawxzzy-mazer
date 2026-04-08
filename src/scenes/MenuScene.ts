@@ -28,6 +28,7 @@ export class MenuScene extends Phaser.Scene {
 
   public create(): void {
     const { width, height } = this.scale;
+    const isNarrow = width <= legacyTuning.menu.layout.narrowBreakpoint;
     attachSfxInputUnlock(this);
     this.transitionLocked = false;
     this.overlayManager = new OverlayManager(this, ['OptionsScene']);
@@ -42,13 +43,16 @@ export class MenuScene extends Phaser.Scene {
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     });
     let demoSeed: number = legacyTuning.demo.seed;
+    const buttonHeight = 44;
+    const buttonBottomReserve = buttonHeight + legacyTuning.menu.layout.buttonBottomInsetPx + 16;
+    const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
+      + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
 
     const layout = createBoardLayout(this, maze, {
-      boardScale: (width < 900 ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
-        + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
+      boardScale,
       topReserve: Math.max(legacyTuning.menu.layout.topReserveMinPx, Math.round(height * legacyTuning.menu.layout.topReserveRatio)),
       sidePadding: legacyTuning.menu.layout.sidePaddingPx,
-      bottomPadding: legacyTuning.menu.layout.bottomPaddingPx
+      bottomPadding: Math.max(legacyTuning.menu.layout.bottomPaddingPx, buttonBottomReserve)
     });
     const boardRenderer = new BoardRenderer(this, maze, layout);
     boardRenderer.drawBoardChrome();
@@ -63,18 +67,24 @@ export class MenuScene extends Phaser.Scene {
         layout.boardSize,
         layout.boardSize,
         0x8a8a9a,
-        0.09
+        0.05
       )
       .setOrigin(0.5)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const titlePlateWidth = layout.boardSize * legacyTuning.menu.title.plateWidthRatio;
+    const titleY = layout.boardY + Math.max(32, Math.round(layout.boardSize * legacyTuning.menu.title.yOffsetRatioFromBoardTop));
+    const titlePlateHeight = Phaser.Math.Clamp(
+      Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio),
+      legacyTuning.menu.title.plateHeightMinPx,
+      legacyTuning.menu.title.plateHeightMaxPx
+    );
     this.add
       .rectangle(
         width / 2,
-        layout.boardY + legacyTuning.menu.title.yOffsetFromBoardTop,
+        titleY,
         titlePlateWidth,
-        legacyTuning.menu.title.plateHeightPx,
+        titlePlateHeight,
         palette.board.well,
         legacyTuning.menu.title.plateAlpha
       )
@@ -82,10 +92,10 @@ export class MenuScene extends Phaser.Scene {
       .setDepth(9);
 
     const title = this.add
-      .text(width / 2, layout.boardY + legacyTuning.menu.title.yOffsetFromBoardTop, legacyTuning.menu.title.text, {
+      .text(width / 2, titleY, legacyTuning.menu.title.text, {
         color: '#66df7c',
         fontFamily: 'monospace',
-        fontSize: `${Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard)}px`,
+        fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard), 50, 112)}px`,
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
@@ -172,12 +182,44 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    const buttonY = height - legacyTuning.menu.buttons.laneBottomOffset;
-    const spacing = Phaser.Math.Clamp(
+    const exitButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.left;
+    const optionsButtonWidth = isNarrow ? legacyTuning.menu.buttons.widthNarrowPx : legacyTuning.menu.buttons.widths.right;
+    const sideButtonsFit = !isNarrow
+      && layout.boardX >= Math.max(exitButtonWidth, optionsButtonWidth) + legacyTuning.menu.layout.sideButtonsMinGutterPx;
+    const buttonY = sideButtonsFit
+      ? Math.min(height - legacyTuning.menu.layout.buttonBottomInsetPx, layout.boardY + layout.boardSize - legacyTuning.menu.buttons.laneBottomOffset)
+      : Math.min(height - legacyTuning.menu.layout.buttonBottomInsetPx, layout.boardY + layout.boardSize + 34);
+    const requestedRowGap = Phaser.Math.Clamp(
       Math.round(width * legacyTuning.menu.buttons.spacingRatio),
       legacyTuning.menu.buttons.spacingMinPx,
       legacyTuning.menu.buttons.spacingMaxPx
     );
+    const rowGap = Math.max(
+      12,
+      Math.min(
+        requestedRowGap,
+        Math.floor(
+          (
+            width
+            - exitButtonWidth
+            - optionsButtonWidth
+            - (legacyTuning.menu.layout.buttonSideInsetPx * 2)
+          ) / 4
+        )
+      )
+    );
+    const exitButtonX = sideButtonsFit
+      ? Math.max(
+        (exitButtonWidth / 2) + legacyTuning.menu.layout.buttonSideInsetPx,
+        layout.boardX / 2
+      )
+      : (width / 2) - rowGap - (exitButtonWidth / 2);
+    const optionsButtonX = sideButtonsFit
+      ? Math.min(
+        width - (optionsButtonWidth / 2) - legacyTuning.menu.layout.buttonSideInsetPx,
+        layout.boardX + layout.boardSize + ((width - (layout.boardX + layout.boardSize)) / 2)
+      )
+      : (width / 2) + rowGap + (optionsButtonWidth / 2);
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
@@ -208,10 +250,10 @@ export class MenuScene extends Phaser.Scene {
     };
 
     const optionsButton = createMenuButton(this, {
-      x: width / 2 + spacing,
+      x: optionsButtonX,
       y: buttonY,
       label: legacyTuning.menu.labels[0],
-      width: legacyTuning.menu.buttons.widths.right,
+      width: optionsButtonWidth,
       onClick: () => {
         if (this.transitionLocked) {
           return;
@@ -222,10 +264,10 @@ export class MenuScene extends Phaser.Scene {
     });
 
     const quitButton = createMenuButton(this, {
-      x: width / 2 - spacing,
+      x: exitButtonX,
       y: buttonY,
       label: legacyTuning.menu.labels[1],
-      width: legacyTuning.menu.buttons.widths.left,
+      width: exitButtonWidth,
       onClick: () => {
         queueTransition(() => {
           this.overlayManager.closeAll();
@@ -269,7 +311,6 @@ export class MenuScene extends Phaser.Scene {
       }
     };
     this.input.keyboard?.on('keydown-ESC', escHandler);
-    this.input.keyboard?.on('keydown-ENTER', enterHandler);
     this.input.keyboard?.on('keydown-M', enterHandler);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -279,7 +320,6 @@ export class MenuScene extends Phaser.Scene {
       this.demoStepTimer?.remove(false);
       this.overlayManager.closeAll();
       this.input.keyboard?.off('keydown-ESC', escHandler);
-      this.input.keyboard?.off('keydown-ENTER', enterHandler);
       this.input.keyboard?.off('keydown-M', enterHandler);
       this.events.off(OVERLAY_EVENTS.manualPlay, launchManualPlay);
     });

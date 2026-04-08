@@ -105,6 +105,7 @@ export class GameScene extends Phaser.Scene {
     this.pendingOverlayLaunch = undefined;
 
     const { width, height } = this.scale;
+    const compact = width <= legacyTuning.game.layout.compactBreakpoint;
     this.cameras.main.fadeIn(120, 0, 0, 0);
     this.cameras.main.setBackgroundColor('#0b1020');
     this.add.rectangle(width / 2, height / 2, width, height, 0x090f1d, 1).setDepth(-10);
@@ -117,8 +118,10 @@ export class GameScene extends Phaser.Scene {
     });
 
     const layout = createBoardLayout(this, this.maze, {
-      boardScale: resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault),
-      topReserve: legacyTuning.game.layout.topReservePx,
+      boardScale: (compact ? legacyTuning.game.layout.boardScaleNarrow : legacyTuning.game.layout.boardScaleWide)
+        + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
+      topReserve: compact ? legacyTuning.game.layout.compactTopReservePx : legacyTuning.game.layout.topReservePx,
+      sidePadding: legacyTuning.game.layout.sidePaddingPx,
       bottomPadding: legacyTuning.game.layout.bottomPaddingPx
     });
     this.boardRenderer = new BoardRenderer(this, this.maze, layout);

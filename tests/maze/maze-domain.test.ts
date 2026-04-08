@@ -81,6 +81,20 @@ describe('maze domain generation', () => {
     expect(maze.wallIndices).toEqual(remainingWallIndices);
   });
 
+  test('preserves the legacy wall-array duplicate quirk after shortcut carving', () => {
+    const maze = generateMaze({
+      scale: 50,
+      seed: 1988,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.8
+    });
+
+    expect(maze.shortcutsCreated).toBeGreaterThan(0);
+    expect(
+      maze.wallIndices.some((wallIndex) => maze.tiles[wallIndex].floor || maze.tiles[wallIndex].path)
+    ).toBe(true);
+  });
+
   test('neighbor logic does not create out-of-bounds neighbors', () => {
     const scale = 9;
     const grid = createGrid(scale);
