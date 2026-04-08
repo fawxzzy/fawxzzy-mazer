@@ -25,6 +25,7 @@ npm run test:soak
 ```
 
 `npm run preview` serves the production build locally on port `4173`.
+`dist/` is generated build output and is ignored by git.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.

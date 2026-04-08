@@ -46,10 +46,10 @@ export const createOverlaySheet = (
   const panelRight = (width / 2) + (sheetWidth / 2);
   const panelTop = (height / 2) - (sheetHeight / 2);
   const panelBottom = (height / 2) + (sheetHeight / 2);
-  const headerHeight = compact ? 78 : 84;
+  const headerHeight = compact ? 72 : 76;
 
   const halo = scene.add
-    .ellipse(width / 2, height / 2, sheetWidth + 92, sheetHeight + 70, palette.board.glow, 0.08)
+    .ellipse(width / 2, height / 2, sheetWidth + 84, sheetHeight + 60, palette.board.glow, 0.075)
     .setBlendMode(Phaser.BlendModes.SCREEN);
   const shadow = scene.add
     .rectangle(width / 2, height / 2 + 12, sheetWidth + 10, sheetHeight + 14, palette.board.shadow, 0.48)
@@ -98,17 +98,17 @@ export const createOverlaySheet = (
     .text(titleX, titleY, title.toUpperCase(), {
       color: '#8cffa4',
       fontFamily: 'monospace',
-      fontSize: compact ? '25px' : '29px',
+      fontSize: compact ? '23px' : '27px',
       fontStyle: 'bold'
     })
-    .setLetterSpacing(compact ? 2 : 4)
+    .setLetterSpacing(compact ? 2 : 3)
     .setOrigin(0, 0.5);
 
   const subtitleText = scene.add
     .text(titleX, titleY + 34, subtitle, {
       color: '#aeb6d9',
       fontFamily: 'monospace',
-      fontSize: compact ? '13px' : '15px',
+      fontSize: compact ? '12px' : '14px',
       align: 'left',
       wordWrap: { width: sheetWidth - (compact ? (hasCloseAction ? 116 : 56) : (hasCloseAction ? 148 : 72)) }
     })
@@ -120,8 +120,8 @@ export const createOverlaySheet = (
   let syncCloseVisualState: (() => void) | undefined;
 
   if (hasCloseAction) {
-    const closeWidth = compact ? 78 : 90;
-    const closeHeight = compact ? 28 : 32;
+    const closeWidth = compact ? 74 : 84;
+    const closeHeight = compact ? 26 : 30;
     const closeX = panelRight - (compact ? 18 : 22) - (closeWidth / 2);
     const closeY = panelTop + (compact ? 28 : 30);
     const closePlate = scene.add
@@ -217,7 +217,7 @@ export const createOverlaySheet = (
 
   return {
     container: scene.add.container(0, 0, sheetChildren),
-    contentY: subtitleText.y + subtitleText.height + (compact ? 32 : 36),
+    contentY: subtitleText.y + subtitleText.height + (compact ? 28 : 32),
     panelBounds: {
       bottom: panelBottom,
       left: panelLeft,
