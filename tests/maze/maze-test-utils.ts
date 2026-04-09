@@ -34,7 +34,6 @@ export const assertMazeInvariants = (episode: MazeEpisode): void => {
   expect(episode.raster.pathIndices.length).toBeGreaterThan(0);
   expect(isIndexValid(episode.raster.startIndex, episode.raster.width, episode.raster.height)).toBe(true);
   expect(isIndexValid(episode.raster.endIndex, episode.raster.width, episode.raster.height)).toBe(true);
-  expect(episode.solution.length).toBe(episode.raster.pathIndices.length);
   expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
 
   const startTile = episode.raster.tiles[episode.raster.startIndex];
@@ -70,11 +69,6 @@ export const assertMazeInvariants = (episode: MazeEpisode): void => {
     expect(episode.raster.tiles[index].floor).toBe(true);
   }
 
-  for (const index of episode.raster.wallIndices) {
-    expect(isIndexValid(index, episode.raster.width, episode.raster.height)).toBe(true);
-    expect(episode.raster.tiles[index].floor).toBe(false);
-  }
-
   for (let i = 1; i < episode.raster.pathIndices.length; i += 1) {
     const current = episode.raster.tiles[episode.raster.pathIndices[i]];
     const previous = episode.raster.pathIndices[i - 1];
@@ -92,10 +86,7 @@ export const serializeMaze = (episode: MazeEpisode) => ({
   seed: episode.seed,
   startIndex: episode.raster.startIndex,
   endIndex: episode.raster.endIndex,
-  checkpointCount: episode.raster.checkpointCount,
-  checkpointIndices: [...episode.raster.checkpointIndices],
   pathIndices: [...episode.raster.pathIndices],
-  wallIndices: [...episode.raster.wallIndices],
   shortcutsCreated: episode.shortcutsCreated,
   accepted: episode.accepted,
   tiles: episode.raster.tiles.map((tile) => ({

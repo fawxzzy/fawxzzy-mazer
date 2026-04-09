@@ -9,6 +9,7 @@ import type {
   PatternEngineMode,
   Point
 } from './types';
+import { pointFromIndex } from './grid';
 
 const N = 1 << 0;
 const E = 1 << 1;
@@ -214,13 +215,13 @@ export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
   };
 };
 
-export const isPlayable = (episode: MazeEpisode): boolean => episode.solution.length > 0;
+export const isPlayable = (episode: MazeEpisode): boolean => episode.raster.pathIndices.length > 0;
 
 export const toCortexSample = (episode: MazeEpisode, solveFrames?: number[]): CortexSample => ({
   seed: episode.seed,
   metrics: { ...episode.metrics },
-  solutionLength: episode.solution.length,
-  turns: countTurns(episode.solution),
+  solutionLength: episode.raster.pathIndices.length,
+  turns: countTurns(episode.raster.pathIndices, episode.raster.width),
   branches: countSolutionBranches(episode),
   accepted: episode.accepted,
   ...(solveFrames ? { solveFrames: [...solveFrames] } : {})
@@ -231,19 +232,15 @@ export const disposeMazeEpisode = (episode?: MazeEpisode | null): void => {
     return;
   }
 
-  episode.solution.length = 0;
   episode.core?.cells.splice(0, episode.core.cells.length);
   episode.core = undefined;
   episode.raster.tiles.length = 0;
   episode.raster.pathIndices.length = 0;
-  episode.raster.checkpointIndices.length = 0;
-  episode.raster.wallIndices.length = 0;
   episode.raster.width = 0;
   episode.raster.height = 0;
   episode.raster.scale = 0;
   episode.raster.startIndex = 0;
   episode.raster.endIndex = 0;
-  episode.raster.checkpointCount = 0;
   episode.raster.playableWidth = 0;
   episode.raster.playableHeight = 0;
   episode.raster.padding.top = 0;
@@ -318,7 +315,7 @@ export class PatternEngine {
   }
 
   private shouldAdvance(frame: PatternFrame, elapsed: number): boolean {
-    const base = Math.max(4, frame.episode.solution.length * 0.06);
+    const base = Math.max(4, frame.episode.raster.pathIndices.length * 0.06);
     switch (frame.mode) {
       case 'loading':
         return elapsed > Math.min(base, 3.5);
@@ -621,14 +618,13 @@ const carvePassage = (maze: MazeCore, a: number, b: number): void => {
   throw new Error(`Cells ${a} and ${b} are not neighbors`);
 };
 
-const countTurns = (path: Point[]): number => {
+const countTurns = (pathIndices: readonly number[], width: number): number => {
   let turns = 0;
 
-  for (let index = 1; index < path.length - 1; index += 1) {
-    const a = path[index - 1];
-    const b = path[index];
-    const c = path[index + 1];
-    if (b.x - a.x !== c.x - b.x || b.y - a.y !== c.y - b.y) {
+  for (let index = 1; index < pathIndices.length - 1; index += 1) {
+    const ab = pathIndices[index] - pathIndices[index - 1];
+    const bc = pathIndices[index + 1] - pathIndices[index];
+    if (ab % width !== bc % width || Math.trunc(ab / width) !== Math.trunc(bc / width)) {
       turns += 1;
     }
   }
@@ -657,11 +653,6 @@ const countSolutionBranches = (episode: MazeEpisode): number => {
 const heuristic = (a: Point, b: Point): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 const indexOf = (width: number, x: number, y: number): number => (y * width) + x;
-
-const pointFromIndex = (idx: number, width: number): Point => ({
-  x: idx % width,
-  y: Math.floor(idx / width)
-});
 
 const randomInt = (maxExclusive: number, rng: () => number): number => Math.floor(rng() * maxExclusive);
 

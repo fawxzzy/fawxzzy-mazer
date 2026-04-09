@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
+import { pointFromIndex } from '../domain/maze';
 import { palette } from './palette';
 
 interface HudHandle {
@@ -226,8 +227,8 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
       }
     },
     setGoalArrow(playerIndex: number): void {
-      const player = episode.raster.tiles[playerIndex];
-      const goal = episode.raster.tiles[episode.raster.endIndex];
+      const player = pointFromIndex(playerIndex, episode.raster.width);
+      const goal = pointFromIndex(episode.raster.endIndex, episode.raster.width);
       const dx = goal.x - player.x;
       const dy = goal.y - player.y;
       const isHorizontal = Math.abs(dx) >= Math.abs(dy);

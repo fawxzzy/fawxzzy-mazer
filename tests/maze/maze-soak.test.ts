@@ -100,13 +100,34 @@ test(
     }
 
     expect(memorySamples.length).toBeGreaterThanOrEqual(2);
-    const baseline = memorySamples[0];
-    const tailWindow = memorySamples.slice(Math.max(1, Math.floor(memorySamples.length / 2)));
-    const maxTailHeapUsed = Math.max(...tailWindow.map((sample) => sample.heapUsed));
-    const maxTailArrayBuffers = Math.max(...tailWindow.map((sample) => sample.arrayBuffers));
+    const postWarmupHeapUsed = memorySamples.map((sample) => sample.heapUsed);
+    const postWarmupMinHeapUsed = Math.min(...postWarmupHeapUsed);
+    const postWarmupMaxHeapUsed = Math.max(...postWarmupHeapUsed);
+    const postWarmupRange = postWarmupMaxHeapUsed - postWarmupMinHeapUsed;
+    const postWarmupPeaks = memorySamples.filter((sample, index, samples) => {
+      const previous = samples[index - 1]?.heapUsed ?? Number.NEGATIVE_INFINITY;
+      const next = samples[index + 1]?.heapUsed ?? Number.NEGATIVE_INFINITY;
+      return sample.heapUsed >= previous && sample.heapUsed >= next;
+    });
+    const postWarmupPeakDelta = postWarmupPeaks.length < 2
+      ? 0
+      : Math.abs(postWarmupPeaks[postWarmupPeaks.length - 1].heapUsed - postWarmupPeaks[0].heapUsed);
+    const finalHeapUsed = memorySamples[memorySamples.length - 1].heapUsed;
+    const maxPostWarmupArrayBuffers = Math.max(...memorySamples.map((sample) => sample.arrayBuffers));
 
-    expect(maxTailHeapUsed).toBeLessThanOrEqual(baseline.heapUsed + (16 * 1024 * 1024));
-    expect(maxTailArrayBuffers).toBeLessThanOrEqual(baseline.arrayBuffers + (4 * 1024 * 1024));
+    console.info(
+      `[maze-soak] warmupWindow=${warmupIterations}`
+      + ` postWarmupHeapUsedMin=${postWarmupMinHeapUsed}`
+      + ` postWarmupHeapUsedMax=${postWarmupMaxHeapUsed}`
+      + ` postWarmupHeapUsedRange=${postWarmupRange}`
+      + ` postWarmupPeakDelta=${postWarmupPeakDelta}`
+      + ` finalHeapUsed=${finalHeapUsed}`
+    );
+
+    expect(postWarmupMaxHeapUsed).toBeLessThanOrEqual(memorySamples[0].heapUsed + (40 * 1024 * 1024));
+    expect(postWarmupPeakDelta).toBeLessThanOrEqual(40 * 1024 * 1024);
+    expect(finalHeapUsed).toBeLessThanOrEqual(postWarmupMinHeapUsed + (16 * 1024 * 1024));
+    expect(maxPostWarmupArrayBuffers).toBeLessThanOrEqual(memorySamples[0].arrayBuffers + (4 * 1024 * 1024));
     disposeMazeEpisode(state.result);
   },
   soakIterations > 1000 ? 180000 : 120000

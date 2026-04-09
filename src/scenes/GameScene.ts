@@ -65,17 +65,7 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-ESC', this.handlePauseHotkey, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
       this.input.off('pointerup', this.handlePointerUp, this);
-      this.pendingOverlayLaunch?.remove(false);
-      this.pendingOverlayLaunch = undefined;
-      this.scene.stop('PauseScene');
-      this.scene.stop('WinScene');
-      this.boardRenderer?.destroy();
-      this.boardRenderer = undefined;
-      this.hud?.destroy();
-      this.hud = undefined;
-      disposeMazeEpisode(this.maze);
-      this.maze = undefined;
-      this.trailIndices.length = 0;
+      this.disposeRunState();
       this.time.removeAllEvents();
       this.tweens.killAll();
       this.children.removeAll(true);
@@ -104,15 +94,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private bootstrapRun(seed: number): void {
-    this.boardRenderer?.destroy();
-    this.boardRenderer = undefined;
-    this.hud?.destroy();
-    this.hud = undefined;
-    disposeMazeEpisode(this.maze);
-    this.maze = undefined;
-
-    this.scene.stop('PauseScene');
-    this.scene.stop('WinScene');
+    this.disposeRunState();
     this.overlayKey = null;
     this.paused = false;
     this.timerPausedAtMs = 0;
@@ -120,8 +102,6 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveDirection = null;
     this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
     this.bufferedDirection = null;
-    this.pendingOverlayLaunch?.remove(false);
-    this.pendingOverlayLaunch = undefined;
 
     const { width, height } = this.scale;
     const compact = width <= legacyTuning.game.layout.compactBreakpoint;
@@ -166,6 +146,22 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', this.handlePauseHotkey, this);
     });
+  }
+
+  private disposeRunState(): void {
+    this.pendingOverlayLaunch?.remove(false);
+    this.pendingOverlayLaunch = undefined;
+    this.scene.stop('PauseScene');
+    this.scene.stop('WinScene');
+    this.boardRenderer?.destroy();
+    this.boardRenderer = undefined;
+    this.hud?.destroy();
+    this.hud = undefined;
+    disposeMazeEpisode(this.maze);
+    this.maze = undefined;
+    this.trailIndices.length = 0;
+    this.queuedTouchDirection = null;
+    this.pointerDownAt = null;
   }
 
   private readDirection(): 0 | 1 | 2 | 3 | null {

@@ -1,13 +1,12 @@
 import { createSeededRng } from '../rng/seededRng';
 import { buildMazeCore } from './core';
-import { createGrid, indexFromCoordinates } from './grid';
+import { createGrid, indexFromCoordinates, pointFromIndex } from './grid';
 import type {
   MazeBuildOptions,
   MazeBuildResult,
   MazeConfig,
   MazeGenerationState,
   MazeMetrics,
-  MazeSolveResult,
   MazeTile,
   Point,
   TileBoard
@@ -40,6 +39,14 @@ interface SolveScratch {
   readonly gScore: Float64Array;
   readonly closed: Uint8Array;
   readonly heap: MinHeap<{ index: number; f: number; g: number }>;
+}
+
+interface TileSolveResult {
+  found: boolean;
+  pathIndices: number[];
+  visited: number;
+  expanded: number;
+  cost: number;
 }
 
 const solveScratchCache = new Map<number, SolveScratch>();
@@ -144,11 +151,8 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
     scale: Math.max(playableWidth, playableHeight),
     tiles,
     pathIndices: [],
-    checkpointIndices: [],
-    wallIndices: [],
     startIndex: indexFromCoordinates(startPoint.x, startPoint.y, playableWidth),
     endIndex: indexFromCoordinates(goalPoint.x, goalPoint.y, playableWidth),
-    checkpointCount: 0,
     playableWidth,
     playableHeight,
     padding: {
@@ -162,23 +166,12 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
   const adaptedStart = pointFromIndex(raster.startIndex, raster.width);
   const adaptedGoal = pointFromIndex(raster.endIndex, raster.width);
   const solved = solveTileAStar(raster.tiles, raster.width, raster.height, adaptedStart, adaptedGoal);
-  const pathIndices = new Array<number>(solved.path.length);
-
-  for (let index = 0; index < solved.path.length; index += 1) {
-    const pathIndex = indexFromCoordinates(solved.path[index].x, solved.path[index].y, raster.width);
-    pathIndices[index] = pathIndex;
+  for (const pathIndex of solved.pathIndices) {
     raster.tiles[pathIndex].path = true;
   }
   raster.tiles[raster.endIndex].end = true;
 
-  const wallIndices: number[] = [];
-  for (const tile of raster.tiles) {
-    if (!tile.floor) {
-      wallIndices.push(tile.index);
-    }
-  }
-
-  const metrics = measureTileMaze(raster.tiles, raster.width, pathIndices);
+  const metrics = measureTileMaze(raster.tiles, raster.width, solved.pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
 
   return {
@@ -186,10 +179,8 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
     core: includeCore ? core : undefined,
     raster: {
       ...raster,
-      pathIndices,
-      wallIndices
+      pathIndices: solved.pathIndices
     },
-    solution: solved.path,
     metrics,
     shortcutsCreated,
     accepted: acceptedCore && solved.found && passesRasterQualityGate(metrics, rasterMinSolutionLength)
@@ -216,9 +207,9 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
     tile.end = false;
   }
 
-  for (const tile of board.tiles) {
-    const targetIndex = indexFromCoordinates(tile.x + left, tile.y + top, targetWidth);
-    tiles[targetIndex].floor = tile.floor;
+  for (let index = 0; index < board.tiles.length; index += 1) {
+    const { x, y } = pointFromIndex(index, board.width);
+    tiles[indexFromCoordinates(x + left, y + top, targetWidth)].floor = board.tiles[index].floor;
   }
 
   const shiftIndex = (index: number): number => {
@@ -233,11 +224,8 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
     scale: Math.max(targetWidth, targetHeight),
     tiles,
     pathIndices: board.pathIndices.map(shiftIndex),
-    checkpointIndices: board.checkpointIndices.map(shiftIndex),
-    wallIndices: board.wallIndices.map(shiftIndex),
     startIndex: shiftIndex(board.startIndex),
     endIndex: shiftIndex(board.endIndex),
-    checkpointCount: board.checkpointCount,
     playableWidth: board.playableWidth,
     playableHeight: board.playableHeight,
     padding: {
@@ -255,7 +243,7 @@ const solveTileAStar = (
   _height: number,
   start: Point,
   goal: Point
-): MazeSolveResult => {
+): TileSolveResult => {
   const startIndex = indexFromCoordinates(start.x, start.y, width);
   const goalIndex = indexFromCoordinates(goal.x, goal.y, width);
   const scratch = getSolveScratch(tiles.length);
@@ -284,7 +272,7 @@ const solveTileAStar = (
     if (current.index === goalIndex) {
       return {
         found: true,
-        path: reconstructTilePath(cameFrom, current.index, width),
+        pathIndices: reconstructTilePath(cameFrom, current.index),
         visited,
         expanded,
         cost: gScore[current.index]
@@ -314,7 +302,7 @@ const solveTileAStar = (
 
   return {
     found: false,
-    path: [],
+    pathIndices: [],
     visited,
     expanded,
     cost: Number.POSITIVE_INFINITY
@@ -342,13 +330,12 @@ const measureTileMaze = (tiles: MazeTile[], width: number, pathIndices: number[]
   }
 
   for (let index = 1; index < pathIndices.length - 1; index += 1) {
-    const a = pointFromIndex(pathIndices[index - 1], width);
-    const b = pointFromIndex(pathIndices[index], width);
-    const c = pointFromIndex(pathIndices[index + 1], width);
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const bcx = c.x - b.x;
-    const bcy = c.y - b.y;
+    const ab = pathIndices[index] - pathIndices[index - 1];
+    const bc = pathIndices[index + 1] - pathIndices[index];
+    const abx = ab % width;
+    const aby = Math.trunc(ab / width);
+    const bcx = bc % width;
+    const bcy = Math.trunc(bc / width);
     if (abx === bcx && aby === bcy) {
       straightSegments += 1;
     }
@@ -384,23 +371,18 @@ const countOpenFloorNeighbors = (tiles: MazeTile[], index: number): number => {
   return count;
 };
 
-const reconstructTilePath = (cameFrom: Int32Array, endIndex: number, width: number): Point[] => {
-  const path: Point[] = [];
+const reconstructTilePath = (cameFrom: Int32Array, endIndex: number): number[] => {
+  const path: number[] = [];
   let cursor = endIndex;
 
   while (cursor >= 0) {
-    path.push(pointFromIndex(cursor, width));
+    path.push(cursor);
     cursor = cameFrom[cursor];
   }
 
   path.reverse();
   return path;
 };
-
-const pointFromIndex = (index: number, width: number): Point => ({
-  x: index % width,
-  y: Math.floor(index / width)
-});
 
 const indexOfCore = (width: number, x: number, y: number): number => (y * width) + x;
 

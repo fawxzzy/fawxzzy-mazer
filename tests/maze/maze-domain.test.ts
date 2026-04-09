@@ -45,7 +45,7 @@ describe('maze domain generation', () => {
     expect(episode.shortcutsCreated).toBeGreaterThanOrEqual(0);
     expect(episode.raster.width).toBe(50);
     expect(episode.raster.height).toBe(50);
-    expect(episode.raster.pathIndices.length).toBe(episode.solution.length);
+    expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
   });
 
   test('braid ratio opens alternative routes on larger boards', () => {
@@ -65,7 +65,7 @@ describe('maze domain generation', () => {
     const scale = 9;
     const grid = createGrid(scale);
 
-    for (const tile of grid) {
+    grid.forEach((tile, index) => {
       for (let direction = 0; direction < 4; direction += 1) {
         const cardinalDirection = direction as 0 | 1 | 2 | 3;
         const neighborIndex = tile.neighbors[cardinalDirection];
@@ -74,9 +74,9 @@ describe('maze domain generation', () => {
         }
 
         expect(isIndexValid(neighborIndex, scale)).toBe(true);
-        expect(isWithinSameRow(tile.index, neighborIndex, cardinalDirection, scale)).toBe(true);
+        expect(isWithinSameRow(index, neighborIndex, cardinalDirection, scale)).toBe(true);
       }
-    }
+    });
   });
 
   test('reset/regenerate loop only regenerates when flagged', () => {

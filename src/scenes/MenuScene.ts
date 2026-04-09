@@ -230,20 +230,27 @@ export class MenuScene extends Phaser.Scene {
     });
 
     let lastCue: DemoWalkerCue = 'spawn';
+    const applyPatternFrame = (nextFrame: typeof patternFrame): void => {
+      const previousEpisode = patternFrame.episode;
+      patternFrame = nextFrame;
+      boardRenderer.setEpisode(nextFrame.episode);
+      boardRenderer.drawBase();
+      boardRenderer.drawGoal();
+      renderDemo();
+      disposeMazeEpisode(previousEpisode);
+    };
+
     const syncDemoPresentation = (): void => {
-      const pathCursor = resolvePathCursor(
-        patternFrame.t,
-        patternFrame.episode.raster.pathIndices.length,
-        legacyTuning.demo.cadence.exploreStepMs
-      );
-      const currentIndex = patternFrame.episode.raster.pathIndices[pathCursor] ?? patternFrame.episode.raster.startIndex;
-      const cue = resolveDemoCue(patternFrame.t, pathCursor, patternFrame.episode.raster.pathIndices.length);
+      const path = patternFrame.episode.raster.pathIndices;
+      const pathCursor = resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs);
+      const currentIndex = path[pathCursor] ?? patternFrame.episode.raster.startIndex;
+      const cue = resolveDemoCue(patternFrame.t, pathCursor, path.length);
       const lastTrailIndex = pathCursor > 0
-        ? patternFrame.episode.raster.pathIndices[pathCursor - 1]
+        ? path[pathCursor - 1]
         : currentIndex;
 
       boardRenderer.drawGoal(cue);
-      boardRenderer.drawTrail(patternFrame.episode.raster.pathIndices, { cue, limit: pathCursor + 1 });
+      boardRenderer.drawTrail(path, { cue, limit: pathCursor + 1 });
       boardRenderer.drawActor(currentIndex, resolveDirection(patternFrame.episode, lastTrailIndex, currentIndex), cue);
     };
     const accentCueBeat = (): void => {
@@ -278,11 +285,12 @@ export class MenuScene extends Phaser.Scene {
         });
       };
 
-      const cue = resolveDemoCue(patternFrame.t, resolvePathCursor(
+      const path = patternFrame.episode.raster.pathIndices;
+      const cue = resolveDemoCue(
         patternFrame.t,
-        patternFrame.episode.raster.pathIndices.length,
-        legacyTuning.demo.cadence.exploreStepMs
-      ), patternFrame.episode.raster.pathIndices.length);
+        resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs),
+        path.length
+      );
       if (cue === 'goal') {
         pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
       } else if (cue === 'reset') {
@@ -292,25 +300,17 @@ export class MenuScene extends Phaser.Scene {
       }
     };
     const renderDemo = (): void => {
+      const path = patternFrame.episode.raster.pathIndices;
       const cue = resolveDemoCue(
         patternFrame.t,
-        resolvePathCursor(patternFrame.t, patternFrame.episode.raster.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs),
-        patternFrame.episode.raster.pathIndices.length
+        resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs),
+        path.length
       );
       syncDemoPresentation();
       if (cue !== lastCue) {
         accentCueBeat();
         lastCue = cue;
       }
-    };
-    const swapEpisode = (nextFrame: typeof patternFrame): void => {
-      const previousEpisode = patternFrame.episode;
-      patternFrame = nextFrame;
-      boardRenderer.setEpisode(nextFrame.episode);
-      boardRenderer.drawBase();
-      boardRenderer.drawGoal();
-      renderDemo();
-      disposeMazeEpisode(previousEpisode);
     };
     const handleVisibilityChange = (): void => {
       if (document.hidden) {
@@ -327,14 +327,8 @@ export class MenuScene extends Phaser.Scene {
       }
 
       sceneHidden = false;
-      const previousEpisode = patternFrame.episode;
       patternEngine.resumeFresh();
-      patternFrame = patternEngine.next(0);
-      boardRenderer.setEpisode(patternFrame.episode);
-      boardRenderer.drawBase();
-      boardRenderer.drawGoal();
-      renderDemo();
-      disposeMazeEpisode(previousEpisode);
+      applyPatternFrame(patternEngine.next(0));
       if (this.heroRefreshTimer) {
         this.heroRefreshTimer.paused = false;
       }
@@ -352,7 +346,7 @@ export class MenuScene extends Phaser.Scene {
 
         const nextFrame = patternEngine.next(legacyTuning.demo.cadence.heroRefreshMs / 1000);
         if (nextFrame.episode !== patternFrame.episode) {
-          swapEpisode(nextFrame);
+          applyPatternFrame(nextFrame);
         } else {
           patternFrame = nextFrame;
           renderDemo();

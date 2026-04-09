@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
+import { pointFromIndex } from '../domain/maze';
 import { palette } from './palette';
 
 export interface BoardLayout {
@@ -103,6 +104,24 @@ export class BoardRenderer {
 
   public setEpisode(episode: MazeEpisode): void {
     this.episode = episode;
+  }
+
+  private tileMetrics(index: number): {
+    tileX: number;
+    tileY: number;
+    centerX: number;
+    centerY: number;
+  } {
+    const { boardX, boardY, tileSize } = this.layout;
+    const { x, y } = pointFromIndex(index, this.episode.raster.width);
+    const tileX = boardX + x * tileSize;
+    const tileY = boardY + y * tileSize;
+    return {
+      tileX,
+      tileY,
+      centerX: tileX + tileSize / 2,
+      centerY: tileY + tileSize / 2
+    };
   }
 
   private drawTileBrackets(
@@ -253,14 +272,13 @@ export class BoardRenderer {
   }
 
   public drawBase(): void {
-    const { boardX, boardY, tileSize } = this.layout;
+    const { tileSize } = this.layout;
     const bevel = Math.max(1, Math.round(tileSize * legacyTuning.board.tile.bevelRatio));
     this.base.clear();
     this.grid.clear();
 
-    this.episode.raster.tiles.forEach((tile) => {
-      const x = boardX + tile.x * tileSize;
-      const y = boardY + tile.y * tileSize;
+    this.episode.raster.tiles.forEach((tile, index) => {
+      const { tileX: x, tileY: y } = this.tileMetrics(index);
 
       if (tile.floor) {
         this.base.fillStyle(palette.board.path, legacyTuning.board.tile.floorOuterAlpha);
@@ -298,15 +316,11 @@ export class BoardRenderer {
   }
 
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
-    const { boardX, boardY, tileSize } = this.layout;
-    const goalTile = this.episode.raster.tiles[this.episode.raster.endIndex];
+    const { tileSize } = this.layout;
     const now = this.scene.time.now;
     this.goal.clear();
 
-    const centerX = boardX + goalTile.x * tileSize + tileSize / 2;
-    const centerY = boardY + goalTile.y * tileSize + tileSize / 2;
-    const tileX = boardX + goalTile.x * tileSize;
-    const tileY = boardY + goalTile.y * tileSize;
+    const { centerX, centerY, tileX, tileY } = this.tileMetrics(this.episode.raster.endIndex);
     const haloSize = tileSize * 0.92;
     const cueBoost = cue === 'goal'
       ? 1.34
@@ -403,7 +417,7 @@ export class BoardRenderer {
   }
 
   public drawTrail(trail: ReadonlyArray<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
-    const { boardX, boardY, tileSize } = this.layout;
+    const { tileSize } = this.layout;
     const cue = options.cue ?? 'explore';
     const now = this.scene.time.now;
     const trailLength = Math.min(options.limit ?? trail.length, trail.length);
@@ -431,9 +445,7 @@ export class BoardRenderer {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
       const mode = typeof step === 'number' ? 'explore' : step.mode;
-      const tile = this.episode.raster.tiles[index];
-      const centerX = boardX + tile.x * tileSize + tileSize / 2;
-      const centerY = boardY + tile.y * tileSize + tileSize / 2;
+      const { tileX, tileY, centerX, centerY } = this.tileMetrics(index);
       const t = trailLength <= 1 ? 1 : i / (trailLength - 1);
       const isHead = i === headIndex;
       const isBacktrack = mode === 'backtrack';
@@ -485,15 +497,15 @@ export class BoardRenderer {
       if (isBacktrack) {
         this.trail.fillStyle(segmentGlowColor, legacyTuning.board.trail.backtrackGlowAlpha * glowAlpha);
         this.trail.fillRect(
-          boardX + tile.x * tileSize + (cellInset * 0.72),
-          boardY + tile.y * tileSize + (cellInset * 0.72),
+          tileX + (cellInset * 0.72),
+          tileY + (cellInset * 0.72),
           tileSize - (cellInset * 1.44),
           tileSize - (cellInset * 1.44)
         );
         this.trail.lineStyle(Math.max(1, tileSize * 0.05), segmentCoreColor, legacyTuning.board.trail.backtrackOutlineAlpha * Math.min(1, alpha + 0.14));
         this.trail.strokeRect(
-          boardX + tile.x * tileSize + cellInset,
-          boardY + tile.y * tileSize + cellInset,
+          tileX + cellInset,
+          tileY + cellInset,
           tileSize - cellInset * 2,
           tileSize - cellInset * 2
         );
@@ -502,8 +514,8 @@ export class BoardRenderer {
       } else {
         this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.92 : 0.76));
         this.trail.fillRect(
-          boardX + tile.x * tileSize + cellInset,
-          boardY + tile.y * tileSize + cellInset,
+          tileX + cellInset,
+          tileY + cellInset,
           tileSize - cellInset * 2,
           tileSize - cellInset * 2
         );
@@ -562,11 +574,7 @@ export class BoardRenderer {
       && cue !== 'spawn'
       && cue !== 'goal'
       && cue !== 'reset') {
-      const targetTile = this.episode.raster.tiles[options.targetIndex];
-      const targetX = boardX + targetTile.x * tileSize;
-      const targetY = boardY + targetTile.y * tileSize;
-      const targetCenterX = targetX + tileSize / 2;
-      const targetCenterY = targetY + tileSize / 2;
+      const { tileX: targetX, tileY: targetY, centerX: targetCenterX, centerY: targetCenterY } = this.tileMetrics(options.targetIndex);
       const bracketInset = tileSize * legacyTuning.board.trail.targetBracketInsetRatio;
       const bracketLength = tileSize * legacyTuning.board.trail.targetBracketLengthRatio;
       const signalColor = cue === 'dead-end' ? palette.board.goal : palette.board.topHighlight;
@@ -593,9 +601,7 @@ export class BoardRenderer {
     if (cue === 'dead-end' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const headTile = this.episode.raster.tiles[headIndexValue];
-      const headX = boardX + headTile.x * tileSize;
-      const headY = boardY + headTile.y * tileSize;
+      const { tileX: headX, tileY: headY } = this.tileMetrics(headIndexValue);
       const pulseInset = tileSize * 0.14;
       this.signal.lineStyle(Math.max(1, tileSize * 0.045), palette.board.goal, 0.42 + (targetPulse * 0.26));
       this.signal.strokeRect(
@@ -619,12 +625,12 @@ export class BoardRenderer {
     } else if (cue === 'anticipate' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const headTile = this.episode.raster.tiles[headIndexValue];
+      const { tileX: headX, tileY: headY } = this.tileMetrics(headIndexValue);
       const pulseInset = tileSize * 0.18;
       this.signal.lineStyle(Math.max(1, tileSize * 0.035), palette.board.topHighlight, 0.28 + (targetPulse * 0.18));
       this.signal.strokeRect(
-        boardX + headTile.x * tileSize + pulseInset,
-        boardY + headTile.y * tileSize + pulseInset,
+        headX + pulseInset,
+        headY + pulseInset,
         tileSize - (pulseInset * 2),
         tileSize - (pulseInset * 2)
       );
@@ -632,13 +638,9 @@ export class BoardRenderer {
   }
 
   public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null, cue: DemoWalkerCue = 'explore'): void {
-    const { boardX, boardY, tileSize } = this.layout;
-    const tile = this.episode.raster.tiles[index];
+    const { tileSize } = this.layout;
     const now = this.scene.time.now;
-    const tileX = boardX + tile.x * tileSize;
-    const tileY = boardY + tile.y * tileSize;
-    const centerX = boardX + tile.x * tileSize + (tileSize / 2);
-    const centerY = boardY + tile.y * tileSize + (tileSize / 2);
+    const { tileX, tileY, centerX, centerY } = this.tileMetrics(index);
     const actorTuning = legacyTuning.board.actor;
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
     const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];

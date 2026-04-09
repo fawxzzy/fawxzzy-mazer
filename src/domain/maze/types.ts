@@ -1,19 +1,13 @@
 export type NeighborTuple = readonly [top: number, bottom: number, left: number, right: number];
 
-export type GridPoint = { x: number; y: number };
-export type Point = GridPoint;
+export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
-export type PatternMode = PatternEngineMode;
 
 export interface MazeTile {
-  index: number;
-  x: number;
-  y: number;
   floor: boolean;
   path: boolean;
   end: boolean;
   neighbors: NeighborTuple;
-  neighborCount: number;
 }
 
 export interface MazeCell {
@@ -85,11 +79,8 @@ export interface TileBoard {
   scale: number;
   tiles: MazeTile[];
   pathIndices: number[];
-  checkpointIndices: number[];
-  wallIndices: number[];
   startIndex: number;
   endIndex: number;
-  checkpointCount: number;
   playableWidth: number;
   playableHeight: number;
   padding: BoardFootprintPadding;
@@ -99,7 +90,6 @@ export interface MazeEpisode {
   seed: number;
   core?: MazeCore;
   raster: TileBoard;
-  solution: GridPoint[];
   metrics: MazeMetrics;
   shortcutsCreated: number;
   accepted: boolean;
