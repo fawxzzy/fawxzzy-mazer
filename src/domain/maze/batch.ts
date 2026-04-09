@@ -1,5 +1,6 @@
 import { buildMaze } from './generator';
-import type { MazeMetrics } from './types';
+import { toCortexSample } from './cortex';
+import type { CortexSink, MazeMetrics } from './types';
 
 export interface BatchSummary {
   runs: number;
@@ -16,20 +17,22 @@ export const runBatch = (
   runs = 100,
   width = 50,
   height = 50,
-  braidRatio = 0.08
+  braidRatio = 0.08,
+  cortex?: CortexSink
 ): BatchSummary => {
   const metrics: MazeMetrics[] = [];
 
   for (let iteration = 0; iteration < runs; iteration += 1) {
-    metrics.push(
-      buildMaze({
-        width,
-        height,
-        seed: iteration + 1,
-        braidRatio,
-        minSolutionLength: Math.floor((Math.min(width, height) ** 2) / 5)
-      }).metrics
-    );
+    const episode = buildMaze({
+      width,
+      height,
+      seed: iteration + 1,
+      braidRatio,
+      minSolutionLength: Math.floor((Math.min(width, height) ** 2) / 5)
+    });
+
+    metrics.push(episode.metrics);
+    cortex?.push(toCortexSample(episode));
   }
 
   const sum = <K extends keyof MazeMetrics>(key: K): number => (

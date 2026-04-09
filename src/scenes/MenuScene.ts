@@ -37,29 +37,29 @@ export class MenuScene extends Phaser.Scene {
     let demoSeed: number = legacyTuning.demo.seed;
     const patternEngine = new PatternEngine(
       () => {
-        const maze = generateMaze({
+        const episode = generateMaze({
           scale: legacyTuning.board.scale,
           seed: demoSeed,
           checkPointModifier: legacyTuning.board.checkPointModifier,
           shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
         });
         demoSeed += legacyTuning.demo.behavior.regenerateSeedStep;
-        return maze;
+        return episode;
       },
       'demo'
     );
     let patternFrame = patternEngine.next(0);
-    const maze = patternFrame.maze;
+    const episode = patternFrame.episode;
     const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
       + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
 
-    const layout = createBoardLayout(this, maze, {
+    const layout = createBoardLayout(this, episode, {
       boardScale,
       topReserve: Math.max(legacyTuning.menu.layout.topReserveMinPx, Math.round(height * legacyTuning.menu.layout.topReserveRatio)),
       sidePadding: isNarrow ? legacyTuning.menu.layout.sidePaddingPx + 4 : legacyTuning.menu.layout.sidePaddingPx,
       bottomPadding: legacyTuning.menu.layout.bottomPaddingPx
     });
-    const boardRenderer = new BoardRenderer(this, maze, layout);
+    const boardRenderer = new BoardRenderer(this, episode, layout);
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
@@ -67,10 +67,10 @@ export class MenuScene extends Phaser.Scene {
 
     const boardAura = this.add
       .ellipse(
-        layout.boardX + layout.boardSize / 2,
-        layout.boardY + layout.boardSize / 2,
-        layout.boardSize * 1.14,
-        layout.boardSize * 1.08,
+        layout.boardX + layout.boardWidth / 2,
+        layout.boardY + layout.boardHeight / 2,
+        layout.boardWidth * 1.14,
+        layout.boardHeight * 1.08,
         palette.background.nebulaCore,
         0.1
       )
@@ -80,10 +80,10 @@ export class MenuScene extends Phaser.Scene {
 
     const boardHalo = this.add
       .ellipse(
-        layout.boardX + layout.boardSize / 2,
-        layout.boardY + layout.boardSize / 2,
-        layout.boardSize * 1.05,
-        layout.boardSize * 1.03,
+        layout.boardX + layout.boardWidth / 2,
+        layout.boardY + layout.boardHeight / 2,
+        layout.boardWidth * 1.05,
+        layout.boardHeight * 1.03,
         palette.board.topHighlight,
         0.032
       )
@@ -93,10 +93,10 @@ export class MenuScene extends Phaser.Scene {
 
     const boardShade = this.add
       .rectangle(
-        layout.boardX + layout.boardSize / 2,
-        layout.boardY + layout.boardSize / 2,
-        layout.boardSize,
-        layout.boardSize,
+        layout.boardX + layout.boardWidth / 2,
+        layout.boardY + layout.boardHeight / 2,
+        layout.boardWidth,
+        layout.boardHeight,
         palette.board.topHighlight,
         0.02
       )
@@ -230,15 +230,19 @@ export class MenuScene extends Phaser.Scene {
 
     let lastCue: DemoWalkerCue = 'spawn';
     const syncDemoPresentation = (): void => {
-      const pathCursor = resolvePathCursor(patternFrame.t, maze.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs);
-      const trail = maze.pathIndices.slice(0, pathCursor + 1);
-      const currentIndex = trail.at(-1) ?? maze.startIndex;
-      const cue = resolveDemoCue(patternFrame.t, pathCursor, maze.pathIndices.length);
+      const pathCursor = resolvePathCursor(
+        patternFrame.t,
+        patternFrame.episode.raster.pathIndices.length,
+        legacyTuning.demo.cadence.exploreStepMs
+      );
+      const trail = patternFrame.episode.raster.pathIndices.slice(0, pathCursor + 1);
+      const currentIndex = trail.at(-1) ?? patternFrame.episode.raster.startIndex;
+      const cue = resolveDemoCue(patternFrame.t, pathCursor, patternFrame.episode.raster.pathIndices.length);
       const lastTrailIndex = trail.length > 1 ? trail[trail.length - 2] : currentIndex;
 
       boardRenderer.drawGoal(cue);
       boardRenderer.drawTrail(trail, { cue });
-      boardRenderer.drawActor(currentIndex, resolveDirection(maze, lastTrailIndex, currentIndex), cue);
+      boardRenderer.drawActor(currentIndex, resolveDirection(patternFrame.episode, lastTrailIndex, currentIndex), cue);
     };
     const accentCueBeat = (): void => {
       const pulseBoard = (
@@ -274,9 +278,9 @@ export class MenuScene extends Phaser.Scene {
 
       const cue = resolveDemoCue(patternFrame.t, resolvePathCursor(
         patternFrame.t,
-        maze.pathIndices.length,
+        patternFrame.episode.raster.pathIndices.length,
         legacyTuning.demo.cadence.exploreStepMs
-      ), maze.pathIndices.length);
+      ), patternFrame.episode.raster.pathIndices.length);
       if (cue === 'goal') {
         pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
       } else if (cue === 'reset') {
@@ -288,8 +292,8 @@ export class MenuScene extends Phaser.Scene {
     const renderDemo = (): void => {
       const cue = resolveDemoCue(
         patternFrame.t,
-        resolvePathCursor(patternFrame.t, maze.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs),
-        maze.pathIndices.length
+        resolvePathCursor(patternFrame.t, patternFrame.episode.raster.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs),
+        patternFrame.episode.raster.pathIndices.length
       );
       syncDemoPresentation();
       if (cue !== lastCue) {
@@ -305,9 +309,9 @@ export class MenuScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         const nextFrame = patternEngine.next(legacyTuning.demo.cadence.heroRefreshMs / 1000);
-        if (nextFrame.maze !== maze) {
-          Object.assign(maze, nextFrame.maze);
-          patternFrame = { ...nextFrame, maze };
+        if (nextFrame.episode !== patternFrame.episode) {
+          Object.assign(patternFrame.episode, nextFrame.episode);
+          patternFrame = { ...nextFrame, episode: patternFrame.episode };
           boardRenderer.drawBase();
           boardRenderer.drawGoal();
         } else {
@@ -592,7 +596,7 @@ const resolveDemoCue = (elapsedSeconds: number, pathCursor: number, pathLength: 
 };
 
 const resolveDirection = (
-  maze: { tiles: { neighbors: readonly [number, number, number, number] }[] },
+  episode: { raster: { tiles: { neighbors: readonly [number, number, number, number] }[] } },
   fromIndex: number,
   toIndex: number
 ): 0 | 1 | 2 | 3 | null => {
@@ -600,7 +604,7 @@ const resolveDirection = (
     return null;
   }
 
-  const direction = maze.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
+  const direction = episode.raster.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
   if (direction < 0 || direction > 3) {
     return null;
   }

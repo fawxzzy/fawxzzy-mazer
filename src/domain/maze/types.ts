@@ -1,7 +1,9 @@
 export type NeighborTuple = readonly [top: number, bottom: number, left: number, right: number];
 
-export type Point = { x: number; y: number };
-export type PatternMode = 'play' | 'demo' | 'loading' | 'screensaver';
+export type GridPoint = { x: number; y: number };
+export type Point = GridPoint;
+export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
+export type PatternMode = PatternEngineMode;
 
 export interface MazeTile {
   index: number;
@@ -45,6 +47,7 @@ export interface MazeBuildOptions {
   minSolutionLength?: number;
   maxAttempts?: number;
   rng?: () => number;
+  footprint?: BoardFootprintTarget;
 }
 
 export interface MazeSolveResult {
@@ -63,9 +66,22 @@ export interface MazeMetrics {
   coverage: number;
 }
 
-export interface MazeBuildResult {
+export interface BoardFootprintTarget {
+  width?: number;
+  height?: number;
+}
+
+export interface BoardFootprintPadding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface TileBoard {
+  width: number;
+  height: number;
   scale: number;
-  seed: number;
   tiles: MazeTile[];
   pathIndices: number[];
   checkpointIndices: number[];
@@ -73,35 +89,43 @@ export interface MazeBuildResult {
   startIndex: number;
   endIndex: number;
   checkpointCount: number;
-  shortcutsCreated: number;
-  core: MazeCore;
-  solution: MazeSolveResult;
-  metrics: MazeMetrics;
+  playableWidth: number;
+  playableHeight: number;
+  padding: BoardFootprintPadding;
 }
+
+export interface MazeEpisode {
+  seed: number;
+  core: MazeCore;
+  raster: TileBoard;
+  solution: GridPoint[];
+  metrics: MazeMetrics;
+  shortcutsCreated: number;
+  accepted: boolean;
+}
+
+export type MazeBuildResult = MazeEpisode;
 
 export interface MazeGenerationState {
   processCount: number;
   resetGame: boolean;
-  result: MazeBuildResult;
+  result: MazeEpisode;
 }
 
 export interface PatternFrame {
-  mode: PatternMode;
-  maze: MazeBuildResult;
-  solution: MazeSolveResult;
-  metrics: MazeMetrics;
+  mode: PatternEngineMode;
+  episode: MazeEpisode;
   t: number;
 }
 
 export interface CortexSample {
   seed: number;
-  scale: number;
+  metrics: MazeMetrics;
   solutionLength: number;
-  deadEnds: number;
-  junctions: number;
-  straightness: number;
-  coverage: number;
-  path: Point[];
+  turns: number;
+  branches: number;
+  accepted: boolean;
+  solveFrames?: number[];
 }
 
 export interface CortexSink {

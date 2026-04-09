@@ -1,10 +1,10 @@
 import { expect } from 'vitest';
 
-import { isIndexValid, type MazeBuildResult } from '../../src/domain/maze';
+import { isIndexValid, type MazeEpisode } from '../../src/domain/maze';
 
-const hasFloorConnection = (maze: MazeBuildResult): boolean => {
-  const queue = [maze.startIndex];
-  const visited = new Set<number>([maze.startIndex]);
+const hasFloorConnection = (episode: MazeEpisode): boolean => {
+  const queue = [episode.raster.startIndex];
+  const visited = new Set<number>([episode.raster.startIndex]);
 
   while (queue.length > 0) {
     const index = queue.shift();
@@ -12,12 +12,12 @@ const hasFloorConnection = (maze: MazeBuildResult): boolean => {
       continue;
     }
 
-    if (index === maze.endIndex) {
+    if (index === episode.raster.endIndex) {
       return true;
     }
 
-    for (const neighborIndex of maze.tiles[index].neighbors) {
-      if (neighborIndex === -1 || visited.has(neighborIndex) || !maze.tiles[neighborIndex].floor) {
+    for (const neighborIndex of episode.raster.tiles[index].neighbors) {
+      if (neighborIndex === -1 || visited.has(neighborIndex) || !episode.raster.tiles[neighborIndex].floor) {
         continue;
       }
 
@@ -29,30 +29,29 @@ const hasFloorConnection = (maze: MazeBuildResult): boolean => {
   return false;
 };
 
-export const assertMazeInvariants = (maze: MazeBuildResult): void => {
-  expect(maze.tiles).toHaveLength(maze.scale * maze.scale);
-  expect(maze.pathIndices.length).toBeGreaterThan(0);
-  expect(isIndexValid(maze.startIndex, maze.scale)).toBe(true);
-  expect(isIndexValid(maze.endIndex, maze.scale)).toBe(true);
-  expect(maze.solution.found).toBe(true);
-  expect(maze.solution.path.length).toBe(maze.pathIndices.length);
-  expect(maze.metrics.solutionLength).toBe(maze.pathIndices.length);
+export const assertMazeInvariants = (episode: MazeEpisode): void => {
+  expect(episode.raster.tiles).toHaveLength(episode.raster.width * episode.raster.height);
+  expect(episode.raster.pathIndices.length).toBeGreaterThan(0);
+  expect(isIndexValid(episode.raster.startIndex, episode.raster.width, episode.raster.height)).toBe(true);
+  expect(isIndexValid(episode.raster.endIndex, episode.raster.width, episode.raster.height)).toBe(true);
+  expect(episode.solution.length).toBe(episode.raster.pathIndices.length);
+  expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
 
-  const startTile = maze.tiles[maze.startIndex];
-  const endTile = maze.tiles[maze.endIndex];
+  const startTile = episode.raster.tiles[episode.raster.startIndex];
+  const endTile = episode.raster.tiles[episode.raster.endIndex];
   expect(startTile.floor).toBe(true);
   expect(startTile.path).toBe(true);
   expect(endTile.floor).toBe(true);
   expect(endTile.path).toBe(true);
   expect(endTile.end).toBe(true);
 
-  for (const tile of maze.tiles) {
+  for (const tile of episode.raster.tiles) {
     for (const neighborIndex of tile.neighbors) {
       if (neighborIndex === -1) {
         continue;
       }
 
-      expect(isIndexValid(neighborIndex, maze.scale)).toBe(true);
+      expect(isIndexValid(neighborIndex, episode.raster.width, episode.raster.height)).toBe(true);
     }
 
     if (tile.path) {
@@ -65,39 +64,41 @@ export const assertMazeInvariants = (maze: MazeBuildResult): void => {
     }
   }
 
-  for (const index of maze.pathIndices) {
-    expect(isIndexValid(index, maze.scale)).toBe(true);
-    expect(maze.tiles[index].path).toBe(true);
-    expect(maze.tiles[index].floor).toBe(true);
+  for (const index of episode.raster.pathIndices) {
+    expect(isIndexValid(index, episode.raster.width, episode.raster.height)).toBe(true);
+    expect(episode.raster.tiles[index].path).toBe(true);
+    expect(episode.raster.tiles[index].floor).toBe(true);
   }
 
-  for (const index of maze.wallIndices) {
-    expect(isIndexValid(index, maze.scale)).toBe(true);
-    expect(maze.tiles[index].floor).toBe(false);
+  for (const index of episode.raster.wallIndices) {
+    expect(isIndexValid(index, episode.raster.width, episode.raster.height)).toBe(true);
+    expect(episode.raster.tiles[index].floor).toBe(false);
   }
 
-  for (let i = 1; i < maze.pathIndices.length; i += 1) {
-    const current = maze.tiles[maze.pathIndices[i]];
-    const previous = maze.pathIndices[i - 1];
+  for (let i = 1; i < episode.raster.pathIndices.length; i += 1) {
+    const current = episode.raster.tiles[episode.raster.pathIndices[i]];
+    const previous = episode.raster.pathIndices[i - 1];
     expect(current.neighbors.includes(previous)).toBe(true);
   }
 
-  expect(hasFloorConnection(maze)).toBe(true);
-  expect(maze.metrics.coverage).toBeGreaterThan(0);
-  expect(maze.metrics.coverage).toBeLessThanOrEqual(1);
+  expect(hasFloorConnection(episode)).toBe(true);
+  expect(episode.metrics.coverage).toBeGreaterThan(0);
+  expect(episode.metrics.coverage).toBeLessThanOrEqual(1);
 };
 
-export const serializeMaze = (maze: MazeBuildResult) => ({
-  scale: maze.scale,
-  seed: maze.seed,
-  startIndex: maze.startIndex,
-  endIndex: maze.endIndex,
-  checkpointCount: maze.checkpointCount,
-  checkpointIndices: [...maze.checkpointIndices],
-  pathIndices: [...maze.pathIndices],
-  wallIndices: [...maze.wallIndices],
-  shortcutsCreated: maze.shortcutsCreated,
-  tiles: maze.tiles.map((tile) => ({
+export const serializeMaze = (episode: MazeEpisode) => ({
+  width: episode.raster.width,
+  height: episode.raster.height,
+  seed: episode.seed,
+  startIndex: episode.raster.startIndex,
+  endIndex: episode.raster.endIndex,
+  checkpointCount: episode.raster.checkpointCount,
+  checkpointIndices: [...episode.raster.checkpointIndices],
+  pathIndices: [...episode.raster.pathIndices],
+  wallIndices: [...episode.raster.wallIndices],
+  shortcutsCreated: episode.shortcutsCreated,
+  accepted: episode.accepted,
+  tiles: episode.raster.tiles.map((tile) => ({
     floor: tile.floor,
     path: tile.path,
     end: tile.end

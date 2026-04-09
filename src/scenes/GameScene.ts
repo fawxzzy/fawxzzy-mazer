@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { generateMaze, type MazeBuildResult } from '../domain/maze';
+import { generateMaze, type MazeEpisode } from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -15,7 +15,7 @@ interface WinActionData {
 }
 
 export class GameScene extends Phaser.Scene {
-  private maze!: MazeBuildResult;
+  private maze!: MazeEpisode;
   private boardRenderer!: BoardRenderer;
   private playerIndex!: number;
   private timerStartMs = 0;
@@ -131,7 +131,7 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer.drawGoal();
     this.boardRenderer.startAmbientMotion(1.25, 2800);
 
-    this.playerIndex = this.maze.startIndex;
+    this.playerIndex = this.maze.raster.startIndex;
     this.trailIndices = [this.playerIndex];
     this.boardRenderer.drawTrail(this.trailIndices);
     this.boardRenderer.drawActor(this.playerIndex);
@@ -243,8 +243,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const nextIndex = this.maze.tiles[this.playerIndex].neighbors[direction];
-    if (nextIndex === -1 || !this.maze.tiles[nextIndex].floor) {
+    const nextIndex = this.maze.raster.tiles[this.playerIndex].neighbors[direction];
+    if (nextIndex === -1 || !this.maze.raster.tiles[nextIndex].floor) {
       this.lastMoveDirection = direction;
       if (this.time.now - this.lastBlockedAtMs >= this.blockedFeedbackCooldownMs) {
         this.lastBlockedAtMs = this.time.now;
@@ -265,7 +265,7 @@ export class GameScene extends Phaser.Scene {
     this.hud?.setGoalArrow(this.playerIndex);
     playSfx('move');
 
-    if (this.playerIndex === this.maze.endIndex) {
+    if (this.playerIndex === this.maze.raster.endIndex) {
       mazerStorage.recordBestTime({
         elapsedMs: this.time.now - this.timerStartMs,
         seed: this.runSeed

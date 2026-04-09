@@ -69,8 +69,8 @@ test(
         const advance = advanceDemoWalker(maze, state, legacyTuning.demo);
         state = advance.state;
 
-        expect(maze.tiles[state.currentIndex].floor).toBe(true);
-        expect(maze.pathIndices.includes(state.currentIndex)).toBe(true);
+        expect(maze.raster.tiles[state.currentIndex].floor).toBe(true);
+        expect(maze.raster.pathIndices.includes(state.currentIndex)).toBe(true);
 
         if (advance.shouldRegenerateMaze || state.loops > 0) {
           completedLoop = true;

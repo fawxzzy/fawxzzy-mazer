@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildMaze,
   createGrid,
+  type CortexSample,
   generateMaze,
   isIndexValid,
   isWithinSameRow,
@@ -32,7 +33,7 @@ describe('maze domain generation', () => {
   });
 
   test('buildMaze exposes the pattern-engine friendly API surface', () => {
-    const maze = buildMaze({
+    const episode = buildMaze({
       width: 50,
       height: 50,
       seed: 77,
@@ -40,9 +41,11 @@ describe('maze domain generation', () => {
       minSolutionLength: 20
     });
 
-    assertMazeInvariants(maze);
-    expect(maze.shortcutsCreated).toBeGreaterThanOrEqual(0);
-    expect(maze.solution.cost).toBe(maze.pathIndices.length - 1);
+    assertMazeInvariants(episode);
+    expect(episode.shortcutsCreated).toBeGreaterThanOrEqual(0);
+    expect(episode.raster.width).toBe(50);
+    expect(episode.raster.height).toBe(50);
+    expect(episode.raster.pathIndices.length).toBe(episode.solution.length);
   });
 
   test('braid ratio opens alternative routes on larger boards', () => {
@@ -126,12 +129,20 @@ describe('maze domain generation', () => {
   }, 20000);
 
   test('batch harness reports bounded summary metrics', () => {
-    const summary = runBatch(24, 50, 50, 0.08);
+    const samples: CortexSample[] = [];
+    const summary = runBatch(24, 50, 50, 0.08, {
+      push(sample) {
+        samples.push(sample);
+      }
+    });
 
     expect(summary.runs).toBe(24);
     expect(summary.avgSolutionLength).toBeGreaterThan(20);
     expect(summary.avgCoverage).toBeGreaterThan(0);
     expect(summary.avgCoverage).toBeLessThanOrEqual(1);
     expect(summary.maxSolutionLength).toBeGreaterThanOrEqual(summary.minSolutionLength);
+    expect(samples).toHaveLength(24);
+    expect(samples.every((sample) => sample.solutionLength > 0)).toBe(true);
+    expect(samples.every((sample) => sample.metrics.solutionLength === sample.solutionLength)).toBe(true);
   });
 });

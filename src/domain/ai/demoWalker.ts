@@ -1,4 +1,4 @@
-import type { MazeBuildResult } from '../maze';
+import type { MazeEpisode } from '../maze';
 
 export interface DemoWalkerConfig {
   seed: number;
@@ -84,11 +84,11 @@ const defaultConfig: DemoWalkerConfig = {
   }
 };
 
-export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState => ({
-  currentIndex: maze.startIndex,
-  trailIndices: [maze.startIndex],
-  trailSteps: [{ index: maze.startIndex, mode: 'explore' }],
-  visited: new Set<number>([maze.startIndex]),
+export const createDemoWalkerState = (episode: MazeEpisode): DemoWalkerState => ({
+  currentIndex: episode.raster.startIndex,
+  trailIndices: [episode.raster.startIndex],
+  trailSteps: [{ index: episode.raster.startIndex, mode: 'explore' }],
+  visited: new Set<number>([episode.raster.startIndex]),
   loops: 0,
   reachedGoal: false,
   phase: 'explore',
@@ -108,7 +108,7 @@ export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState =>
 });
 
 export const advanceDemoWalker = (
-  maze: MazeBuildResult,
+  episode: MazeEpisode,
   state: DemoWalkerState,
   config: DemoWalkerConfig = defaultConfig
 ): DemoWalkerAdvance => {
@@ -128,7 +128,7 @@ export const advanceDemoWalker = (
   if (state.phase === 'reset-hold') {
     return {
       state: {
-        ...createDemoWalkerState(maze),
+        ...createDemoWalkerState(episode),
         loops: state.loops + 1
       },
       delayMs: config.cadence.exploreStepMs,
@@ -137,10 +137,10 @@ export const advanceDemoWalker = (
     };
   }
 
-  const nextCursor = Math.min(state.pathCursor + 1, maze.pathIndices.length - 1);
-  const nextIndex = maze.pathIndices[nextCursor];
-  const lastDirection = resolveDirection(maze, state.currentIndex, nextIndex);
-  const reachedGoal = nextIndex === maze.endIndex;
+  const nextCursor = Math.min(state.pathCursor + 1, episode.raster.pathIndices.length - 1);
+  const nextIndex = episode.raster.pathIndices[nextCursor];
+  const lastDirection = resolveDirection(episode, state.currentIndex, nextIndex);
+  const reachedGoal = nextIndex === episode.raster.endIndex;
   const trailMode: DemoTrailMode = reachedGoal ? 'goal' : 'explore';
 
   return {
@@ -162,10 +162,10 @@ export const advanceDemoWalker = (
 };
 
 export const stepDemoWalker = (
-  maze: MazeBuildResult,
+  episode: MazeEpisode,
   state: DemoWalkerState,
   config: DemoWalkerConfig = defaultConfig
-): DemoWalkerState => advanceDemoWalker(maze, state, config).state;
+): DemoWalkerState => advanceDemoWalker(episode, state, config).state;
 
 const appendTrail = (trail: number[], nextIndex: number, maxLength: number): number[] => {
   const nextTrail = [...trail, nextIndex];
@@ -189,7 +189,7 @@ const appendTrailSteps = (
 };
 
 const resolveDirection = (
-  maze: MazeBuildResult,
+  episode: MazeEpisode,
   fromIndex: number,
   toIndex: number
 ): 0 | 1 | 2 | 3 | null => {
@@ -197,7 +197,7 @@ const resolveDirection = (
     return null;
   }
 
-  const direction = maze.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
+  const direction = episode.raster.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
   if (direction < 0 || direction > 3) {
     return null;
   }

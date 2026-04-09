@@ -1,14 +1,15 @@
 import type {
   CortexSample,
   CortexSink,
-  MazeBuildResult,
+  MazeEpisode,
   MazeCore,
   MazeMetrics,
   MazeSolveResult,
   PatternFrame,
-  PatternMode,
+  PatternEngineMode,
   Point
 } from './types';
+import { toCortexSample } from './cortex';
 
 const N = 1 << 0;
 const E = 1 << 1;
@@ -38,6 +39,7 @@ interface CoreBuildResult {
   solution: MazeSolveResult;
   metrics: MazeMetrics;
   shortcutsCreated: number;
+  accepted: boolean;
 }
 
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
@@ -65,14 +67,15 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
       maze,
       solution: shortestPath,
       metrics,
-      shortcutsCreated: countOpeningsBeyondTree(maze)
+      shortcutsCreated: countOpeningsBeyondTree(maze),
+      accepted: passesQualityGate(metrics, minSolutionLength)
     };
 
     if (!fallback) {
       fallback = built;
     }
 
-    if (passesQualityGate(metrics, minSolutionLength)) {
+    if (built.accepted) {
       return built;
     }
   }
@@ -87,7 +90,8 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     maze,
     solution,
     metrics: measureMaze(maze, solution.path),
-    shortcutsCreated: countOpeningsBeyondTree(maze)
+    shortcutsCreated: countOpeningsBeyondTree(maze),
+    accepted: false
   };
 };
 
@@ -196,15 +200,15 @@ export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
   };
 };
 
-export const isPlayable = (maze: MazeBuildResult): boolean => maze.solution.found;
+export const isPlayable = (episode: MazeEpisode): boolean => episode.solution.length > 0;
 
 export class PatternEngine {
   private elapsed = 0;
   private current?: PatternFrame;
 
   public constructor(
-    private readonly makeMaze: () => MazeBuildResult,
-    private readonly mode: PatternMode,
+    private readonly makeMaze: () => MazeEpisode,
+    private readonly mode: PatternEngineMode,
     private readonly cortex?: CortexSink
   ) {}
 
@@ -212,12 +216,10 @@ export class PatternEngine {
     this.elapsed += dtSeconds;
 
     if (!this.current || this.shouldAdvance(this.current, this.elapsed)) {
-      const maze = this.makeMaze();
+      const episode = this.makeMaze();
       this.current = {
         mode: this.mode,
-        maze,
-        solution: maze.solution,
-        metrics: maze.metrics,
+        episode,
         t: 0
       };
       this.elapsed = 0;
@@ -229,15 +231,15 @@ export class PatternEngine {
   }
 
   private shouldAdvance(frame: PatternFrame, elapsed: number): boolean {
-    const base = Math.max(4, frame.solution.path.length * 0.06);
+    const base = Math.max(4, frame.episode.solution.length * 0.06);
     switch (frame.mode) {
       case 'loading':
         return elapsed > Math.min(base, 3.5);
-      case 'screensaver':
+      case 'idle':
+      case 'kiosk':
         return elapsed > base;
       case 'demo':
         return elapsed > base * 1.15;
-      case 'play':
       default:
         return false;
     }
@@ -248,16 +250,7 @@ export class PatternEngine {
       return;
     }
 
-    const sample: CortexSample = {
-      seed: frame.maze.seed,
-      scale: frame.maze.scale,
-      solutionLength: frame.metrics.solutionLength,
-      deadEnds: frame.metrics.deadEnds,
-      junctions: frame.metrics.junctions,
-      straightness: frame.metrics.straightness,
-      coverage: frame.metrics.coverage,
-      path: frame.solution.path
-    };
+    const sample: CortexSample = toCortexSample(frame.episode);
 
     this.cortex.push(sample);
   }

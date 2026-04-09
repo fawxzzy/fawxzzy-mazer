@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { DemoWalkerCue } from '../domain/ai';
-import type { MazeBuildResult } from '../domain/maze';
+import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { palette } from './palette';
 
@@ -44,7 +44,7 @@ const demoCueColors: Record<DemoWalkerCue, number> = {
   reset: palette.hud.hintText
 };
 
-export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): HudHandle => {
+export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): HudHandle => {
   const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
   const ultraCompact = scene.scale.width <= legacyTuning.hud.ultraCompactBreakpoint;
   const compact = scene.scale.width <= legacyTuning.hud.compactBreakpoint;
@@ -223,8 +223,8 @@ export const createHudRenderer = (scene: Phaser.Scene, maze: MazeBuildResult): H
       }
     },
     setGoalArrow(playerIndex: number): void {
-      const player = maze.tiles[playerIndex];
-      const goal = maze.tiles[maze.endIndex];
+      const player = episode.raster.tiles[playerIndex];
+      const goal = episode.raster.tiles[episode.raster.endIndex];
       const dx = goal.x - player.x;
       const dy = goal.y - player.y;
       const isHorizontal = Math.abs(dx) >= Math.abs(dy);

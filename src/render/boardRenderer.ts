@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
-import type { MazeBuildResult } from '../domain/maze';
+import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { palette } from './palette';
 
 export interface BoardLayout {
   boardX: number;
   boardY: number;
+  boardWidth: number;
+  boardHeight: number;
   boardSize: number;
   tileSize: number;
 }
@@ -39,7 +41,7 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 
 export const createBoardLayout = (
   scene: Phaser.Scene,
-  maze: MazeBuildResult,
+  episode: MazeEpisode,
   options: BoardLayoutOptions | number = {}
 ): BoardLayout => {
   const normalizedOptions: BoardLayoutOptions = typeof options === 'number'
@@ -55,14 +57,19 @@ export const createBoardLayout = (
   const availableWidth = Math.max(0, width - (sidePadding * 2));
   const availableHeight = Math.max(0, height - topReserve - bottomPadding);
   const boardSize = Math.floor(Math.min(availableWidth, availableHeight) * boardScale);
-  const boardX = width / 2 - boardSize / 2;
-  const boardY = topReserve + ((availableHeight - boardSize) / 2);
+  const tileSize = boardSize / Math.max(episode.raster.width, episode.raster.height);
+  const boardWidth = tileSize * episode.raster.width;
+  const boardHeight = tileSize * episode.raster.height;
+  const boardX = width / 2 - boardWidth / 2;
+  const boardY = topReserve + ((availableHeight - boardHeight) / 2);
 
   return {
     boardX,
     boardY,
     boardSize,
-    tileSize: boardSize / maze.scale
+    boardWidth,
+    boardHeight,
+    tileSize
   };
 };
 
@@ -77,7 +84,7 @@ export class BoardRenderer {
   private readonly chromeFront: Phaser.GameObjects.Graphics;
   private readonly ambientContainer: Phaser.GameObjects.Container;
 
-  public constructor(private readonly scene: Phaser.Scene, private readonly maze: MazeBuildResult, private readonly layout: BoardLayout) {
+  public constructor(private readonly scene: Phaser.Scene, private readonly episode: MazeEpisode, private readonly layout: BoardLayout) {
     this.ambientContainer = this.scene.add.container(0, 0);
     this.chromeBack = this.scene.add.graphics();
     this.base = this.scene.add.graphics();
@@ -119,9 +126,9 @@ export class BoardRenderer {
   }
 
   public drawBoardChrome(): void {
-    const { boardX, boardY, boardSize } = this.layout;
-    const centerX = boardX + boardSize / 2;
-    const centerY = boardY + boardSize / 2;
+    const { boardX, boardY, boardWidth, boardHeight, boardSize } = this.layout;
+    const centerX = boardX + boardWidth / 2;
+    const centerY = boardY + boardHeight / 2;
     const frameScale = Phaser.Math.Clamp(boardSize / 560, 0.72, 1.4);
     const scaleMetric = (value: number, minimum = 1): number => Math.max(minimum, Math.round(value * frameScale));
     const {
@@ -152,75 +159,75 @@ export class BoardRenderer {
 
     this.chromeBack.fillStyle(palette.board.shadow, shadowAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + scaleMetric(shadowExpandPx)) / 2,
-      centerY - (boardSize + scaleMetric(shadowExpandPx)) / 2 + scaleMetric(shadowOffsetY),
-      boardSize + scaleMetric(shadowExpandPx),
-      boardSize + scaleMetric(shadowExpandPx)
+      centerX - (boardWidth + scaleMetric(shadowExpandPx)) / 2,
+      centerY - (boardHeight + scaleMetric(shadowExpandPx)) / 2 + scaleMetric(shadowOffsetY),
+      boardWidth + scaleMetric(shadowExpandPx),
+      boardHeight + scaleMetric(shadowExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.glow, glowAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + scaleMetric(glowExpandPx)) / 2,
-      centerY - (boardSize + scaleMetric(glowExpandPx)) / 2,
-      boardSize + scaleMetric(glowExpandPx),
-      boardSize + scaleMetric(glowExpandPx)
+      centerX - (boardWidth + scaleMetric(glowExpandPx)) / 2,
+      centerY - (boardHeight + scaleMetric(glowExpandPx)) / 2,
+      boardWidth + scaleMetric(glowExpandPx),
+      boardHeight + scaleMetric(glowExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.outer, outerAlpha);
     this.chromeBack.fillRect(
-      centerX - (boardSize + scaleMetric(outerExpandPx)) / 2,
-      centerY - (boardSize + scaleMetric(outerExpandPx)) / 2,
-      boardSize + scaleMetric(outerExpandPx),
-      boardSize + scaleMetric(outerExpandPx)
+      centerX - (boardWidth + scaleMetric(outerExpandPx)) / 2,
+      centerY - (boardHeight + scaleMetric(outerExpandPx)) / 2,
+      boardWidth + scaleMetric(outerExpandPx),
+      boardHeight + scaleMetric(outerExpandPx)
     );
     this.chromeBack.lineStyle(scaleMetric(outerStrokeWidth), palette.board.outerStroke, 0.95);
     this.chromeBack.strokeRect(
-      centerX - (boardSize + scaleMetric(outerExpandPx)) / 2,
-      centerY - (boardSize + scaleMetric(outerExpandPx)) / 2,
-      boardSize + scaleMetric(outerExpandPx),
-      boardSize + scaleMetric(outerExpandPx)
+      centerX - (boardWidth + scaleMetric(outerExpandPx)) / 2,
+      centerY - (boardHeight + scaleMetric(outerExpandPx)) / 2,
+      boardWidth + scaleMetric(outerExpandPx),
+      boardHeight + scaleMetric(outerExpandPx)
     );
 
     this.chromeBack.fillStyle(palette.board.panel, panelAlpha);
-    this.chromeBack.fillRect(boardX, boardY, boardSize, boardSize);
+    this.chromeBack.fillRect(boardX, boardY, boardWidth, boardHeight);
     this.chromeBack.lineStyle(1, palette.board.panelStroke, 0.74);
     this.chromeBack.strokeRect(
       boardX + scaleMetric(4),
       boardY + scaleMetric(4),
-      boardSize - scaleMetric(8),
-      boardSize - scaleMetric(8)
+      boardWidth - scaleMetric(8),
+      boardHeight - scaleMetric(8)
     );
     this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), palette.board.innerStroke, 0.66);
-    this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardSize - 2, boardSize - 2);
+    this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardWidth - 2, boardHeight - 2);
 
     this.chromeBack.fillStyle(palette.board.well, wellAlpha);
     this.chromeBack.fillRect(
       boardX + scaleMetric(wellInsetPx),
       boardY + scaleMetric(wellInsetPx),
-      boardSize - (scaleMetric(wellInsetPx) * 2),
-      boardSize - (scaleMetric(wellInsetPx) * 2)
+      boardWidth - (scaleMetric(wellInsetPx) * 2),
+      boardHeight - (scaleMetric(wellInsetPx) * 2)
     );
 
     this.chromeBack.fillStyle(palette.board.shadow, edgeShadeAlpha);
-    this.chromeBack.fillRect(boardX, boardY, scaleMetric(edgeShadeWidthPx), boardSize);
+    this.chromeBack.fillRect(boardX, boardY, scaleMetric(edgeShadeWidthPx), boardHeight);
     this.chromeBack.fillRect(
       boardX,
-      boardY + boardSize - scaleMetric(edgeShadeWidthPx),
-      boardSize,
+      boardY + boardHeight - scaleMetric(edgeShadeWidthPx),
+      boardWidth,
       scaleMetric(edgeShadeWidthPx)
     );
     this.chromeBack.fillRect(
-      boardX + boardSize - scaleMetric(edgeShadeWidthPx),
+      boardX + boardWidth - scaleMetric(edgeShadeWidthPx),
       boardY,
       scaleMetric(edgeShadeWidthPx),
-      boardSize
+      boardHeight
     );
 
     this.chromeBack.fillStyle(palette.board.topHighlight, topHighlightAlpha);
     this.chromeBack.fillRect(
       boardX + scaleMetric(topHighlightInsetPx),
       boardY + scaleMetric(topHighlightInsetPx),
-      boardSize - (scaleMetric(topHighlightInsetPx) * 2),
+      boardWidth - (scaleMetric(topHighlightInsetPx) * 2),
       scaleMetric(topHighlightHeightPx)
     );
 
@@ -229,12 +236,12 @@ export class BoardRenderer {
     this.chromeFront.lineStyle(scaleMetric(2), palette.board.outerStroke, cornerTickAlpha);
     this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset + tickLength, boardY + tickInset);
     this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset, boardY + tickInset + tickLength);
-    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + tickInset, boardX + boardSize - tickInset - tickLength, boardY + tickInset);
-    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + tickInset, boardX + boardSize - tickInset, boardY + tickInset + tickLength);
-    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardSize - tickInset, boardX + tickInset + tickLength, boardY + boardSize - tickInset);
-    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardSize - tickInset, boardX + tickInset, boardY + boardSize - tickInset - tickLength);
-    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + boardSize - tickInset, boardX + boardSize - tickInset - tickLength, boardY + boardSize - tickInset);
-    this.chromeFront.lineBetween(boardX + boardSize - tickInset, boardY + boardSize - tickInset, boardX + boardSize - tickInset, boardY + boardSize - tickInset - tickLength);
+    this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + tickInset, boardX + boardWidth - tickInset - tickLength, boardY + tickInset);
+    this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + tickInset, boardX + boardWidth - tickInset, boardY + tickInset + tickLength);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardHeight - tickInset, boardX + tickInset + tickLength, boardY + boardHeight - tickInset);
+    this.chromeFront.lineBetween(boardX + tickInset, boardY + boardHeight - tickInset, boardX + tickInset, boardY + boardHeight - tickInset - tickLength);
+    this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + boardHeight - tickInset, boardX + boardWidth - tickInset - tickLength, boardY + boardHeight - tickInset);
+    this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + boardHeight - tickInset, boardX + boardWidth - tickInset, boardY + boardHeight - tickInset - tickLength);
   }
 
   public drawBase(): void {
@@ -243,7 +250,7 @@ export class BoardRenderer {
     this.base.clear();
     this.grid.clear();
 
-    this.maze.tiles.forEach((tile) => {
+    this.episode.raster.tiles.forEach((tile) => {
       const x = boardX + tile.x * tileSize;
       const y = boardY + tile.y * tileSize;
 
@@ -284,7 +291,7 @@ export class BoardRenderer {
 
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
     const { boardX, boardY, tileSize } = this.layout;
-    const goalTile = this.maze.tiles[this.maze.endIndex];
+    const goalTile = this.episode.raster.tiles[this.episode.raster.endIndex];
     const now = this.scene.time.now;
     this.goal.clear();
 
@@ -412,7 +419,7 @@ export class BoardRenderer {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
       const mode = typeof step === 'number' ? 'explore' : step.mode;
-      const tile = this.maze.tiles[index];
+      const tile = this.episode.raster.tiles[index];
       const centerX = boardX + tile.x * tileSize + tileSize / 2;
       const centerY = boardY + tile.y * tileSize + tileSize / 2;
       const t = trail.length <= 1 ? 1 : i / (trail.length - 1);
@@ -543,7 +550,7 @@ export class BoardRenderer {
       && cue !== 'spawn'
       && cue !== 'goal'
       && cue !== 'reset') {
-      const targetTile = this.maze.tiles[options.targetIndex];
+      const targetTile = this.episode.raster.tiles[options.targetIndex];
       const targetX = boardX + targetTile.x * tileSize;
       const targetY = boardY + targetTile.y * tileSize;
       const targetCenterX = targetX + tileSize / 2;
@@ -574,7 +581,7 @@ export class BoardRenderer {
     if (cue === 'dead-end' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const headTile = this.maze.tiles[headIndexValue];
+      const headTile = this.episode.raster.tiles[headIndexValue];
       const headX = boardX + headTile.x * tileSize;
       const headY = boardY + headTile.y * tileSize;
       const pulseInset = tileSize * 0.14;
@@ -600,7 +607,7 @@ export class BoardRenderer {
     } else if (cue === 'anticipate' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const headTile = this.maze.tiles[headIndexValue];
+      const headTile = this.episode.raster.tiles[headIndexValue];
       const pulseInset = tileSize * 0.18;
       this.signal.lineStyle(Math.max(1, tileSize * 0.035), palette.board.topHighlight, 0.28 + (targetPulse * 0.18));
       this.signal.strokeRect(
@@ -614,7 +621,7 @@ export class BoardRenderer {
 
   public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null, cue: DemoWalkerCue = 'explore'): void {
     const { boardX, boardY, tileSize } = this.layout;
-    const tile = this.maze.tiles[index];
+    const tile = this.episode.raster.tiles[index];
     const now = this.scene.time.now;
     const tileX = boardX + tile.x * tileSize;
     const tileY = boardY + tile.y * tileSize;
