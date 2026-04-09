@@ -48,6 +48,7 @@ export interface MazeBuildOptions {
   maxAttempts?: number;
   rng?: () => number;
   footprint?: BoardFootprintTarget;
+  includeCore?: boolean;
 }
 
 export interface MazeSolveResult {
@@ -96,7 +97,7 @@ export interface TileBoard {
 
 export interface MazeEpisode {
   seed: number;
-  core: MazeCore;
+  core?: MazeCore;
   raster: TileBoard;
   solution: GridPoint[];
   metrics: MazeMetrics;

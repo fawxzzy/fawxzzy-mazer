@@ -1,6 +1,6 @@
+import { disposeMazeEpisode, toCortexSample } from './core';
 import { buildMaze } from './generator';
-import { toCortexSample } from './cortex';
-import type { CortexSink, MazeMetrics } from './types';
+import type { CortexSink } from './types';
 
 export interface BatchSummary {
   runs: number;
@@ -20,7 +20,13 @@ export const runBatch = (
   braidRatio = 0.08,
   cortex?: CortexSink
 ): BatchSummary => {
-  const metrics: MazeMetrics[] = [];
+  let totalSolutionLength = 0;
+  let totalDeadEnds = 0;
+  let totalJunctions = 0;
+  let totalStraightness = 0;
+  let totalCoverage = 0;
+  let minSolutionLength = Number.POSITIVE_INFINITY;
+  let maxSolutionLength = Number.NEGATIVE_INFINITY;
 
   for (let iteration = 0; iteration < runs; iteration += 1) {
     const episode = buildMaze({
@@ -31,23 +37,26 @@ export const runBatch = (
       minSolutionLength: Math.floor((Math.min(width, height) ** 2) / 5)
     });
 
-    metrics.push(episode.metrics);
+    const { metrics } = episode;
+    totalSolutionLength += metrics.solutionLength;
+    totalDeadEnds += metrics.deadEnds;
+    totalJunctions += metrics.junctions;
+    totalStraightness += metrics.straightness;
+    totalCoverage += metrics.coverage;
+    minSolutionLength = Math.min(minSolutionLength, metrics.solutionLength);
+    maxSolutionLength = Math.max(maxSolutionLength, metrics.solutionLength);
     cortex?.push(toCortexSample(episode));
+    disposeMazeEpisode(episode);
   }
-
-  const sum = <K extends keyof MazeMetrics>(key: K): number => (
-    metrics.reduce((acc, item) => acc + item[key], 0)
-  );
-  const lengths = metrics.map((metric) => metric.solutionLength);
 
   return {
     runs,
-    avgSolutionLength: sum('solutionLength') / runs,
-    avgDeadEnds: sum('deadEnds') / runs,
-    avgJunctions: sum('junctions') / runs,
-    avgStraightness: sum('straightness') / runs,
-    avgCoverage: sum('coverage') / runs,
-    minSolutionLength: Math.min(...lengths),
-    maxSolutionLength: Math.max(...lengths)
+    avgSolutionLength: totalSolutionLength / runs,
+    avgDeadEnds: totalDeadEnds / runs,
+    avgJunctions: totalJunctions / runs,
+    avgStraightness: totalStraightness / runs,
+    avgCoverage: totalCoverage / runs,
+    minSolutionLength,
+    maxSolutionLength
   };
 };

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { generateMaze, type MazeEpisode } from '../domain/maze';
+import { disposeMazeEpisode, generateMaze, type MazeEpisode } from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -15,9 +15,9 @@ interface WinActionData {
 }
 
 export class GameScene extends Phaser.Scene {
-  private maze!: MazeEpisode;
-  private boardRenderer!: BoardRenderer;
-  private playerIndex!: number;
+  private maze?: MazeEpisode;
+  private boardRenderer?: BoardRenderer;
+  private playerIndex = 0;
   private timerStartMs = 0;
   private timerPausedAtMs = 0;
   private paused = false;
@@ -62,23 +62,34 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off('pause-action', this.handlePauseAction, this);
       this.events.off('win-action', this.handleWinAction, this);
+      this.input.keyboard?.off('keydown-ESC', this.handlePauseHotkey, this);
+      this.input.off('pointerdown', this.handlePointerDown, this);
+      this.input.off('pointerup', this.handlePointerUp, this);
       this.pendingOverlayLaunch?.remove(false);
       this.pendingOverlayLaunch = undefined;
+      this.scene.stop('PauseScene');
+      this.scene.stop('WinScene');
+      this.boardRenderer?.destroy();
+      this.boardRenderer = undefined;
+      this.hud?.destroy();
+      this.hud = undefined;
+      disposeMazeEpisode(this.maze);
+      this.maze = undefined;
+      this.trailIndices.length = 0;
+      this.time.removeAllEvents();
+      this.tweens.killAll();
+      this.children.removeAll(true);
     });
 
     if (this.touchControlsEnabled) {
       this.input.addPointer(1);
       this.input.on('pointerdown', this.handlePointerDown, this);
       this.input.on('pointerup', this.handlePointerUp, this);
-      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-        this.input.off('pointerdown', this.handlePointerDown, this);
-        this.input.off('pointerup', this.handlePointerUp, this);
-      });
     }
   }
 
   public update(time: number): void {
-    if (this.paused || this.overlayKey === 'WinScene') {
+    if (this.paused || this.overlayKey === 'WinScene' || !this.maze || !this.boardRenderer) {
       return;
     }
 
@@ -93,6 +104,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private bootstrapRun(seed: number): void {
+    this.boardRenderer?.destroy();
+    this.boardRenderer = undefined;
+    this.hud?.destroy();
+    this.hud = undefined;
+    disposeMazeEpisode(this.maze);
+    this.maze = undefined;
+
     this.scene.stop('PauseScene');
     this.scene.stop('WinScene');
     this.overlayKey = null;
@@ -111,33 +129,34 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0b1020');
     this.add.rectangle(width / 2, height / 2, width, height, 0x090f1d, 1).setDepth(-10);
 
-    this.maze = generateMaze({
+    const maze = generateMaze({
       scale: legacyTuning.board.scale,
       seed,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.game
     });
+    this.maze = maze;
 
-    const layout = createBoardLayout(this, this.maze, {
+    const layout = createBoardLayout(this, maze, {
       boardScale: (compact ? legacyTuning.game.layout.boardScaleNarrow : legacyTuning.game.layout.boardScaleWide)
         + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
       topReserve: compact ? legacyTuning.game.layout.compactTopReservePx : legacyTuning.game.layout.topReservePx,
       sidePadding: legacyTuning.game.layout.sidePaddingPx,
       bottomPadding: legacyTuning.game.layout.bottomPaddingPx
     });
-    this.boardRenderer = new BoardRenderer(this, this.maze, layout);
+    this.boardRenderer = new BoardRenderer(this, maze, layout);
     this.boardRenderer.drawBoardChrome();
     this.boardRenderer.drawBase();
     this.boardRenderer.drawGoal();
     this.boardRenderer.startAmbientMotion(1.25, 2800);
 
-    this.playerIndex = this.maze.raster.startIndex;
+    this.playerIndex = maze.raster.startIndex;
     this.trailIndices = [this.playerIndex];
     this.boardRenderer.drawTrail(this.trailIndices);
     this.boardRenderer.drawActor(this.playerIndex);
 
     this.timerStartMs = this.time.now;
-    this.hud = createHudRenderer(this, this.maze);
+    this.hud = createHudRenderer(this, maze);
     this.hud.setElapsedMs(0);
     this.hud.setGoalArrow(this.playerIndex);
 
@@ -234,6 +253,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryMove(direction: 0 | 1 | 2 | 3): void {
+    const maze = this.maze;
+    const boardRenderer = this.boardRenderer;
+    if (!maze || !boardRenderer) {
+      return;
+    }
+
     const canBypassCadence = this.lastMoveDirection !== null
       && this.lastMoveDirection !== direction
       && this.time.now - this.lastMoveAtMs >= this.directionSwitchBypassMs;
@@ -243,8 +268,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const nextIndex = this.maze.raster.tiles[this.playerIndex].neighbors[direction];
-    if (nextIndex === -1 || !this.maze.raster.tiles[nextIndex].floor) {
+    const nextIndex = maze.raster.tiles[this.playerIndex].neighbors[direction];
+    if (nextIndex === -1 || !maze.raster.tiles[nextIndex].floor) {
       this.lastMoveDirection = direction;
       if (this.time.now - this.lastBlockedAtMs >= this.blockedFeedbackCooldownMs) {
         this.lastBlockedAtMs = this.time.now;
@@ -260,12 +285,12 @@ export class GameScene extends Phaser.Scene {
     if (this.trailIndices.length > legacyTuning.board.trail.maxLength) {
       this.trailIndices.shift();
     }
-    this.boardRenderer.drawTrail(this.trailIndices);
-    this.boardRenderer.drawActor(this.playerIndex);
+    boardRenderer.drawTrail(this.trailIndices);
+    boardRenderer.drawActor(this.playerIndex);
     this.hud?.setGoalArrow(this.playerIndex);
     playSfx('move');
 
-    if (this.playerIndex === this.maze.raster.endIndex) {
+    if (this.playerIndex === maze.raster.endIndex) {
       mazerStorage.recordBestTime({
         elapsedMs: this.time.now - this.timerStartMs,
         seed: this.runSeed

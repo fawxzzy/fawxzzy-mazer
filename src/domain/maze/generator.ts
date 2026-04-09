@@ -1,6 +1,5 @@
 import { createSeededRng } from '../rng/seededRng';
 import { buildMazeCore } from './core';
-import { adaptTileBoardFootprint } from './footprintAdapter';
 import { createGrid, indexFromCoordinates } from './grid';
 import type {
   MazeBuildOptions,
@@ -26,6 +25,25 @@ const DIRS = [
   { bit: W, dx: -1, dy: 0 }
 ] as const;
 
+interface RasterizeOptions {
+  seed: number;
+  core: NonNullable<MazeBuildResult['core']>;
+  shortcutsCreated: number;
+  footprint: MazeBuildOptions['footprint'];
+  minSolutionLength: number;
+  acceptedCore: boolean;
+  includeCore: boolean;
+}
+
+interface SolveScratch {
+  readonly cameFrom: Int32Array;
+  readonly gScore: Float64Array;
+  readonly closed: Uint8Array;
+  readonly heap: MinHeap<{ index: number; f: number; g: number }>;
+}
+
+const solveScratchCache = new Map<number, SolveScratch>();
+
 export const buildMaze = (options: MazeBuildOptions): MazeBuildResult => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
   const seeded = options.rng ? null : createSeededRng(seed);
@@ -50,7 +68,8 @@ export const buildMaze = (options: MazeBuildOptions): MazeBuildResult => {
     shortcutsCreated: built.shortcutsCreated,
     footprint: options.footprint ?? { width: options.width, height: options.height },
     minSolutionLength,
-    acceptedCore: built.accepted
+    acceptedCore: built.accepted,
+    includeCore: options.includeCore === true
   });
 };
 
@@ -87,20 +106,17 @@ export const resetAndRegenerate = (state: MazeGenerationState, config: MazeConfi
   };
 };
 
-interface RasterizeOptions {
-  seed: number;
-  core: MazeBuildResult['core'];
-  shortcutsCreated: number;
-  footprint: MazeBuildOptions['footprint'];
-  minSolutionLength: number;
-  acceptedCore: boolean;
-}
-
 const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
-  const { core, seed, shortcutsCreated, footprint, minSolutionLength, acceptedCore } = options;
+  const { core, seed, shortcutsCreated, footprint, minSolutionLength, acceptedCore, includeCore } = options;
   const playableWidth = (core.width * 2) - 1;
   const playableHeight = (core.height * 2) - 1;
-  const tiles = createGrid(playableWidth, playableHeight).map(resetTile);
+  const tiles = createGrid(playableWidth, playableHeight);
+
+  for (const tile of tiles) {
+    tile.floor = false;
+    tile.path = false;
+    tile.end = false;
+  }
 
   for (let y = 0; y < core.height; y += 1) {
     for (let x = 0; x < core.width; x += 1) {
@@ -114,9 +130,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
           continue;
         }
 
-        const passageX = center.x + dir.dx;
-        const passageY = center.y + dir.dy;
-        const passageIndex = indexFromCoordinates(passageX, passageY, playableWidth);
+        const passageIndex = indexFromCoordinates(center.x + dir.dx, center.y + dir.dy, playableWidth);
         tiles[passageIndex].floor = true;
       }
     }
@@ -124,7 +138,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
 
   const startPoint = toRasterPoint(core.start);
   const goalPoint = toRasterPoint(core.goal);
-  const baseBoard: TileBoard = {
+  const raster = adaptBoardFootprint({
     width: playableWidth,
     height: playableHeight,
     scale: Math.max(playableWidth, playableHeight),
@@ -143,35 +157,35 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
       bottom: 0,
       left: 0
     }
-  };
-  const raster = adaptTileBoardFootprint(baseBoard, footprint);
+  }, footprint);
+
   const adaptedStart = pointFromIndex(raster.startIndex, raster.width);
   const adaptedGoal = pointFromIndex(raster.endIndex, raster.width);
   const solved = solveTileAStar(raster.tiles, raster.width, raster.height, adaptedStart, adaptedGoal);
-  const pathIndices = solved.path.map((point) => indexFromCoordinates(point.x, point.y, raster.width));
-  const solvedTiles = raster.tiles.map((tile) => ({
-    ...tile,
-    path: false,
-    end: false
-  }));
+  const pathIndices = new Array<number>(solved.path.length);
 
-  for (const index of pathIndices) {
-    solvedTiles[index].path = true;
+  for (let index = 0; index < solved.path.length; index += 1) {
+    const pathIndex = indexFromCoordinates(solved.path[index].x, solved.path[index].y, raster.width);
+    pathIndices[index] = pathIndex;
+    raster.tiles[pathIndex].path = true;
   }
-  solvedTiles[raster.endIndex].end = true;
+  raster.tiles[raster.endIndex].end = true;
 
-  const wallIndices = solvedTiles
-    .filter((tile) => !tile.floor)
-    .map((tile) => tile.index);
-  const metrics = measureTileMaze(solvedTiles, raster.width, raster.height, pathIndices);
+  const wallIndices: number[] = [];
+  for (const tile of raster.tiles) {
+    if (!tile.floor) {
+      wallIndices.push(tile.index);
+    }
+  }
+
+  const metrics = measureTileMaze(raster.tiles, raster.width, pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
 
   return {
     seed,
-    core,
+    core: includeCore ? core : undefined,
     raster: {
       ...raster,
-      tiles: solvedTiles,
       pathIndices,
       wallIndices
     },
@@ -179,6 +193,59 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
     metrics,
     shortcutsCreated,
     accepted: acceptedCore && solved.found && passesRasterQualityGate(metrics, rasterMinSolutionLength)
+  };
+};
+
+const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footprint']): TileBoard => {
+  const targetWidth = Math.max(board.width, target?.width ?? board.width);
+  const targetHeight = Math.max(board.height, target?.height ?? board.height);
+
+  if (targetWidth === board.width && targetHeight === board.height) {
+    return board;
+  }
+
+  const left = Math.floor((targetWidth - board.width) / 2);
+  const right = targetWidth - board.width - left;
+  const top = Math.floor((targetHeight - board.height) / 2);
+  const bottom = targetHeight - board.height - top;
+  const tiles = createGrid(targetWidth, targetHeight);
+
+  for (const tile of tiles) {
+    tile.floor = false;
+    tile.path = false;
+    tile.end = false;
+  }
+
+  for (const tile of board.tiles) {
+    const targetIndex = indexFromCoordinates(tile.x + left, tile.y + top, targetWidth);
+    tiles[targetIndex].floor = tile.floor;
+  }
+
+  const shiftIndex = (index: number): number => {
+    const x = index % board.width;
+    const y = Math.floor(index / board.width);
+    return indexFromCoordinates(x + left, y + top, targetWidth);
+  };
+
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    scale: Math.max(targetWidth, targetHeight),
+    tiles,
+    pathIndices: board.pathIndices.map(shiftIndex),
+    checkpointIndices: board.checkpointIndices.map(shiftIndex),
+    wallIndices: board.wallIndices.map(shiftIndex),
+    startIndex: shiftIndex(board.startIndex),
+    endIndex: shiftIndex(board.endIndex),
+    checkpointCount: board.checkpointCount,
+    playableWidth: board.playableWidth,
+    playableHeight: board.playableHeight,
+    padding: {
+      top: board.padding.top + top,
+      right: board.padding.right + right,
+      bottom: board.padding.bottom + bottom,
+      left: board.padding.left + left
+    }
   };
 };
 
@@ -191,27 +258,27 @@ const solveTileAStar = (
 ): MazeSolveResult => {
   const startIndex = indexFromCoordinates(start.x, start.y, width);
   const goalIndex = indexFromCoordinates(goal.x, goal.y, width);
-  const cameFrom = new Array<number>(tiles.length).fill(-1);
-  const gScore = new Array<number>(tiles.length).fill(Number.POSITIVE_INFINITY);
-  const closed = new Array<boolean>(tiles.length).fill(false);
-  const open = new MinHeap<{ index: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g);
+  const scratch = getSolveScratch(tiles.length);
+  const { cameFrom, gScore, closed, heap } = scratch;
+
+  cameFrom.fill(-1);
+  gScore.fill(Number.POSITIVE_INFINITY);
+  closed.fill(0);
+  heap.clear();
 
   let visited = 0;
   let expanded = 0;
 
   gScore[startIndex] = 0;
-  open.push({ index: startIndex, g: 0, f: heuristic(start, goal) });
+  heap.push({ index: startIndex, g: 0, f: heuristic(start, goal) });
 
-  while (open.size > 0) {
-    const current = open.pop();
-    if (!current) {
-      break;
-    }
-    if (closed[current.index]) {
+  while (heap.size > 0) {
+    const current = heap.pop();
+    if (!current || closed[current.index] === 1) {
       continue;
     }
 
-    closed[current.index] = true;
+    closed[current.index] = 1;
     visited += 1;
 
     if (current.index === goalIndex) {
@@ -225,26 +292,24 @@ const solveTileAStar = (
     }
 
     expanded += 1;
-
-    for (const next of openFloorNeighbors(tiles, current.index)) {
-      if (closed[next]) {
-        continue;
+    visitOpenFloorNeighbors(tiles, current.index, (next) => {
+      if (closed[next] === 1) {
+        return;
       }
 
       const tentativeG = gScore[current.index] + 1;
       if (tentativeG >= gScore[next]) {
-        continue;
+        return;
       }
 
       cameFrom[next] = current.index;
       gScore[next] = tentativeG;
-      const point = pointFromIndex(next, width);
-      open.push({
+      heap.push({
         index: next,
         g: tentativeG,
-        f: tentativeG + heuristic(point, goal)
+        f: tentativeG + heuristic(pointFromIndex(next, width), goal)
       });
-    }
+    });
   }
 
   return {
@@ -256,14 +321,19 @@ const solveTileAStar = (
   };
 };
 
-const measureTileMaze = (tiles: MazeTile[], width: number, _height: number, pathIndices: number[]): MazeMetrics => {
+const measureTileMaze = (tiles: MazeTile[], width: number, pathIndices: number[]): MazeMetrics => {
   let deadEnds = 0;
   let junctions = 0;
   let straightSegments = 0;
-  const floorTiles = tiles.filter((tile) => tile.floor);
+  let floorTileCount = 0;
 
-  for (const tile of floorTiles) {
-    const degree = openFloorNeighbors(tiles, tile.index).length;
+  for (let index = 0; index < tiles.length; index += 1) {
+    if (!tiles[index].floor) {
+      continue;
+    }
+
+    floorTileCount += 1;
+    const degree = countOpenFloorNeighbors(tiles, index);
     if (degree === 1) {
       deadEnds += 1;
     } else if (degree >= 3) {
@@ -289,37 +359,32 @@ const measureTileMaze = (tiles: MazeTile[], width: number, _height: number, path
     deadEnds,
     junctions,
     straightness: pathIndices.length <= 2 ? 1 : straightSegments / Math.max(1, pathIndices.length - 2),
-    coverage: pathIndices.length / Math.max(1, floorTiles.length)
+    coverage: pathIndices.length / Math.max(1, floorTileCount)
   };
 };
-
-const resetTile = (tile: MazeTile): MazeTile => ({
-  ...tile,
-  floor: false,
-  path: false,
-  end: false
-});
 
 const toRasterPoint = (point: Point): Point => ({
   x: point.x * 2,
   y: point.y * 2
 });
 
-const openFloorNeighbors = (tiles: MazeTile[], index: number): number[] => {
-  const tile = tiles[index];
-  const neighbors: number[] = [];
-
-  for (const neighbor of tile.neighbors) {
-    if (neighbor === -1 || !tiles[neighbor].floor) {
-      continue;
+const visitOpenFloorNeighbors = (tiles: MazeTile[], index: number, visit: (next: number) => void): void => {
+  for (const neighbor of tiles[index].neighbors) {
+    if (neighbor !== -1 && tiles[neighbor].floor) {
+      visit(neighbor);
     }
-    neighbors.push(neighbor);
   }
-
-  return neighbors;
 };
 
-const reconstructTilePath = (cameFrom: number[], endIndex: number, width: number): Point[] => {
+const countOpenFloorNeighbors = (tiles: MazeTile[], index: number): number => {
+  let count = 0;
+  visitOpenFloorNeighbors(tiles, index, () => {
+    count += 1;
+  });
+  return count;
+};
+
+const reconstructTilePath = (cameFrom: Int32Array, endIndex: number, width: number): Point[] => {
   const path: Point[] = [];
   let cursor = endIndex;
 
@@ -351,6 +416,22 @@ const passesRasterQualityGate = (metrics: MazeMetrics, minSolutionLength: number
   && metrics.coverage > 0
 );
 
+const getSolveScratch = (size: number): SolveScratch => {
+  const cached = solveScratchCache.get(size);
+  if (cached) {
+    return cached;
+  }
+
+  const scratch: SolveScratch = {
+    cameFrom: new Int32Array(size),
+    gScore: new Float64Array(size),
+    closed: new Uint8Array(size),
+    heap: new MinHeap<{ index: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g)
+  };
+  solveScratchCache.set(size, scratch);
+  return scratch;
+};
+
 class MinHeap<T> {
   private readonly data: T[] = [];
 
@@ -358,6 +439,10 @@ class MinHeap<T> {
 
   public get size(): number {
     return this.data.length;
+  }
+
+  public clear(): void {
+    this.data.length = 0;
   }
 
   public push(value: T): void {

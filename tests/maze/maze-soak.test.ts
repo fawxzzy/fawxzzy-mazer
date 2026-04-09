@@ -2,15 +2,53 @@ import { expect, test } from 'vitest';
 
 import { advanceDemoWalker, createDemoWalkerState } from '../../src/domain/ai';
 import { legacyTuning } from '../../src/config/tuning';
-import { generateMaze, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
+import { disposeMazeEpisode, generateMaze, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
 const soakIterations = Number.parseInt(process.env.MAZE_SOAK_ITERATIONS ?? '200', 10);
 const soakScales = [18, 30, 40, 50];
+const warmupIterations = Math.max(20, Math.min(60, Math.floor(soakIterations * 0.25)));
+const memorySampleEvery = Math.max(10, Math.floor(soakIterations / 8));
+
+interface MemorySample {
+  iteration: number;
+  heapUsed: number;
+  heapTotal: number;
+  rss: number;
+  external: number;
+  arrayBuffers: number;
+}
+
+const maybeCollect = (): void => {
+  (globalThis as { gc?: () => void }).gc?.();
+};
+
+const captureMemory = (iteration: number): MemorySample => {
+  maybeCollect();
+  const usage = process.memoryUsage();
+  const sample: MemorySample = {
+    iteration,
+    heapUsed: usage.heapUsed,
+    heapTotal: usage.heapTotal,
+    rss: usage.rss,
+    external: usage.external,
+    arrayBuffers: usage.arrayBuffers
+  };
+  console.info(
+    `[maze-soak] iteration=${iteration}`
+    + ` heapUsed=${sample.heapUsed}`
+    + ` heapTotal=${sample.heapTotal}`
+    + ` rss=${sample.rss}`
+    + ` external=${sample.external}`
+    + ` arrayBuffers=${sample.arrayBuffers}`
+  );
+  return sample;
+};
 
 test(
   'soak: repeated seeded generation and reset cycles hold invariants',
   () => {
+    const memorySamples: MemorySample[] = [];
     let state = {
       processCount: 7,
       resetGame: false,
@@ -32,9 +70,10 @@ test(
       };
 
       const maze = generateMaze(config);
+      const previousEpisode = state.result;
       assertMazeInvariants(maze);
 
-      state = resetAndRegenerate(
+      const regenerated = resetAndRegenerate(
         {
           ...state,
           resetGame: true
@@ -42,9 +81,33 @@ test(
         config
       );
 
-      assertMazeInvariants(state.result);
-      expect(serializeMaze(state.result)).toEqual(serializeMaze(maze));
+      assertMazeInvariants(regenerated.result);
+      expect(serializeMaze(regenerated.result)).toEqual(serializeMaze(maze));
+
+      if (previousEpisode !== regenerated.result) {
+        disposeMazeEpisode(previousEpisode);
+      }
+      disposeMazeEpisode(maze);
+      state = regenerated;
+
+      const completedIteration = iteration + 1;
+      if (completedIteration >= warmupIterations
+        && (completedIteration === warmupIterations
+          || completedIteration % memorySampleEvery === 0
+          || completedIteration === soakIterations)) {
+        memorySamples.push(captureMemory(completedIteration));
+      }
     }
+
+    expect(memorySamples.length).toBeGreaterThanOrEqual(2);
+    const baseline = memorySamples[0];
+    const tailWindow = memorySamples.slice(Math.max(1, Math.floor(memorySamples.length / 2)));
+    const maxTailHeapUsed = Math.max(...tailWindow.map((sample) => sample.heapUsed));
+    const maxTailArrayBuffers = Math.max(...tailWindow.map((sample) => sample.arrayBuffers));
+
+    expect(maxTailHeapUsed).toBeLessThanOrEqual(baseline.heapUsed + (16 * 1024 * 1024));
+    expect(maxTailArrayBuffers).toBeLessThanOrEqual(baseline.arrayBuffers + (4 * 1024 * 1024));
+    disposeMazeEpisode(state.result);
   },
   soakIterations > 1000 ? 180000 : 120000
 );
@@ -79,6 +142,7 @@ test(
       }
 
       expect(completedLoop).toBe(true);
+      disposeMazeEpisode(maze);
     }
   },
   soakIterations > 1000 ? 180000 : 120000

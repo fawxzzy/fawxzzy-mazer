@@ -7,10 +7,12 @@ import { palette } from './palette';
 interface HudHandle {
   setElapsedMs(elapsedMs: number): void;
   setGoalArrow(playerIndex: number): void;
+  destroy(): void;
 }
 
 interface DemoStatusHandle {
   setCue(cue: DemoWalkerCue): void;
+  destroy(): void;
 }
 
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
@@ -188,21 +190,22 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     .setDepth(1000);
 
   const hudElements = [timerText, arrowText, hintText];
+  const introTweens: Phaser.Tweens.Tween[] = [];
   hudElements.forEach((element, index) => {
     const targetAlpha = element.alpha;
     element.setAlpha(0);
     element.y -= 3;
-    scene.tweens.add({
+    introTweens.push(scene.tweens.add({
       targets: element,
       alpha: targetAlpha,
       y: element.y + 3,
       duration: 170,
       delay: 60 + (index * 30),
       ease: 'Quad.easeOut'
-    });
+    }));
   });
 
-  scene.tweens.add({
+  const arrowPulseTween = scene.tweens.add({
     targets: arrowText,
     alpha: {
       from: legacyTuning.hud.arrowPulseMaxAlpha,
@@ -234,6 +237,15 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
         lastGoalLabel = nextGoalLabel;
         arrowText.setText(nextGoalLabel);
       }
+    },
+    destroy(): void {
+      for (const tween of introTweens) {
+        tween.remove();
+      }
+      arrowPulseTween.remove();
+      timerText.destroy();
+      arrowText.destroy();
+      hintText.destroy();
     }
   };
 };
@@ -273,7 +285,7 @@ export const createDemoStatusHud = (
     .setDepth(11)
     .setAlpha(0.86);
 
-  scene.tweens.add({
+  const pulseTween = scene.tweens.add({
     targets: [plate, text],
     alpha: { from: 0.78, to: 1 },
     duration: legacyTuning.menu.status.pulseDurationMs,
@@ -293,6 +305,12 @@ export const createDemoStatusHud = (
       text.setColor(toCssColor(demoCueColors[cue]));
       plate.setStrokeStyle(1, demoCueColors[cue], 0.44);
       shadow.setFillStyle(palette.hud.shadow, cue === 'goal' ? 0.34 : 0.28);
+    },
+    destroy(): void {
+      pulseTween.remove();
+      shadow.destroy();
+      plate.destroy();
+      text.destroy();
     }
   };
 };

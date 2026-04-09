@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { DemoWalkerCue } from '../domain/ai';
-import { generateMaze, PatternEngine } from '../domain/maze';
+import { disposeMazeEpisode, generateMaze, PatternEngine } from '../domain/maze';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -49,6 +49,7 @@ export class MenuScene extends Phaser.Scene {
       'demo'
     );
     let patternFrame = patternEngine.next(0);
+    let sceneHidden = document.hidden;
     const episode = patternFrame.episode;
     const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
       + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
@@ -235,13 +236,14 @@ export class MenuScene extends Phaser.Scene {
         patternFrame.episode.raster.pathIndices.length,
         legacyTuning.demo.cadence.exploreStepMs
       );
-      const trail = patternFrame.episode.raster.pathIndices.slice(0, pathCursor + 1);
-      const currentIndex = trail.at(-1) ?? patternFrame.episode.raster.startIndex;
+      const currentIndex = patternFrame.episode.raster.pathIndices[pathCursor] ?? patternFrame.episode.raster.startIndex;
       const cue = resolveDemoCue(patternFrame.t, pathCursor, patternFrame.episode.raster.pathIndices.length);
-      const lastTrailIndex = trail.length > 1 ? trail[trail.length - 2] : currentIndex;
+      const lastTrailIndex = pathCursor > 0
+        ? patternFrame.episode.raster.pathIndices[pathCursor - 1]
+        : currentIndex;
 
       boardRenderer.drawGoal(cue);
-      boardRenderer.drawTrail(trail, { cue });
+      boardRenderer.drawTrail(patternFrame.episode.raster.pathIndices, { cue, limit: pathCursor + 1 });
       boardRenderer.drawActor(currentIndex, resolveDirection(patternFrame.episode, lastTrailIndex, currentIndex), cue);
     };
     const accentCueBeat = (): void => {
@@ -301,6 +303,42 @@ export class MenuScene extends Phaser.Scene {
         lastCue = cue;
       }
     };
+    const swapEpisode = (nextFrame: typeof patternFrame): void => {
+      const previousEpisode = patternFrame.episode;
+      patternFrame = nextFrame;
+      boardRenderer.setEpisode(nextFrame.episode);
+      boardRenderer.drawBase();
+      boardRenderer.drawGoal();
+      renderDemo();
+      disposeMazeEpisode(previousEpisode);
+    };
+    const handleVisibilityChange = (): void => {
+      if (document.hidden) {
+        sceneHidden = true;
+        patternEngine.suspend();
+        if (this.heroRefreshTimer) {
+          this.heroRefreshTimer.paused = true;
+        }
+        return;
+      }
+
+      if (!sceneHidden) {
+        return;
+      }
+
+      sceneHidden = false;
+      const previousEpisode = patternFrame.episode;
+      patternEngine.resumeFresh();
+      patternFrame = patternEngine.next(0);
+      boardRenderer.setEpisode(patternFrame.episode);
+      boardRenderer.drawBase();
+      boardRenderer.drawGoal();
+      renderDemo();
+      disposeMazeEpisode(previousEpisode);
+      if (this.heroRefreshTimer) {
+        this.heroRefreshTimer.paused = false;
+      }
+    };
 
     renderDemo();
 
@@ -308,18 +346,20 @@ export class MenuScene extends Phaser.Scene {
       delay: legacyTuning.demo.cadence.heroRefreshMs,
       loop: true,
       callback: () => {
+        if (sceneHidden) {
+          return;
+        }
+
         const nextFrame = patternEngine.next(legacyTuning.demo.cadence.heroRefreshMs / 1000);
         if (nextFrame.episode !== patternFrame.episode) {
-          Object.assign(patternFrame.episode, nextFrame.episode);
-          patternFrame = { ...nextFrame, episode: patternFrame.episode };
-          boardRenderer.drawBase();
-          boardRenderer.drawGoal();
+          swapEpisode(nextFrame);
         } else {
           patternFrame = nextFrame;
+          renderDemo();
         }
-        renderDemo();
       }
     });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
@@ -403,10 +443,19 @@ export class MenuScene extends Phaser.Scene {
       this.titlePulseTween?.remove();
       this.starDriftTween?.remove();
       this.heroRefreshTimer?.remove(false);
+      this.heroRefreshTimer = undefined;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       this.overlayManager.closeAll();
+      patternEngine.destroy();
+      boardRenderer.destroy();
       this.input.keyboard?.off('keydown-ESC', escHandler);
       this.input.keyboard?.off('keydown', manualShortcutHandler);
+      this.events.off(OVERLAY_EVENTS.open);
+      this.events.off(OVERLAY_EVENTS.close);
       this.events.off(OVERLAY_EVENTS.manualPlay, launchManualPlay);
+      this.time.removeAllEvents();
+      this.tweens.killAll();
+      this.children.removeAll(true);
     });
   }
 

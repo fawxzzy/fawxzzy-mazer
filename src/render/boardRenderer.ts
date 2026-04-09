@@ -23,6 +23,7 @@ interface BoardLayoutOptions {
 export interface BoardCueOptions {
   cue?: DemoWalkerCue;
   targetIndex?: number | null;
+  limit?: number;
 }
 
 const ACTOR_DIRECTION_OFFSETS = [
@@ -74,6 +75,7 @@ export const createBoardLayout = (
 };
 
 export class BoardRenderer {
+  private episode: MazeEpisode;
   private readonly chromeBack: Phaser.GameObjects.Graphics;
   private readonly base: Phaser.GameObjects.Graphics;
   private readonly grid: Phaser.GameObjects.Graphics;
@@ -83,8 +85,10 @@ export class BoardRenderer {
   private readonly actor: Phaser.GameObjects.Graphics;
   private readonly chromeFront: Phaser.GameObjects.Graphics;
   private readonly ambientContainer: Phaser.GameObjects.Container;
+  private ambientTween?: Phaser.Tweens.Tween;
 
-  public constructor(private readonly scene: Phaser.Scene, private readonly episode: MazeEpisode, private readonly layout: BoardLayout) {
+  public constructor(private readonly scene: Phaser.Scene, episode: MazeEpisode, private readonly layout: BoardLayout) {
+    this.episode = episode;
     this.ambientContainer = this.scene.add.container(0, 0);
     this.chromeBack = this.scene.add.graphics();
     this.base = this.scene.add.graphics();
@@ -95,6 +99,10 @@ export class BoardRenderer {
     this.actor = this.scene.add.graphics();
     this.chromeFront = this.scene.add.graphics();
     this.ambientContainer.add([this.chromeBack, this.base, this.grid, this.goal, this.signal, this.trail, this.actor, this.chromeFront]);
+  }
+
+  public setEpisode(episode: MazeEpisode): void {
+    this.episode = episode;
   }
 
   private drawTileBrackets(
@@ -398,13 +406,17 @@ export class BoardRenderer {
     const { boardX, boardY, tileSize } = this.layout;
     const cue = options.cue ?? 'explore';
     const now = this.scene.time.now;
+    const trailLength = Math.min(options.limit ?? trail.length, trail.length);
     this.trail.clear();
     this.signal.clear();
+    if (trailLength === 0) {
+      return;
+    }
     let previousCenterX = 0;
     let previousCenterY = 0;
     let headCenterX = 0;
     let headCenterY = 0;
-    const headIndex = trail.length - 1;
+    const headIndex = trailLength - 1;
     const headPulse = 1 + (Math.sin(now * 0.008) * legacyTuning.board.trail.headPulseAmplitude);
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
     const cueHeadBoost = cue === 'anticipate'
@@ -415,14 +427,14 @@ export class BoardRenderer {
           ? 0.16
           : 0;
 
-    for (let i = 0; i < trail.length; i += 1) {
+    for (let i = 0; i < trailLength; i += 1) {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
       const mode = typeof step === 'number' ? 'explore' : step.mode;
       const tile = this.episode.raster.tiles[index];
       const centerX = boardX + tile.x * tileSize + tileSize / 2;
       const centerY = boardY + tile.y * tileSize + tileSize / 2;
-      const t = trail.length <= 1 ? 1 : i / (trail.length - 1);
+      const t = trailLength <= 1 ? 1 : i / (trailLength - 1);
       const isHead = i === headIndex;
       const isBacktrack = mode === 'backtrack';
       const isGoalStep = mode === 'goal';
@@ -737,7 +749,8 @@ export class BoardRenderer {
   }
 
   public startAmbientMotion(distancePx: number, durationMs: number): void {
-    this.scene.tweens.add({
+    this.ambientTween?.remove();
+    this.ambientTween = this.scene.tweens.add({
       targets: this.ambientContainer,
       y: distancePx,
       duration: durationMs,
@@ -745,5 +758,19 @@ export class BoardRenderer {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+  }
+
+  public destroy(): void {
+    this.ambientTween?.remove();
+    this.scene.tweens.killTweensOf(this.ambientContainer);
+    this.chromeBack.destroy();
+    this.base.destroy();
+    this.grid.destroy();
+    this.goal.destroy();
+    this.signal.destroy();
+    this.trail.destroy();
+    this.actor.destroy();
+    this.chromeFront.destroy();
+    this.ambientContainer.destroy();
   }
 }

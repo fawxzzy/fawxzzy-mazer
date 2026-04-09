@@ -9,7 +9,6 @@ import type {
   PatternEngineMode,
   Point
 } from './types';
-import { toCortexSample } from './cortex';
 
 const N = 1 << 0;
 const E = 1 << 1;
@@ -41,6 +40,24 @@ interface CoreBuildResult {
   shortcutsCreated: number;
   accepted: boolean;
 }
+
+interface MazeScratch {
+  readonly inTree: Uint8Array;
+  readonly walkNext: Int32Array;
+  readonly queue: Int32Array;
+  readonly distance: Int32Array;
+  readonly seen: Uint8Array;
+}
+
+interface SolveScratch {
+  readonly cameFrom: Int32Array;
+  readonly gScore: Float64Array;
+  readonly closed: Uint8Array;
+  readonly heap: MinHeap<{ idx: number; f: number; g: number }>;
+}
+
+const mazeScratchCache = new Map<number, MazeScratch>();
+const solveScratchCache = new Map<number, SolveScratch>();
 
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   const {
@@ -98,28 +115,27 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
 export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolveResult => {
   const startIdx = indexOf(maze.width, start.x, start.y);
   const goalIdx = indexOf(maze.width, goal.x, goal.y);
-  const cameFrom = new Array<number>(maze.cells.length).fill(-1);
-  const gScore = new Array<number>(maze.cells.length).fill(Number.POSITIVE_INFINITY);
-  const closed = new Array<boolean>(maze.cells.length).fill(false);
-  const open = new MinHeap<{ idx: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g);
+  const scratch = getSolveScratch(maze.cells.length);
+  const { cameFrom, gScore, closed, heap } = scratch;
+
+  cameFrom.fill(-1);
+  gScore.fill(Number.POSITIVE_INFINITY);
+  closed.fill(0);
+  heap.clear();
 
   let visited = 0;
   let expanded = 0;
 
   gScore[startIdx] = 0;
-  open.push({ idx: startIdx, g: 0, f: heuristic(start, goal) });
+  heap.push({ idx: startIdx, g: 0, f: heuristic(start, goal) });
 
-  while (open.size > 0) {
-    const current = open.pop();
-    if (!current) {
-      break;
-    }
-
-    if (closed[current.idx]) {
+  while (heap.size > 0) {
+    const current = heap.pop();
+    if (!current || closed[current.idx] === 1) {
       continue;
     }
 
-    closed[current.idx] = true;
+    closed[current.idx] = 1;
     visited += 1;
 
     if (current.idx === goalIdx) {
@@ -133,26 +149,24 @@ export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolve
     }
 
     expanded += 1;
-
-    for (const next of openNeighbors(maze, current.idx)) {
-      if (closed[next]) {
-        continue;
+    visitOpenNeighbors(maze, current.idx, (next) => {
+      if (closed[next] === 1) {
+        return;
       }
 
       const tentativeG = gScore[current.idx] + 1;
       if (tentativeG >= gScore[next]) {
-        continue;
+        return;
       }
 
       cameFrom[next] = current.idx;
       gScore[next] = tentativeG;
-      const point = pointFromIndex(next, maze.width);
-      open.push({
+      heap.push({
         idx: next,
         g: tentativeG,
-        f: tentativeG + heuristic(point, goal)
+        f: tentativeG + heuristic(pointFromIndex(next, maze.width), goal)
       });
-    }
+    });
   }
 
   return {
@@ -170,7 +184,7 @@ export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
   let straightSegments = 0;
 
   for (let index = 0; index < maze.cells.length; index += 1) {
-    const degree = openNeighbors(maze, index).length;
+    const degree = countOpenNeighbors(maze, index);
     if (degree === 1) {
       deadEnds += 1;
     } else if (degree >= 3) {
@@ -202,9 +216,46 @@ export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
 
 export const isPlayable = (episode: MazeEpisode): boolean => episode.solution.length > 0;
 
+export const toCortexSample = (episode: MazeEpisode, solveFrames?: number[]): CortexSample => ({
+  seed: episode.seed,
+  metrics: { ...episode.metrics },
+  solutionLength: episode.solution.length,
+  turns: countTurns(episode.solution),
+  branches: countSolutionBranches(episode),
+  accepted: episode.accepted,
+  ...(solveFrames ? { solveFrames: [...solveFrames] } : {})
+});
+
+export const disposeMazeEpisode = (episode?: MazeEpisode | null): void => {
+  if (!episode) {
+    return;
+  }
+
+  episode.solution.length = 0;
+  episode.core?.cells.splice(0, episode.core.cells.length);
+  episode.core = undefined;
+  episode.raster.tiles.length = 0;
+  episode.raster.pathIndices.length = 0;
+  episode.raster.checkpointIndices.length = 0;
+  episode.raster.wallIndices.length = 0;
+  episode.raster.width = 0;
+  episode.raster.height = 0;
+  episode.raster.scale = 0;
+  episode.raster.startIndex = 0;
+  episode.raster.endIndex = 0;
+  episode.raster.checkpointCount = 0;
+  episode.raster.playableWidth = 0;
+  episode.raster.playableHeight = 0;
+  episode.raster.padding.top = 0;
+  episode.raster.padding.right = 0;
+  episode.raster.padding.bottom = 0;
+  episode.raster.padding.left = 0;
+};
+
 export class PatternEngine {
   private elapsed = 0;
   private current?: PatternFrame;
+  private active = true;
 
   public constructor(
     private readonly makeMaze: () => MazeEpisode,
@@ -213,21 +264,57 @@ export class PatternEngine {
   ) {}
 
   public next(dtSeconds: number): PatternFrame {
-    this.elapsed += dtSeconds;
+    if (!this.current) {
+      this.current = this.createFrame();
+      return this.current;
+    }
 
-    if (!this.current || this.shouldAdvance(this.current, this.elapsed)) {
-      const episode = this.makeMaze();
-      this.current = {
-        mode: this.mode,
-        episode,
-        t: 0
-      };
-      this.elapsed = 0;
-      this.pushToCortex(this.current);
+    if (!this.active) {
+      return this.current;
+    }
+
+    this.elapsed += dtSeconds;
+    if (this.shouldAdvance(this.current, this.elapsed)) {
+      this.current = this.createFrame();
+      return this.current;
     }
 
     this.current.t += dtSeconds;
     return this.current;
+  }
+
+  public suspend(): void {
+    this.active = false;
+    this.elapsed = 0;
+  }
+
+  public resumeFresh(): void {
+    this.active = true;
+    this.elapsed = 0;
+    this.current = undefined;
+  }
+
+  public destroy(): void {
+    this.active = false;
+    this.elapsed = 0;
+    if (!this.current) {
+      return;
+    }
+
+    disposeMazeEpisode(this.current.episode);
+    this.current = undefined;
+  }
+
+  private createFrame(): PatternFrame {
+    const frame: PatternFrame = {
+      mode: this.mode,
+      episode: this.makeMaze(),
+      t: 0
+    };
+
+    this.elapsed = 0;
+    this.pushToCortex(frame);
+    return frame;
   }
 
   private shouldAdvance(frame: PatternFrame, elapsed: number): boolean {
@@ -250,9 +337,7 @@ export class PatternEngine {
       return;
     }
 
-    const sample: CortexSample = toCortexSample(frame.episode);
-
-    this.cortex.push(sample);
+    this.cortex.push(toCortexSample(frame.episode));
   }
 }
 
@@ -265,7 +350,7 @@ export const manualIdleGate = (
   let timer: number | undefined;
 
   const reset = (): void => {
-    if (timer) {
+    if (timer !== undefined) {
       window.clearTimeout(timer);
     }
 
@@ -281,25 +366,26 @@ export const manualIdleGate = (
   };
 
   const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel', 'pointerdown'] as const;
-  for (const eventName of events) {
-    window.addEventListener(eventName, reset, { passive: true });
-  }
-
-  document.addEventListener('visibilitychange', () => {
+  const handleVisibilityChange = (): void => {
     if (!document.hidden) {
       reset();
     }
-  });
+  };
 
+  for (const eventName of events) {
+    window.addEventListener(eventName, reset, { passive: true });
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   reset();
 
   return () => {
-    if (timer) {
+    if (timer !== undefined) {
       window.clearTimeout(timer);
     }
     for (const eventName of events) {
       window.removeEventListener(eventName, reset);
     }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
   };
 };
 
@@ -310,8 +396,10 @@ const generateWilsonMaze = (
   braidRatio: number,
   rng: () => number
 ): MazeCore => {
-  const cells = Array.from({ length: width * height }, () => ({ walls: ALL_WALLS }));
-  const inTree = new Array<boolean>(width * height).fill(false);
+  const cellCount = width * height;
+  const scratch = getMazeScratch(cellCount);
+  const { inTree, walkNext } = scratch;
+  const cells = Array.from({ length: cellCount }, () => ({ walls: ALL_WALLS }));
   const maze: MazeCore = {
     width,
     height,
@@ -322,43 +410,42 @@ const generateWilsonMaze = (
     braidRatio
   };
 
-  const root = randomInt(width * height, rng);
-  inTree[root] = true;
+  inTree.fill(0);
+  walkNext.fill(-1);
 
-  while (inTree.some((value) => !value)) {
-    const walk = new Map<number, number>();
+  const root = randomInt(cellCount, rng);
+  inTree[root] = 1;
+  let unvisited = cellCount - 1;
+
+  while (unvisited > 0) {
     let cursor = randomUnvisitedIndex(inTree, rng);
     const walkStart = cursor;
-    walk.set(cursor, -1);
 
-    while (!inTree[cursor]) {
+    while (inTree[cursor] === 0) {
       const next = randomNeighborIndex(cursor, width, height, rng);
-      walk.set(cursor, next);
+      walkNext[cursor] = next;
       cursor = next;
-      if (!walk.has(cursor)) {
-        walk.set(cursor, -1);
-      }
     }
 
     cursor = walkStart;
-    while (!inTree[cursor]) {
-      const next = walk.get(cursor);
-      if (next === undefined || next < 0) {
+    while (inTree[cursor] === 0) {
+      const next = walkNext[cursor];
+      if (next < 0) {
         break;
       }
       carvePassage(maze, cursor, next);
-      inTree[cursor] = true;
+      inTree[cursor] = 1;
+      unvisited -= 1;
       cursor = next;
     }
-    inTree[cursor] = true;
   }
 
   if (braidRatio > 0) {
     braidMaze(maze, braidRatio, rng);
   }
 
-  const farA = farthestReachable(maze, { x: 0, y: 0 });
-  const farB = farthestReachable(maze, farA.point);
+  const farA = farthestReachable(maze, { x: 0, y: 0 }, scratch);
+  const farB = farthestReachable(maze, farA.point, scratch);
   maze.start = farA.point;
   maze.goal = farB.point;
   return maze;
@@ -367,7 +454,7 @@ const generateWilsonMaze = (
 const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
   const candidates: number[] = [];
   for (let index = 0; index < maze.cells.length; index += 1) {
-    if (openNeighbors(maze, index).length === 1) {
+    if (countOpenNeighbors(maze, index) === 1) {
       candidates.push(index);
     }
   }
@@ -381,7 +468,7 @@ const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
       break;
     }
 
-    const choices = closedNeighbors(maze, index);
+    const choices = collectClosedNeighbors(maze, index);
     if (choices.length === 0) {
       continue;
     }
@@ -397,34 +484,44 @@ const passesQualityGate = (metrics: MazeMetrics, minSolutionLength: number): boo
   && metrics.coverage >= 0.18
 );
 
-const farthestReachable = (maze: MazeCore, start: Point): { point: Point; distance: number } => {
+const farthestReachable = (
+  maze: MazeCore,
+  start: Point,
+  scratch: MazeScratch
+): { point: Point; distance: number } => {
   const startIdx = indexOf(maze.width, start.x, start.y);
-  const queue = [startIdx];
-  const seen = new Array<boolean>(maze.cells.length).fill(false);
-  const distance = new Array<number>(maze.cells.length).fill(-1);
-  seen[startIdx] = true;
+  const { queue, seen, distance } = scratch;
+
+  seen.fill(0);
+  distance.fill(-1);
+
+  let head = 0;
+  let tail = 0;
+  let best = startIdx;
+
+  queue[tail] = startIdx;
+  tail += 1;
+  seen[startIdx] = 1;
   distance[startIdx] = 0;
 
-  let best = startIdx;
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined) {
-      continue;
-    }
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
 
     if (distance[current] > distance[best]) {
       best = current;
     }
 
-    for (const next of openNeighbors(maze, current)) {
-      if (seen[next]) {
-        continue;
+    visitOpenNeighbors(maze, current, (next) => {
+      if (seen[next] === 1) {
+        return;
       }
 
-      seen[next] = true;
+      seen[next] = 1;
       distance[next] = distance[current] + 1;
-      queue.push(next);
-    }
+      queue[tail] = next;
+      tail += 1;
+    });
   }
 
   return {
@@ -436,14 +533,14 @@ const farthestReachable = (maze: MazeCore, start: Point): { point: Point; distan
 const countOpeningsBeyondTree = (maze: MazeCore): number => {
   let passages = 0;
   for (let index = 0; index < maze.cells.length; index += 1) {
-    passages += openNeighbors(maze, index).length;
+    passages += countOpenNeighbors(maze, index);
   }
 
   const undirectedEdges = passages / 2;
   return Math.max(0, undirectedEdges - (maze.cells.length - 1));
 };
 
-const reconstructPath = (cameFrom: number[], endIdx: number, width: number): Point[] => {
+const reconstructPath = (cameFrom: Int32Array, endIdx: number, width: number): Point[] => {
   const path: Point[] = [];
   let cursor = endIdx;
 
@@ -456,10 +553,9 @@ const reconstructPath = (cameFrom: number[], endIdx: number, width: number): Poi
   return path;
 };
 
-const openNeighbors = (maze: MazeCore, idx: number): number[] => {
+const visitOpenNeighbors = (maze: MazeCore, idx: number, visit: (next: number) => void): void => {
   const point = pointFromIndex(idx, maze.width);
   const cell = maze.cells[idx];
-  const neighbors: number[] = [];
 
   for (const dir of DIRS) {
     if ((cell.walls & dir.bit) !== 0) {
@@ -472,13 +568,19 @@ const openNeighbors = (maze: MazeCore, idx: number): number[] => {
       continue;
     }
 
-    neighbors.push(indexOf(maze.width, nextX, nextY));
+    visit(indexOf(maze.width, nextX, nextY));
   }
-
-  return neighbors;
 };
 
-const closedNeighbors = (maze: MazeCore, idx: number): number[] => {
+const countOpenNeighbors = (maze: MazeCore, idx: number): number => {
+  let count = 0;
+  visitOpenNeighbors(maze, idx, () => {
+    count += 1;
+  });
+  return count;
+};
+
+const collectClosedNeighbors = (maze: MazeCore, idx: number): number[] => {
   const point = pointFromIndex(idx, maze.width);
   const cell = maze.cells[idx];
   const neighbors: number[] = [];
@@ -519,6 +621,39 @@ const carvePassage = (maze: MazeCore, a: number, b: number): void => {
   throw new Error(`Cells ${a} and ${b} are not neighbors`);
 };
 
+const countTurns = (path: Point[]): number => {
+  let turns = 0;
+
+  for (let index = 1; index < path.length - 1; index += 1) {
+    const a = path[index - 1];
+    const b = path[index];
+    const c = path[index + 1];
+    if (b.x - a.x !== c.x - b.x || b.y - a.y !== c.y - b.y) {
+      turns += 1;
+    }
+  }
+
+  return turns;
+};
+
+const countSolutionBranches = (episode: MazeEpisode): number => {
+  let branches = 0;
+
+  for (const index of episode.raster.pathIndices) {
+    let degree = 0;
+    for (const neighbor of episode.raster.tiles[index].neighbors) {
+      if (neighbor !== -1 && episode.raster.tiles[neighbor].floor) {
+        degree += 1;
+      }
+    }
+    if (degree >= 3) {
+      branches += 1;
+    }
+  }
+
+  return branches;
+};
+
 const heuristic = (a: Point, b: Point): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 const indexOf = (width: number, x: number, y: number): number => (y * width) + x;
@@ -545,14 +680,17 @@ const randomNeighborIndex = (idx: number, width: number, height: number, rng: ()
   return neighbors[randomInt(neighbors.length, rng)];
 };
 
-const randomUnvisitedIndex = (inTree: boolean[], rng: () => number): number => {
-  const candidates: number[] = [];
-  for (let index = 0; index < inTree.length; index += 1) {
-    if (!inTree[index]) {
-      candidates.push(index);
+const randomUnvisitedIndex = (inTree: Uint8Array, rng: () => number): number => {
+  const offset = randomInt(inTree.length, rng);
+
+  for (let step = 0; step < inTree.length; step += 1) {
+    const index = (offset + step) % inTree.length;
+    if (inTree[index] === 0) {
+      return index;
     }
   }
-  return candidates[randomInt(candidates.length, rng)];
+
+  return 0;
 };
 
 const inBounds = (x: number, y: number, width: number, height: number): boolean => (
@@ -568,6 +706,39 @@ const shuffleInPlace = <T>(items: T[], rng: () => number): void => {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
+const getMazeScratch = (size: number): MazeScratch => {
+  const cached = mazeScratchCache.get(size);
+  if (cached) {
+    return cached;
+  }
+
+  const scratch: MazeScratch = {
+    inTree: new Uint8Array(size),
+    walkNext: new Int32Array(size),
+    queue: new Int32Array(size),
+    distance: new Int32Array(size),
+    seen: new Uint8Array(size)
+  };
+  mazeScratchCache.set(size, scratch);
+  return scratch;
+};
+
+const getSolveScratch = (size: number): SolveScratch => {
+  const cached = solveScratchCache.get(size);
+  if (cached) {
+    return cached;
+  }
+
+  const scratch: SolveScratch = {
+    cameFrom: new Int32Array(size),
+    gScore: new Float64Array(size),
+    closed: new Uint8Array(size),
+    heap: new MinHeap<{ idx: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g)
+  };
+  solveScratchCache.set(size, scratch);
+  return scratch;
+};
+
 class MinHeap<T> {
   private readonly data: T[] = [];
 
@@ -575,6 +746,10 @@ class MinHeap<T> {
 
   public get size(): number {
     return this.data.length;
+  }
+
+  public clear(): void {
+    this.data.length = 0;
   }
 
   public push(value: T): void {
@@ -586,7 +761,6 @@ class MinHeap<T> {
     if (this.data.length === 0) {
       return undefined;
     }
-
     if (this.data.length === 1) {
       return this.data.pop();
     }
