@@ -1,14 +1,31 @@
-export interface BestTimeEntry {
-  elapsedMs: number;
-  seed: number;
-  recordedAt: string;
+import type { MazeDifficulty } from '../domain/maze';
+
+export interface DifficultyProgress {
+  bestMoves: number | null;
+  bestTimeMs: number | null;
+}
+
+export interface MazerProgress {
+  bestByDifficulty: Record<MazeDifficulty, DifficultyProgress>;
+  clearsCount: number;
+  lastDifficulty: MazeDifficulty;
+}
+
+export interface RunRecordUpdate {
+  bestMoves: number | null;
+  bestTimeMs: number | null;
+  isNewBestMoves: boolean;
+  isNewBestTime: boolean;
+  previousBestMoves: number | null;
+  previousBestTimeMs: number | null;
+  progress: MazerProgress;
 }
 
 export interface MazerSettings {}
 
 interface MazerMeta {
-  schemaVersion: number;
   namespace: string;
+  schemaVersion: number;
 }
 
 interface StorageLike {
@@ -46,9 +63,10 @@ export interface MazerStorageEnvironment {
   setTimeout: typeof globalThis.setTimeout;
 }
 
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 const APP_NAMESPACE = `mazer:v${STORAGE_VERSION}`;
 const APP_CACHE_PREFIX = `mazer-v${STORAGE_VERSION}`;
+const DIFFICULTY_ORDER = ['chill', 'standard', 'spicy', 'brutal'] as const satisfies readonly MazeDifficulty[];
 const resolveBaseUrl = (): string => {
   if (typeof document === 'undefined') {
     return '/';
@@ -62,18 +80,27 @@ const resolveBaseUrl = (): string => {
   }
 };
 const KNOWN_STORAGE_KEYS = {
-  settings: `${APP_NAMESPACE}:settings`,
-  bestTimes: `${APP_NAMESPACE}:bestTimes`,
-  meta: `${APP_NAMESPACE}:meta`
+  meta: `${APP_NAMESPACE}:meta`,
+  progress: `${APP_NAMESPACE}:progress`,
+  settings: `${APP_NAMESPACE}:settings`
 } as const;
 const CURRENT_STORAGE_KEYS = new Set<string>(Object.values(KNOWN_STORAGE_KEYS));
 const OWNED_STORAGE_PREFIXES = ['mazer:', 'mazer-', 'mazer_', 'mazer.'] as const;
-const BEST_TIME_LIMIT = 10;
 const WRITE_THROTTLE_MS = 120;
 const DEFAULT_SETTINGS: MazerSettings = {};
 const DEFAULT_META: MazerMeta = {
-  schemaVersion: STORAGE_VERSION,
-  namespace: APP_NAMESPACE
+  namespace: APP_NAMESPACE,
+  schemaVersion: STORAGE_VERSION
+};
+const DEFAULT_PROGRESS: MazerProgress = {
+  bestByDifficulty: {
+    chill: { bestMoves: null, bestTimeMs: null },
+    standard: { bestMoves: null, bestTimeMs: null },
+    spicy: { bestMoves: null, bestTimeMs: null },
+    brutal: { bestMoves: null, bestTimeMs: null }
+  },
+  clearsCount: 0,
+  lastDifficulty: 'standard'
 };
 
 const resolveEnvironment = (): MazerStorageEnvironment => ({
@@ -103,13 +130,37 @@ const isCurrentCacheName = (cacheName: string): boolean => cacheName.startsWith(
 
 const isOwnedDatabaseName = (name: string): boolean => name.startsWith('mazer:') || name.startsWith('mazer-');
 
-const toIsoTimestamp = (timestamp: number): string => new Date(timestamp).toISOString();
+const cloneProgress = (progress: MazerProgress): MazerProgress => ({
+  bestByDifficulty: {
+    chill: { ...progress.bestByDifficulty.chill },
+    standard: { ...progress.bestByDifficulty.standard },
+    spicy: { ...progress.bestByDifficulty.spicy },
+    brutal: { ...progress.bestByDifficulty.brutal }
+  },
+  clearsCount: progress.clearsCount,
+  lastDifficulty: progress.lastDifficulty
+});
 
-const formatElapsedMs = (elapsedMs: number): string => {
-  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+const cloneSettings = (settings: MazerSettings): MazerSettings => ({ ...settings });
+
+const sanitizeMetric = (value: unknown): number | null => {
+  if (typeof value !== 'number') {
+    return null;
+  }
+
+  const normalized = Math.round(value);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+};
+
+const sanitizeDifficultyProgress = (value: unknown): DifficultyProgress => {
+  if (!isPlainObject(value)) {
+    return { bestMoves: null, bestTimeMs: null };
+  }
+
+  return {
+    bestMoves: sanitizeMetric(value.bestMoves),
+    bestTimeMs: sanitizeMetric(value.bestTimeMs)
+  };
 };
 
 const listStorageKeys = (storage?: StorageLike): string[] => {
@@ -148,56 +199,44 @@ const sanitizeSettings = (value: unknown): MazerSettings | null => {
   return isPlainObject(value) ? {} : null;
 };
 
-const sanitizeMeta = (value: unknown): MazerMeta | null => {
+const sanitizeMeta = (value: unknown): MazerMeta => {
   if (!isPlainObject(value)) {
     return DEFAULT_META;
   }
 
   return {
-    schemaVersion: STORAGE_VERSION,
-    namespace: APP_NAMESPACE
+    namespace: APP_NAMESPACE,
+    schemaVersion: STORAGE_VERSION
   };
 };
 
-const sanitizeBestTimes = (value: unknown): BestTimeEntry[] | null => {
+const sanitizeProgress = (value: unknown): MazerProgress | null => {
   if (value === undefined) {
-    return [];
+    return cloneProgress(DEFAULT_PROGRESS);
   }
 
-  if (!Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     return null;
   }
 
-  const bestBySeed = new Map<number, BestTimeEntry>();
-  for (const entry of value) {
-    if (!isPlainObject(entry)) {
-      continue;
-    }
+  const bestByDifficulty = isPlainObject(value.bestByDifficulty) ? value.bestByDifficulty : {};
+  const lastDifficulty = typeof value.lastDifficulty === 'string' && DIFFICULTY_ORDER.includes(value.lastDifficulty as MazeDifficulty)
+    ? value.lastDifficulty as MazeDifficulty
+    : DEFAULT_PROGRESS.lastDifficulty;
+  const clearsCount = typeof value.clearsCount === 'number' && Number.isFinite(value.clearsCount) && value.clearsCount >= 0
+    ? Math.min(999_999, Math.round(value.clearsCount))
+    : 0;
 
-    const elapsedMs = typeof entry.elapsedMs === 'number' ? Math.round(entry.elapsedMs) : Number.NaN;
-    const seed = typeof entry.seed === 'number' ? Math.round(entry.seed) : Number.NaN;
-    const recordedAt = typeof entry.recordedAt === 'string' && entry.recordedAt.length > 0
-      ? entry.recordedAt
-      : undefined;
-
-    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || !Number.isFinite(seed)) {
-      continue;
-    }
-
-    const normalized: BestTimeEntry = {
-      elapsedMs,
-      seed,
-      recordedAt: recordedAt ?? toIsoTimestamp(0)
-    };
-    const existing = bestBySeed.get(seed);
-    if (!existing || normalized.elapsedMs < existing.elapsedMs) {
-      bestBySeed.set(seed, normalized);
-    }
-  }
-
-  return [...bestBySeed.values()]
-    .sort((left, right) => left.elapsedMs - right.elapsedMs || left.recordedAt.localeCompare(right.recordedAt))
-    .slice(0, BEST_TIME_LIMIT);
+  return {
+    bestByDifficulty: {
+      chill: sanitizeDifficultyProgress(bestByDifficulty.chill),
+      standard: sanitizeDifficultyProgress(bestByDifficulty.standard),
+      spicy: sanitizeDifficultyProgress(bestByDifficulty.spicy),
+      brutal: sanitizeDifficultyProgress(bestByDifficulty.brutal)
+    },
+    clearsCount,
+    lastDifficulty
+  };
 };
 
 const serialize = (value: unknown): string => JSON.stringify(value);
@@ -209,12 +248,19 @@ const deleteIndexedDatabase = (database: Pick<IDBFactory, 'deleteDatabase'>, nam
   request.onblocked = () => resolve();
 });
 
+export const formatElapsedMs = (elapsedMs: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 export class MazerStorage {
-  private bestTimes: BestTimeEntry[] = [];
   private initialized = false;
   private meta: MazerMeta = DEFAULT_META;
   private pendingAsyncCleanup?: Promise<void>;
   private readonly pendingWrites = new Map<string, ReturnType<typeof globalThis.setTimeout>>();
+  private progress: MazerProgress = cloneProgress(DEFAULT_PROGRESS);
   private settings: MazerSettings = DEFAULT_SETTINGS;
 
   public constructor(private readonly env: MazerStorageEnvironment = resolveEnvironment()) {}
@@ -237,7 +283,7 @@ export class MazerStorage {
     }
 
     this.settings = DEFAULT_SETTINGS;
-    this.bestTimes = [];
+    this.progress = cloneProgress(DEFAULT_PROGRESS);
     this.meta = DEFAULT_META;
 
     return Promise.all([
@@ -247,43 +293,79 @@ export class MazerStorage {
     ]).then(() => undefined);
   }
 
-  public getBestTimes(): BestTimeEntry[] {
+  public getProgress(): MazerProgress {
     this.ensureInitialized();
-    return this.bestTimes.map((entry) => ({ ...entry }));
-  }
-
-  public getFastestBestTime(): BestTimeEntry | null {
-    this.ensureInitialized();
-    return this.bestTimes[0] ? { ...this.bestTimes[0] } : null;
+    return cloneProgress(this.progress);
   }
 
   public getSettings(): MazerSettings {
     this.ensureInitialized();
-    return { ...this.settings };
+    return cloneSettings(this.settings);
   }
 
-  public recordBestTime(result: { elapsedMs: number; seed: number; recordedAt?: string }): BestTimeEntry[] {
+  public recordRunResult(result: {
+    difficulty: MazeDifficulty;
+    elapsedMs: number;
+    moveCount: number;
+  }): RunRecordUpdate {
     this.ensureInitialized();
 
-    const elapsedMs = Math.round(result.elapsedMs);
-    const seed = Math.round(result.seed);
-    if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || !Number.isFinite(seed)) {
-      return this.getBestTimes();
+    const elapsedMs = sanitizeMetric(result.elapsedMs);
+    const moveCount = sanitizeMetric(result.moveCount);
+    if (!elapsedMs || !moveCount) {
+      const snapshot = this.getProgress();
+      const bucket = snapshot.bestByDifficulty[result.difficulty];
+      return {
+        bestMoves: bucket.bestMoves,
+        bestTimeMs: bucket.bestTimeMs,
+        isNewBestMoves: false,
+        isNewBestTime: false,
+        previousBestMoves: bucket.bestMoves,
+        previousBestTimeMs: bucket.bestTimeMs,
+        progress: snapshot
+      };
     }
 
-    const recordedAt = result.recordedAt ?? toIsoTimestamp(this.env.now());
-    const nextBestTimes = sanitizeBestTimes([
-      ...this.bestTimes,
-      { elapsedMs, seed, recordedAt }
-    ]) ?? [];
+    const nextProgress = cloneProgress(this.progress);
+    const bucket = nextProgress.bestByDifficulty[result.difficulty];
+    const previousBestTimeMs = bucket.bestTimeMs;
+    const previousBestMoves = bucket.bestMoves;
+    const isNewBestTime = previousBestTimeMs === null || elapsedMs < previousBestTimeMs;
+    const isNewBestMoves = previousBestMoves === null || moveCount < previousBestMoves;
 
-    if (serialize(nextBestTimes) === serialize(this.bestTimes)) {
-      return this.getBestTimes();
+    bucket.bestTimeMs = isNewBestTime ? elapsedMs : previousBestTimeMs;
+    bucket.bestMoves = isNewBestMoves ? moveCount : previousBestMoves;
+    nextProgress.clearsCount += 1;
+    nextProgress.lastDifficulty = result.difficulty;
+
+    if (serialize(nextProgress) !== serialize(this.progress)) {
+      this.progress = nextProgress;
+      this.scheduleWrite(KNOWN_STORAGE_KEYS.progress, this.progress);
     }
 
-    this.bestTimes = nextBestTimes;
-    this.scheduleWrite(KNOWN_STORAGE_KEYS.bestTimes, this.bestTimes);
-    return this.getBestTimes();
+    return {
+      bestMoves: bucket.bestMoves,
+      bestTimeMs: bucket.bestTimeMs,
+      isNewBestMoves,
+      isNewBestTime,
+      previousBestMoves,
+      previousBestTimeMs,
+      progress: this.getProgress()
+    };
+  }
+
+  public setLastPlayedDifficulty(difficulty: MazeDifficulty): MazerProgress {
+    this.ensureInitialized();
+    if (this.progress.lastDifficulty === difficulty) {
+      return this.getProgress();
+    }
+
+    this.progress = {
+      ...cloneProgress(this.progress),
+      lastDifficulty: difficulty
+    };
+    this.scheduleWrite(KNOWN_STORAGE_KEYS.progress, this.progress);
+    return this.getProgress();
   }
 
   private cancelPendingWrites(): void {
@@ -317,19 +399,20 @@ export class MazerStorage {
           storage.removeItem(key);
           continue;
         }
+
         this.settings = settings;
         continue;
       }
 
-      if (key === KNOWN_STORAGE_KEYS.bestTimes) {
-        const bestTimes = sanitizeBestTimes(parsed);
-        if (bestTimes === null) {
+      if (key === KNOWN_STORAGE_KEYS.progress) {
+        const progress = sanitizeProgress(parsed);
+        if (progress === null) {
           storage.removeItem(key);
           continue;
         }
 
-        this.bestTimes = bestTimes;
-        const serialized = serialize(bestTimes);
+        this.progress = progress;
+        const serialized = serialize(progress);
         if (storage.getItem(key) !== serialized) {
           storage.setItem(key, serialized);
         }
@@ -338,17 +421,12 @@ export class MazerStorage {
 
       if (key === KNOWN_STORAGE_KEYS.meta) {
         const meta = sanitizeMeta(parsed);
-        if (meta === null) {
-          storage.removeItem(key);
-          metaNeedsPersist = persistMeta;
-          continue;
-        }
-
         this.meta = meta;
         const serialized = serialize(meta);
         if (storage.getItem(key) !== serialized) {
           storage.setItem(key, serialized);
         }
+        continue;
       }
     }
 
@@ -431,4 +509,4 @@ export class MazerStorage {
 }
 
 export const mazerStorage = new MazerStorage();
-export { APP_CACHE_PREFIX, APP_NAMESPACE, BEST_TIME_LIMIT, KNOWN_STORAGE_KEYS, WRITE_THROTTLE_MS, formatElapsedMs };
+export { APP_CACHE_PREFIX, APP_NAMESPACE, KNOWN_STORAGE_KEYS, WRITE_THROTTLE_MS };

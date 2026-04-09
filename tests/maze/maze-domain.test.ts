@@ -7,6 +7,7 @@ import {
   type CortexSample,
   disposeMazeEpisode,
   generateMaze,
+  generateMazeForDifficulty,
   getNeighborIndex,
   PatternEngine,
   resetAndRegenerate,
@@ -28,6 +29,23 @@ describe('maze domain generation', () => {
     const b = generateMaze(defaultConfig);
 
     expect(serializeMaze(a)).toEqual(serializeMaze(b));
+  });
+
+  test('same-seed replay stays deterministic after difficulty-targeted resolution', () => {
+    const resolved = generateMazeForDifficulty({
+      ...defaultConfig,
+      seed: 13_001
+    }, 'spicy');
+    const replay = generateMazeForDifficulty({
+      ...defaultConfig,
+      seed: resolved.seed
+    }, 'spicy', 0, 1);
+
+    expect(resolved.episode.difficulty).toBe('spicy');
+    expect(serializeMaze(resolved.episode)).toEqual(serializeMaze(replay.episode));
+
+    disposeMazeEpisode(replay.episode);
+    disposeMazeEpisode(resolved.episode);
   });
 
   test('preserves solver-backed maze invariants', () => {
@@ -150,36 +168,56 @@ describe('maze domain generation', () => {
 
   test('classifies difficulty buckets deterministically from measured metrics', () => {
     expect(classifyMazeDifficulty({
-      solutionLength: 34,
-      deadEnds: 8,
-      junctions: 4,
-      straightness: 0.86,
-      coverage: 0.18
-    }, 42, 42, 1).difficulty).toBe('chill');
-
-    expect(classifyMazeDifficulty({
-      solutionLength: 80,
-      deadEnds: 16,
+      solutionLength: 120,
+      deadEnds: 20,
       junctions: 10,
-      straightness: 0.55,
-      coverage: 0.32
-    }, 50, 50, 3).difficulty).toBe('standard');
+      straightness: 0.5,
+      coverage: 0.3
+    }, 50, 50, 4).difficulty).toBe('chill');
 
     expect(classifyMazeDifficulty({
-      solutionLength: 104,
-      deadEnds: 28,
+      solutionLength: 180,
+      deadEnds: 30,
       junctions: 18,
-      straightness: 0.42,
-      coverage: 0.42
-    }, 50, 50, 6).difficulty).toBe('spicy');
+      straightness: 0.45,
+      coverage: 0.38
+    }, 50, 50, 6).difficulty).toBe('standard');
 
     expect(classifyMazeDifficulty({
-      solutionLength: 130,
-      deadEnds: 36,
-      junctions: 24,
-      straightness: 0.36,
-      coverage: 0.5
-    }, 50, 50, 9).difficulty).toBe('brutal');
+      solutionLength: 500,
+      deadEnds: 70,
+      junctions: 50,
+      straightness: 0.14,
+      coverage: 0.76
+    }, 50, 50, 20).difficulty).toBe('spicy');
+
+    expect(classifyMazeDifficulty({
+      solutionLength: 650,
+      deadEnds: 90,
+      junctions: 68,
+      straightness: 0.08,
+      coverage: 0.86
+    }, 50, 50, 28).difficulty).toBe('brutal');
+  });
+
+  test('difficulty-targeted generation resolves into the requested bucket', () => {
+    const bucketSeeds = {
+      chill: 9_001,
+      standard: 11_001,
+      spicy: 13_001,
+      brutal: 15_001
+    } as const;
+
+    for (const difficulty of ['chill', 'standard', 'spicy', 'brutal'] as const) {
+      const resolved = generateMazeForDifficulty({
+        ...defaultConfig,
+        seed: bucketSeeds[difficulty]
+      }, difficulty);
+
+      expect(resolved.episode.difficulty).toBe(difficulty);
+      assertMazeInvariants(resolved.episode);
+      disposeMazeEpisode(resolved.episode);
+    }
   });
 
   test('pattern engine resumeFresh skips hidden-tab backlog and creates one fresh demo frame', () => {

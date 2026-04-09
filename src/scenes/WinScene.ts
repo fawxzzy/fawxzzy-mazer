@@ -19,32 +19,50 @@ export class WinScene extends Phaser.Scene {
     const { container, contentY } = createOverlaySheet(
       this,
       data?.title ?? 'Maze Complete',
-      data?.subtitle ?? 'You reached the goal'
+      data?.subtitle ?? 'CORE SECURED',
+      {
+        heightRatio: 0.76,
+        maxSheetHeight: 470
+      }
     );
     this.actionLocked = false;
     this.overlayContainer = container;
 
-    const resetButton = createMenuButton(this, {
+    const detailLines = data?.detailLines ?? [];
+    detailLines.forEach((line, index) => {
+      container.add(this.add
+        .text(width / 2, contentY + (index * 24), line, {
+          color: line.includes('NEW BEST') ? '#c8ffd0' : '#d7deef',
+          fontFamily: '"Courier New", monospace',
+          fontSize: '15px',
+          fontStyle: line.includes('NEW BEST') ? 'bold' : 'normal'
+        })
+        .setOrigin(0.5, 0.5)
+        .setAlpha(line.includes('NEW BEST') ? 0.98 : 0.88));
+    });
+
+    const buttonBaseY = contentY + (detailLines.length * 24) + 28;
+    const playAgainButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY,
-      label: 'Reset Run',
-      onClick: () => this.emitAction('reset-run', 84),
+      y: buttonBaseY,
+      label: 'Play Again',
+      onClick: () => this.emitAction('play-again', 74),
       clickSfx: 'confirm'
     });
 
     const newMazeButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + legacyTuning.overlays.listSpacingPx,
-      label: 'New Maze',
-      onClick: () => this.emitAction('new-maze', 92),
+      y: buttonBaseY + legacyTuning.overlays.listSpacingPx,
+      label: 'Next Maze',
+      onClick: () => this.emitAction('next-maze', 82),
       clickSfx: 'confirm'
     });
 
     const menuButton = createMenuButton(this, {
       x: width / 2,
-      y: contentY + (legacyTuning.overlays.listSpacingPx * 2),
-      label: 'Main Menu',
-      onClick: () => this.emitAction('menu', 82),
+      y: buttonBaseY + (legacyTuning.overlays.listSpacingPx * 2),
+      label: 'Back To Menu',
+      onClick: () => this.emitAction('menu', 78),
       clickSfx: 'cancel'
     });
 
@@ -60,7 +78,7 @@ export class WinScene extends Phaser.Scene {
       ease: 'Back.easeOut'
     });
 
-    [resetButton, newMazeButton, menuButton].forEach((button, index) => {
+    [playAgainButton, newMazeButton, menuButton].forEach((button, index) => {
       button.setAlpha(0);
       button.y += legacyTuning.overlays.intro.buttonRiseWinPx;
       this.tweens.add({
@@ -73,13 +91,21 @@ export class WinScene extends Phaser.Scene {
       });
     });
 
+    this.input.keyboard?.once('keydown-ENTER', () => {
+      playSfx('confirm');
+      this.emitAction('play-again', 52);
+    });
+    this.input.keyboard?.once('keydown-N', () => {
+      playSfx('confirm');
+      this.emitAction('next-maze', 56);
+    });
     this.input.keyboard?.once('keydown-ESC', () => {
       playSfx('cancel');
       this.emitAction('menu', 56);
     });
   }
 
-  private emitAction(action: 'reset-run' | 'new-maze' | 'menu', delayMs = 82): void {
+  private emitAction(action: 'menu' | 'next-maze' | 'play-again', delayMs = 82): void {
     if (this.actionLocked) {
       return;
     }

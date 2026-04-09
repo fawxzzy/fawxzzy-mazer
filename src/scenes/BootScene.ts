@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { mazerStorage } from '../storage/mazerStorage';
 
 export class BootScene extends Phaser.Scene {
   public constructor() {
@@ -10,6 +11,10 @@ export class BootScene extends Phaser.Scene {
   }
 
   public create(): void {
-    this.scene.start('MenuScene');
+    void mazerStorage.bootstrap().finally(() => {
+      if (this.scene.isActive()) {
+        this.scene.start('MenuScene');
+      }
+    });
   }
 }

@@ -1,5 +1,5 @@
 import { createSeededRng } from '../rng/seededRng';
-import { buildMazeCore } from './core';
+import { buildMazeCore, disposeMazeEpisode } from './core';
 import {
   getAStarScratch,
   createGrid,
@@ -58,6 +58,11 @@ interface MazeVarietyPreset {
   readonly minSolutionFactor: number;
 }
 
+export interface DifficultyResolvedMaze {
+  episode: MazeEpisode;
+  seed: number;
+}
+
 const solveScratchCache = new Map<number, AStarScratch>();
 
 const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
@@ -105,6 +110,9 @@ const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
 
 const MENU_VARIETY_POOL = [0, 1, 2, 3] as const;
 const GAME_VARIETY_POOL = [0, 1, 2, 3, 4] as const;
+const DIFFICULTY_ORDER: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
+const TARGET_DIFFICULTY_SEARCH_LIMIT = 512;
+const TARGET_DIFFICULTY_SEED_STEP = 977;
 
 export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
@@ -160,6 +168,63 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
     },
     maxAttempts: config.maxAttempts ?? 96
   });
+};
+
+export const generateMazeForDifficulty = (
+  config: MazeConfig,
+  targetDifficulty: MazeDifficulty,
+  seedStep = 0,
+  searchLimit = TARGET_DIFFICULTY_SEARCH_LIMIT
+): DifficultyResolvedMaze => {
+  const targetedConfig = resolveTargetDifficultyConfig(config, targetDifficulty);
+  const baseSeed = targetedConfig.seed;
+  let fallback: DifficultyResolvedMaze | null = null;
+  let fallbackDistance = Number.POSITIVE_INFINITY;
+
+  for (let attempt = 0; attempt < searchLimit; attempt += 1) {
+    const candidateSeed = attempt === 0
+      ? baseSeed + seedStep
+      : baseSeed + seedStep + (attempt * TARGET_DIFFICULTY_SEED_STEP);
+    const episode = generateMaze({
+      ...targetedConfig,
+      seed: candidateSeed
+    });
+    if (episode.difficulty === targetDifficulty) {
+      if (fallback) {
+        disposeMazeEpisode(fallback.episode);
+      }
+      return {
+        episode,
+        seed: candidateSeed
+      };
+    }
+
+    const candidateDistance = Math.abs(
+      DIFFICULTY_ORDER.indexOf(episode.difficulty) - DIFFICULTY_ORDER.indexOf(targetDifficulty)
+    );
+    if (!fallback || candidateDistance < fallbackDistance) {
+      if (fallback) {
+        disposeMazeEpisode(fallback.episode);
+      }
+      fallback = {
+        episode,
+        seed: candidateSeed
+      };
+      fallbackDistance = candidateDistance;
+      continue;
+    }
+
+    disposeMazeEpisode(episode);
+  }
+
+  if (fallback) {
+    return fallback;
+  }
+
+  return {
+    episode: generateMaze(targetedConfig),
+    seed: baseSeed
+  };
 };
 
 export const createInitialGenerationState = (config: MazeConfig): MazeGenerationState => ({
@@ -452,6 +517,45 @@ const resolveMazeVarietyPreset = (config: MazeConfig): MazeVarietyPreset => {
   return MAZE_VARIETY_PRESETS[pool[seedMix % pool.length]];
 };
 
+const resolveTargetDifficultyConfig = (config: MazeConfig, targetDifficulty: MazeDifficulty): MazeConfig => {
+  switch (targetDifficulty) {
+    case 'chill':
+      return {
+        ...config,
+        maxAttempts: config.maxAttempts ?? 72,
+        minSolutionLength: config.minSolutionLength ?? 20,
+        scale: 18,
+        shortcutCountModifier: 0.08
+      };
+    case 'standard':
+      return {
+        ...config,
+        maxAttempts: config.maxAttempts ?? 84,
+        minSolutionLength: config.minSolutionLength ?? 24,
+        scale: 30,
+        shortcutCountModifier: 0.12
+      };
+    case 'spicy':
+      return {
+        ...config,
+        maxAttempts: config.maxAttempts ?? 96,
+        minSolutionLength: config.minSolutionLength ?? 28,
+        scale: 42,
+        shortcutCountModifier: 0.18
+      };
+    case 'brutal':
+      return {
+        ...config,
+        maxAttempts: config.maxAttempts ?? 112,
+        minSolutionLength: config.minSolutionLength ?? 34,
+        scale: 56,
+        shortcutCountModifier: 0.24
+      };
+    default:
+      return config;
+  }
+};
+
 export const classifyMazeDifficulty = (
   metrics: MazeMetrics,
   width: number,
@@ -467,13 +571,13 @@ export const classifyMazeDifficulty = (
   const shortcutPressure = shortcutsCreated / Math.max(1, scale * 0.11);
   const score = pathPressure + branchPressure + (deadEndPressure * 0.62) + coveragePressure + turnPressure + (shortcutPressure * 0.84);
 
-  if (score < 5.1) {
+  if (score < 9) {
     return { difficulty: 'chill', score };
   }
-  if (score < 6.85) {
+  if (score < 17) {
     return { difficulty: 'standard', score };
   }
-  if (score < 8.4) {
+  if (score < 28) {
     return { difficulty: 'spicy', score };
   }
   return { difficulty: 'brutal', score };

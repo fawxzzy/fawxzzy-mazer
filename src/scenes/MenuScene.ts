@@ -7,12 +7,17 @@ import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
+import { createMenuButton } from '../ui/menuButton';
+import { mazerStorage } from '../storage/mazerStorage';
+import type { MazeDifficulty } from '../domain/maze';
+import type { GameSceneStartData, ReplaySnapshot } from './gameSceneSummary';
 
 const OVERLAY_EVENTS = {
   open: 'overlay-open',
-  close: 'overlay-close',
-  manualPlay: 'overlay-manual-play'
+  close: 'overlay-close'
 } as const;
+const LAST_RUN_REGISTRY_KEY = 'mazer:last-run';
+const ROTATING_DIFFICULTIES: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
 
 export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
@@ -355,6 +360,10 @@ export class MenuScene extends Phaser.Scene {
       };
       this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
 
+    const progress = mazerStorage.getProgress();
+    const lastRun = this.registry.get(LAST_RUN_REGISTRY_KEY) as ReplaySnapshot | undefined;
+    const surpriseDifficulty = ROTATING_DIFFICULTIES[progress.clearsCount % ROTATING_DIFFICULTIES.length];
+
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
         return;
@@ -368,7 +377,7 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-      const launchManualPlay = (): void => {
+      const launchRun = (startData: GameSceneStartData): void => {
         queueTransition(() => {
           this.overlayManager.closeAll();
           this.tweens.add({
@@ -379,22 +388,137 @@ export class MenuScene extends Phaser.Scene {
           ease: 'Sine.easeOut'
         });
         this.cameras.main.fadeOut(140, 0, 0, 0);
-          this.time.delayedCall(140, () => this.scene.start('GameScene'));
+          this.time.delayedCall(140, () => this.scene.start('GameScene', startData));
         });
       };
 
-      const playPrompt = this.createPlayPrompt(
-        width / 2,
-        layout.boardY + layout.boardHeight + Math.max(28, isNarrow ? 24 : 30),
-        Math.min(layout.boardWidth * 0.92, width - 32),
-        launchManualPlay
+      const touchPrimary = window.matchMedia('(pointer: coarse)').matches;
+      const startTrayWidth = Math.min(layout.boardWidth * 0.94, width - 28);
+      const startTrayHeight = lastRun ? (isNarrow ? 244 : 214) : (isNarrow ? 180 : 156);
+      const startTrayY = Math.min(
+        layout.boardY + layout.boardHeight + Math.max(34, isNarrow ? 28 : 34),
+        height - (startTrayHeight / 2) - 14
       );
-      playPrompt.setAlpha(0);
-      playPrompt.y += 5;
+      const startTray = this.add.container(width / 2, startTrayY).setDepth(12);
+      const trayPlate = this.add
+        .rectangle(0, 0, startTrayWidth, startTrayHeight, palette.ui.buttonFill, 0.64)
+        .setStrokeStyle(1, palette.board.innerStroke, 0.38);
+      const trayInset = this.add
+        .rectangle(0, 0, startTrayWidth - 12, startTrayHeight - 12, palette.board.panel, 0.2)
+        .setStrokeStyle(1, palette.board.topHighlight, 0.08);
+      const trayTitle = this.add
+        .text(0, -startTrayHeight / 2 + 18, 'Pick a Route', {
+          color: '#d7ffde',
+          fontFamily: '"Courier New", monospace',
+          fontSize: `${isNarrow ? 14 : 15}px`,
+          fontStyle: 'bold'
+        })
+        .setOrigin(0.5, 0.5);
+      const trayMeta = this.add
+        .text(0, trayTitle.y + 18, `Reach the red core  /  ${touchPrimary ? 'Swipe or tap' : 'Arrow / WASD'}  /  First move starts timer`, {
+          color: '#aeb6d9',
+          fontFamily: '"Courier New", monospace',
+          fontSize: `${isNarrow ? 9 : 10}px`,
+          align: 'center'
+        })
+        .setOrigin(0.5, 0.5)
+        .setAlpha(0.86);
+      const trayProgress = this.add
+        .text(
+          0,
+          trayMeta.y + 18,
+          `Last ${progress.lastDifficulty.toUpperCase()}  /  Clears ${progress.clearsCount}  /  Surprise ${surpriseDifficulty.toUpperCase()}`,
+          {
+            color: '#9ec9ff',
+            fontFamily: '"Courier New", monospace',
+            fontSize: `${isNarrow ? 9 : 10}px`,
+            align: 'center'
+          }
+        )
+        .setOrigin(0.5, 0.5)
+        .setAlpha(0.82);
+
+      const difficultyButtons: Phaser.GameObjects.Container[] = [];
+      const difficultySpecs: Array<{ difficulty: MazeDifficulty; label: string }> = [
+        { difficulty: 'chill', label: 'Chill' },
+        { difficulty: 'standard', label: 'Standard' },
+        { difficulty: 'spicy', label: 'Spicy' },
+        { difficulty: 'brutal', label: 'Brutal' }
+      ];
+      const buttonWidth = isNarrow ? 112 : 118;
+      const buttonHeight = 34;
+      const difficultySpacingX = isNarrow ? 120 : 126;
+      const difficultyTopY = trayProgress.y + 30;
+      difficultySpecs.forEach((spec, index) => {
+        const col = index % 2;
+        const row = Math.floor(index / 2);
+        difficultyButtons.push(createMenuButton(this, {
+          x: (col === 0 ? -1 : 1) * (difficultySpacingX / 2),
+          y: difficultyTopY + (row * 42),
+          label: spec.label,
+          width: buttonWidth,
+          height: buttonHeight,
+          fontSize: 14,
+          hoverSfx: true,
+          onClick: () => launchRun({ difficulty: spec.difficulty, seedMode: 'fresh' }),
+          tone: progress.lastDifficulty === spec.difficulty ? 'default' : 'subtle'
+        }));
+      });
+
+      const surpriseButton = createMenuButton(this, {
+        x: 0,
+        y: difficultyTopY + (isNarrow ? 92 : 86),
+        label: `Surprise: ${surpriseDifficulty.toUpperCase()}`,
+        width: Math.min(242, startTrayWidth - 28),
+        height: 34,
+        fontSize: 13,
+        hoverSfx: true,
+        onClick: () => launchRun({ difficulty: surpriseDifficulty, seedMode: 'fresh' }),
+        tone: 'subtle'
+      });
+
+      startTray.add([trayPlate, trayInset, trayTitle, trayMeta, trayProgress, ...difficultyButtons, surpriseButton]);
+
+      if (lastRun) {
+        const replayText = this.add
+          .text(0, surpriseButton.y + 28, `Last seed #${lastRun.seed}  /  ${lastRun.difficulty.toUpperCase()}`, {
+            color: '#c8ffd0',
+            fontFamily: '"Courier New", monospace',
+            fontSize: `${isNarrow ? 9 : 10}px`
+          })
+          .setOrigin(0.5, 0.5)
+          .setAlpha(0.8);
+        const replayButton = createMenuButton(this, {
+          x: -76,
+          y: replayText.y + 28,
+          label: 'Play Again',
+          width: 140,
+          height: 32,
+          fontSize: 13,
+          hoverSfx: true,
+          onClick: () => launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'next' }),
+          tone: 'default'
+        });
+        const sameSeedButton = createMenuButton(this, {
+          x: 76,
+          y: replayText.y + 28,
+          label: 'Same Seed',
+          width: 140,
+          height: 32,
+          fontSize: 13,
+          hoverSfx: true,
+          onClick: () => launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'exact' }),
+          tone: 'subtle'
+        });
+        startTray.add([replayText, replayButton, sameSeedButton]);
+      }
+
+      startTray.setAlpha(0);
+      startTray.y += 5;
       this.tweens.add({
-        targets: playPrompt,
+        targets: startTray,
         alpha: 1,
-        y: playPrompt.y - 5,
+        y: startTray.y - 5,
         duration: 220,
         delay: 120,
         ease: 'Quad.easeOut'
@@ -424,8 +548,6 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
-    this.events.on(OVERLAY_EVENTS.manualPlay, launchManualPlay);
-
     const escHandler = () => {
       if (!this.overlayManager.isOverlayActive()) {
         this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
@@ -443,11 +565,23 @@ export class MenuScene extends Phaser.Scene {
       }
     };
       const manualShortcutHandler = (event: KeyboardEvent) => {
+        if (this.overlayManager.isOverlayActive()) {
+          return;
+        }
+
+        if (lastRun && event.code === 'Enter' && event.shiftKey) {
+          launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'exact' });
+          return;
+        }
+
         const shouldPlay = event.code === 'Enter'
           || event.code === 'Space'
           || (event.code === 'KeyM' && event.shiftKey);
-        if (!this.overlayManager.isOverlayActive() && shouldPlay) {
-          launchManualPlay();
+        if (shouldPlay) {
+          launchRun({
+            difficulty: progress.lastDifficulty,
+            seedMode: 'fresh'
+          });
         }
       };
     this.input.keyboard?.on('keydown-ESC', escHandler);
@@ -466,7 +600,6 @@ export class MenuScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown', manualShortcutHandler);
       this.events.off(OVERLAY_EVENTS.open);
       this.events.off(OVERLAY_EVENTS.close);
-      this.events.off(OVERLAY_EVENTS.manualPlay, launchManualPlay);
       this.time.removeAllEvents();
       this.tweens.killAll();
       this.children.removeAll(true);
@@ -571,85 +704,6 @@ export class MenuScene extends Phaser.Scene {
 
     draw(false);
     return button;
-  }
-
-  private createPlayPrompt(
-    x: number,
-    y: number,
-    width: number,
-    onClick: () => void
-  ): Phaser.GameObjects.Container {
-    const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
-    const plate = this.add.graphics();
-    const prompt = this.add
-      .text(0, -8, 'REACH THE RED CORE', {
-        color: '#d7ffde',
-        fontFamily: '"Courier New", monospace',
-        fontSize: `${isTouchPrimary ? 12 : 13}px`,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5);
-    const cta = this.add
-      .text(0, 11, isTouchPrimary ? 'TAP TO PLAY' : 'ENTER / SPACE TO PLAY', {
-        color: '#9ec9ff',
-        fontFamily: '"Courier New", monospace',
-        fontSize: `${isTouchPrimary ? 10 : 11}px`
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.84);
-    const hit = this.add
-      .rectangle(0, 0, width, 40, 0x000000, 0.001)
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    const container = this.add.container(x, y, [plate, prompt, cta, hit]).setDepth(12);
-    let hovered = false;
-
-    const draw = (pressed: boolean): void => {
-      plate.clear();
-      plate.fillStyle(palette.ui.buttonFill, hovered ? 0.72 : 0.58);
-      plate.fillRoundedRect(-width / 2, -20, width, 40, 8);
-      plate.lineStyle(1, palette.board.outerStroke, hovered ? 0.94 : 0.7);
-      plate.strokeRoundedRect(-width / 2 + 0.5, -19.5, width - 1, 39, 8);
-      plate.lineStyle(1, palette.board.innerStroke, hovered ? 0.4 : 0.24);
-      plate.strokeRoundedRect(-width / 2 + 3.5, -16.5, width - 7, 33, 6);
-      prompt.setAlpha(pressed ? 0.92 : 1);
-      cta.setAlpha(pressed ? 0.96 : hovered ? 0.94 : 0.84);
-    };
-
-    hit.on('pointerover', () => {
-      hovered = true;
-      this.tweens.add({
-        targets: container,
-        scaleX: 1.018,
-        scaleY: 1.018,
-        duration: 90,
-        ease: 'Sine.easeOut'
-      });
-      draw(false);
-      playSfx('move');
-    });
-    hit.on('pointerout', () => {
-      hovered = false;
-      this.tweens.add({
-        targets: container,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 90,
-        ease: 'Sine.easeOut'
-      });
-      draw(false);
-    });
-    hit.on('pointerdown', () => {
-      draw(true);
-      playSfx('confirm');
-    });
-    hit.on('pointerup', () => {
-      draw(false);
-      onClick();
-    });
-
-    draw(false);
-    return container;
   }
 
   private drawStarfield(width: number, height: number): void {

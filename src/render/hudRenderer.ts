@@ -113,11 +113,11 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
   const metaTextY = Math.round(panelHeight * 0.46);
   const hintTextY = panelHeight - (ultraCompact ? 15 : compact ? 17 : 18);
   const normalHintText = isTouchPrimary
-    ? (ultraCompact ? 'Reach red core / Swipe / Tap pause' : compact ? 'Reach red core / Swipe / Tap pause' : 'Reach the red core / Swipe to move / Tap to pause')
-    : (ultraCompact ? 'Reach core / R reset / N new / Esc' : compact ? 'Reach red core / R reset / N new / Esc' : 'Reach the red core / R reset / N new / Esc pause');
+    ? (ultraCompact ? 'Red core / Swipe / First move starts / Tap pause' : compact ? 'Red core / Swipe / First move starts / Tap pause' : 'Reach the red core / Swipe to move / First move starts timer / Tap to pause')
+    : (ultraCompact ? 'Red core / Arrows / First move starts / Esc' : compact ? 'Red core / Arrow+WASD / First move starts / Esc' : 'Reach the red core / Arrow or WASD / First move starts timer / Esc pause');
   const completeHintText = isTouchPrimary
     ? 'Core secured / Choose next maze'
-    : (ultraCompact ? 'Core secured / R reset / N new' : 'Core secured / R reset / N new / Esc menu');
+    : (ultraCompact ? 'Core secured / Enter replay / N next' : 'Core secured / Enter replay / N next / Esc menu');
   let lastElapsedLabel = '00:00';
   let lastMoveLabel = compact ? 'MV 0' : 'MOVES 0';
   let lastGoalLabel = 'Goal ^';

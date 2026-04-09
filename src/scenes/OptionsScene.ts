@@ -385,12 +385,20 @@ export class OptionsScene extends Phaser.Scene {
     };
 
     const refreshOptionsCopy = (): void => {
-      const fastest = mazerStorage.getFastestBestTime();
+      const progress = mazerStorage.getProgress();
+      const fastest = (['chill', 'standard', 'spicy', 'brutal'] as const)
+        .map((difficulty) => ({
+          bestMoves: progress.bestByDifficulty[difficulty].bestMoves,
+          bestTimeMs: progress.bestByDifficulty[difficulty].bestTimeMs,
+          difficulty
+        }))
+        .filter((entry) => entry.bestTimeMs !== null)
+        .sort((left, right) => (left.bestTimeMs ?? Number.POSITIVE_INFINITY) - (right.bestTimeMs ?? Number.POSITIVE_INFINITY))[0];
       const dataExpanded = this.dataSectionExpanded || this.clearConfirmationArmed || this.clearBusy;
 
       bestTimeText.setText(
         fastest
-          ? `Fastest local clear: ${formatElapsedMs(fastest.elapsedMs)} on maze ${fastest.seed}.`
+          ? `Best local clear: ${formatElapsedMs(fastest.bestTimeMs ?? 0)} in ${fastest.difficulty.toUpperCase()}${fastest.bestMoves ? ` / ${fastest.bestMoves} moves` : ''}.`
           : 'No local run data is stored in this browser yet.'
       );
 

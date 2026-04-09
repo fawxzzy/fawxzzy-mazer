@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
   APP_NAMESPACE,
-  BEST_TIME_LIMIT,
   KNOWN_STORAGE_KEYS,
   MazerStorage,
   WRITE_THROTTLE_MS,
@@ -130,15 +129,14 @@ describe('mazer storage', () => {
 
   test('removes malformed and legacy Mazer-owned data without touching unrelated keys', async () => {
     const { deletedCaches, deletedDatabases, environment, localStorage, sessionStorage } = createEnvironment({
-      cacheNames: ['mazer-v0-runtime', 'mazer-v1-precache', 'other-cache'],
-      databaseNames: ['mazer:v0:data', 'mazer:v1:data', 'other-db'],
+      cacheNames: ['mazer-v1-runtime', 'mazer-v2-precache', 'other-cache'],
+      databaseNames: ['mazer:v1:data', 'mazer:v2:data', 'other-db'],
       localStorage: {
         'other:key': 'keep',
-        'mazer:v0:settings': '{}',
+        'mazer:v1:progress': '{}',
         'mazer:debug': '[]',
-        'mazer:v1:obsolete': '[]',
-        [KNOWN_STORAGE_KEYS.bestTimes]: '{bad json',
         [KNOWN_STORAGE_KEYS.meta]: '[]',
+        [KNOWN_STORAGE_KEYS.progress]: '{bad json',
         [KNOWN_STORAGE_KEYS.settings]: '42'
       },
       sessionStorage: {
@@ -151,66 +149,109 @@ describe('mazer storage', () => {
     await storage.bootstrap();
 
     expect(localStorage.getItem('other:key')).toBe('keep');
-    expect(localStorage.getItem('mazer:v0:settings')).toBeNull();
+    expect(localStorage.getItem('mazer:v1:progress')).toBeNull();
     expect(localStorage.getItem('mazer:debug')).toBeNull();
-    expect(localStorage.getItem('mazer:v1:obsolete')).toBeNull();
-    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.bestTimes)).toBe('[]');
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.progress)).toBe(JSON.stringify({
+      bestByDifficulty: {
+        chill: { bestMoves: null, bestTimeMs: null },
+        standard: { bestMoves: null, bestTimeMs: null },
+        spicy: { bestMoves: null, bestTimeMs: null },
+        brutal: { bestMoves: null, bestTimeMs: null }
+      },
+      clearsCount: 0,
+      lastDifficulty: 'standard'
+    }));
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBeNull();
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.meta)).toBe(JSON.stringify({
-      schemaVersion: 1,
-      namespace: APP_NAMESPACE
+      namespace: APP_NAMESPACE,
+      schemaVersion: 2
     }));
     expect(sessionStorage.getItem('other:session')).toBe('keep');
     expect(sessionStorage.getItem('mazer:ephemeral')).toBeNull();
-    expect(sessionStorage.getItem(KNOWN_STORAGE_KEYS.meta)).toBeNull();
-    expect(deletedCaches).toEqual(['mazer-v0-runtime']);
-    expect(deletedDatabases).toEqual(['mazer:v0:data']);
-    expect(storage.getBestTimes()).toEqual([]);
+    expect(deletedCaches).toEqual(['mazer-v1-runtime']);
+    expect(deletedDatabases).toEqual(['mazer:v1:data']);
   });
 
-  test('sanitizes stored best times into a capped sorted list', async () => {
-    const seededEntries = Array.from({ length: BEST_TIME_LIMIT + 4 }, (_, index) => ({
-      elapsedMs: 20000 + (index * 1000),
-      seed: index,
-      recordedAt: `2026-04-08T12:${String(index).padStart(2, '0')}:00.000Z`
-    }));
-    const rawEntries = [
-      { elapsedMs: -1, seed: 999, recordedAt: 'bad' },
-      { elapsedMs: 48000, seed: 2, recordedAt: '2026-04-08T13:00:00.000Z' },
-      { elapsedMs: 19000, seed: 2, recordedAt: '2026-04-08T11:59:00.000Z' },
-      ...seededEntries,
-      { nope: true }
-    ];
+  test('sanitizes stored progress into a tiny bounded object', async () => {
     const { environment, localStorage } = createEnvironment({
       localStorage: {
-        [KNOWN_STORAGE_KEYS.bestTimes]: JSON.stringify(rawEntries)
+        [KNOWN_STORAGE_KEYS.progress]: JSON.stringify({
+          bestByDifficulty: {
+            chill: { bestMoves: -1, bestTimeMs: 0 },
+            standard: { bestMoves: 112.4, bestTimeMs: 38_200.6 },
+            spicy: { bestMoves: 221, bestTimeMs: 66_000 },
+            brutal: { bestMoves: 'bad', bestTimeMs: [] }
+          },
+          clearsCount: 1_500_000,
+          lastDifficulty: 'unknown'
+        })
       }
     });
 
     const storage = new MazerStorage(environment);
     await storage.bootstrap();
 
-    const bestTimes = storage.getBestTimes();
-    expect(bestTimes).toHaveLength(BEST_TIME_LIMIT);
-    expect(bestTimes[0]).toEqual({
-      elapsedMs: 19000,
-      seed: 2,
-      recordedAt: '2026-04-08T11:59:00.000Z'
+    expect(storage.getProgress()).toEqual({
+      bestByDifficulty: {
+        chill: { bestMoves: null, bestTimeMs: null },
+        standard: { bestMoves: 112, bestTimeMs: 38_201 },
+        spicy: { bestMoves: 221, bestTimeMs: 66_000 },
+        brutal: { bestMoves: null, bestTimeMs: null }
+      },
+      clearsCount: 999_999,
+      lastDifficulty: 'standard'
     });
-    expect(bestTimes.every((entry, index, entries) => index === 0 || entries[index - 1].elapsedMs <= entry.elapsedMs)).toBe(true);
 
-    const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.bestTimes) ?? '[]') as Array<{ seed: number }>;
-    expect(persisted).toHaveLength(BEST_TIME_LIMIT);
-    expect(persisted.filter((entry) => entry.seed === 2)).toHaveLength(1);
+    const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.progress) ?? '{}') as { clearsCount: number };
+    expect(Array.isArray(persisted)).toBe(false);
+    expect(persisted.clearsCount).toBe(999_999);
+  });
+
+  test('records personal bests by difficulty and persists the last played difficulty', async () => {
+    const { environment } = createEnvironment();
+    const storage = new MazerStorage(environment);
+    await storage.bootstrap();
+
+    storage.setLastPlayedDifficulty('spicy');
+    const first = storage.recordRunResult({
+      difficulty: 'spicy',
+      elapsedMs: 45_000,
+      moveCount: 132
+    });
+    const second = storage.recordRunResult({
+      difficulty: 'spicy',
+      elapsedMs: 47_000,
+      moveCount: 128
+    });
+
+    expect(first.isNewBestTime).toBe(true);
+    expect(first.isNewBestMoves).toBe(true);
+    expect(second.isNewBestTime).toBe(false);
+    expect(second.isNewBestMoves).toBe(true);
+    expect(second.progress.lastDifficulty).toBe('spicy');
+    expect(second.progress.clearsCount).toBe(2);
+    expect(second.progress.bestByDifficulty.spicy).toEqual({
+      bestMoves: 128,
+      bestTimeMs: 45_000
+    });
   });
 
   test('clears only Mazer-owned local data and app-scoped artifacts', async () => {
     const { deletedCaches, deletedDatabases, environment, localStorage, ownRegistration, otherRegistration, sessionStorage } = createEnvironment({
-      cacheNames: ['mazer-v1-precache', 'other-cache'],
-      databaseNames: ['mazer:v1:data', 'other-db'],
+      cacheNames: ['mazer-v2-precache', 'other-cache'],
+      databaseNames: ['mazer:v2:data', 'other-db'],
       localStorage: {
-        [KNOWN_STORAGE_KEYS.bestTimes]: JSON.stringify([{ elapsedMs: 22000, seed: 7, recordedAt: '2026-04-08T12:00:00.000Z' }]),
-        [KNOWN_STORAGE_KEYS.meta]: JSON.stringify({ schemaVersion: 1, namespace: APP_NAMESPACE }),
+        [KNOWN_STORAGE_KEYS.progress]: JSON.stringify({
+          bestByDifficulty: {
+            chill: { bestMoves: 88, bestTimeMs: 24_000 },
+            standard: { bestMoves: null, bestTimeMs: null },
+            spicy: { bestMoves: null, bestTimeMs: null },
+            brutal: { bestMoves: null, bestTimeMs: null }
+          },
+          clearsCount: 4,
+          lastDifficulty: 'chill'
+        }),
+        [KNOWN_STORAGE_KEYS.meta]: JSON.stringify({ namespace: APP_NAMESPACE, schemaVersion: 2 }),
         'other:key': 'keep'
       },
       sessionStorage: {
@@ -223,40 +264,35 @@ describe('mazer storage', () => {
     await storage.bootstrap();
     await storage.clearLocalData();
 
-    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.bestTimes)).toBeNull();
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.progress)).toBeNull();
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.meta)).toBeNull();
     expect(localStorage.getItem('other:key')).toBe('keep');
     expect(sessionStorage.getItem('mazer:session')).toBeNull();
     expect(sessionStorage.getItem('other:session')).toBe('keep');
-    expect(deletedCaches).toEqual(['mazer-v1-precache']);
-    expect(deletedDatabases).toEqual(['mazer:v1:data']);
+    expect(deletedCaches).toEqual(['mazer-v2-precache']);
+    expect(deletedDatabases).toEqual(['mazer:v2:data']);
     expect(ownRegistration.unregister).toHaveBeenCalledTimes(1);
     expect(otherRegistration.unregister).not.toHaveBeenCalled();
-    expect(storage.getBestTimes()).toEqual([]);
   });
 
-  test('throttles best-time writes and keeps the persisted list bounded', async () => {
+  test('throttles progress writes and keeps the payload bounded', async () => {
     vi.useFakeTimers();
     const { environment, localStorage } = createEnvironment();
     const storage = new MazerStorage(environment);
     await storage.bootstrap();
     const baselineWrites = localStorage.setItemCalls;
 
-    for (let index = 0; index < BEST_TIME_LIMIT + 3; index += 1) {
-      storage.recordBestTime({
-        elapsedMs: 60000 - (index * 1000),
-        seed: index,
-        recordedAt: `2026-04-08T12:${String(index).padStart(2, '0')}:00.000Z`
+    storage.setLastPlayedDifficulty('brutal');
+    for (let index = 0; index < 6; index += 1) {
+      storage.recordRunResult({
+        difficulty: 'brutal',
+        elapsedMs: 90_000 - (index * 1000),
+        moveCount: 220 - index
       });
     }
-    storage.recordBestTime({
-      elapsedMs: 12000,
-      seed: 3,
-      recordedAt: '2026-04-08T11:58:00.000Z'
-    });
 
     expect(localStorage.setItemCalls).toBe(baselineWrites);
-    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.bestTimes)).toBeNull();
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.progress)).toBeNull();
 
     vi.advanceTimersByTime(WRITE_THROTTLE_MS - 1);
     expect(localStorage.setItemCalls).toBe(baselineWrites);
@@ -264,8 +300,18 @@ describe('mazer storage', () => {
     vi.advanceTimersByTime(1);
 
     expect(localStorage.setItemCalls).toBe(baselineWrites + 1);
-    const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.bestTimes) ?? '[]') as Array<{ elapsedMs: number; seed: number }>;
-    expect(persisted).toHaveLength(BEST_TIME_LIMIT);
-    expect(persisted.find((entry) => entry.seed === 3)?.elapsedMs).toBe(12000);
+    const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.progress) ?? '{}') as {
+      bestByDifficulty: { brutal: { bestMoves: number; bestTimeMs: number } };
+      clearsCount: number;
+      lastDifficulty: string;
+    };
+    expect(Array.isArray(persisted)).toBe(false);
+    expect(Object.keys(persisted.bestByDifficulty)).toHaveLength(4);
+    expect(persisted.bestByDifficulty.brutal).toEqual({
+      bestMoves: 215,
+      bestTimeMs: 85_000
+    });
+    expect(persisted.clearsCount).toBe(6);
+    expect(persisted.lastDifficulty).toBe('brutal');
   });
 });

@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import {
   disposeMazeEpisode,
-  generateMaze,
+  generateMazeForDifficulty,
   getNeighborIndex,
   isTileFloor,
+  type MazeDifficulty,
   type MazeEpisode
 } from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
@@ -11,15 +12,24 @@ import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 import { mazerStorage } from '../storage/mazerStorage';
-import { buildWinSummaryData } from './gameSceneSummary';
+import { buildWinSummaryData, resolveElapsedMs, type GameSceneStartData, type ReplaySnapshot } from './gameSceneSummary';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
 }
 
 interface WinActionData {
-  action: 'reset-run' | 'new-maze' | 'menu';
+  action: 'menu' | 'next-maze' | 'play-again';
 }
+
+const LAST_RUN_REGISTRY_KEY = 'mazer:last-run';
+const DEFAULT_RUN_SEED = 9001;
+const DIFFICULTY_SEED_OFFSET: Record<MazeDifficulty, number> = {
+  chill: 0,
+  standard: 2000,
+  spicy: 4000,
+  brutal: 6000
+};
 
 export class GameScene extends Phaser.Scene {
   private maze?: MazeEpisode;
@@ -28,6 +38,7 @@ export class GameScene extends Phaser.Scene {
   private moveCount = 0;
   private timerStartMs = 0;
   private timerPausedAtMs = 0;
+  private timerStarted = false;
   private paused = false;
   private completionPending = false;
   private overlayKey: 'PauseScene' | 'WinScene' | null = null;
@@ -45,7 +56,7 @@ export class GameScene extends Phaser.Scene {
   private readonly directionSwitchBypassMs = legacyTuning.game.playerMovement.directionSwitchBypassMs;
   private readonly blockedFeedbackCooldownMs = Math.max(110, legacyTuning.game.playerMovement.cooldownMs + 24);
   private readonly pauseOverlayDelayMs = 72;
-  private readonly winOverlayDelayMs = 360;
+  private readonly winOverlayDelayMs = 320;
   private lastMoveAtMs = 0;
   private lastBlockedAtMs = Number.NEGATIVE_INFINITY;
   private lastMoveDirection: 0 | 1 | 2 | 3 | null = null;
@@ -56,16 +67,22 @@ export class GameScene extends Phaser.Scene {
   private readonly minSwipeDistancePx = legacyTuning.game.playerMovement.minSwipeDistancePx;
   private readonly touchControlsEnabled = window.matchMedia('(pointer: coarse)').matches;
   private hud?: ReturnType<typeof createHudRenderer>;
-  private runSeed = 9001;
+  private runSeed = DEFAULT_RUN_SEED;
+  private runDifficulty: MazeDifficulty = 'standard';
+  private currentRunData: GameSceneStartData = {
+    difficulty: 'standard',
+    seed: DEFAULT_RUN_SEED,
+    seedMode: 'exact'
+  };
   private pendingOverlayLaunch?: Phaser.Time.TimerEvent;
 
   public constructor() {
     super('GameScene');
   }
 
-  public create(): void {
+  public create(data?: GameSceneStartData): void {
     attachSfxInputUnlock(this);
-    this.bootstrapRun(this.runSeed);
+    this.bootstrapRun(data);
 
     this.events.on('pause-action', this.handlePauseAction, this);
     this.events.on('win-action', this.handleWinAction, this);
@@ -104,7 +121,7 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer.drawActor(this.playerIndex, this.lastMoveDirection, presentationCue);
 
     if (!this.paused && this.overlayKey !== 'WinScene') {
-      this.hud?.setElapsedMs(time - this.timerStartMs);
+      this.hud?.setElapsedMs(resolveElapsedMs(this.timerStarted, this.timerStartMs, time));
     }
 
     if (this.paused || this.overlayKey === 'WinScene' || this.completionPending) {
@@ -119,17 +136,30 @@ export class GameScene extends Phaser.Scene {
     this.tryMove(direction);
   }
 
-  private bootstrapRun(seed: number): void {
+  private bootstrapRun(startData?: GameSceneStartData): void {
     this.disposeRunState();
     this.overlayKey = null;
     this.paused = false;
     this.completionPending = false;
     this.timerPausedAtMs = 0;
+    this.timerStartMs = 0;
+    this.timerStarted = false;
     this.lastBlockedAtMs = Number.NEGATIVE_INFINITY;
     this.lastMoveDirection = null;
     this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
     this.bufferedDirection = null;
     this.moveCount = 0;
+
+    const resolvedRun = this.resolveRun(startData);
+    this.runDifficulty = resolvedRun.difficulty;
+    this.runSeed = resolvedRun.seed;
+    this.currentRunData = {
+      difficulty: this.runDifficulty,
+      seed: this.runSeed,
+      seedMode: 'exact'
+    };
+    mazerStorage.setLastPlayedDifficulty(this.runDifficulty);
+    this.setReplaySnapshot(false);
 
     const { width, height } = this.scale;
     const compact = width <= legacyTuning.game.layout.compactBreakpoint;
@@ -137,35 +167,28 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0b1020');
     this.add.rectangle(width / 2, height / 2, width, height, 0x090f1d, 1).setDepth(-10);
 
-    const maze = generateMaze({
-      scale: legacyTuning.board.scale,
-      seed,
-      checkPointModifier: legacyTuning.board.checkPointModifier,
-      shortcutCountModifier: legacyTuning.board.shortcutCountModifier.game
-    });
-    this.maze = maze;
+    this.maze = resolvedRun.maze;
 
-    const layout = createBoardLayout(this, maze, {
+    const layout = createBoardLayout(this, resolvedRun.maze, {
       boardScale: (compact ? legacyTuning.game.layout.boardScaleNarrow : legacyTuning.game.layout.boardScaleWide)
         + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
       topReserve: compact ? legacyTuning.game.layout.compactTopReservePx : legacyTuning.game.layout.topReservePx,
       sidePadding: legacyTuning.game.layout.sidePaddingPx,
       bottomPadding: legacyTuning.game.layout.bottomPaddingPx
     });
-    this.boardRenderer = new BoardRenderer(this, maze, layout);
+    this.boardRenderer = new BoardRenderer(this, resolvedRun.maze, layout);
     this.boardRenderer.drawBoardChrome();
     this.boardRenderer.drawBase();
     this.boardRenderer.drawStart('spawn');
     this.boardRenderer.drawGoal();
     this.boardRenderer.startAmbientMotion(1.25, 2800);
 
-    this.playerIndex = maze.raster.startIndex;
+    this.playerIndex = resolvedRun.maze.raster.startIndex;
     this.trailIndices = [this.playerIndex];
     this.boardRenderer.drawTrail(this.trailIndices);
     this.boardRenderer.drawActor(this.playerIndex, null, 'spawn');
 
-    this.timerStartMs = this.time.now;
-    this.hud = createHudRenderer(this, maze);
+    this.hud = createHudRenderer(this, resolvedRun.maze);
     this.hud.setElapsedMs(0);
     this.hud.setMoveCount(0);
     this.hud.setGoalArrow(this.playerIndex);
@@ -174,9 +197,62 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard?.createCursorKeys();
     this.wasd = this.input.keyboard?.addKeys('W,A,S,D,P,R,N') as GameScene['wasd'];
     this.input.keyboard?.on('keydown-ESC', this.handlePauseHotkey, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.off('keydown-ESC', this.handlePauseHotkey, this);
-    });
+  }
+
+  private resolveRun(startData?: GameSceneStartData): {
+    difficulty: MazeDifficulty;
+    maze: MazeEpisode;
+    seed: number;
+  } {
+    const progress = mazerStorage.getProgress();
+    const requestedDifficulty = startData?.difficulty ?? progress.lastDifficulty;
+    const config = {
+      checkPointModifier: legacyTuning.board.checkPointModifier,
+      scale: legacyTuning.board.scale,
+      seed: startData?.seed ?? this.resolveSeedAnchor(requestedDifficulty),
+      shortcutCountModifier: legacyTuning.board.shortcutCountModifier.game
+    };
+
+    if (startData?.seedMode === 'exact' && startData.seed !== undefined) {
+      const resolved = generateMazeForDifficulty({
+        ...config,
+        seed: startData.seed
+      }, requestedDifficulty, 0, 1);
+      return {
+        difficulty: resolved.episode.difficulty,
+        maze: resolved.episode,
+        seed: resolved.seed
+      };
+    }
+
+    const resolved = generateMazeForDifficulty(
+      config,
+      requestedDifficulty,
+      startData?.seedMode === 'next' ? 1 : 0
+    );
+    return {
+      difficulty: resolved.episode.difficulty,
+      maze: resolved.episode,
+      seed: resolved.seed
+    };
+  }
+
+  private resolveSeedAnchor(difficulty: MazeDifficulty): number {
+    const snapshot = this.registry.get(LAST_RUN_REGISTRY_KEY) as ReplaySnapshot | undefined;
+    if (snapshot && snapshot.difficulty === difficulty) {
+      return snapshot.seed + 1;
+    }
+
+    const progress = mazerStorage.getProgress();
+    return DEFAULT_RUN_SEED + DIFFICULTY_SEED_OFFSET[difficulty] + (progress.clearsCount * 17);
+  }
+
+  private setReplaySnapshot(completed: boolean): void {
+    this.registry.set(LAST_RUN_REGISTRY_KEY, {
+      completed,
+      difficulty: this.runDifficulty,
+      seed: this.runSeed
+    } satisfies ReplaySnapshot);
   }
 
   private disposeRunState(): void {
@@ -199,14 +275,17 @@ export class GameScene extends Phaser.Scene {
   private readDirection(): 0 | 1 | 2 | 3 | null {
     if (this.wasd?.r && Phaser.Input.Keyboard.JustDown(this.wasd.r)) {
       playSfx('confirm');
-      this.scene.restart();
+      this.scene.restart(this.currentRunData);
       return null;
     }
 
     if (this.wasd?.n && Phaser.Input.Keyboard.JustDown(this.wasd.n)) {
       playSfx('confirm');
-      this.runSeed += 1;
-      this.scene.restart();
+      this.scene.restart({
+        difficulty: this.runDifficulty,
+        seed: this.runSeed,
+        seedMode: 'next'
+      } satisfies GameSceneStartData);
       return null;
     }
 
@@ -319,6 +398,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (!this.timerStarted) {
+      this.timerStarted = true;
+      this.timerStartMs = this.time.now;
+    }
+
     this.playerIndex = nextIndex;
     this.lastMoveAtMs = this.time.now;
     this.lastMoveDirection = direction;
@@ -334,10 +418,11 @@ export class GameScene extends Phaser.Scene {
     playSfx('move');
 
     if (this.playerIndex === maze.raster.endIndex) {
-      const elapsedMs = this.time.now - this.timerStartMs;
-      mazerStorage.recordBestTime({
+      const elapsedMs = resolveElapsedMs(this.timerStarted, this.timerStartMs, this.time.now);
+      const progressUpdate = mazerStorage.recordRunResult({
+        difficulty: this.runDifficulty,
         elapsedMs,
-        seed: this.runSeed
+        moveCount: this.moveCount
       });
       playSfx('win');
       this.completionPending = true;
@@ -345,6 +430,7 @@ export class GameScene extends Phaser.Scene {
       this.paused = true;
       this.bufferedDirection = null;
       this.queuedTouchDirection = null;
+      this.setReplaySnapshot(true);
       this.hud?.setComplete(true);
       boardRenderer.drawTrail(this.trailIndices, { cue: 'goal' });
       this.cameras.main.flash(180, 196, 255, 212, false);
@@ -355,7 +441,7 @@ export class GameScene extends Phaser.Scene {
         yoyo: true,
         ease: 'Sine.easeOut'
       });
-      const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount);
+      const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount, progressUpdate);
       this.pendingOverlayLaunch?.remove(false);
       this.pendingOverlayLaunch = this.time.delayedCall(this.winOverlayDelayMs, () => {
         this.pendingOverlayLaunch = undefined;
@@ -394,8 +480,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (data.action === 'resume') {
-      const pausedDuration = this.time.now - this.timerPausedAtMs;
-      this.timerStartMs += pausedDuration;
+      if (this.timerStarted) {
+        this.timerStartMs += this.time.now - this.timerPausedAtMs;
+      }
       this.paused = false;
       this.overlayKey = null;
       this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
@@ -412,10 +499,8 @@ export class GameScene extends Phaser.Scene {
 
     if (data.action === 'reset') {
       this.scene.stop('PauseScene');
-      this.scene.restart();
-      return;
+      this.scene.restart(this.currentRunData);
     }
-
   }
 
   private handleWinAction(data: WinActionData): void {
@@ -423,24 +508,25 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (data.action === 'reset-run') {
+    if (data.action === 'play-again') {
       this.scene.stop('WinScene');
-      this.scene.restart();
+      this.scene.restart(this.currentRunData);
       return;
     }
 
-    if (data.action === 'new-maze') {
-      this.runSeed += 1;
+    if (data.action === 'next-maze') {
       this.scene.stop('WinScene');
-      this.scene.restart();
+      this.scene.restart({
+        difficulty: this.runDifficulty,
+        seed: this.runSeed,
+        seedMode: 'next'
+      } satisfies GameSceneStartData);
       return;
     }
 
     if (data.action === 'menu') {
       this.scene.stop('WinScene');
       this.scene.start('MenuScene');
-      return;
     }
-
   }
 }
