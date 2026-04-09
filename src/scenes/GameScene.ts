@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { disposeMazeEpisode, generateMaze, type MazeEpisode } from '../domain/maze';
+import {
+  disposeMazeEpisode,
+  generateMaze,
+  getNeighborIndex,
+  isTileFloor,
+  type MazeEpisode
+} from '../domain/maze';
 import { BoardRenderer, createBoardLayout } from '../render/boardRenderer';
 import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -264,8 +270,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const nextIndex = maze.raster.tiles[this.playerIndex].neighbors[direction];
-    if (nextIndex === -1 || !maze.raster.tiles[nextIndex].floor) {
+    const nextIndex = getNeighborIndex(this.playerIndex, maze.raster.width, maze.raster.height, direction);
+    if (nextIndex === -1 || !isTileFloor(maze.raster.tiles, nextIndex)) {
       this.lastMoveDirection = direction;
       if (this.time.now - this.lastBlockedAtMs >= this.blockedFeedbackCooldownMs) {
         this.lastBlockedAtMs = this.time.now;

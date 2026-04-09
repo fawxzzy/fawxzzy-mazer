@@ -9,13 +9,21 @@ import type {
   PatternEngineMode,
   Point
 } from './types';
-import { pointFromIndex } from './grid';
+import {
+  getNeighborIndex,
+  isTileFloor,
+  pointFromIndex,
+  xFromIndex,
+  yFromIndex
+} from './grid';
 
 const N = 1 << 0;
 const E = 1 << 1;
 const S = 1 << 2;
 const W = 1 << 3;
 const ALL_WALLS = N | E | S | W;
+const EMPTY_UINT8 = new Uint8Array(0);
+const EMPTY_UINT32 = new Uint32Array(0);
 
 const DIRS = [
   { bit: N, dx: 0, dy: -1, opposite: S },
@@ -45,16 +53,21 @@ interface CoreBuildResult {
 interface MazeScratch {
   readonly inTree: Uint8Array;
   readonly walkNext: Int32Array;
+  readonly walkStamp: Uint32Array;
   readonly queue: Int32Array;
   readonly distance: Int32Array;
-  readonly seen: Uint8Array;
+  readonly seenEpoch: Uint32Array;
+  walkEpoch: number;
+  bfsEpoch: number;
 }
 
 interface SolveScratch {
   readonly cameFrom: Int32Array;
   readonly gScore: Float64Array;
-  readonly closed: Uint8Array;
-  readonly heap: MinHeap<{ idx: number; f: number; g: number }>;
+  readonly gScoreEpoch: Uint32Array;
+  readonly closedEpoch: Uint32Array;
+  readonly heap: MinHeap;
+  epoch: number;
 }
 
 const mazeScratchCache = new Map<number, MazeScratch>();
@@ -80,7 +93,7 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
       continue;
     }
 
-    const metrics = measureMaze(maze, shortestPath.path);
+    const metrics = measureMaze(maze, shortestPath.pathIndices);
     const built = {
       maze,
       solution: shortestPath,
@@ -107,7 +120,7 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   return {
     maze,
     solution,
-    metrics: measureMaze(maze, solution.path),
+    metrics: measureMaze(maze, solution.pathIndices),
     shortcutsCreated: countOpeningsBeyondTree(maze),
     accepted: false
   };
@@ -116,70 +129,85 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
 export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolveResult => {
   const startIdx = indexOf(maze.width, start.x, start.y);
   const goalIdx = indexOf(maze.width, goal.x, goal.y);
+  const goalX = goal.x;
+  const goalY = goal.y;
   const scratch = getSolveScratch(maze.cells.length);
-  const { cameFrom, gScore, closed, heap } = scratch;
+  const epoch = nextSolveEpoch(scratch);
 
-  cameFrom.fill(-1);
-  gScore.fill(Number.POSITIVE_INFINITY);
-  closed.fill(0);
-  heap.clear();
+  scratch.cameFrom[startIdx] = -1;
+  scratch.gScore[startIdx] = 0;
+  scratch.gScoreEpoch[startIdx] = epoch;
+  scratch.heap.clear();
+  scratch.heap.push(startIdx, 0, heuristicXY(start.x, start.y, goalX, goalY));
 
   let visited = 0;
   let expanded = 0;
 
-  gScore[startIdx] = 0;
-  heap.push({ idx: startIdx, g: 0, f: heuristic(start, goal) });
-
-  while (heap.size > 0) {
-    const current = heap.pop();
-    if (!current || closed[current.idx] === 1) {
+  while (scratch.heap.pop()) {
+    const currentIdx = scratch.heap.currentIndex;
+    if (scratch.closedEpoch[currentIdx] === epoch) {
       continue;
     }
 
-    closed[current.idx] = 1;
+    scratch.closedEpoch[currentIdx] = epoch;
     visited += 1;
 
-    if (current.idx === goalIdx) {
+    if (currentIdx === goalIdx) {
       return {
         found: true,
-        path: reconstructPath(cameFrom, current.idx, maze.width),
+        pathIndices: reconstructPath(scratch.cameFrom, currentIdx),
         visited,
         expanded,
-        cost: gScore[current.idx]
+        cost: scratch.gScore[currentIdx]
       };
     }
 
     expanded += 1;
-    visitOpenNeighbors(maze, current.idx, (next) => {
-      if (closed[next] === 1) {
-        return;
+    const currentG = scratch.gScore[currentIdx];
+    const currentX = xFromIndex(currentIdx, maze.width);
+    const currentY = yFromIndex(currentIdx, maze.width);
+    const cell = maze.cells[currentIdx];
+
+    for (let direction = 0; direction < DIRS.length; direction += 1) {
+      const dir = DIRS[direction];
+      if ((cell & dir.bit) !== 0) {
+        continue;
       }
 
-      const tentativeG = gScore[current.idx] + 1;
-      if (tentativeG >= gScore[next]) {
-        return;
+      const nextX = currentX + dir.dx;
+      const nextY = currentY + dir.dy;
+      if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+        continue;
       }
 
-      cameFrom[next] = current.idx;
-      gScore[next] = tentativeG;
-      heap.push({
-        idx: next,
-        g: tentativeG,
-        f: tentativeG + heuristic(pointFromIndex(next, maze.width), goal)
-      });
-    });
+      const next = indexOf(maze.width, nextX, nextY);
+      if (scratch.closedEpoch[next] === epoch) {
+        continue;
+      }
+
+      const tentativeG = currentG + 1;
+      const seenBefore = scratch.gScoreEpoch[next] === epoch;
+      if (seenBefore && tentativeG >= scratch.gScore[next]) {
+        continue;
+      }
+
+      scratch.cameFrom[next] = currentIdx;
+      scratch.gScore[next] = tentativeG;
+      scratch.gScoreEpoch[next] = epoch;
+      scratch.heap.push(next, tentativeG, tentativeG + heuristicXY(nextX, nextY, goalX, goalY));
+    }
   }
 
   return {
     found: false,
-    path: [],
+    pathIndices: EMPTY_UINT32,
     visited,
     expanded,
     cost: Number.POSITIVE_INFINITY
   };
 };
 
-export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
+export const measureMaze = (maze: MazeCore, pathIndices: ArrayLike<number>): MazeMetrics => {
   let deadEnds = 0;
   let junctions = 0;
   let straightSegments = 0;
@@ -193,25 +221,24 @@ export const measureMaze = (maze: MazeCore, path: Point[]): MazeMetrics => {
     }
   }
 
-  for (let index = 1; index < path.length - 1; index += 1) {
-    const a = path[index - 1];
-    const b = path[index];
-    const c = path[index + 1];
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const bcx = c.x - b.x;
-    const bcy = c.y - b.y;
+  for (let index = 1; index < pathIndices.length - 1; index += 1) {
+    const ab = pathIndices[index] - pathIndices[index - 1];
+    const bc = pathIndices[index + 1] - pathIndices[index];
+    const abx = ab % maze.width;
+    const aby = Math.trunc(ab / maze.width);
+    const bcx = bc % maze.width;
+    const bcy = Math.trunc(bc / maze.width);
     if (abx === bcx && aby === bcy) {
       straightSegments += 1;
     }
   }
 
   return {
-    solutionLength: path.length,
+    solutionLength: pathIndices.length,
     deadEnds,
     junctions,
-    straightness: path.length <= 2 ? 1 : straightSegments / Math.max(1, path.length - 2),
-    coverage: path.length / Math.max(1, maze.cells.length)
+    straightness: pathIndices.length <= 2 ? 1 : straightSegments / Math.max(1, pathIndices.length - 2),
+    coverage: pathIndices.length / Math.max(1, maze.cells.length)
   };
 };
 
@@ -232,10 +259,12 @@ export const disposeMazeEpisode = (episode?: MazeEpisode | null): void => {
     return;
   }
 
-  episode.core?.cells.splice(0, episode.core.cells.length);
-  episode.core = undefined;
-  episode.raster.tiles.length = 0;
-  episode.raster.pathIndices.length = 0;
+  if (episode.core) {
+    episode.core.cells = EMPTY_UINT8;
+    episode.core = undefined;
+  }
+  episode.raster.tiles = EMPTY_UINT8;
+  episode.raster.pathIndices = EMPTY_UINT32;
   episode.raster.width = 0;
   episode.raster.height = 0;
   episode.raster.scale = 0;
@@ -395,8 +424,9 @@ const generateWilsonMaze = (
 ): MazeCore => {
   const cellCount = width * height;
   const scratch = getMazeScratch(cellCount);
-  const { inTree, walkNext } = scratch;
-  const cells = Array.from({ length: cellCount }, () => ({ walls: ALL_WALLS }));
+  const cells = new Uint8Array(cellCount);
+  cells.fill(ALL_WALLS);
+
   const maze: MazeCore = {
     width,
     height,
@@ -407,31 +437,32 @@ const generateWilsonMaze = (
     braidRatio
   };
 
-  inTree.fill(0);
-  walkNext.fill(-1);
+  scratch.inTree.fill(0);
 
   const root = randomInt(cellCount, rng);
-  inTree[root] = 1;
+  scratch.inTree[root] = 1;
   let unvisited = cellCount - 1;
 
   while (unvisited > 0) {
-    let cursor = randomUnvisitedIndex(inTree, rng);
+    let cursor = randomUnvisitedIndex(scratch.inTree, rng);
     const walkStart = cursor;
+    const walkEpoch = nextWalkEpoch(scratch);
 
-    while (inTree[cursor] === 0) {
+    while (scratch.inTree[cursor] === 0) {
       const next = randomNeighborIndex(cursor, width, height, rng);
-      walkNext[cursor] = next;
+      scratch.walkNext[cursor] = next;
+      scratch.walkStamp[cursor] = walkEpoch;
       cursor = next;
     }
 
     cursor = walkStart;
-    while (inTree[cursor] === 0) {
-      const next = walkNext[cursor];
+    while (scratch.inTree[cursor] === 0) {
+      const next = scratch.walkStamp[cursor] === walkEpoch ? scratch.walkNext[cursor] : -1;
       if (next < 0) {
         break;
       }
       carvePassage(maze, cursor, next);
-      inTree[cursor] = 1;
+      scratch.inTree[cursor] = 1;
       unvisited -= 1;
       cursor = next;
     }
@@ -460,17 +491,13 @@ const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
   const target = Math.floor(candidates.length * clamp(ratio, 0, 1));
   let opened = 0;
 
-  for (const index of candidates) {
-    if (opened >= target) {
-      break;
-    }
-
-    const choices = collectClosedNeighbors(maze, index);
-    if (choices.length === 0) {
+  for (let cursor = 0; cursor < candidates.length && opened < target; cursor += 1) {
+    const chosen = pickRandomClosedNeighbor(maze, candidates[cursor], rng);
+    if (chosen === -1) {
       continue;
     }
 
-    carvePassage(maze, index, choices[randomInt(choices.length, rng)]);
+    carvePassage(maze, candidates[cursor], chosen);
     opened += 1;
   }
 };
@@ -487,43 +514,54 @@ const farthestReachable = (
   scratch: MazeScratch
 ): { point: Point; distance: number } => {
   const startIdx = indexOf(maze.width, start.x, start.y);
-  const { queue, seen, distance } = scratch;
-
-  seen.fill(0);
-  distance.fill(-1);
-
+  const epoch = nextBfsEpoch(scratch);
   let head = 0;
   let tail = 0;
   let best = startIdx;
 
-  queue[tail] = startIdx;
+  scratch.queue[tail] = startIdx;
   tail += 1;
-  seen[startIdx] = 1;
-  distance[startIdx] = 0;
+  scratch.seenEpoch[startIdx] = epoch;
+  scratch.distance[startIdx] = 0;
 
   while (head < tail) {
-    const current = queue[head];
+    const current = scratch.queue[head];
     head += 1;
 
-    if (distance[current] > distance[best]) {
+    if (scratch.distance[current] > scratch.distance[best]) {
       best = current;
     }
 
-    visitOpenNeighbors(maze, current, (next) => {
-      if (seen[next] === 1) {
-        return;
+    const currentX = xFromIndex(current, maze.width);
+    const currentY = yFromIndex(current, maze.width);
+    const cell = maze.cells[current];
+    for (let direction = 0; direction < DIRS.length; direction += 1) {
+      const dir = DIRS[direction];
+      if ((cell & dir.bit) !== 0) {
+        continue;
       }
 
-      seen[next] = 1;
-      distance[next] = distance[current] + 1;
-      queue[tail] = next;
+      const nextX = currentX + dir.dx;
+      const nextY = currentY + dir.dy;
+      if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+        continue;
+      }
+
+      const next = indexOf(maze.width, nextX, nextY);
+      if (scratch.seenEpoch[next] === epoch) {
+        continue;
+      }
+
+      scratch.seenEpoch[next] = epoch;
+      scratch.distance[next] = scratch.distance[current] + 1;
+      scratch.queue[tail] = next;
       tail += 1;
-    });
+    }
   }
 
   return {
     point: pointFromIndex(best, maze.width),
-    distance: distance[best]
+    distance: scratch.distance[best]
   };
 };
 
@@ -537,88 +575,109 @@ const countOpeningsBeyondTree = (maze: MazeCore): number => {
   return Math.max(0, undirectedEdges - (maze.cells.length - 1));
 };
 
-const reconstructPath = (cameFrom: Int32Array, endIdx: number, width: number): Point[] => {
-  const path: Point[] = [];
+const reconstructPath = (cameFrom: Int32Array, endIdx: number): Uint32Array => {
+  let length = 0;
   let cursor = endIdx;
 
   while (cursor >= 0) {
-    path.push(pointFromIndex(cursor, width));
+    length += 1;
     cursor = cameFrom[cursor];
   }
 
-  path.reverse();
+  const path = new Uint32Array(length);
+  cursor = endIdx;
+  for (let writeIndex = length - 1; writeIndex >= 0; writeIndex -= 1) {
+    path[writeIndex] = cursor;
+    cursor = cameFrom[cursor];
+  }
   return path;
 };
 
-const visitOpenNeighbors = (maze: MazeCore, idx: number, visit: (next: number) => void): void => {
-  const point = pointFromIndex(idx, maze.width);
-  const cell = maze.cells[idx];
-
-  for (const dir of DIRS) {
-    if ((cell.walls & dir.bit) !== 0) {
-      continue;
-    }
-
-    const nextX = point.x + dir.dx;
-    const nextY = point.y + dir.dy;
-    if (!inBounds(nextX, nextY, maze.width, maze.height)) {
-      continue;
-    }
-
-    visit(indexOf(maze.width, nextX, nextY));
-  }
-};
-
 const countOpenNeighbors = (maze: MazeCore, idx: number): number => {
+  const x = xFromIndex(idx, maze.width);
+  const y = yFromIndex(idx, maze.width);
+  const cell = maze.cells[idx];
   let count = 0;
-  visitOpenNeighbors(maze, idx, () => {
-    count += 1;
-  });
+
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if ((cell & dir.bit) !== 0) {
+      continue;
+    }
+
+    if (inBounds(x + dir.dx, y + dir.dy, maze.width, maze.height)) {
+      count += 1;
+    }
+  }
+
   return count;
 };
 
-const collectClosedNeighbors = (maze: MazeCore, idx: number): number[] => {
-  const point = pointFromIndex(idx, maze.width);
+const pickRandomClosedNeighbor = (maze: MazeCore, idx: number, rng: () => number): number => {
+  const x = xFromIndex(idx, maze.width);
+  const y = yFromIndex(idx, maze.width);
   const cell = maze.cells[idx];
-  const neighbors: number[] = [];
+  let optionCount = 0;
 
-  for (const dir of DIRS) {
-    if ((cell.walls & dir.bit) === 0) {
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if ((cell & dir.bit) === 0) {
+      continue;
+    }
+    if (inBounds(x + dir.dx, y + dir.dy, maze.width, maze.height)) {
+      optionCount += 1;
+    }
+  }
+
+  if (optionCount === 0) {
+    return -1;
+  }
+
+  let pick = randomInt(optionCount, rng);
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if ((cell & dir.bit) === 0) {
       continue;
     }
 
-    const nextX = point.x + dir.dx;
-    const nextY = point.y + dir.dy;
+    const nextX = x + dir.dx;
+    const nextY = y + dir.dy;
     if (!inBounds(nextX, nextY, maze.width, maze.height)) {
       continue;
     }
 
-    neighbors.push(indexOf(maze.width, nextX, nextY));
+    if (pick === 0) {
+      return indexOf(maze.width, nextX, nextY);
+    }
+    pick -= 1;
   }
 
-  return neighbors;
+  return -1;
 };
 
 const carvePassage = (maze: MazeCore, a: number, b: number): void => {
-  const pointA = pointFromIndex(a, maze.width);
-  const pointB = pointFromIndex(b, maze.width);
-  const dx = pointB.x - pointA.x;
-  const dy = pointB.y - pointA.y;
+  const ax = xFromIndex(a, maze.width);
+  const ay = yFromIndex(a, maze.width);
+  const bx = xFromIndex(b, maze.width);
+  const by = yFromIndex(b, maze.width);
+  const dx = bx - ax;
+  const dy = by - ay;
 
-  for (const dir of DIRS) {
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
     if (dir.dx !== dx || dir.dy !== dy) {
       continue;
     }
 
-    maze.cells[a].walls &= ~dir.bit;
-    maze.cells[b].walls &= ~dir.opposite;
+    maze.cells[a] &= ~dir.bit;
+    maze.cells[b] &= ~dir.opposite;
     return;
   }
 
   throw new Error(`Cells ${a} and ${b} are not neighbors`);
 };
 
-const countTurns = (pathIndices: readonly number[], width: number): number => {
+const countTurns = (pathIndices: ArrayLike<number>, width: number): number => {
   let turns = 0;
 
   for (let index = 1; index < pathIndices.length - 1; index += 1) {
@@ -635,13 +694,17 @@ const countTurns = (pathIndices: readonly number[], width: number): number => {
 const countSolutionBranches = (episode: MazeEpisode): number => {
   let branches = 0;
 
-  for (const index of episode.raster.pathIndices) {
+  for (let pathCursor = 0; pathCursor < episode.raster.pathIndices.length; pathCursor += 1) {
+    const index = episode.raster.pathIndices[pathCursor];
     let degree = 0;
-    for (const neighbor of episode.raster.tiles[index].neighbors) {
-      if (neighbor !== -1 && episode.raster.tiles[neighbor].floor) {
+
+    for (let direction = 0; direction < 4; direction += 1) {
+      const neighbor = getNeighborIndex(index, episode.raster.width, episode.raster.height, direction as 0 | 1 | 2 | 3);
+      if (neighbor !== -1 && isTileFloor(episode.raster.tiles, neighbor)) {
         degree += 1;
       }
     }
+
     if (degree >= 3) {
       branches += 1;
     }
@@ -650,25 +713,40 @@ const countSolutionBranches = (episode: MazeEpisode): number => {
   return branches;
 };
 
-const heuristic = (a: Point, b: Point): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const heuristicXY = (ax: number, ay: number, bx: number, by: number): number => Math.abs(ax - bx) + Math.abs(ay - by);
 
 const indexOf = (width: number, x: number, y: number): number => (y * width) + x;
 
 const randomInt = (maxExclusive: number, rng: () => number): number => Math.floor(rng() * maxExclusive);
 
 const randomNeighborIndex = (idx: number, width: number, height: number, rng: () => number): number => {
-  const point = pointFromIndex(idx, width);
-  const neighbors: number[] = [];
+  const x = xFromIndex(idx, width);
+  const y = yFromIndex(idx, width);
+  let optionCount = 0;
 
-  for (const dir of DIRS) {
-    const nextX = point.x + dir.dx;
-    const nextY = point.y + dir.dy;
-    if (inBounds(nextX, nextY, width, height)) {
-      neighbors.push(indexOf(width, nextX, nextY));
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if (inBounds(x + dir.dx, y + dir.dy, width, height)) {
+      optionCount += 1;
     }
   }
 
-  return neighbors[randomInt(neighbors.length, rng)];
+  let pick = randomInt(optionCount, rng);
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    const nextX = x + dir.dx;
+    const nextY = y + dir.dy;
+    if (!inBounds(nextX, nextY, width, height)) {
+      continue;
+    }
+
+    if (pick === 0) {
+      return indexOf(width, nextX, nextY);
+    }
+    pick -= 1;
+  }
+
+  return idx;
 };
 
 const randomUnvisitedIndex = (inTree: Uint8Array, rng: () => number): number => {
@@ -706,9 +784,12 @@ const getMazeScratch = (size: number): MazeScratch => {
   const scratch: MazeScratch = {
     inTree: new Uint8Array(size),
     walkNext: new Int32Array(size),
+    walkStamp: new Uint32Array(size),
     queue: new Int32Array(size),
     distance: new Int32Array(size),
-    seen: new Uint8Array(size)
+    seenEpoch: new Uint32Array(size),
+    walkEpoch: 0,
+    bfsEpoch: 0
   };
   mazeScratchCache.set(size, scratch);
   return scratch;
@@ -723,57 +804,120 @@ const getSolveScratch = (size: number): SolveScratch => {
   const scratch: SolveScratch = {
     cameFrom: new Int32Array(size),
     gScore: new Float64Array(size),
-    closed: new Uint8Array(size),
-    heap: new MinHeap<{ idx: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g)
+    gScoreEpoch: new Uint32Array(size),
+    closedEpoch: new Uint32Array(size),
+    heap: new MinHeap(size),
+    epoch: 0
   };
   solveScratchCache.set(size, scratch);
   return scratch;
 };
 
-class MinHeap<T> {
-  private readonly data: T[] = [];
+const nextWalkEpoch = (scratch: MazeScratch): number => {
+  scratch.walkEpoch += 1;
+  if (scratch.walkEpoch !== 0) {
+    return scratch.walkEpoch;
+  }
 
-  public constructor(private readonly compare: (a: T, b: T) => number) {}
+  scratch.walkStamp.fill(0);
+  scratch.walkEpoch = 1;
+  return scratch.walkEpoch;
+};
 
-  public get size(): number {
-    return this.data.length;
+const nextBfsEpoch = (scratch: MazeScratch): number => {
+  scratch.bfsEpoch += 1;
+  if (scratch.bfsEpoch !== 0) {
+    return scratch.bfsEpoch;
+  }
+
+  scratch.seenEpoch.fill(0);
+  scratch.bfsEpoch = 1;
+  return scratch.bfsEpoch;
+};
+
+const nextSolveEpoch = (scratch: SolveScratch): number => {
+  scratch.epoch += 1;
+  if (scratch.epoch !== 0) {
+    return scratch.epoch;
+  }
+
+  scratch.gScoreEpoch.fill(0);
+  scratch.closedEpoch.fill(0);
+  scratch.epoch = 1;
+  return scratch.epoch;
+};
+
+class MinHeap {
+  private indices: Uint32Array;
+  private fScores: Float64Array;
+  private gScores: Float64Array;
+  private sizeValue = 0;
+
+  public currentIndex = 0;
+
+  public constructor(capacity: number) {
+    this.indices = new Uint32Array(Math.max(4, capacity));
+    this.fScores = new Float64Array(Math.max(4, capacity));
+    this.gScores = new Float64Array(Math.max(4, capacity));
   }
 
   public clear(): void {
-    this.data.length = 0;
+    this.sizeValue = 0;
   }
 
-  public push(value: T): void {
-    this.data.push(value);
-    this.bubbleUp(this.data.length - 1);
+  public push(index: number, g: number, f: number): void {
+    this.ensureCapacity(this.sizeValue + 1);
+    let cursor = this.sizeValue;
+    this.sizeValue += 1;
+    this.indices[cursor] = index;
+    this.gScores[cursor] = g;
+    this.fScores[cursor] = f;
+    this.bubbleUp(cursor);
   }
 
-  public pop(): T | undefined {
-    if (this.data.length === 0) {
-      return undefined;
-    }
-    if (this.data.length === 1) {
-      return this.data.pop();
+  public pop(): boolean {
+    if (this.sizeValue === 0) {
+      return false;
     }
 
-    const top = this.data[0];
-    const last = this.data.pop();
-    if (last === undefined) {
-      return top;
+    this.currentIndex = this.indices[0];
+    this.sizeValue -= 1;
+    if (this.sizeValue > 0) {
+      this.indices[0] = this.indices[this.sizeValue];
+      this.gScores[0] = this.gScores[this.sizeValue];
+      this.fScores[0] = this.fScores[this.sizeValue];
+      this.bubbleDown(0);
     }
 
-    this.data[0] = last;
-    this.bubbleDown(0);
-    return top;
+    return true;
+  }
+
+  private ensureCapacity(size: number): void {
+    if (size <= this.indices.length) {
+      return;
+    }
+
+    const nextCapacity = Math.max(size, this.indices.length * 2);
+    const nextIndices = new Uint32Array(nextCapacity);
+    nextIndices.set(this.indices);
+    this.indices = nextIndices;
+
+    const nextGScores = new Float64Array(nextCapacity);
+    nextGScores.set(this.gScores);
+    this.gScores = nextGScores;
+
+    const nextFScores = new Float64Array(nextCapacity);
+    nextFScores.set(this.fScores);
+    this.fScores = nextFScores;
   }
 
   private bubbleUp(index: number): void {
     while (index > 0) {
       const parent = Math.floor((index - 1) / 2);
-      if (this.compare(this.data[index], this.data[parent]) >= 0) {
+      if (this.compare(index, parent) >= 0) {
         break;
       }
-      [this.data[index], this.data[parent]] = [this.data[parent], this.data[index]];
+      this.swap(index, parent);
       index = parent;
     }
   }
@@ -784,18 +928,32 @@ class MinHeap<T> {
       const right = left + 1;
       let smallest = index;
 
-      if (left < this.data.length && this.compare(this.data[left], this.data[smallest]) < 0) {
+      if (left < this.sizeValue && this.compare(left, smallest) < 0) {
         smallest = left;
       }
-      if (right < this.data.length && this.compare(this.data[right], this.data[smallest]) < 0) {
+      if (right < this.sizeValue && this.compare(right, smallest) < 0) {
         smallest = right;
       }
       if (smallest === index) {
         break;
       }
 
-      [this.data[index], this.data[smallest]] = [this.data[smallest], this.data[index]];
+      this.swap(index, smallest);
       index = smallest;
     }
+  }
+
+  private compare(a: number, b: number): number {
+    const fDelta = this.fScores[a] - this.fScores[b];
+    if (fDelta !== 0) {
+      return fDelta;
+    }
+    return this.gScores[a] - this.gScores[b];
+  }
+
+  private swap(a: number, b: number): void {
+    [this.indices[a], this.indices[b]] = [this.indices[b], this.indices[a]];
+    [this.gScores[a], this.gScores[b]] = [this.gScores[b], this.gScores[a]];
+    [this.fScores[a], this.fScores[b]] = [this.fScores[b], this.fScores[a]];
   }
 }

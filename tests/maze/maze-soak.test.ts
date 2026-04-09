@@ -2,13 +2,14 @@ import { expect, test } from 'vitest';
 
 import { advanceDemoWalker, createDemoWalkerState } from '../../src/domain/ai';
 import { legacyTuning } from '../../src/config/tuning';
-import { disposeMazeEpisode, generateMaze, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
+import { disposeMazeEpisode, generateMaze, isTileFloor, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
 const soakIterations = Number.parseInt(process.env.MAZE_SOAK_ITERATIONS ?? '200', 10);
 const soakScales = [18, 30, 40, 50];
 const warmupIterations = Math.max(20, Math.min(60, Math.floor(soakIterations * 0.25)));
 const memorySampleEvery = Math.max(10, Math.floor(soakIterations / 8));
+const previousPeakDeltaBaseline = 30_959_648;
 
 interface MemorySample {
   iteration: number;
@@ -101,6 +102,7 @@ test(
 
     expect(memorySamples.length).toBeGreaterThanOrEqual(2);
     const postWarmupHeapUsed = memorySamples.map((sample) => sample.heapUsed);
+    const postWarmupSampleCount = memorySamples.length;
     const postWarmupMinHeapUsed = Math.min(...postWarmupHeapUsed);
     const postWarmupMaxHeapUsed = Math.max(...postWarmupHeapUsed);
     const postWarmupRange = postWarmupMaxHeapUsed - postWarmupMinHeapUsed;
@@ -113,20 +115,26 @@ test(
       ? 0
       : Math.abs(postWarmupPeaks[postWarmupPeaks.length - 1].heapUsed - postWarmupPeaks[0].heapUsed);
     const finalHeapUsed = memorySamples[memorySamples.length - 1].heapUsed;
+    const finalReturnedNearLowerBand = finalHeapUsed <= postWarmupMinHeapUsed + (16 * 1024 * 1024);
     const maxPostWarmupArrayBuffers = Math.max(...memorySamples.map((sample) => sample.arrayBuffers));
+    const peakDeltaVsPreviousBaseline = postWarmupPeakDelta - previousPeakDeltaBaseline;
 
     console.info(
       `[maze-soak] warmupWindow=${warmupIterations}`
+      + ` postWarmupSamples=${postWarmupSampleCount}`
       + ` postWarmupHeapUsedMin=${postWarmupMinHeapUsed}`
       + ` postWarmupHeapUsedMax=${postWarmupMaxHeapUsed}`
       + ` postWarmupHeapUsedRange=${postWarmupRange}`
       + ` postWarmupPeakDelta=${postWarmupPeakDelta}`
       + ` finalHeapUsed=${finalHeapUsed}`
+      + ` finalNearLowerBand=${finalReturnedNearLowerBand}`
+      + ` previousPeakDeltaBaseline=${previousPeakDeltaBaseline}`
+      + ` peakDeltaVsPreviousBaseline=${peakDeltaVsPreviousBaseline}`
     );
 
     expect(postWarmupMaxHeapUsed).toBeLessThanOrEqual(memorySamples[0].heapUsed + (40 * 1024 * 1024));
     expect(postWarmupPeakDelta).toBeLessThanOrEqual(40 * 1024 * 1024);
-    expect(finalHeapUsed).toBeLessThanOrEqual(postWarmupMinHeapUsed + (16 * 1024 * 1024));
+    expect(finalReturnedNearLowerBand).toBe(true);
     expect(maxPostWarmupArrayBuffers).toBeLessThanOrEqual(memorySamples[0].arrayBuffers + (4 * 1024 * 1024));
     disposeMazeEpisode(state.result);
   },
@@ -153,7 +161,7 @@ test(
         const advance = advanceDemoWalker(maze, state, legacyTuning.demo);
         state = advance.state;
 
-        expect(maze.raster.tiles[state.currentIndex].floor).toBe(true);
+        expect(isTileFloor(maze.raster.tiles, state.currentIndex)).toBe(true);
         expect(maze.raster.pathIndices.includes(state.currentIndex)).toBe(true);
 
         if (advance.shouldRegenerateMaze || state.loops > 0) {

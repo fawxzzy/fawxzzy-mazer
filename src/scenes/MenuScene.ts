@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { DemoWalkerCue } from '../domain/ai';
-import { disposeMazeEpisode, generateMaze, PatternEngine } from '../domain/maze';
+import { disposeMazeEpisode, generateMaze, PatternEngine, resolveDirectionBetween } from '../domain/maze';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -639,7 +639,7 @@ const resolveDemoCue = (elapsedSeconds: number, pathCursor: number, pathLength: 
 };
 
 const resolveDirection = (
-  episode: { raster: { tiles: { neighbors: readonly [number, number, number, number] }[] } },
+  episode: { raster: { width: number } },
   fromIndex: number,
   toIndex: number
 ): 0 | 1 | 2 | 3 | null => {
@@ -647,9 +647,5 @@ const resolveDirection = (
     return null;
   }
 
-  const direction = episode.raster.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
-  if (direction < 0 || direction > 3) {
-    return null;
-  }
-  return direction as 0 | 1 | 2 | 3;
+  return resolveDirectionBetween(fromIndex, toIndex, episode.raster.width);
 };

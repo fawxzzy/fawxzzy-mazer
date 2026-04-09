@@ -1,4 +1,4 @@
-import type { MazeEpisode } from '../maze';
+import { resolveDirectionBetween, type MazeEpisode } from '../maze';
 
 export interface DemoWalkerConfig {
   seed: number;
@@ -174,9 +174,5 @@ const resolveDirection = (
     return null;
   }
 
-  const direction = episode.raster.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
-  if (direction < 0 || direction > 3) {
-    return null;
-  }
-  return direction as 0 | 1 | 2 | 3;
+  return resolveDirectionBetween(fromIndex, toIndex, episode.raster.width);
 };

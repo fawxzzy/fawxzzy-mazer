@@ -1,14 +1,24 @@
 import { createSeededRng } from '../rng/seededRng';
 import { buildMazeCore } from './core';
-import { createGrid, indexFromCoordinates, pointFromIndex } from './grid';
+import {
+  createGrid,
+  getNeighborIndex,
+  indexFromCoordinates,
+  isTileFloor,
+  setTileFlag,
+  TILE_END,
+  TILE_FLOOR,
+  TILE_PATH,
+  xFromIndex,
+  yFromIndex
+} from './grid';
 import type {
   MazeBuildOptions,
   MazeBuildResult,
   MazeConfig,
   MazeGenerationState,
   MazeMetrics,
-  MazeTile,
-  Point,
+  PathBuffer,
   TileBoard
 } from './types';
 
@@ -16,6 +26,7 @@ const N = 1 << 0;
 const E = 1 << 1;
 const S = 1 << 2;
 const W = 1 << 3;
+const EMPTY_PATH = new Uint32Array(0);
 
 const DIRS = [
   { bit: N, dx: 0, dy: -1 },
@@ -37,13 +48,15 @@ interface RasterizeOptions {
 interface SolveScratch {
   readonly cameFrom: Int32Array;
   readonly gScore: Float64Array;
-  readonly closed: Uint8Array;
-  readonly heap: MinHeap<{ index: number; f: number; g: number }>;
+  readonly gScoreEpoch: Uint32Array;
+  readonly closedEpoch: Uint32Array;
+  readonly heap: MinHeap;
+  epoch: number;
 }
 
 interface TileSolveResult {
   found: boolean;
-  pathIndices: number[];
+  pathIndices: PathBuffer;
   visited: number;
   expanded: number;
   cost: number;
@@ -119,40 +132,36 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
   const playableHeight = (core.height * 2) - 1;
   const tiles = createGrid(playableWidth, playableHeight);
 
-  for (const tile of tiles) {
-    tile.floor = false;
-    tile.path = false;
-    tile.end = false;
-  }
-
   for (let y = 0; y < core.height; y += 1) {
     for (let x = 0; x < core.width; x += 1) {
       const coreIndex = indexOfCore(core.width, x, y);
-      const center = toRasterPoint({ x, y });
-      const centerIndex = indexFromCoordinates(center.x, center.y, playableWidth);
-      tiles[centerIndex].floor = true;
+      const centerX = x * 2;
+      const centerY = y * 2;
+      const centerIndex = indexFromCoordinates(centerX, centerY, playableWidth);
+      setTileFlag(tiles, centerIndex, TILE_FLOOR);
 
-      for (const dir of DIRS) {
-        if ((core.cells[coreIndex].walls & dir.bit) !== 0) {
+      for (let direction = 0; direction < DIRS.length; direction += 1) {
+        const dir = DIRS[direction];
+        if ((core.cells[coreIndex] & dir.bit) !== 0) {
           continue;
         }
 
-        const passageIndex = indexFromCoordinates(center.x + dir.dx, center.y + dir.dy, playableWidth);
-        tiles[passageIndex].floor = true;
+        const passageIndex = indexFromCoordinates(centerX + dir.dx, centerY + dir.dy, playableWidth);
+        setTileFlag(tiles, passageIndex, TILE_FLOOR);
       }
     }
   }
 
-  const startPoint = toRasterPoint(core.start);
-  const goalPoint = toRasterPoint(core.goal);
+  const startIndex = indexFromCoordinates(core.start.x * 2, core.start.y * 2, playableWidth);
+  const endIndex = indexFromCoordinates(core.goal.x * 2, core.goal.y * 2, playableWidth);
   const raster = adaptBoardFootprint({
     width: playableWidth,
     height: playableHeight,
     scale: Math.max(playableWidth, playableHeight),
     tiles,
-    pathIndices: [],
-    startIndex: indexFromCoordinates(startPoint.x, startPoint.y, playableWidth),
-    endIndex: indexFromCoordinates(goalPoint.x, goalPoint.y, playableWidth),
+    pathIndices: EMPTY_PATH,
+    startIndex,
+    endIndex,
     playableWidth,
     playableHeight,
     padding: {
@@ -163,15 +172,13 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
     }
   }, footprint);
 
-  const adaptedStart = pointFromIndex(raster.startIndex, raster.width);
-  const adaptedGoal = pointFromIndex(raster.endIndex, raster.width);
-  const solved = solveTileAStar(raster.tiles, raster.width, raster.height, adaptedStart, adaptedGoal);
-  for (const pathIndex of solved.pathIndices) {
-    raster.tiles[pathIndex].path = true;
+  const solved = solveTileAStar(raster.tiles, raster.width, raster.height, raster.startIndex, raster.endIndex);
+  for (let pathCursor = 0; pathCursor < solved.pathIndices.length; pathCursor += 1) {
+    setTileFlag(raster.tiles, solved.pathIndices[pathCursor], TILE_PATH);
   }
-  raster.tiles[raster.endIndex].end = true;
+  setTileFlag(raster.tiles, raster.endIndex, TILE_END);
 
-  const metrics = measureTileMaze(raster.tiles, raster.width, solved.pathIndices);
+  const metrics = measureTileMaze(raster.tiles, raster.width, raster.height, solved.pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
 
   return {
@@ -201,29 +208,33 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
   const bottom = targetHeight - board.height - top;
   const tiles = createGrid(targetWidth, targetHeight);
 
-  for (const tile of tiles) {
-    tile.floor = false;
-    tile.path = false;
-    tile.end = false;
-  }
-
   for (let index = 0; index < board.tiles.length; index += 1) {
-    const { x, y } = pointFromIndex(index, board.width);
-    tiles[indexFromCoordinates(x + left, y + top, targetWidth)].floor = board.tiles[index].floor;
+    if (!isTileFloor(board.tiles, index)) {
+      continue;
+    }
+
+    const x = xFromIndex(index, board.width);
+    const y = yFromIndex(index, board.width);
+    setTileFlag(tiles, indexFromCoordinates(x + left, y + top, targetWidth), TILE_FLOOR);
   }
 
   const shiftIndex = (index: number): number => {
-    const x = index % board.width;
-    const y = Math.floor(index / board.width);
+    const x = xFromIndex(index, board.width);
+    const y = yFromIndex(index, board.width);
     return indexFromCoordinates(x + left, y + top, targetWidth);
   };
+
+  const shiftedPathIndices = new Uint32Array(board.pathIndices.length);
+  for (let pathCursor = 0; pathCursor < board.pathIndices.length; pathCursor += 1) {
+    shiftedPathIndices[pathCursor] = shiftIndex(board.pathIndices[pathCursor]);
+  }
 
   return {
     width: targetWidth,
     height: targetHeight,
     scale: Math.max(targetWidth, targetHeight),
     tiles,
-    pathIndices: board.pathIndices.map(shiftIndex),
+    pathIndices: shiftedPathIndices,
     startIndex: shiftIndex(board.startIndex),
     endIndex: shiftIndex(board.endIndex),
     playableWidth: board.playableWidth,
@@ -238,90 +249,93 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
 };
 
 const solveTileAStar = (
-  tiles: MazeTile[],
+  tiles: Uint8Array,
   width: number,
-  _height: number,
-  start: Point,
-  goal: Point
+  height: number,
+  startIndex: number,
+  goalIndex: number
 ): TileSolveResult => {
-  const startIndex = indexFromCoordinates(start.x, start.y, width);
-  const goalIndex = indexFromCoordinates(goal.x, goal.y, width);
   const scratch = getSolveScratch(tiles.length);
-  const { cameFrom, gScore, closed, heap } = scratch;
+  const epoch = nextEpoch(scratch);
+  const goalX = xFromIndex(goalIndex, width);
+  const goalY = yFromIndex(goalIndex, width);
 
-  cameFrom.fill(-1);
-  gScore.fill(Number.POSITIVE_INFINITY);
-  closed.fill(0);
-  heap.clear();
+  scratch.cameFrom[startIndex] = -1;
+  scratch.gScore[startIndex] = 0;
+  scratch.gScoreEpoch[startIndex] = epoch;
+  scratch.heap.clear();
+  scratch.heap.push(startIndex, 0, heuristicIndex(startIndex, goalX, goalY, width));
 
   let visited = 0;
   let expanded = 0;
 
-  gScore[startIndex] = 0;
-  heap.push({ index: startIndex, g: 0, f: heuristic(start, goal) });
-
-  while (heap.size > 0) {
-    const current = heap.pop();
-    if (!current || closed[current.index] === 1) {
+  while (scratch.heap.pop()) {
+    const currentIndex = scratch.heap.currentIndex;
+    if (scratch.closedEpoch[currentIndex] === epoch) {
       continue;
     }
 
-    closed[current.index] = 1;
+    scratch.closedEpoch[currentIndex] = epoch;
     visited += 1;
 
-    if (current.index === goalIndex) {
+    if (currentIndex === goalIndex) {
       return {
         found: true,
-        pathIndices: reconstructTilePath(cameFrom, current.index),
+        pathIndices: reconstructTilePath(scratch.cameFrom, currentIndex),
         visited,
         expanded,
-        cost: gScore[current.index]
+        cost: scratch.gScore[currentIndex]
       };
     }
 
     expanded += 1;
-    visitOpenFloorNeighbors(tiles, current.index, (next) => {
-      if (closed[next] === 1) {
-        return;
+    const currentG = scratch.gScore[currentIndex];
+    for (let direction = 0; direction < 4; direction += 1) {
+      const next = getNeighborIndex(currentIndex, width, height, direction as 0 | 1 | 2 | 3);
+      if (next === -1 || !isTileFloor(tiles, next) || scratch.closedEpoch[next] === epoch) {
+        continue;
       }
 
-      const tentativeG = gScore[current.index] + 1;
-      if (tentativeG >= gScore[next]) {
-        return;
+      const tentativeG = currentG + 1;
+      const seenBefore = scratch.gScoreEpoch[next] === epoch;
+      if (seenBefore && tentativeG >= scratch.gScore[next]) {
+        continue;
       }
 
-      cameFrom[next] = current.index;
-      gScore[next] = tentativeG;
-      heap.push({
-        index: next,
-        g: tentativeG,
-        f: tentativeG + heuristic(pointFromIndex(next, width), goal)
-      });
-    });
+      scratch.cameFrom[next] = currentIndex;
+      scratch.gScore[next] = tentativeG;
+      scratch.gScoreEpoch[next] = epoch;
+      scratch.heap.push(next, tentativeG, tentativeG + heuristicIndex(next, goalX, goalY, width));
+    }
   }
 
   return {
     found: false,
-    pathIndices: [],
+    pathIndices: EMPTY_PATH,
     visited,
     expanded,
     cost: Number.POSITIVE_INFINITY
   };
 };
 
-const measureTileMaze = (tiles: MazeTile[], width: number, pathIndices: number[]): MazeMetrics => {
+const measureTileMaze = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  pathIndices: ArrayLike<number>
+): MazeMetrics => {
   let deadEnds = 0;
   let junctions = 0;
   let straightSegments = 0;
   let floorTileCount = 0;
 
   for (let index = 0; index < tiles.length; index += 1) {
-    if (!tiles[index].floor) {
+    if (!isTileFloor(tiles, index)) {
       continue;
     }
 
     floorTileCount += 1;
-    const degree = countOpenFloorNeighbors(tiles, index);
+    const degree = countOpenFloorNeighbors(tiles, width, height, index);
     if (degree === 1) {
       deadEnds += 1;
     } else if (degree >= 3) {
@@ -350,37 +364,34 @@ const measureTileMaze = (tiles: MazeTile[], width: number, pathIndices: number[]
   };
 };
 
-const toRasterPoint = (point: Point): Point => ({
-  x: point.x * 2,
-  y: point.y * 2
-});
+const countOpenFloorNeighbors = (tiles: Uint8Array, width: number, height: number, index: number): number => {
+  let count = 0;
 
-const visitOpenFloorNeighbors = (tiles: MazeTile[], index: number, visit: (next: number) => void): void => {
-  for (const neighbor of tiles[index].neighbors) {
-    if (neighbor !== -1 && tiles[neighbor].floor) {
-      visit(neighbor);
+  for (let direction = 0; direction < 4; direction += 1) {
+    const neighbor = getNeighborIndex(index, width, height, direction as 0 | 1 | 2 | 3);
+    if (neighbor !== -1 && isTileFloor(tiles, neighbor)) {
+      count += 1;
     }
   }
-};
 
-const countOpenFloorNeighbors = (tiles: MazeTile[], index: number): number => {
-  let count = 0;
-  visitOpenFloorNeighbors(tiles, index, () => {
-    count += 1;
-  });
   return count;
 };
 
-const reconstructTilePath = (cameFrom: Int32Array, endIndex: number): number[] => {
-  const path: number[] = [];
+const reconstructTilePath = (cameFrom: Int32Array, endIndex: number): PathBuffer => {
+  let length = 0;
   let cursor = endIndex;
 
   while (cursor >= 0) {
-    path.push(cursor);
+    length += 1;
     cursor = cameFrom[cursor];
   }
 
-  path.reverse();
+  const path = new Uint32Array(length);
+  cursor = endIndex;
+  for (let writeIndex = length - 1; writeIndex >= 0; writeIndex -= 1) {
+    path[writeIndex] = cursor;
+    cursor = cameFrom[cursor];
+  }
   return path;
 };
 
@@ -390,7 +401,11 @@ const normalizeLogicalSize = (targetScale: number): number => Math.max(4, Math.f
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const heuristic = (a: Point, b: Point): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const heuristicIndex = (index: number, goalX: number, goalY: number, width: number): number => {
+  const x = xFromIndex(index, width);
+  const y = yFromIndex(index, width);
+  return Math.abs(x - goalX) + Math.abs(y - goalY);
+};
 
 const passesRasterQualityGate = (metrics: MazeMetrics, minSolutionLength: number): boolean => (
   metrics.solutionLength >= minSolutionLength
@@ -407,57 +422,98 @@ const getSolveScratch = (size: number): SolveScratch => {
   const scratch: SolveScratch = {
     cameFrom: new Int32Array(size),
     gScore: new Float64Array(size),
-    closed: new Uint8Array(size),
-    heap: new MinHeap<{ index: number; f: number; g: number }>((a, b) => a.f - b.f || a.g - b.g)
+    gScoreEpoch: new Uint32Array(size),
+    closedEpoch: new Uint32Array(size),
+    heap: new MinHeap(size),
+    epoch: 0
   };
   solveScratchCache.set(size, scratch);
   return scratch;
 };
 
-class MinHeap<T> {
-  private readonly data: T[] = [];
+const nextEpoch = (scratch: SolveScratch): number => {
+  scratch.epoch += 1;
+  if (scratch.epoch !== 0) {
+    return scratch.epoch;
+  }
 
-  public constructor(private readonly compare: (a: T, b: T) => number) {}
+  scratch.gScoreEpoch.fill(0);
+  scratch.closedEpoch.fill(0);
+  scratch.epoch = 1;
+  return scratch.epoch;
+};
 
-  public get size(): number {
-    return this.data.length;
+class MinHeap {
+  private indices: Uint32Array;
+  private fScores: Float64Array;
+  private gScores: Float64Array;
+  private sizeValue = 0;
+
+  public currentIndex = 0;
+
+  public constructor(capacity: number) {
+    this.indices = new Uint32Array(Math.max(4, capacity));
+    this.fScores = new Float64Array(Math.max(4, capacity));
+    this.gScores = new Float64Array(Math.max(4, capacity));
   }
 
   public clear(): void {
-    this.data.length = 0;
+    this.sizeValue = 0;
   }
 
-  public push(value: T): void {
-    this.data.push(value);
-    this.bubbleUp(this.data.length - 1);
+  public push(index: number, g: number, f: number): void {
+    this.ensureCapacity(this.sizeValue + 1);
+    let cursor = this.sizeValue;
+    this.sizeValue += 1;
+    this.indices[cursor] = index;
+    this.gScores[cursor] = g;
+    this.fScores[cursor] = f;
+    this.bubbleUp(cursor);
   }
 
-  public pop(): T | undefined {
-    if (this.data.length === 0) {
-      return undefined;
-    }
-    if (this.data.length === 1) {
-      return this.data.pop();
+  public pop(): boolean {
+    if (this.sizeValue === 0) {
+      return false;
     }
 
-    const top = this.data[0];
-    const last = this.data.pop();
-    if (last === undefined) {
-      return top;
+    this.currentIndex = this.indices[0];
+    this.sizeValue -= 1;
+    if (this.sizeValue > 0) {
+      this.indices[0] = this.indices[this.sizeValue];
+      this.gScores[0] = this.gScores[this.sizeValue];
+      this.fScores[0] = this.fScores[this.sizeValue];
+      this.bubbleDown(0);
     }
 
-    this.data[0] = last;
-    this.bubbleDown(0);
-    return top;
+    return true;
+  }
+
+  private ensureCapacity(size: number): void {
+    if (size <= this.indices.length) {
+      return;
+    }
+
+    const nextCapacity = Math.max(size, this.indices.length * 2);
+    const nextIndices = new Uint32Array(nextCapacity);
+    nextIndices.set(this.indices);
+    this.indices = nextIndices;
+
+    const nextGScores = new Float64Array(nextCapacity);
+    nextGScores.set(this.gScores);
+    this.gScores = nextGScores;
+
+    const nextFScores = new Float64Array(nextCapacity);
+    nextFScores.set(this.fScores);
+    this.fScores = nextFScores;
   }
 
   private bubbleUp(index: number): void {
     while (index > 0) {
       const parent = Math.floor((index - 1) / 2);
-      if (this.compare(this.data[index], this.data[parent]) >= 0) {
+      if (this.compare(index, parent) >= 0) {
         break;
       }
-      [this.data[index], this.data[parent]] = [this.data[parent], this.data[index]];
+      this.swap(index, parent);
       index = parent;
     }
   }
@@ -468,18 +524,32 @@ class MinHeap<T> {
       const right = left + 1;
       let smallest = index;
 
-      if (left < this.data.length && this.compare(this.data[left], this.data[smallest]) < 0) {
+      if (left < this.sizeValue && this.compare(left, smallest) < 0) {
         smallest = left;
       }
-      if (right < this.data.length && this.compare(this.data[right], this.data[smallest]) < 0) {
+      if (right < this.sizeValue && this.compare(right, smallest) < 0) {
         smallest = right;
       }
       if (smallest === index) {
         break;
       }
 
-      [this.data[index], this.data[smallest]] = [this.data[smallest], this.data[index]];
+      this.swap(index, smallest);
       index = smallest;
     }
+  }
+
+  private compare(a: number, b: number): number {
+    const fDelta = this.fScores[a] - this.fScores[b];
+    if (fDelta !== 0) {
+      return fDelta;
+    }
+    return this.gScores[a] - this.gScores[b];
+  }
+
+  private swap(a: number, b: number): void {
+    [this.indices[a], this.indices[b]] = [this.indices[b], this.indices[a]];
+    [this.gScores[a], this.gScores[b]] = [this.gScores[b], this.gScores[a]];
+    [this.fScores[a], this.fScores[b]] = [this.fScores[b], this.fScores[a]];
   }
 }

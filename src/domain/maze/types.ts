@@ -1,23 +1,13 @@
-export type NeighborTuple = readonly [top: number, bottom: number, left: number, right: number];
-
 export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
-
-export interface MazeTile {
-  floor: boolean;
-  path: boolean;
-  end: boolean;
-  neighbors: NeighborTuple;
-}
-
-export interface MazeCell {
-  walls: number;
-}
+export type TileBuffer = Uint8Array;
+export type PathBuffer = Uint32Array;
+export type MazeCells = Uint8Array;
 
 export interface MazeCore {
   width: number;
   height: number;
-  cells: MazeCell[];
+  cells: MazeCells;
   start: Point;
   goal: Point;
   seed: number;
@@ -47,7 +37,7 @@ export interface MazeBuildOptions {
 
 export interface MazeSolveResult {
   found: boolean;
-  path: Point[];
+  pathIndices: PathBuffer;
   visited: number;
   expanded: number;
   cost: number;
@@ -77,8 +67,8 @@ export interface TileBoard {
   width: number;
   height: number;
   scale: number;
-  tiles: MazeTile[];
-  pathIndices: number[];
+  tiles: TileBuffer;
+  pathIndices: PathBuffer;
   startIndex: number;
   endIndex: number;
   playableWidth: number;

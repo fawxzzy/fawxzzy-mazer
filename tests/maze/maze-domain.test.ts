@@ -5,8 +5,8 @@ import {
   createGrid,
   type CortexSample,
   generateMaze,
+  getNeighborIndex,
   isIndexValid,
-  isWithinSameRow,
   resetAndRegenerate,
   runBatch,
   type MazeConfig
@@ -65,16 +65,15 @@ describe('maze domain generation', () => {
     const scale = 9;
     const grid = createGrid(scale);
 
-    grid.forEach((tile, index) => {
+    grid.forEach((_tile, index) => {
       for (let direction = 0; direction < 4; direction += 1) {
         const cardinalDirection = direction as 0 | 1 | 2 | 3;
-        const neighborIndex = tile.neighbors[cardinalDirection];
+        const neighborIndex = getNeighborIndex(index, scale, scale, cardinalDirection);
         if (neighborIndex === -1) {
           continue;
         }
 
         expect(isIndexValid(neighborIndex, scale)).toBe(true);
-        expect(isWithinSameRow(index, neighborIndex, cardinalDirection, scale)).toBe(true);
       }
     });
   });

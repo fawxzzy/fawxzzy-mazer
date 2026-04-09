@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
-import { pointFromIndex } from '../domain/maze';
+import { isTileFloor, xFromIndex, yFromIndex } from '../domain/maze';
 import { palette } from './palette';
 
 export interface BoardLayout {
@@ -106,22 +106,12 @@ export class BoardRenderer {
     this.episode = episode;
   }
 
-  private tileMetrics(index: number): {
-    tileX: number;
-    tileY: number;
-    centerX: number;
-    centerY: number;
-  } {
-    const { boardX, boardY, tileSize } = this.layout;
-    const { x, y } = pointFromIndex(index, this.episode.raster.width);
-    const tileX = boardX + x * tileSize;
-    const tileY = boardY + y * tileSize;
-    return {
-      tileX,
-      tileY,
-      centerX: tileX + tileSize / 2,
-      centerY: tileY + tileSize / 2
-    };
+  private tileX(index: number): number {
+    return this.layout.boardX + (xFromIndex(index, this.episode.raster.width) * this.layout.tileSize);
+  }
+
+  private tileY(index: number): number {
+    return this.layout.boardY + (yFromIndex(index, this.episode.raster.width) * this.layout.tileSize);
   }
 
   private drawTileBrackets(
@@ -277,10 +267,11 @@ export class BoardRenderer {
     this.base.clear();
     this.grid.clear();
 
-    this.episode.raster.tiles.forEach((tile, index) => {
-      const { tileX: x, tileY: y } = this.tileMetrics(index);
+    for (let index = 0; index < this.episode.raster.tiles.length; index += 1) {
+      const x = this.tileX(index);
+      const y = this.tileY(index);
 
-      if (tile.floor) {
+      if (isTileFloor(this.episode.raster.tiles, index)) {
         this.base.fillStyle(palette.board.path, legacyTuning.board.tile.floorOuterAlpha);
         this.base.fillRect(x, y, tileSize, tileSize);
 
@@ -312,7 +303,7 @@ export class BoardRenderer {
         this.grid.lineStyle(1, palette.board.shadow, legacyTuning.board.tile.wallGridAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
       }
-    });
+    }
   }
 
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
@@ -320,7 +311,10 @@ export class BoardRenderer {
     const now = this.scene.time.now;
     this.goal.clear();
 
-    const { centerX, centerY, tileX, tileY } = this.tileMetrics(this.episode.raster.endIndex);
+    const tileX = this.tileX(this.episode.raster.endIndex);
+    const tileY = this.tileY(this.episode.raster.endIndex);
+    const centerX = tileX + tileSize / 2;
+    const centerY = tileY + tileSize / 2;
     const haloSize = tileSize * 0.92;
     const cueBoost = cue === 'goal'
       ? 1.34
@@ -416,7 +410,7 @@ export class BoardRenderer {
     this.drawTileBrackets(this.goal, tileX, tileY, tileSize, bracketInset, bracketLength);
   }
 
-  public drawTrail(trail: ReadonlyArray<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
+  public drawTrail(trail: ArrayLike<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
     const { tileSize } = this.layout;
     const cue = options.cue ?? 'explore';
     const now = this.scene.time.now;
@@ -445,7 +439,10 @@ export class BoardRenderer {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
       const mode = typeof step === 'number' ? 'explore' : step.mode;
-      const { tileX, tileY, centerX, centerY } = this.tileMetrics(index);
+      const tileX = this.tileX(index);
+      const tileY = this.tileY(index);
+      const centerX = tileX + tileSize / 2;
+      const centerY = tileY + tileSize / 2;
       const t = trailLength <= 1 ? 1 : i / (trailLength - 1);
       const isHead = i === headIndex;
       const isBacktrack = mode === 'backtrack';
@@ -574,7 +571,10 @@ export class BoardRenderer {
       && cue !== 'spawn'
       && cue !== 'goal'
       && cue !== 'reset') {
-      const { tileX: targetX, tileY: targetY, centerX: targetCenterX, centerY: targetCenterY } = this.tileMetrics(options.targetIndex);
+      const targetX = this.tileX(options.targetIndex);
+      const targetY = this.tileY(options.targetIndex);
+      const targetCenterX = targetX + tileSize / 2;
+      const targetCenterY = targetY + tileSize / 2;
       const bracketInset = tileSize * legacyTuning.board.trail.targetBracketInsetRatio;
       const bracketLength = tileSize * legacyTuning.board.trail.targetBracketLengthRatio;
       const signalColor = cue === 'dead-end' ? palette.board.goal : palette.board.topHighlight;
@@ -601,7 +601,8 @@ export class BoardRenderer {
     if (cue === 'dead-end' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const { tileX: headX, tileY: headY } = this.tileMetrics(headIndexValue);
+      const headX = this.tileX(headIndexValue);
+      const headY = this.tileY(headIndexValue);
       const pulseInset = tileSize * 0.14;
       this.signal.lineStyle(Math.max(1, tileSize * 0.045), palette.board.goal, 0.42 + (targetPulse * 0.26));
       this.signal.strokeRect(
@@ -625,7 +626,8 @@ export class BoardRenderer {
     } else if (cue === 'anticipate' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
-      const { tileX: headX, tileY: headY } = this.tileMetrics(headIndexValue);
+      const headX = this.tileX(headIndexValue);
+      const headY = this.tileY(headIndexValue);
       const pulseInset = tileSize * 0.18;
       this.signal.lineStyle(Math.max(1, tileSize * 0.035), palette.board.topHighlight, 0.28 + (targetPulse * 0.18));
       this.signal.strokeRect(
@@ -640,7 +642,10 @@ export class BoardRenderer {
   public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null, cue: DemoWalkerCue = 'explore'): void {
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
-    const { tileX, tileY, centerX, centerY } = this.tileMetrics(index);
+    const tileX = this.tileX(index);
+    const tileY = this.tileY(index);
+    const centerX = tileX + tileSize / 2;
+    const centerY = tileY + tileSize / 2;
     const actorTuning = legacyTuning.board.actor;
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
     const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];
@@ -764,6 +769,7 @@ export class BoardRenderer {
 
   public destroy(): void {
     this.ambientTween?.remove();
+    this.ambientTween = undefined;
     this.scene.tweens.killTweensOf(this.ambientContainer);
     this.chromeBack.destroy();
     this.base.destroy();
