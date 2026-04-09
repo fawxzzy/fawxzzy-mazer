@@ -24,6 +24,7 @@ const formatTime = (elapsedMs: number): string => {
 
 const demoCueLabels: Record<DemoWalkerCue, string> = {
   spawn: 'LIVE DEMO: SCANNING',
+  anticipate: 'LIVE DEMO: LOCKING IN',
   explore: 'LIVE DEMO: EXPLORING',
   'dead-end': 'LIVE DEMO: DEAD END',
   backtrack: 'LIVE DEMO: BACKTRACK',
@@ -34,6 +35,7 @@ const demoCueLabels: Record<DemoWalkerCue, string> = {
 
 const demoCueColors: Record<DemoWalkerCue, number> = {
   spawn: palette.hud.accent,
+  anticipate: palette.board.topHighlight,
   explore: palette.hud.timerText,
   'dead-end': palette.hud.goalText,
   backtrack: palette.board.topHighlight,

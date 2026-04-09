@@ -66,9 +66,21 @@ const createTrailCapMaze = (): MazeBuildResult => buildMaze([
 ], 0, 5);
 
 describe('demo walker', () => {
-  test('matches legacy direct-move selection and preserves alternate branches', () => {
+  test('stages a brief anticipation beat before branch commits without changing branch selection', () => {
     const maze = createBranchChoiceMaze();
-    const advance = advanceDemoWalker(maze, createDemoWalkerState(maze));
+    let advance = advanceDemoWalker(maze, createDemoWalkerState(maze));
+
+    expect(advance.delayMs).toBe(112);
+    expect(advance.state.currentIndex).toBe(0);
+    expect(advance.state.phase).toBe('anticipate');
+    expect(advance.state.targetIndex).toBe(1);
+    expect(advance.state.queuedIndex).toBe(1);
+    expect(advance.state.potentialBranchIndices).toEqual([5]);
+    expect(advance.state.visited).toEqual(new Set());
+    expect(advance.state.cue).toBe('anticipate');
+    expect(advance.state.trailSteps).toEqual([{ index: 0, mode: 'explore' }]);
+
+    advance = advanceDemoWalker(maze, advance.state);
 
     expect(advance.delayMs).toBe(104);
     expect(advance.state.currentIndex).toBe(1);
@@ -95,7 +107,10 @@ describe('demo walker', () => {
       ],
       visited: new Set([1, 3]),
       pathStackIndices: [1, 3],
-      potentialBranchIndices: [2]
+      potentialBranchIndices: [2],
+      queuedIndex: null,
+      queuedMode: null,
+      queuedDirection: null
     };
 
     let advance = advanceDemoWalker(maze, state);
@@ -121,7 +136,16 @@ describe('demo walker', () => {
     expect(state.phase).toBe('explore');
     expect(state.currentIndex).toBe(1);
     expect(state.cue).toBe('reacquire');
+    expect(state.targetIndex).toBe(2);
     expect(state.trailSteps.at(-1)).toEqual({ index: 1, mode: 'backtrack' });
+
+    advance = advanceDemoWalker(maze, state);
+    state = advance.state;
+    expect(advance.delayMs).toBe(84);
+    expect(state.currentIndex).toBe(1);
+    expect(state.phase).toBe('anticipate');
+    expect(state.cue).toBe('anticipate');
+    expect(state.targetIndex).toBe(2);
 
     state = advanceDemoWalker(maze, state).state;
     expect(state.currentIndex).toBe(2);
@@ -145,7 +169,10 @@ describe('demo walker', () => {
       phase: 'backtrack',
       pathStackIndices: [],
       potentialBranchIndices: [],
-      logicSwitch: true
+      logicSwitch: true,
+      queuedIndex: null,
+      queuedMode: null,
+      queuedDirection: null
     };
     const nextState = advanceDemoWalker(maze, state).state;
 
@@ -175,7 +202,10 @@ describe('demo walker', () => {
       visited: new Set([1, 3]),
       pathStackIndices: [1, 3],
       potentialBranchIndices: [2],
-      logicSwitch: true
+      logicSwitch: true,
+      queuedIndex: null,
+      queuedMode: null,
+      queuedDirection: null
     };
     const nextState = advanceDemoWalker(maze, state).state;
 
@@ -219,6 +249,8 @@ describe('demo walker', () => {
           exploreStepMs: 1,
           backtrackStepMs: 1,
           decisionPauseMs: 1,
+          anticipationStepMs: 1,
+          branchCommitMs: 1,
           branchResumeMs: 1,
           goalHoldMs: 1,
           resetHoldMs: 1

@@ -23,6 +23,20 @@ export interface BoardCueOptions {
   targetIndex?: number | null;
 }
 
+const ACTOR_DIRECTION_OFFSETS = [
+  { x: 0, y: -1 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 }
+] as const;
+
+const ACTOR_PERPENDICULAR_OFFSETS = [
+  { x: 1, y: 0 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: 0, y: 1 }
+] as const;
+
 export const createBoardLayout = (
   scene: Phaser.Scene,
   maze: MazeBuildResult,
@@ -74,6 +88,34 @@ export class BoardRenderer {
     this.actor = this.scene.add.graphics();
     this.chromeFront = this.scene.add.graphics();
     this.ambientContainer.add([this.chromeBack, this.base, this.grid, this.goal, this.signal, this.trail, this.actor, this.chromeFront]);
+  }
+
+  private drawTileBrackets(
+    graphics: Phaser.GameObjects.Graphics,
+    tileX: number,
+    tileY: number,
+    tileSize: number,
+    inset: number,
+    length: number
+  ): void {
+    graphics.lineBetween(tileX + inset, tileY + inset, tileX + inset + length, tileY + inset);
+    graphics.lineBetween(tileX + inset, tileY + inset, tileX + inset, tileY + inset + length);
+    graphics.lineBetween(tileX + tileSize - inset, tileY + inset, tileX + tileSize - inset - length, tileY + inset);
+    graphics.lineBetween(tileX + tileSize - inset, tileY + inset, tileX + tileSize - inset, tileY + inset + length);
+    graphics.lineBetween(tileX + inset, tileY + tileSize - inset, tileX + inset + length, tileY + tileSize - inset);
+    graphics.lineBetween(tileX + inset, tileY + tileSize - inset, tileX + inset, tileY + tileSize - inset - length);
+    graphics.lineBetween(
+      tileX + tileSize - inset,
+      tileY + tileSize - inset,
+      tileX + tileSize - inset - length,
+      tileY + tileSize - inset
+    );
+    graphics.lineBetween(
+      tileX + tileSize - inset,
+      tileY + tileSize - inset,
+      tileX + tileSize - inset,
+      tileY + tileSize - inset - length
+    );
   }
 
   public drawBoardChrome(): void {
@@ -252,11 +294,15 @@ export class BoardRenderer {
     const tileY = boardY + goalTile.y * tileSize;
     const haloSize = tileSize * 0.92;
     const cueBoost = cue === 'goal'
-      ? 1.22
+      ? 1.34
+      : cue === 'anticipate'
+        ? 1.12
       : cue === 'reacquire'
-        ? 1.08
+        ? 1.18
         : cue === 'dead-end'
           ? 0.94
+          : cue === 'reset'
+            ? 0.88
           : 1;
     const pulse = legacyTuning.board.goalPulse.basePulse
       + (Math.sin(now * legacyTuning.board.goalPulse.waveSpeed) * legacyTuning.board.goalPulse.waveAmplitude * cueBoost);
@@ -264,6 +310,7 @@ export class BoardRenderer {
     const bracketInset = tileSize * legacyTuning.board.goalPulse.reticleInsetRatio;
     const bracketLength = tileSize * 0.18;
     const beaconRadius = tileSize * legacyTuning.board.goalPulse.beaconRadiusRatio * cueBoost;
+    const sweepPulse = 0.76 + (Math.sin((now * legacyTuning.board.goalPulse.waveSpeed * 0.34) + 1.3) * 0.24);
 
     this.goal.fillStyle(palette.board.goal, 0.16 * pulse);
     this.goal.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
@@ -298,6 +345,14 @@ export class BoardRenderer {
     );
     this.goal.strokeCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.ringRadiusRatio);
 
+    this.goal.lineStyle(Math.max(1, tileSize * 0.03), palette.board.goalCore, 0.28 * cueBoost * sweepPulse);
+    this.goal.strokeRect(
+      centerX - tileSize * legacyTuning.board.goalPulse.outerRingRadiusRatio * sweepPulse,
+      centerY - tileSize * legacyTuning.board.goalPulse.outerRingRadiusRatio * sweepPulse,
+      tileSize * legacyTuning.board.goalPulse.outerRingRadiusRatio * sweepPulse * 2,
+      tileSize * legacyTuning.board.goalPulse.outerRingRadiusRatio * sweepPulse * 2
+    );
+
     this.goal.lineStyle(1, palette.board.goal, legacyTuning.board.goalPulse.outerRingAlpha * pulse);
     this.goal.strokeCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.outerRingRadiusRatio);
     this.goal.lineStyle(Math.max(1, tileSize * 0.03), palette.board.goal, legacyTuning.board.goalPulse.outerRingAlpha * 0.72 * pulse);
@@ -329,14 +384,7 @@ export class BoardRenderer {
     );
 
     this.goal.lineStyle(Math.max(1, tileSize * 0.045), palette.board.goalCore, 0.7 * pulse);
-    this.goal.lineBetween(tileX + bracketInset, tileY + bracketInset, tileX + bracketInset + bracketLength, tileY + bracketInset);
-    this.goal.lineBetween(tileX + bracketInset, tileY + bracketInset, tileX + bracketInset, tileY + bracketInset + bracketLength);
-    this.goal.lineBetween(tileX + tileSize - bracketInset, tileY + bracketInset, tileX + tileSize - bracketInset - bracketLength, tileY + bracketInset);
-    this.goal.lineBetween(tileX + tileSize - bracketInset, tileY + bracketInset, tileX + tileSize - bracketInset, tileY + bracketInset + bracketLength);
-    this.goal.lineBetween(tileX + bracketInset, tileY + tileSize - bracketInset, tileX + bracketInset + bracketLength, tileY + tileSize - bracketInset);
-    this.goal.lineBetween(tileX + bracketInset, tileY + tileSize - bracketInset, tileX + bracketInset, tileY + tileSize - bracketInset - bracketLength);
-    this.goal.lineBetween(tileX + tileSize - bracketInset, tileY + tileSize - bracketInset, tileX + tileSize - bracketInset - bracketLength, tileY + tileSize - bracketInset);
-    this.goal.lineBetween(tileX + tileSize - bracketInset, tileY + tileSize - bracketInset, tileX + tileSize - bracketInset, tileY + tileSize - bracketInset - bracketLength);
+    this.drawTileBrackets(this.goal, tileX, tileY, tileSize, bracketInset, bracketLength);
   }
 
   public drawTrail(trail: ReadonlyArray<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
@@ -347,28 +395,18 @@ export class BoardRenderer {
     this.signal.clear();
     let previousCenterX = 0;
     let previousCenterY = 0;
+    let headCenterX = 0;
+    let headCenterY = 0;
     const headIndex = trail.length - 1;
     const headPulse = 1 + (Math.sin(now * 0.008) * legacyTuning.board.trail.headPulseAmplitude);
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
-
-    if (options.targetIndex !== null && options.targetIndex !== undefined && cue !== 'explore' && cue !== 'spawn' && cue !== 'goal' && cue !== 'reset') {
-      const targetTile = this.maze.tiles[options.targetIndex];
-      const targetX = boardX + targetTile.x * tileSize;
-      const targetY = boardY + targetTile.y * tileSize;
-      const bracketInset = tileSize * legacyTuning.board.trail.targetBracketInsetRatio;
-      const bracketLength = tileSize * legacyTuning.board.trail.targetBracketLengthRatio;
-      this.signal.fillStyle(palette.board.topHighlight, legacyTuning.board.trail.targetTileAlpha * targetPulse);
-      this.signal.fillRect(targetX + 1, targetY + 1, tileSize - 2, tileSize - 2);
-      this.signal.lineStyle(Math.max(1, tileSize * 0.04), palette.board.topHighlight, legacyTuning.board.trail.targetBracketAlpha * targetPulse);
-      this.signal.lineBetween(targetX + bracketInset, targetY + bracketInset, targetX + bracketInset + bracketLength, targetY + bracketInset);
-      this.signal.lineBetween(targetX + bracketInset, targetY + bracketInset, targetX + bracketInset, targetY + bracketInset + bracketLength);
-      this.signal.lineBetween(targetX + tileSize - bracketInset, targetY + bracketInset, targetX + tileSize - bracketInset - bracketLength, targetY + bracketInset);
-      this.signal.lineBetween(targetX + tileSize - bracketInset, targetY + bracketInset, targetX + tileSize - bracketInset, targetY + bracketInset + bracketLength);
-      this.signal.lineBetween(targetX + bracketInset, targetY + tileSize - bracketInset, targetX + bracketInset + bracketLength, targetY + tileSize - bracketInset);
-      this.signal.lineBetween(targetX + bracketInset, targetY + tileSize - bracketInset, targetX + bracketInset, targetY + tileSize - bracketInset - bracketLength);
-      this.signal.lineBetween(targetX + tileSize - bracketInset, targetY + tileSize - bracketInset, targetX + tileSize - bracketInset - bracketLength, targetY + tileSize - bracketInset);
-      this.signal.lineBetween(targetX + tileSize - bracketInset, targetY + tileSize - bracketInset, targetX + tileSize - bracketInset, targetY + tileSize - bracketInset - bracketLength);
-    }
+    const cueHeadBoost = cue === 'anticipate'
+      ? 0.18
+      : cue === 'reacquire'
+        ? 0.12
+        : cue === 'goal'
+          ? 0.16
+          : 0;
 
     for (let i = 0; i < trail.length; i += 1) {
       const step = trail[i];
@@ -403,7 +441,7 @@ export class BoardRenderer {
         2,
         tileSize * (
           isHead
-            ? legacyTuning.board.trail.headRadiusRatio * headPulse
+            ? legacyTuning.board.trail.headRadiusRatio * (headPulse + cueHeadBoost)
             : isBacktrack
               ? legacyTuning.board.trail.backtrackNodeRadiusRatio
               : legacyTuning.board.trail.nodeRadiusRatio
@@ -420,6 +458,10 @@ export class BoardRenderer {
           ? palette.board.innerStroke
           : palette.board.trailGlow;
       const segmentFillColor = isGoalStep ? palette.board.goal : palette.board.trail;
+      if (isHead) {
+        headCenterX = centerX;
+        headCenterY = centerY;
+      }
 
       if (isBacktrack) {
         this.trail.fillStyle(segmentGlowColor, legacyTuning.board.trail.backtrackGlowAlpha * glowAlpha);
@@ -436,6 +478,8 @@ export class BoardRenderer {
           tileSize - cellInset * 2,
           tileSize - cellInset * 2
         );
+        this.trail.lineStyle(Math.max(1, tileSize * 0.03), segmentCoreColor, alpha * 0.84);
+        this.trail.lineBetween(centerX - nodeRadius, centerY - nodeRadius, centerX + nodeRadius, centerY + nodeRadius);
       } else {
         this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.92 : 0.76));
         this.trail.fillRect(
@@ -493,6 +537,40 @@ export class BoardRenderer {
       previousCenterY = centerY;
     }
 
+    if (options.targetIndex !== null
+      && options.targetIndex !== undefined
+      && cue !== 'explore'
+      && cue !== 'spawn'
+      && cue !== 'goal'
+      && cue !== 'reset') {
+      const targetTile = this.maze.tiles[options.targetIndex];
+      const targetX = boardX + targetTile.x * tileSize;
+      const targetY = boardY + targetTile.y * tileSize;
+      const targetCenterX = targetX + tileSize / 2;
+      const targetCenterY = targetY + tileSize / 2;
+      const bracketInset = tileSize * legacyTuning.board.trail.targetBracketInsetRatio;
+      const bracketLength = tileSize * legacyTuning.board.trail.targetBracketLengthRatio;
+      const signalColor = cue === 'dead-end' ? palette.board.goal : palette.board.topHighlight;
+      const lineAlpha = cue === 'anticipate'
+        ? 0.44 + (targetPulse * 0.22)
+        : cue === 'reacquire'
+          ? 0.38 + (targetPulse * 0.2)
+          : 0.26 + (targetPulse * 0.18);
+
+      this.signal.lineStyle(Math.max(1, tileSize * 0.035), signalColor, lineAlpha);
+      this.signal.lineBetween(headCenterX, headCenterY, targetCenterX, targetCenterY);
+      this.signal.fillStyle(signalColor, legacyTuning.board.trail.targetTileAlpha * targetPulse);
+      this.signal.fillRect(targetX + 1, targetY + 1, tileSize - 2, tileSize - 2);
+      this.signal.fillStyle(signalColor, 0.18 + (targetPulse * 0.18));
+      this.signal.fillCircle(targetCenterX, targetCenterY, tileSize * 0.18);
+      this.signal.lineStyle(
+        Math.max(1, tileSize * (cue === 'anticipate' ? 0.05 : 0.04)),
+        signalColor,
+        legacyTuning.board.trail.targetBracketAlpha * targetPulse
+      );
+      this.drawTileBrackets(this.signal, targetX, targetY, tileSize, bracketInset, bracketLength);
+    }
+
     if (cue === 'dead-end' && trail[headIndex]) {
       const headStep = trail[headIndex];
       const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
@@ -504,6 +582,30 @@ export class BoardRenderer {
       this.signal.strokeRect(
         headX + pulseInset,
         headY + pulseInset,
+        tileSize - (pulseInset * 2),
+        tileSize - (pulseInset * 2)
+      );
+      this.signal.lineBetween(
+        headX + pulseInset,
+        headY + pulseInset,
+        headX + tileSize - pulseInset,
+        headY + tileSize - pulseInset
+      );
+      this.signal.lineBetween(
+        headX + tileSize - pulseInset,
+        headY + pulseInset,
+        headX + pulseInset,
+        headY + tileSize - pulseInset
+      );
+    } else if (cue === 'anticipate' && trail[headIndex]) {
+      const headStep = trail[headIndex];
+      const headIndexValue = typeof headStep === 'number' ? headStep : headStep.index;
+      const headTile = this.maze.tiles[headIndexValue];
+      const pulseInset = tileSize * 0.18;
+      this.signal.lineStyle(Math.max(1, tileSize * 0.035), palette.board.topHighlight, 0.28 + (targetPulse * 0.18));
+      this.signal.strokeRect(
+        boardX + headTile.x * tileSize + pulseInset,
+        boardY + headTile.y * tileSize + pulseInset,
         tileSize - (pulseInset * 2),
         tileSize - (pulseInset * 2)
       );
@@ -520,74 +622,90 @@ export class BoardRenderer {
     const centerY = boardY + tile.y * tileSize + (tileSize / 2);
     const actorTuning = legacyTuning.board.actor;
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
+    const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];
+    const perpendicular = direction === null ? null : ACTOR_PERPENDICULAR_OFFSETS[direction];
+    const nudgeRatio = cue === 'anticipate'
+      ? actorTuning.anticipationNudgeRatio
+      : cue === 'reacquire'
+        ? actorTuning.reacquireNudgeRatio
+        : 0;
+    const nudgeScale = facingVector === null ? 0 : (0.62 + (Math.sin(now * 0.012) * 0.38));
+    const bodyCenterX = centerX + ((facingVector?.x ?? 0) * tileSize * nudgeRatio * nudgeScale);
+    const bodyCenterY = centerY + ((facingVector?.y ?? 0) * tileSize * nudgeRatio * nudgeScale);
     const actorPulse = cue === 'goal'
       ? cuePulse * 1.06
+      : cue === 'anticipate'
+        ? cuePulse * 1.14
       : cue === 'reacquire'
         ? cuePulse * 1.12
         : cuePulse;
-    const haloAlpha = cue === 'backtrack' ? actorTuning.backtrackHaloAlpha : actorTuning.haloAlpha;
+    const haloAlpha = cue === 'goal'
+      ? actorTuning.goalHaloAlpha
+      : cue === 'anticipate'
+        ? actorTuning.haloAlpha + 0.08
+        : cue === 'backtrack'
+          ? actorTuning.backtrackHaloAlpha
+          : actorTuning.haloAlpha;
     const outerRingAlpha = cue === 'reacquire'
       ? actorTuning.reacquireRingAlpha
+      : cue === 'anticipate'
+        ? 0.88
       : cue === 'dead-end'
         ? actorTuning.deadEndRingAlpha
         : actorTuning.outerRingAlpha;
-    const ringColor = cue === 'backtrack' ? palette.board.topHighlight : palette.board.player;
-    const pointerColor = cue === 'backtrack' ? palette.board.topHighlight : palette.board.playerCore;
+    const ringColor = cue === 'goal'
+      ? palette.board.goal
+      : cue === 'backtrack'
+        ? palette.board.topHighlight
+        : palette.board.player;
+    const pointerColor = cue === 'goal'
+      ? palette.board.goalCore
+      : cue === 'backtrack'
+        ? palette.board.topHighlight
+        : palette.board.playerCore;
 
     this.actor.clear();
-    this.actor.fillStyle(palette.board.player, 0.16);
+    this.actor.fillStyle(palette.board.player, cue === 'anticipate' ? 0.2 : 0.16);
     this.actor.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
     this.actor.lineStyle(Math.max(1, tileSize * 0.05), palette.board.playerHalo, cue === 'dead-end' ? 0.8 : 0.66);
     this.actor.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
     this.actor.fillStyle(palette.board.playerShadow, actorTuning.shadowAlpha);
     this.actor.fillCircle(
-      centerX,
-      centerY + tileSize * actorTuning.shadowOffsetYRatio,
+      bodyCenterX,
+      bodyCenterY + tileSize * actorTuning.shadowOffsetYRatio,
       tileSize * actorTuning.shadowRadiusRatio
     );
 
     this.actor.fillStyle(palette.board.playerHalo, haloAlpha);
-    this.actor.fillCircle(centerX, centerY, tileSize * actorTuning.haloRadiusRatio * actorPulse);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.haloRadiusRatio * actorPulse);
 
     this.actor.fillStyle(palette.board.playerCore, 1);
-    this.actor.fillCircle(centerX, centerY, tileSize * actorTuning.coreRadiusRatio);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio);
 
     this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), ringColor, cue === 'backtrack' ? 0.86 : 0.95);
-    this.actor.strokeCircle(centerX, centerY, tileSize * actorTuning.ringRadiusRatio);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.ringRadiusRatio);
     this.actor.lineStyle(Math.max(1, tileSize * 0.03), pointerColor, outerRingAlpha);
-    this.actor.strokeCircle(centerX, centerY, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
 
     this.actor.fillStyle(palette.board.playerHalo, 0.85);
     this.actor.fillCircle(
-      centerX - tileSize * actorTuning.highlightOffsetRatio,
-      centerY - tileSize * actorTuning.highlightOffsetRatio,
+      bodyCenterX - tileSize * actorTuning.highlightOffsetRatio,
+      bodyCenterY - tileSize * actorTuning.highlightOffsetRatio,
       tileSize * actorTuning.highlightRadiusRatio
     );
 
-    if (direction !== null) {
+    if (direction !== null && facingVector !== null && perpendicular !== null) {
       const offset = tileSize * actorTuning.pointerOffsetRatio;
-      const directionOffsets = [
-        { x: 0, y: -offset },
-        { x: 0, y: offset },
-        { x: -offset, y: 0 },
-        { x: offset, y: 0 }
-      ] as const;
-      const perpendicularOffsets = [
-        { x: 1, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: 0, y: 1 }
-      ] as const;
-      const facing = directionOffsets[direction];
-      const perpendicular = perpendicularOffsets[direction];
-      const tipX = centerX + (facing.x * tileSize * actorTuning.pointerLengthRatio);
-      const tipY = centerY + (facing.y * tileSize * actorTuning.pointerLengthRatio);
-      const baseX = centerX + facing.x;
-      const baseY = centerY + facing.y;
+      const tipX = bodyCenterX + (facingVector.x * tileSize * actorTuning.pointerLengthRatio);
+      const tipY = bodyCenterY + (facingVector.y * tileSize * actorTuning.pointerLengthRatio);
+      const baseX = bodyCenterX + (facingVector.x * offset);
+      const baseY = bodyCenterY + (facingVector.y * offset);
+      const tailX = bodyCenterX - (facingVector.x * tileSize * 0.12);
+      const tailY = bodyCenterY - (facingVector.y * tileSize * 0.12);
       const halfWidth = tileSize * actorTuning.pointerBaseWidthRatio;
 
       this.actor.lineStyle(Math.max(2, tileSize * actorTuning.pointerWidthRatio), pointerColor, 0.96);
-      this.actor.lineBetween(centerX, centerY, baseX, baseY);
+      this.actor.lineBetween(bodyCenterX, bodyCenterY, baseX, baseY);
       this.actor.fillStyle(pointerColor, 0.98);
       this.actor.fillTriangle(
         tipX,
@@ -598,12 +716,16 @@ export class BoardRenderer {
         baseY - (perpendicular.y * halfWidth)
       );
       this.actor.fillCircle(baseX, baseY, tileSize * actorTuning.pointerRadiusRatio);
+      this.actor.lineStyle(Math.max(1, tileSize * 0.03), pointerColor, cue === 'anticipate' ? 0.68 : 0.34);
+      this.actor.lineBetween(bodyCenterX, bodyCenterY, tailX, tailY);
     }
 
     if (cue === 'dead-end') {
       const inset = tileSize * 0.1;
       this.actor.lineStyle(Math.max(1, tileSize * 0.04), palette.board.goal, 0.4 + (Math.sin(now * 0.012) * 0.14));
       this.actor.strokeRect(tileX + inset, tileY + inset, tileSize - (inset * 2), tileSize - (inset * 2));
+      this.actor.lineBetween(tileX + inset, tileY + inset, tileX + tileSize - inset, tileY + tileSize - inset);
+      this.actor.lineBetween(tileX + tileSize - inset, tileY + inset, tileX + inset, tileY + tileSize - inset);
     }
   }
 

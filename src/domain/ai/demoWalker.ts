@@ -6,6 +6,8 @@ export interface DemoWalkerConfig {
     exploreStepMs: number;
     backtrackStepMs: number;
     decisionPauseMs: number;
+    anticipationStepMs: number;
+    branchCommitMs: number;
     branchResumeMs: number;
     goalHoldMs: number;
     resetHoldMs: number;
@@ -26,10 +28,10 @@ export interface DemoWalkerAdvance {
   nextSeed?: number;
 }
 
-export type DemoWalkerPhase = 'explore' | 'backtrack' | 'goal-hold' | 'reset-hold';
+export type DemoWalkerPhase = 'explore' | 'anticipate' | 'backtrack' | 'goal-hold' | 'reset-hold';
 type DemoWalkerResetReason = 'goal' | 'ai-reset' | null;
 export type DemoTrailMode = 'explore' | 'backtrack' | 'goal';
-export type DemoWalkerCue = 'spawn' | 'explore' | 'dead-end' | 'backtrack' | 'reacquire' | 'goal' | 'reset';
+export type DemoWalkerCue = 'spawn' | 'anticipate' | 'explore' | 'dead-end' | 'backtrack' | 'reacquire' | 'goal' | 'reset';
 
 export interface DemoTrailStep {
   index: number;
@@ -53,6 +55,9 @@ export interface DemoWalkerState {
   logicSwitch: boolean;
   resetReason: DemoWalkerResetReason;
   cue: DemoWalkerCue;
+  queuedIndex: number | null;
+  queuedMode: DemoTrailMode | null;
+  queuedDirection: 0 | 1 | 2 | 3 | null;
 }
 
 const defaultConfig: DemoWalkerConfig = {
@@ -61,6 +66,8 @@ const defaultConfig: DemoWalkerConfig = {
     exploreStepMs: 104,
     backtrackStepMs: 76,
     decisionPauseMs: 228,
+    anticipationStepMs: 84,
+    branchCommitMs: 112,
     branchResumeMs: 148,
     goalHoldMs: 1180,
     resetHoldMs: 340
@@ -90,7 +97,10 @@ export const createDemoWalkerState = (maze: MazeBuildResult): DemoWalkerState =>
   backtrackUndoVisited: false,
   logicSwitch: false,
   resetReason: null,
-  cue: 'spawn'
+  cue: 'spawn',
+  queuedIndex: null,
+  queuedMode: null,
+  queuedDirection: null
 });
 
 const distanceToGoalSquared = (maze: MazeBuildResult, index: number): number => {
@@ -219,7 +229,10 @@ const applyAiReset = (
     backtrackUndoVisited: false,
     logicSwitch: !state.logicSwitch,
     resetReason: 'ai-reset',
-    cue: 'reset'
+    cue: 'reset',
+    queuedIndex: null,
+    queuedMode: null,
+    queuedDirection: null
   };
 };
 
@@ -236,8 +249,60 @@ const createGoalResetState = (maze: MazeBuildResult, state: DemoWalkerState): De
   backtrackUndoVisited: false,
   logicSwitch: false,
   resetReason: 'goal',
-  cue: 'goal'
+  cue: 'goal',
+  queuedIndex: null,
+  queuedMode: null,
+  queuedDirection: null
 });
+
+const commitQueuedMove = (
+  maze: MazeBuildResult,
+  state: DemoWalkerState,
+  config: DemoWalkerConfig
+): DemoWalkerAdvance | null => {
+  if (state.queuedIndex === null || state.queuedMode === null || state.queuedDirection === null) {
+    return null;
+  }
+
+  const nextVisited = new Set(state.visited);
+  nextVisited.add(state.queuedIndex);
+  const reachedGoal = state.queuedIndex === maze.endIndex;
+
+  return {
+    state: {
+      ...state,
+      currentIndex: state.queuedIndex,
+      trailIndices: appendTrailStep(
+        state.trailIndices,
+        state.queuedIndex,
+        state.currentIndex,
+        config.behavior.trailMaxLength
+      ),
+      trailSteps: appendTrailHistory(
+        state.trailSteps,
+        state.queuedIndex,
+        state.currentIndex,
+        reachedGoal ? 'goal' : state.queuedMode,
+        config.behavior.trailMaxLength
+      ),
+      visited: nextVisited,
+      reachedGoal,
+      phase: reachedGoal ? 'goal-hold' : 'explore',
+      stepsTaken: state.stepsTaken + 1,
+      lastDirection: state.queuedDirection,
+      potentialBranchIndices: removeAllInPlace([...state.potentialBranchIndices], state.queuedIndex),
+      pathStackIndices: [...state.pathStackIndices, state.queuedIndex],
+      targetIndex: null,
+      backtrackUndoVisited: false,
+      resetReason: null,
+      cue: reachedGoal ? 'goal' : 'explore',
+      queuedIndex: null,
+      queuedMode: null,
+      queuedDirection: null
+    },
+    delayMs: reachedGoal ? config.cadence.goalHoldMs : config.cadence.exploreStepMs
+  };
+};
 
 export const advanceDemoWalker = (
   maze: MazeBuildResult,
@@ -268,10 +333,20 @@ export const advanceDemoWalker = (
         reachedGoal: false,
         stepsTaken: state.stepsTaken + 1,
         resetReason: null,
-        cue: 'explore'
+        cue: 'explore',
+        queuedIndex: null,
+        queuedMode: null,
+        queuedDirection: null
       },
       delayMs: config.cadence.exploreStepMs
     };
+  }
+
+  if (state.phase === 'anticipate') {
+    const queuedMove = commitQueuedMove(maze, state, config);
+    if (queuedMove) {
+      return queuedMove;
+    }
   }
 
   if (state.phase === 'backtrack') {
@@ -309,9 +384,12 @@ export const advanceDemoWalker = (
             lastDirection: nextIndex === state.currentIndex
               ? state.lastDirection
               : resolveDirection(maze, state.currentIndex, nextIndex),
-            targetIndex: null,
+            targetIndex,
             backtrackUndoVisited: false,
-            cue: 'reacquire'
+            cue: 'reacquire',
+            queuedIndex: null,
+            queuedMode: null,
+            queuedDirection: null
           },
           delayMs: config.cadence.branchResumeMs
         };
@@ -357,7 +435,10 @@ export const advanceDemoWalker = (
           : resolveDirection(maze, state.currentIndex, nextIndex),
         pathStackIndices: state.pathStackIndices.slice(0, -1),
         backtrackUndoVisited,
-        cue: 'backtrack'
+        cue: 'backtrack',
+        queuedIndex: null,
+        queuedMode: null,
+        queuedDirection: null
       },
       delayMs: config.cadence.backtrackStepMs
     };
@@ -366,6 +447,7 @@ export const advanceDemoWalker = (
   let nextIndex: number | null = null;
   let smallestDistance = Number.POSITIVE_INFINITY;
   const potentialBranchIndices = [...state.potentialBranchIndices];
+  let validNeighborCount = 0;
 
   for (const neighborIndex of maze.tiles[state.currentIndex].neighbors) {
     if (neighborIndex === -1 || !maze.tiles[neighborIndex].path) {
@@ -377,6 +459,7 @@ export const advanceDemoWalker = (
       continue;
     }
 
+    validNeighborCount += 1;
     potentialBranchIndices.push(neighborIndex);
 
     const candidateDistance = distanceToGoalSquared(maze, neighborIndex);
@@ -387,35 +470,33 @@ export const advanceDemoWalker = (
   }
 
   if (nextIndex !== null) {
-    const nextVisited = new Set(state.visited);
-    nextVisited.add(nextIndex);
-    const reachedGoal = nextIndex === maze.endIndex;
+    const nextDirection = resolveDirection(maze, state.currentIndex, nextIndex);
+    const isTurnCommit = state.lastDirection !== null && nextDirection !== state.lastDirection;
+    const isBranchCommit = validNeighborCount > 1;
+    if (isTurnCommit || isBranchCommit) {
+      return {
+        state: {
+          ...state,
+          phase: 'anticipate',
+          potentialBranchIndices: removeAllInPlace(potentialBranchIndices, nextIndex),
+          targetIndex: nextIndex,
+          cue: 'anticipate',
+          queuedIndex: nextIndex,
+          queuedMode: 'explore',
+          queuedDirection: nextDirection
+        },
+        delayMs: isBranchCommit ? config.cadence.branchCommitMs : config.cadence.anticipationStepMs
+      };
+    }
 
     return {
-      state: {
+      ...commitQueuedMove(maze, {
         ...state,
-        currentIndex: nextIndex,
-        trailIndices: appendTrailStep(state.trailIndices, nextIndex, state.currentIndex, config.behavior.trailMaxLength),
-        trailSteps: appendTrailHistory(
-          state.trailSteps,
-          nextIndex,
-          state.currentIndex,
-          reachedGoal ? 'goal' : 'explore',
-          config.behavior.trailMaxLength
-        ),
-        visited: nextVisited,
-        reachedGoal,
-        phase: reachedGoal ? 'goal-hold' : 'explore',
-        stepsTaken: state.stepsTaken + 1,
-        lastDirection: resolveDirection(maze, state.currentIndex, nextIndex),
-        potentialBranchIndices: removeAllInPlace(potentialBranchIndices, nextIndex),
-        pathStackIndices: [...state.pathStackIndices, nextIndex],
-        targetIndex: null,
-        backtrackUndoVisited: false,
-        resetReason: null,
-        cue: reachedGoal ? 'goal' : 'explore'
-      },
-      delayMs: reachedGoal ? config.cadence.goalHoldMs : config.cadence.exploreStepMs
+        potentialBranchIndices,
+        queuedIndex: nextIndex,
+        queuedMode: 'explore',
+        queuedDirection: nextDirection
+      }, config)!
     };
   }
 
@@ -428,7 +509,10 @@ export const advanceDemoWalker = (
         potentialBranchIndices: [],
         targetIndex: null,
         backtrackUndoVisited: false,
-        cue: 'dead-end'
+        cue: 'dead-end',
+        queuedIndex: null,
+        queuedMode: null,
+        queuedDirection: null
       },
       delayMs: config.cadence.decisionPauseMs
     };
@@ -455,7 +539,10 @@ export const advanceDemoWalker = (
       potentialBranchIndices: remainingPotentialBranches,
       targetIndex,
       backtrackUndoVisited: false,
-      cue: 'dead-end'
+      cue: 'dead-end',
+      queuedIndex: null,
+      queuedMode: null,
+      queuedDirection: null
     },
     delayMs: config.cadence.decisionPauseMs
   };

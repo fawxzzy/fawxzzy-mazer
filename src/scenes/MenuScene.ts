@@ -6,7 +6,6 @@ import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
-import { createDemoStatusHud } from '../render/hudRenderer';
 
 const OVERLAY_EVENTS = {
   open: 'overlay-open',
@@ -56,19 +55,32 @@ export class MenuScene extends Phaser.Scene {
     boardRenderer.drawBoardChrome();
     boardRenderer.drawBase();
     boardRenderer.drawGoal();
-    boardRenderer.startAmbientMotion(2.2, 2600);
+    boardRenderer.startAmbientMotion(2.6, 3000);
 
-    this.add
+    const boardAura = this.add
       .ellipse(
         layout.boardX + layout.boardSize / 2,
         layout.boardY + layout.boardSize / 2,
-        layout.boardSize * 1.18,
-        layout.boardSize * 1.12,
+        layout.boardSize * 1.14,
+        layout.boardSize * 1.08,
         palette.background.nebulaCore,
-        0.11
+        0.1
       )
       .setOrigin(0.5)
-      .setDepth(-2)
+      .setDepth(-2.5)
+      .setBlendMode(Phaser.BlendModes.SCREEN);
+
+    const boardHalo = this.add
+      .ellipse(
+        layout.boardX + layout.boardSize / 2,
+        layout.boardY + layout.boardSize / 2,
+        layout.boardSize * 1.05,
+        layout.boardSize * 1.03,
+        palette.board.topHighlight,
+        0.032
+      )
+      .setOrigin(0.5)
+      .setDepth(6)
       .setBlendMode(Phaser.BlendModes.SCREEN);
 
     const boardShade = this.add
@@ -78,7 +90,7 @@ export class MenuScene extends Phaser.Scene {
         layout.boardSize,
         layout.boardSize,
         palette.board.topHighlight,
-        0.026
+        0.02
       )
       .setOrigin(0.5)
       .setDepth(7)
@@ -95,17 +107,17 @@ export class MenuScene extends Phaser.Scene {
       legacyTuning.menu.title.plateHeightMaxPx
     );
     const titleY = Math.max(
-      titlePlateHeight / 2 + 12,
-      layout.boardY - Math.round(titlePlateHeight * (isNarrow ? 0.18 : 0.3))
+      titlePlateHeight / 2 + 10,
+      layout.boardY - Math.round(titlePlateHeight * (isNarrow ? 0.06 : 0.12))
     );
     this.add
       .rectangle(
         width / 2,
-        titleY + 7,
-        titlePlateWidth + 10,
-        titlePlateHeight + 12,
+        titleY + 6,
+        titlePlateWidth + 8,
+        titlePlateHeight + 10,
         palette.board.shadow,
-        0.38
+        0.26
       )
       .setDepth(8);
     this.add
@@ -115,9 +127,9 @@ export class MenuScene extends Phaser.Scene {
         titlePlateWidth,
         titlePlateHeight,
         palette.board.well,
-        0.22
+        0.16
       )
-      .setStrokeStyle(1, palette.board.innerStroke, 0.24)
+      .setStrokeStyle(1, palette.board.innerStroke, 0.18)
       .setDepth(9);
     this.add
       .rectangle(
@@ -126,9 +138,9 @@ export class MenuScene extends Phaser.Scene {
         titlePlateWidth - 14,
         titlePlateHeight - 12,
         palette.board.panel,
-        0.36
+        0.24
       )
-      .setStrokeStyle(1, palette.board.topHighlight, 0.1)
+      .setStrokeStyle(1, palette.board.topHighlight, 0.08)
       .setDepth(9);
     this.add
       .rectangle(
@@ -137,7 +149,7 @@ export class MenuScene extends Phaser.Scene {
         titlePlateWidth - 18,
         2,
         palette.board.topHighlight,
-        0.18
+        0.12
       )
       .setDepth(9);
 
@@ -152,14 +164,8 @@ export class MenuScene extends Phaser.Scene {
       .setLetterSpacing(isNarrow ? 2 : 4)
       .setAlpha(legacyTuning.menu.title.alpha)
       .setStroke('#17381f', legacyTuning.menu.title.strokePx)
-      .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 2, true, true)
+      .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true)
       .setDepth(10);
-    const demoStatusHud = createDemoStatusHud(
-      this,
-      width / 2,
-      titleY + legacyTuning.menu.status.insetY,
-      titlePlateWidth - 18
-    );
 
     this.titlePulseTween = this.tweens.add({
       targets: title,
@@ -173,10 +179,32 @@ export class MenuScene extends Phaser.Scene {
       ease: 'Sine.easeInOut'
     });
     this.tweens.add({
+      targets: boardAura,
+      alpha: {
+        from: 0.08,
+        to: 0.12
+      },
+      duration: 3600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    this.tweens.add({
+      targets: boardHalo,
+      alpha: {
+        from: 0.024,
+        to: 0.04
+      },
+      duration: 3200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    this.tweens.add({
       targets: boardShade,
       alpha: {
-        from: legacyTuning.menu.title.pulseMinAlpha * 0.06,
-        to: legacyTuning.menu.title.pulseMaxAlpha * 0.08
+        from: legacyTuning.menu.title.pulseMinAlpha * 0.03,
+        to: legacyTuning.menu.title.pulseMaxAlpha * 0.05
       },
       duration: legacyTuning.menu.title.pulseDurationMs,
       yoyo: true,
@@ -216,23 +244,51 @@ export class MenuScene extends Phaser.Scene {
         targetIndex: demo.targetIndex
       });
       boardRenderer.drawActor(demo.currentIndex, demo.lastDirection, demo.cue);
-      demoStatusHud.setCue(demo.cue);
     };
     const accentCueBeat = (): void => {
-      if (demo.cue === 'dead-end' || demo.cue === 'goal') {
+      const pulseBoard = (
+        shadeFrom: number,
+        haloFrom: number,
+        auraFrom: number,
+        duration: number,
+        scaleFrom = 1.015
+      ): void => {
         this.tweens.add({
           targets: boardShade,
-          alpha: { from: 0.16, to: 0.026 },
-          duration: demo.cue === 'goal' ? 340 : 220,
+          alpha: { from: shadeFrom, to: 0.02 },
+          duration,
           ease: 'Quad.easeOut'
         });
+        this.tweens.add({
+          targets: boardHalo,
+          alpha: { from: haloFrom, to: 0.032 },
+          scaleX: { from: scaleFrom, to: 1 },
+          scaleY: { from: scaleFrom, to: 1 },
+          duration,
+          ease: 'Quad.easeOut'
+        });
+        this.tweens.add({
+          targets: boardAura,
+          alpha: { from: auraFrom, to: 0.1 },
+          scaleX: { from: scaleFrom + 0.01, to: 1 },
+          scaleY: { from: scaleFrom + 0.01, to: 1 },
+          duration: duration + 60,
+          ease: 'Quad.easeOut'
+        });
+      };
+
+      if (demo.cue === 'anticipate') {
+        pulseBoard(0.09, 0.1, 0.14, 170, 1.01);
+      } else if (demo.cue === 'dead-end') {
+        pulseBoard(0.14, 0.14, 0.18, 230, 1.018);
+      } else if (demo.cue === 'backtrack') {
+        pulseBoard(0.08, 0.08, 0.12, 170, 1.008);
       } else if (demo.cue === 'reacquire') {
-        this.tweens.add({
-          targets: boardShade,
-          alpha: { from: 0.11, to: 0.026 },
-          duration: 220,
-          ease: 'Quad.easeOut'
-        });
+        pulseBoard(0.11, 0.12, 0.16, 210, 1.014);
+      } else if (demo.cue === 'goal') {
+        pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
+      } else if (demo.cue === 'reset') {
+        pulseBoard(0.1, 0.08, 0.12, 200, 1.012);
       }
     };
     const renderDemo = (): void => {

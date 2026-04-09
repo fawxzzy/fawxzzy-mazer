@@ -54,10 +54,10 @@ This pass rechecked the rebuilt maze/domain code against the read-only Unreal so
   Legacy C++ mixed `std::random_device`, `std::rand`, and `std::srand(time(0))`, so exact roll-for-roll output is not reproducible from source alone.
 - Demo timer values remain approximated.
   `_PlayerAiDelayDuration` was blueprint-driven in the Unreal project; the rebuild now keeps a more staged but still deterministic calibration for readability:
-  `exploreStepMs: 104`, `backtrackStepMs: 76`, `decisionPauseMs: 228`, `branchResumeMs: 148`, `goalHoldMs: 1180`, `resetHoldMs: 340`.
+  `exploreStepMs: 104`, `backtrackStepMs: 76`, `decisionPauseMs: 228`, `anticipationStepMs: 84`, `branchCommitMs: 112`, `branchResumeMs: 148`, `goalHoldMs: 1180`, `resetHoldMs: 340`.
 - Demo maze regeneration uses deterministic seed stepping (`seed + 1` per completed goal maze) as a rebuild approximation for legacy's non-deterministic fresh generation.
 - The menu trail rendering is still a rebuild interpretation of the legacy tile color-revert system rather than a literal material-timer port.
-- The rebuild now carries explicit presentation cues (`spawn`, `explore`, `dead-end`, `backtrack`, `reacquire`, `goal`, `reset`) alongside the recovered AI logic so the menu scene can stage dead ends, backtracking, and branch reacquisition more clearly without changing the underlying path choice.
+- The rebuild now carries explicit presentation cues (`spawn`, `anticipate`, `explore`, `dead-end`, `backtrack`, `reacquire`, `goal`, `reset`) alongside the recovered AI logic so the menu scene can stage turn commits, dead ends, backtracking, and branch reacquisition more clearly without changing the underlying path choice.
 - The attract-mode menu now prerolls a small deterministic number of demo steps before first paint so the board reads as active immediately instead of opening on a blank maze.
 - The responsive shell is intentionally a rebuild adaptation, not a literal Unreal widget layout port.
   Exact legacy placement depended on a fixed desktop presentation with a visible Start button.
