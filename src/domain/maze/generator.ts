@@ -18,6 +18,7 @@ import {
 import type {
   MazeBuildOptions,
   MazeConfig,
+  MazeDifficulty,
   MazeEpisode,
   MazeGenerationState,
   MazeMetrics,
@@ -48,7 +49,62 @@ interface RasterizeOptions {
   includeCore: boolean;
 }
 
+interface MazeVarietyPreset {
+  readonly key: string;
+  readonly scaleDelta: number;
+  readonly footprintDelta: number;
+  readonly braidScale: number;
+  readonly braidOffset: number;
+  readonly minSolutionFactor: number;
+}
+
 const solveScratchCache = new Map<number, AStarScratch>();
+
+const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
+  {
+    key: 'survey',
+    scaleDelta: -10,
+    footprintDelta: 0,
+    braidScale: 0.72,
+    braidOffset: 0,
+    minSolutionFactor: 0.17
+  },
+  {
+    key: 'relay',
+    scaleDelta: -6,
+    footprintDelta: 0,
+    braidScale: 0.84,
+    braidOffset: 0.02,
+    minSolutionFactor: 0.2
+  },
+  {
+    key: 'weave',
+    scaleDelta: -2,
+    footprintDelta: 0,
+    braidScale: 1,
+    braidOffset: 0.04,
+    minSolutionFactor: 0.23
+  },
+  {
+    key: 'switchback',
+    scaleDelta: 2,
+    footprintDelta: 2,
+    braidScale: 1.12,
+    braidOffset: 0.06,
+    minSolutionFactor: 0.265
+  },
+  {
+    key: 'gauntlet',
+    scaleDelta: 4,
+    footprintDelta: 4,
+    braidScale: 1.2,
+    braidOffset: 0.08,
+    minSolutionFactor: 0.3
+  }
+] as const;
+
+const MENU_VARIETY_POOL = [0, 1, 2, 3] as const;
+const GAME_VARIETY_POOL = [0, 1, 2, 3, 4] as const;
 
 export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
@@ -80,16 +136,28 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
 };
 
 export const generateMaze = (config: MazeConfig): MazeEpisode => {
-  const targetScale = Math.max(9, config.scale);
+  const variety = resolveMazeVarietyPreset(config);
+  const targetScale = Math.max(9, config.scale + variety.scaleDelta);
+  const footprintTarget = Math.max(targetScale, config.scale + variety.footprintDelta);
+  const braidRatio = clamp(
+    (config.shortcutCountModifier * variety.braidScale) + variety.braidOffset,
+    0,
+    0.35
+  );
+  const minSolutionLength = config.minSolutionLength ?? Math.max(
+    18,
+    Math.floor(((normalizeLogicalSize(targetScale) ** 2) * (variety.minSolutionFactor + (config.checkPointModifier * 0.08))))
+  );
   return buildMaze({
     width: targetScale,
     height: targetScale,
     seed: config.seed,
-    braidRatio: clamp(config.shortcutCountModifier, 0, 0.35),
-    minSolutionLength: config.minSolutionLength ?? Math.max(
-      18,
-      Math.floor(((normalizeLogicalSize(targetScale) ** 2) * (0.22 + (config.checkPointModifier * 0.08))))
-    ),
+    braidRatio,
+    minSolutionLength,
+    footprint: {
+      width: footprintTarget,
+      height: footprintTarget
+    },
     maxAttempts: config.maxAttempts ?? 96
   });
 };
@@ -113,7 +181,15 @@ export const resetAndRegenerate = (state: MazeGenerationState, config: MazeConfi
 };
 
 const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
-  const { core, seed, shortcutsCreated, footprint, minSolutionLength, acceptedCore, includeCore } = options;
+  const {
+    core,
+    seed,
+    shortcutsCreated,
+    footprint,
+    minSolutionLength,
+    acceptedCore,
+    includeCore
+  } = options;
   const playableWidth = (core.width * 2) - 1;
   const playableHeight = (core.height * 2) - 1;
   const tiles = createGrid(playableWidth, playableHeight);
@@ -158,6 +234,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
 
   const metrics = measureTileMaze(raster.tiles, raster.width, raster.height, solved.pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
+  const difficultyResult = classifyMazeDifficulty(metrics, raster.width, raster.height, shortcutsCreated);
 
   return {
     seed,
@@ -168,7 +245,9 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     },
     metrics,
     shortcutsCreated,
-    accepted: acceptedCore && solved.found && passesRasterQualityGate(metrics, rasterMinSolutionLength)
+    accepted: acceptedCore && solved.found && passesRasterQualityGate(metrics, rasterMinSolutionLength),
+    difficulty: difficultyResult.difficulty,
+    difficultyScore: difficultyResult.score
   };
 };
 
@@ -364,3 +443,38 @@ const passesRasterQualityGate = (metrics: MazeMetrics, minSolutionLength: number
 );
 
 const getSolveScratch = (size: number): AStarScratch => getAStarScratch(solveScratchCache, size);
+
+const resolveMazeVarietyPreset = (config: MazeConfig): MazeVarietyPreset => {
+  const pool = config.shortcutCountModifier <= 0.14
+    ? MENU_VARIETY_POOL
+    : GAME_VARIETY_POOL;
+  const seedMix = Math.imul((config.seed >>> 0) ^ ((config.scale & 0xff) << 9), 0x9e3779b1) >>> 0;
+  return MAZE_VARIETY_PRESETS[pool[seedMix % pool.length]];
+};
+
+export const classifyMazeDifficulty = (
+  metrics: MazeMetrics,
+  width: number,
+  height: number,
+  shortcutsCreated: number
+): { difficulty: MazeDifficulty; score: number } => {
+  const scale = Math.max(width, height);
+  const pathPressure = metrics.solutionLength / Math.max(1, scale * 1.18);
+  const branchPressure = metrics.junctions / Math.max(1, scale * 0.19);
+  const deadEndPressure = metrics.deadEnds / Math.max(1, scale * 0.24);
+  const coveragePressure = metrics.coverage * 2.7;
+  const turnPressure = (1 - metrics.straightness) * 1.65;
+  const shortcutPressure = shortcutsCreated / Math.max(1, scale * 0.11);
+  const score = pathPressure + branchPressure + (deadEndPressure * 0.62) + coveragePressure + turnPressure + (shortcutPressure * 0.84);
+
+  if (score < 5.1) {
+    return { difficulty: 'chill', score };
+  }
+  if (score < 6.85) {
+    return { difficulty: 'standard', score };
+  }
+  if (score < 8.4) {
+    return { difficulty: 'spicy', score };
+  }
+  return { difficulty: 'brutal', score };
+};

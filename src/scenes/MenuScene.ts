@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import type { DemoWalkerCue } from '../domain/ai';
-import { disposeMazeEpisode, generateMaze, PatternEngine, resolveDirectionBetween } from '../domain/maze';
+import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue } from '../domain/ai';
+import { disposeMazeEpisode, generateMaze, PatternEngine, type PatternFrame } from '../domain/maze';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
+import { createDemoStatusHud } from '../render/hudRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
@@ -17,7 +18,6 @@ export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
   private titlePulseTween?: Phaser.Tweens.Tween;
   private starDriftTween?: Phaser.Tweens.Tween;
-  private heroRefreshTimer?: Phaser.Time.TimerEvent;
   private transitionLocked = false;
 
   public constructor() {
@@ -60,11 +60,12 @@ export class MenuScene extends Phaser.Scene {
       sidePadding: isNarrow ? legacyTuning.menu.layout.sidePaddingPx + 4 : legacyTuning.menu.layout.sidePaddingPx,
       bottomPadding: legacyTuning.menu.layout.bottomPaddingPx
     });
-    const boardRenderer = new BoardRenderer(this, episode, layout);
-    boardRenderer.drawBoardChrome();
-    boardRenderer.drawBase();
-    boardRenderer.drawGoal();
-    boardRenderer.startAmbientMotion(2.6, 3000);
+      const boardRenderer = new BoardRenderer(this, episode, layout);
+      boardRenderer.drawBoardChrome();
+      boardRenderer.drawBase({ showSolutionPath: true });
+      boardRenderer.drawStart('spawn');
+      boardRenderer.drawGoal();
+      boardRenderer.startAmbientMotion(2.6, 3000);
 
     const boardAura = this.add
       .ellipse(
@@ -220,50 +221,41 @@ export class MenuScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
-    this.tweens.add({
-      targets: title,
-      y: '+=2',
-      duration: 2600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
+      this.tweens.add({
+        targets: title,
+        y: '+=2',
+        duration: 2600,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
 
-    let lastCue: DemoWalkerCue = 'spawn';
-    const applyPatternFrame = (nextFrame: typeof patternFrame): void => {
-      const previousEpisode = patternFrame.episode;
-      patternFrame = nextFrame;
-      boardRenderer.setEpisode(nextFrame.episode);
-      boardRenderer.drawBase();
-      boardRenderer.drawGoal();
-      renderDemo();
-      disposeMazeEpisode(previousEpisode);
-    };
-
-    const syncDemoPresentation = (): void => {
-      const path = patternFrame.episode.raster.pathIndices;
-      const pathCursor = resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs);
-      const currentIndex = path[pathCursor] ?? patternFrame.episode.raster.startIndex;
-      const cue = resolveDemoCue(patternFrame.t, pathCursor, path.length);
-      const lastTrailIndex = pathCursor > 0
-        ? path[pathCursor - 1]
-        : currentIndex;
-
-      boardRenderer.drawGoal(cue);
-      boardRenderer.drawTrail(path, { cue, limit: pathCursor + 1 });
-      boardRenderer.drawActor(
-        currentIndex,
-        lastTrailIndex === currentIndex
-          ? null
-          : resolveDirectionBetween(lastTrailIndex, currentIndex, patternFrame.episode.raster.width),
-        cue
+      const demoStatusHud = createDemoStatusHud(
+        this,
+        width / 2,
+        Math.max(titleY + (titlePlateHeight / 2) + 26, layout.boardY - 22),
+        layout.boardWidth * 0.9
       );
-    };
-    const accentCueBeat = (): void => {
-      const pulseBoard = (
-        shadeFrom: number,
-        haloFrom: number,
-        auraFrom: number,
+
+      let lastCue: DemoWalkerCue = 'spawn';
+      let demoConfig = resolveDemoConfig(patternFrame.episode);
+      const applyPatternFrame = (nextFrame: PatternFrame): void => {
+        const previousEpisode = patternFrame.episode;
+        patternFrame = nextFrame;
+        demoConfig = resolveDemoConfig(nextFrame.episode);
+        boardRenderer.setEpisode(nextFrame.episode);
+        boardRenderer.drawBase({ showSolutionPath: true });
+        boardRenderer.drawStart('spawn');
+        boardRenderer.drawGoal();
+        renderDemo();
+        disposeMazeEpisode(previousEpisode);
+      };
+
+      const accentCueBeat = (cue: DemoWalkerCue): void => {
+        const pulseBoard = (
+          shadeFrom: number,
+          haloFrom: number,
+          auraFrom: number,
         duration: number,
         scaleFrom = 1.015
       ): void => {
@@ -287,79 +279,81 @@ export class MenuScene extends Phaser.Scene {
           scaleX: { from: scaleFrom + 0.01, to: 1 },
           scaleY: { from: scaleFrom + 0.01, to: 1 },
           duration: duration + 60,
-          ease: 'Quad.easeOut'
-        });
-      };
+            ease: 'Quad.easeOut'
+          });
+        };
 
-      const path = patternFrame.episode.raster.pathIndices;
-      const cue = resolveDemoCue(
-        patternFrame.t,
-        resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs),
-        path.length
-      );
-      if (cue === 'goal') {
-        pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
-      } else if (cue === 'reset') {
-        pulseBoard(0.1, 0.08, 0.12, 200, 1.012);
-      } else if (cue === 'spawn') {
-        pulseBoard(0.1, 0.12, 0.16, 210, 1.012);
-      }
-    };
-    const renderDemo = (): void => {
-      const path = patternFrame.episode.raster.pathIndices;
-      const cue = resolveDemoCue(
-        patternFrame.t,
-        resolvePathCursor(patternFrame.t, path.length, legacyTuning.demo.cadence.exploreStepMs),
-        path.length
-      );
-      syncDemoPresentation();
-      if (cue !== lastCue) {
-        accentCueBeat();
-        lastCue = cue;
-      }
-    };
-    const handleVisibilityChange = (): void => {
-      if (document.hidden) {
-        sceneHidden = true;
-        patternEngine.suspend();
-        if (this.heroRefreshTimer) {
-          this.heroRefreshTimer.paused = true;
+        if (cue === 'goal') {
+          pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
+        } else if (cue === 'reset') {
+          pulseBoard(0.1, 0.08, 0.12, 200, 1.012);
+        } else if (cue === 'spawn') {
+          pulseBoard(0.1, 0.12, 0.16, 210, 1.012);
         }
-        return;
-      }
+      };
+      const renderDemo = (): void => {
+        const view = resolveDemoWalkerViewFrame(
+          patternFrame.episode,
+          patternFrame.t * 1000,
+          demoConfig,
+          resolveDemoTrailWindow(patternFrame.episode)
+        );
+        const path = patternFrame.episode.raster.pathIndices;
+
+        boardRenderer.drawStart(view.cue);
+        boardRenderer.drawGoal(view.cue);
+        boardRenderer.drawTrail(path, {
+          cue: view.cue,
+          limit: view.trailLimit,
+          start: view.trailStart,
+          emphasis: 'demo'
+        });
+
+        if (view.currentIndex === view.nextIndex || view.progress <= 0) {
+          boardRenderer.drawActor(view.currentIndex, view.direction, view.cue);
+        } else {
+          boardRenderer.drawActorMotion(view.currentIndex, view.nextIndex, view.progress, view.direction, view.cue);
+        }
+
+        demoStatusHud.setState(view.cue, patternFrame.episode);
+        if (view.cue !== lastCue) {
+          accentCueBeat(view.cue);
+          lastCue = view.cue;
+        }
+      };
+      const handleVisibilityChange = (): void => {
+        if (document.hidden) {
+          sceneHidden = true;
+          patternEngine.suspend();
+          return;
+        }
 
       if (!sceneHidden) {
         return;
-      }
+        }
 
-      sceneHidden = false;
-      patternEngine.resumeFresh();
-      applyPatternFrame(patternEngine.next(0));
-      if (this.heroRefreshTimer) {
-        this.heroRefreshTimer.paused = false;
-      }
-    };
+        sceneHidden = false;
+        patternEngine.resumeFresh();
+        applyPatternFrame(patternEngine.next(0));
+      };
 
-    renderDemo();
-
-    this.heroRefreshTimer = this.time.addEvent({
-      delay: legacyTuning.demo.cadence.heroRefreshMs,
-      loop: true,
-      callback: () => {
+      renderDemo();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      const updateDemo = (_time: number, delta: number): void => {
         if (sceneHidden) {
           return;
         }
 
-        const nextFrame = patternEngine.next(legacyTuning.demo.cadence.heroRefreshMs / 1000);
+        const nextFrame = patternEngine.next(delta / 1000);
         if (nextFrame.episode !== patternFrame.episode) {
           applyPatternFrame(nextFrame);
-        } else {
-          patternFrame = nextFrame;
-          renderDemo();
+          return;
         }
-      }
-    });
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        patternFrame = nextFrame;
+        renderDemo();
+      };
+      this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
@@ -374,10 +368,10 @@ export class MenuScene extends Phaser.Scene {
       });
     };
 
-    const launchManualPlay = (): void => {
-      queueTransition(() => {
-        this.overlayManager.closeAll();
-        this.tweens.add({
+      const launchManualPlay = (): void => {
+        queueTransition(() => {
+          this.overlayManager.closeAll();
+          this.tweens.add({
           targets: this.cameras.main,
           zoom: 1.015,
           duration: 120,
@@ -385,9 +379,26 @@ export class MenuScene extends Phaser.Scene {
           ease: 'Sine.easeOut'
         });
         this.cameras.main.fadeOut(140, 0, 0, 0);
-        this.time.delayedCall(140, () => this.scene.start('GameScene'));
+          this.time.delayedCall(140, () => this.scene.start('GameScene'));
+        });
+      };
+
+      const playPrompt = this.createPlayPrompt(
+        width / 2,
+        layout.boardY + layout.boardHeight + Math.max(28, isNarrow ? 24 : 30),
+        Math.min(layout.boardWidth * 0.92, width - 32),
+        launchManualPlay
+      );
+      playPrompt.setAlpha(0);
+      playPrompt.y += 5;
+      this.tweens.add({
+        targets: playPrompt,
+        alpha: 1,
+        y: playPrompt.y - 5,
+        duration: 220,
+        delay: 120,
+        ease: 'Quad.easeOut'
       });
-    };
 
     // CSS shell padding already honors safe-area insets, so the scene only needs a small internal offset.
     const optionsGear = this.createOptionsGearButton(
@@ -431,24 +442,27 @@ export class MenuScene extends Phaser.Scene {
         }
       }
     };
-    const manualShortcutHandler = (event: KeyboardEvent) => {
-      if (!this.overlayManager.isOverlayActive() && event.code === 'KeyM' && event.shiftKey) {
-        launchManualPlay();
-      }
-    };
+      const manualShortcutHandler = (event: KeyboardEvent) => {
+        const shouldPlay = event.code === 'Enter'
+          || event.code === 'Space'
+          || (event.code === 'KeyM' && event.shiftKey);
+        if (!this.overlayManager.isOverlayActive() && shouldPlay) {
+          launchManualPlay();
+        }
+      };
     this.input.keyboard?.on('keydown-ESC', escHandler);
     this.input.keyboard?.on('keydown', manualShortcutHandler);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.titlePulseTween?.remove();
-      this.starDriftTween?.remove();
-      this.heroRefreshTimer?.remove(false);
-      this.heroRefreshTimer = undefined;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      this.overlayManager.closeAll();
-      patternEngine.destroy();
-      boardRenderer.destroy();
-      this.input.keyboard?.off('keydown-ESC', escHandler);
+        this.titlePulseTween?.remove();
+        this.starDriftTween?.remove();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
+        this.overlayManager.closeAll();
+        demoStatusHud.destroy();
+        patternEngine.destroy();
+        boardRenderer.destroy();
+        this.input.keyboard?.off('keydown-ESC', escHandler);
       this.input.keyboard?.off('keydown', manualShortcutHandler);
       this.events.off(OVERLAY_EVENTS.open);
       this.events.off(OVERLAY_EVENTS.close);
@@ -559,6 +573,85 @@ export class MenuScene extends Phaser.Scene {
     return button;
   }
 
+  private createPlayPrompt(
+    x: number,
+    y: number,
+    width: number,
+    onClick: () => void
+  ): Phaser.GameObjects.Container {
+    const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
+    const plate = this.add.graphics();
+    const prompt = this.add
+      .text(0, -8, 'REACH THE RED CORE', {
+        color: '#d7ffde',
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${isTouchPrimary ? 12 : 13}px`,
+        fontStyle: 'bold'
+      })
+      .setOrigin(0.5);
+    const cta = this.add
+      .text(0, 11, isTouchPrimary ? 'TAP TO PLAY' : 'ENTER / SPACE TO PLAY', {
+        color: '#9ec9ff',
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${isTouchPrimary ? 10 : 11}px`
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.84);
+    const hit = this.add
+      .rectangle(0, 0, width, 40, 0x000000, 0.001)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const container = this.add.container(x, y, [plate, prompt, cta, hit]).setDepth(12);
+    let hovered = false;
+
+    const draw = (pressed: boolean): void => {
+      plate.clear();
+      plate.fillStyle(palette.ui.buttonFill, hovered ? 0.72 : 0.58);
+      plate.fillRoundedRect(-width / 2, -20, width, 40, 8);
+      plate.lineStyle(1, palette.board.outerStroke, hovered ? 0.94 : 0.7);
+      plate.strokeRoundedRect(-width / 2 + 0.5, -19.5, width - 1, 39, 8);
+      plate.lineStyle(1, palette.board.innerStroke, hovered ? 0.4 : 0.24);
+      plate.strokeRoundedRect(-width / 2 + 3.5, -16.5, width - 7, 33, 6);
+      prompt.setAlpha(pressed ? 0.92 : 1);
+      cta.setAlpha(pressed ? 0.96 : hovered ? 0.94 : 0.84);
+    };
+
+    hit.on('pointerover', () => {
+      hovered = true;
+      this.tweens.add({
+        targets: container,
+        scaleX: 1.018,
+        scaleY: 1.018,
+        duration: 90,
+        ease: 'Sine.easeOut'
+      });
+      draw(false);
+      playSfx('move');
+    });
+    hit.on('pointerout', () => {
+      hovered = false;
+      this.tweens.add({
+        targets: container,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 90,
+        ease: 'Sine.easeOut'
+      });
+      draw(false);
+    });
+    hit.on('pointerdown', () => {
+      draw(true);
+      playSfx('confirm');
+    });
+    hit.on('pointerup', () => {
+      draw(false);
+      onClick();
+    });
+
+    draw(false);
+    return container;
+  }
+
   private drawStarfield(width: number, height: number): void {
     const bg = this.add.graphics();
     bg.fillGradientStyle(
@@ -623,23 +716,36 @@ export class MenuScene extends Phaser.Scene {
   }
 }
 
-const resolvePathCursor = (elapsedSeconds: number, pathLength: number, stepMs: number): number => {
-  if (pathLength <= 1) {
-    return 0;
+const resolveDemoConfig = (episode: PatternFrame['episode']): DemoWalkerConfig => ({
+  ...legacyTuning.demo,
+  cadence: {
+    ...legacyTuning.demo.cadence,
+    spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs
+      + (episode.difficulty === 'chill'
+        ? 120
+        : episode.difficulty === 'standard'
+          ? 60
+          : 0),
+    goalHoldMs: legacyTuning.demo.cadence.goalHoldMs
+      + (episode.difficulty === 'brutal'
+        ? 100
+        : 0),
+    resetHoldMs: legacyTuning.demo.cadence.resetHoldMs
+      + (episode.difficulty === 'chill' ? 40 : 0)
   }
+});
 
-  return Math.min(pathLength - 1, Math.floor((elapsedSeconds * 1000) / stepMs));
-};
-
-const resolveDemoCue = (elapsedSeconds: number, pathCursor: number, pathLength: number): DemoWalkerCue => {
-  if (pathCursor >= Math.max(0, pathLength - 1)) {
-    return 'goal';
+const resolveDemoTrailWindow = (episode: PatternFrame['episode']): number => {
+  switch (episode.difficulty) {
+    case 'chill':
+      return 18;
+    case 'standard':
+      return 22;
+    case 'spicy':
+      return 26;
+    case 'brutal':
+      return 30;
+    default:
+      return 22;
   }
-  if (elapsedSeconds <= 0.08) {
-    return 'reset';
-  }
-  if (elapsedSeconds <= 0.2) {
-    return 'spawn';
-  }
-  return 'explore';
 };

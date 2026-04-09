@@ -7,16 +7,23 @@ import { palette } from './palette';
 
 interface HudHandle {
   setElapsedMs(elapsedMs: number): void;
+  setMoveCount(moveCount: number): void;
   setGoalArrow(playerIndex: number): void;
+  setComplete(completed: boolean): void;
   destroy(): void;
 }
 
 interface DemoStatusHandle {
-  setCue(cue: DemoWalkerCue): void;
+  setState(cue: DemoWalkerCue, episode: MazeEpisode): void;
   destroy(): void;
 }
 
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
+
+const formatDifficultyLabel = (episode: MazeEpisode, compact = false): string => {
+  const label = episode.difficulty.toUpperCase();
+  return compact ? label : `${label} ROUTE`;
+};
 
 const formatTime = (elapsedMs: number): string => {
   const totalSeconds = Math.floor(elapsedMs / 1000);
@@ -71,11 +78,6 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     : compact
       ? legacyTuning.hud.compactPrimaryTextY
       : legacyTuning.hud.primaryTextY;
-  const secondaryTextY = ultraCompact
-    ? legacyTuning.hud.ultraCompactSecondaryTextY
-    : compact
-      ? legacyTuning.hud.compactSecondaryTextY
-      : legacyTuning.hud.secondaryTextY;
   const lineY = ultraCompact
     ? legacyTuning.hud.ultraCompactLineY
     : compact
@@ -101,17 +103,25 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     : compact
       ? legacyTuning.hud.compactHintFontPx
       : legacyTuning.hud.hintFontPx;
+  const metaFontPx = Math.max(10, hintFontPx + (ultraCompact ? 1 : 2));
   const panelWidth = Math.min(
     scene.scale.width - (panelInsetX * 2),
     legacyTuning.hud.panelMaxWidth
   );
   const panelLeft = (scene.scale.width - panelWidth) / 2;
   const panelRight = panelLeft + panelWidth;
-  const hintTextValue = isTouchPrimary
-    ? (ultraCompact ? 'Swipe / pause' : compact ? 'Swipe / tap pause' : 'Swipe to move / tap to pause')
-    : (ultraCompact ? 'Move / Esc' : compact ? 'Arrows/WASD / Esc' : 'Move: Arrows or WASD / Pause: P or Esc');
+  const metaTextY = Math.round(panelHeight * 0.46);
+  const hintTextY = panelHeight - (ultraCompact ? 15 : compact ? 17 : 18);
+  const normalHintText = isTouchPrimary
+    ? (ultraCompact ? 'Reach red core / Swipe / Tap pause' : compact ? 'Reach red core / Swipe / Tap pause' : 'Reach the red core / Swipe to move / Tap to pause')
+    : (ultraCompact ? 'Reach core / R reset / N new / Esc' : compact ? 'Reach red core / R reset / N new / Esc' : 'Reach the red core / R reset / N new / Esc pause');
+  const completeHintText = isTouchPrimary
+    ? 'Core secured / Choose next maze'
+    : (ultraCompact ? 'Core secured / R reset / N new' : 'Core secured / R reset / N new / Esc menu');
   let lastElapsedLabel = '00:00';
+  let lastMoveLabel = compact ? 'MV 0' : 'MOVES 0';
   let lastGoalLabel = 'Goal ^';
+  let completed = false;
 
   scene.add
     .rectangle(
@@ -162,6 +172,17 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     .setScrollFactor(0)
     .setDepth(1000);
 
+  const difficultyText = scene.add
+    .text(scene.scale.width / 2, primaryTextY, formatDifficultyLabel(episode, compact), {
+      color: toCssColor(palette.hud.accent),
+      fontFamily: '"Courier New", monospace',
+      fontSize: `${Math.max(10, arrowFontPx - (compact ? 1 : 0))}px`,
+      fontStyle: 'bold'
+    })
+    .setOrigin(0.5, 0)
+    .setScrollFactor(0)
+    .setDepth(1000);
+
   const arrowText = scene.add
     .text(panelRight - contentPaddingX, primaryTextY, 'Goal ^', {
       color: toCssColor(palette.hud.goalText),
@@ -173,11 +194,36 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     .setScrollFactor(0)
     .setDepth(1000);
 
+  const movesText = scene.add
+    .text(panelLeft + contentPaddingX, metaTextY, lastMoveLabel, {
+      color: toCssColor(palette.hud.timerText),
+      fontFamily: '"Courier New", monospace',
+      fontSize: `${metaFontPx}px`,
+      fontStyle: 'bold'
+    })
+    .setScrollFactor(0)
+    .setDepth(1000);
+
+  const seedText = scene.add
+    .text(
+      panelRight - contentPaddingX,
+      metaTextY,
+      compact ? `#${episode.seed}` : `SEED ${episode.seed}`,
+      {
+        color: toCssColor(palette.hud.hintText),
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${metaFontPx}px`
+      }
+    )
+    .setOrigin(1, 0)
+    .setScrollFactor(0)
+    .setDepth(1000);
+
   const hintText = scene.add
     .text(
       scene.scale.width / 2,
-      secondaryTextY,
-      hintTextValue,
+      hintTextY,
+      normalHintText,
       {
         color: toCssColor(palette.hud.hintText),
         fontFamily: '"Courier New", monospace',
@@ -190,7 +236,7 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
     .setScrollFactor(0)
     .setDepth(1000);
 
-  const hudElements = [timerText, arrowText, hintText];
+  const hudElements = [timerText, difficultyText, arrowText, movesText, seedText, hintText];
   const introTweens: Phaser.Tweens.Tween[] = [];
   hudElements.forEach((element, index) => {
     const targetAlpha = element.alpha;
@@ -226,6 +272,13 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
         timerText.setText(nextElapsedLabel);
       }
     },
+    setMoveCount(moveCount: number): void {
+      const nextMoveLabel = compact ? `MV ${moveCount}` : `MOVES ${moveCount}`;
+      if (nextMoveLabel !== lastMoveLabel) {
+        lastMoveLabel = nextMoveLabel;
+        movesText.setText(nextMoveLabel);
+      }
+    },
     setGoalArrow(playerIndex: number): void {
       const playerX = xFromIndex(playerIndex, episode.raster.width);
       const playerY = yFromIndex(playerIndex, episode.raster.width);
@@ -241,13 +294,26 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
         arrowText.setText(nextGoalLabel);
       }
     },
+    setComplete(nextCompleted: boolean): void {
+      if (nextCompleted === completed) {
+        return;
+      }
+
+      completed = nextCompleted;
+      hintText.setText(completed ? completeHintText : normalHintText);
+      hintText.setColor(toCssColor(completed ? palette.hud.timerText : palette.hud.hintText));
+      difficultyText.setColor(toCssColor(completed ? palette.hud.timerText : palette.hud.accent));
+    },
     destroy(): void {
       for (const tween of introTweens) {
         tween.remove();
       }
       arrowPulseTween.remove();
       timerText.destroy();
+      difficultyText.destroy();
       arrowText.destroy();
+      movesText.destroy();
+      seedText.destroy();
       hintText.destroy();
     }
   };
@@ -265,8 +331,9 @@ export const createDemoStatusHud = (
     legacyTuning.menu.status.minWidthPx,
     maxWidth
   );
-  const height = compact ? legacyTuning.menu.status.compactHeightPx : legacyTuning.menu.status.heightPx;
+  const height = compact ? legacyTuning.menu.status.compactHeightPx + 10 : legacyTuning.menu.status.heightPx + 12;
   let lastCue: DemoWalkerCue = 'spawn';
+  let lastMeta = '';
 
   const shadow = scene.add
     .rectangle(x, y + 3, width + 8, height + 6, palette.hud.shadow, 0.28)
@@ -278,7 +345,7 @@ export const createDemoStatusHud = (
     .setDepth(10);
 
   const text = scene.add
-    .text(x, y, demoCueLabels.spawn, {
+    .text(x, y - (compact ? 6 : 7), demoCueLabels.spawn, {
       color: toCssColor(demoCueColors.spawn),
       fontFamily: '"Courier New", monospace',
       fontSize: `${compact ? legacyTuning.menu.status.compactFontPx : legacyTuning.menu.status.fontPx}px`,
@@ -288,8 +355,18 @@ export const createDemoStatusHud = (
     .setDepth(11)
     .setAlpha(0.86);
 
+  const meta = scene.add
+    .text(x, y + (compact ? 5 : 6), '', {
+      color: toCssColor(palette.hud.hintText),
+      fontFamily: '"Courier New", monospace',
+      fontSize: `${compact ? Math.max(9, legacyTuning.menu.status.compactFontPx - 1) : legacyTuning.menu.status.fontPx - 1}px`
+    })
+    .setOrigin(0.5)
+    .setDepth(11)
+    .setAlpha(0.74);
+
   const pulseTween = scene.tweens.add({
-    targets: [plate, text],
+    targets: [plate, text, meta],
     alpha: { from: 0.78, to: 1 },
     duration: legacyTuning.menu.status.pulseDurationMs,
     yoyo: true,
@@ -298,22 +375,27 @@ export const createDemoStatusHud = (
   });
 
   return {
-    setCue(cue: DemoWalkerCue): void {
-      if (cue === lastCue) {
-        return;
+    setState(cue: DemoWalkerCue, episode: MazeEpisode): void {
+      if (cue !== lastCue) {
+        lastCue = cue;
+        text.setText(demoCueLabels[cue]);
+        text.setColor(toCssColor(demoCueColors[cue]));
+        plate.setStrokeStyle(1, demoCueColors[cue], 0.44);
+        shadow.setFillStyle(palette.hud.shadow, cue === 'goal' ? 0.34 : 0.28);
       }
 
-      lastCue = cue;
-      text.setText(demoCueLabels[cue]);
-      text.setColor(toCssColor(demoCueColors[cue]));
-      plate.setStrokeStyle(1, demoCueColors[cue], 0.44);
-      shadow.setFillStyle(palette.hud.shadow, cue === 'goal' ? 0.34 : 0.28);
+      const nextMeta = `${formatDifficultyLabel(episode, true)} / #${episode.seed}`;
+      if (nextMeta !== lastMeta) {
+        lastMeta = nextMeta;
+        meta.setText(nextMeta);
+      }
     },
     destroy(): void {
       pulseTween.remove();
       shadow.destroy();
       plate.destroy();
       text.destroy();
+      meta.destroy();
     }
   };
 };

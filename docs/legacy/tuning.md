@@ -1,6 +1,6 @@
 # Legacy tuning defaults (Unreal -> rebuild)
 
-This pass rechecked the rebuilt maze/domain code against the read-only Unreal source in `../mazer-legacy-unreal/Mazer` (`Source/**` and `Config/**`) and tightens the rebuild where the earlier lane still differed.
+This pass rechecked the rebuilt maze/domain code against the read-only Unreal source archived in `legacy/old-project.zip` (`Source/**` and `Config/**`) and tightens the rebuild where the earlier lane still differed.
 
 ## Source references used
 - Legacy maze lifecycle: `Mazer/Source/Mazer/MazerGameModeBase.cpp`

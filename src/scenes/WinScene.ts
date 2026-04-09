@@ -3,6 +3,7 @@ import { legacyTuning } from '../config/tuning';
 import { createOverlaySheet } from '../ui/overlaySheet';
 import { createMenuButton } from '../ui/menuButton';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
+import type { WinSummaryData } from './gameSceneSummary';
 
 export class WinScene extends Phaser.Scene {
   private actionLocked = false;
@@ -12,10 +13,14 @@ export class WinScene extends Phaser.Scene {
     super('WinScene');
   }
 
-  public create(): void {
+  public create(data?: WinSummaryData): void {
     attachSfxInputUnlock(this);
     const { width } = this.scale;
-    const { container, contentY } = createOverlaySheet(this, 'Maze Complete', 'You reached the goal');
+    const { container, contentY } = createOverlaySheet(
+      this,
+      data?.title ?? 'Maze Complete',
+      data?.subtitle ?? 'You reached the goal'
+    );
     this.actionLocked = false;
     this.overlayContainer = container;
 

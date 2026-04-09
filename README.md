@@ -30,3 +30,8 @@ npm run test:soak
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.
 - On localhost, startup code unregisters existing service workers to prevent stale behavior during rebuild iterations.
+
+## Legacy boundary
+- `legacy/` and `docs/legacy/` are archival reference only.
+- Do not extract `legacy/old-project.zip` into the working tree.
+- Live development happens only in the current source tree.

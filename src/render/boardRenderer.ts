@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
-import { isTileFloor, xFromIndex, yFromIndex } from '../domain/maze';
+import { isTileFloor, isTilePath, xFromIndex, yFromIndex } from '../domain/maze';
 import { palette } from './palette';
 
 export interface BoardLayout {
@@ -21,10 +21,16 @@ interface BoardLayoutOptions {
   bottomPadding?: number;
 }
 
+interface BaseRenderOptions {
+  showSolutionPath?: boolean;
+}
+
 export interface BoardCueOptions {
   cue?: DemoWalkerCue;
   targetIndex?: number | null;
   limit?: number;
+  start?: number;
+  emphasis?: 'player' | 'demo';
 }
 
 const ACTOR_DIRECTION_OFFSETS = [
@@ -80,6 +86,7 @@ export class BoardRenderer {
   private readonly chromeBack: Phaser.GameObjects.Graphics;
   private readonly base: Phaser.GameObjects.Graphics;
   private readonly grid: Phaser.GameObjects.Graphics;
+  private readonly start: Phaser.GameObjects.Graphics;
   private readonly goal: Phaser.GameObjects.Graphics;
   private readonly signal: Phaser.GameObjects.Graphics;
   private readonly trail: Phaser.GameObjects.Graphics;
@@ -94,12 +101,23 @@ export class BoardRenderer {
     this.chromeBack = this.scene.add.graphics();
     this.base = this.scene.add.graphics();
     this.grid = this.scene.add.graphics();
+    this.start = this.scene.add.graphics();
     this.goal = this.scene.add.graphics();
     this.signal = this.scene.add.graphics();
     this.trail = this.scene.add.graphics();
     this.actor = this.scene.add.graphics();
     this.chromeFront = this.scene.add.graphics();
-    this.ambientContainer.add([this.chromeBack, this.base, this.grid, this.goal, this.signal, this.trail, this.actor, this.chromeFront]);
+    this.ambientContainer.add([
+      this.chromeBack,
+      this.base,
+      this.grid,
+      this.start,
+      this.goal,
+      this.signal,
+      this.trail,
+      this.actor,
+      this.chromeFront
+    ]);
   }
 
   public setEpisode(episode: MazeEpisode): void {
@@ -261,9 +279,10 @@ export class BoardRenderer {
     this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + boardHeight - tickInset, boardX + boardWidth - tickInset, boardY + boardHeight - tickInset - tickLength);
   }
 
-  public drawBase(): void {
+  public drawBase(options: BaseRenderOptions = {}): void {
     const { tileSize } = this.layout;
     const bevel = Math.max(1, Math.round(tileSize * legacyTuning.board.tile.bevelRatio));
+    const showSolutionPath = options.showSolutionPath === true;
     this.base.clear();
     this.grid.clear();
 
@@ -282,6 +301,24 @@ export class BoardRenderer {
         this.base.fillStyle(palette.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha);
         this.base.fillRect(x + bevel, y + bevel, tileSize - (bevel * 2), bevel);
         this.base.fillRect(x + bevel, y + bevel, bevel, tileSize - (bevel * 2));
+
+        if (showSolutionPath && isTilePath(this.episode.raster.tiles, index)) {
+          const hintInset = tileSize * 0.22;
+          this.base.fillStyle(palette.board.trailGlow, 0.18);
+          this.base.fillRect(
+            x + hintInset,
+            y + hintInset,
+            tileSize - (hintInset * 2),
+            tileSize - (hintInset * 2)
+          );
+          this.grid.lineStyle(Math.max(1, tileSize * 0.03), palette.board.trailCore, 0.28);
+          this.grid.strokeRect(
+            x + hintInset + 0.5,
+            y + hintInset + 0.5,
+            tileSize - (hintInset * 2) - 1,
+            tileSize - (hintInset * 2) - 1
+          );
+        }
 
         this.base.fillStyle(palette.board.shadow, legacyTuning.board.tile.floorShadowAlpha);
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
@@ -304,6 +341,41 @@ export class BoardRenderer {
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
       }
     }
+  }
+
+  public drawStart(cue: DemoWalkerCue = 'spawn'): void {
+    const { tileSize } = this.layout;
+    const now = this.scene.time.now;
+    const tileX = this.tileX(this.episode.raster.startIndex);
+    const tileY = this.tileY(this.episode.raster.startIndex);
+    const centerX = tileX + tileSize / 2;
+    const centerY = tileY + tileSize / 2;
+    const cueBoost = cue === 'spawn'
+      ? 1.18
+      : cue === 'goal'
+        ? 0.92
+        : cue === 'reset'
+          ? 0.86
+          : 1;
+    const pulse = 0.92 + (Math.sin((now * 0.0044) + 0.65) * 0.16 * cueBoost);
+    const bracketInset = tileSize * 0.14;
+    const bracketLength = tileSize * 0.18;
+    const coreRadius = tileSize * 0.11;
+    const ringRadius = tileSize * 0.34;
+
+    this.start.clear();
+    this.start.fillStyle(palette.board.playerHalo, 0.12 * pulse);
+    this.start.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
+    this.start.lineStyle(Math.max(1, tileSize * 0.04), palette.board.playerHalo, 0.46 * pulse);
+    this.start.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
+    this.start.fillStyle(palette.board.playerHalo, 0.16 * pulse);
+    this.start.fillCircle(centerX, centerY, tileSize * 0.46);
+    this.start.lineStyle(Math.max(1, tileSize * 0.045), palette.board.player, 0.72 * pulse);
+    this.start.strokeCircle(centerX, centerY, ringRadius);
+    this.start.fillStyle(palette.board.playerCore, 0.96);
+    this.start.fillCircle(centerX, centerY, coreRadius);
+    this.start.lineStyle(Math.max(1, tileSize * 0.04), palette.board.playerCore, 0.84);
+    this.drawTileBrackets(this.start, tileX, tileY, tileSize, bracketInset, bracketLength);
   }
 
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
@@ -415,9 +487,11 @@ export class BoardRenderer {
     const cue = options.cue ?? 'explore';
     const now = this.scene.time.now;
     const trailLength = Math.min(options.limit ?? trail.length, trail.length);
+    const trailStart = Math.max(0, Math.min(options.start ?? 0, Math.max(0, trailLength - 1)));
+    const demoEmphasis = options.emphasis === 'demo';
     this.trail.clear();
     this.signal.clear();
-    if (trailLength === 0) {
+    if (trailLength === 0 || trailStart >= trailLength) {
       return;
     }
     let previousCenterX = 0;
@@ -432,10 +506,14 @@ export class BoardRenderer {
       : cue === 'reacquire'
         ? 0.12
         : cue === 'goal'
-          ? 0.16
-          : 0;
+        ? 0.16
+        : 0;
+    const visibleLength = Math.max(1, trailLength - trailStart);
+    const insetScale = demoEmphasis ? 0.9 : 1;
+    const alphaBoost = demoEmphasis ? 0.08 : 0;
+    const glowBoost = demoEmphasis ? 0.12 : 0;
 
-    for (let i = 0; i < trailLength; i += 1) {
+    for (let i = trailStart; i < trailLength; i += 1) {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
       const mode = typeof step === 'number' ? 'explore' : step.mode;
@@ -443,19 +521,20 @@ export class BoardRenderer {
       const tileY = this.tileY(index);
       const centerX = tileX + tileSize / 2;
       const centerY = tileY + tileSize / 2;
-      const t = trailLength <= 1 ? 1 : i / (trailLength - 1);
+      const t = visibleLength <= 1 ? 1 : (i - trailStart) / (visibleLength - 1);
       const isHead = i === headIndex;
       const isBacktrack = mode === 'backtrack';
       const isGoalStep = mode === 'goal';
       const alphaBase = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
       const alphaScale = isBacktrack ? legacyTuning.board.trail.backtrackAlphaScale : 1;
       const alpha = Phaser.Math.Clamp(
-        (alphaBase + (isHead ? legacyTuning.board.trail.headAlphaBoost : 0)) * alphaScale,
+        (alphaBase + alphaBoost + (isHead ? legacyTuning.board.trail.headAlphaBoost : 0)) * alphaScale,
         0,
         1
       );
       const glowAlpha = Phaser.Math.Clamp(
         Phaser.Math.Linear(legacyTuning.board.trail.glowMinAlpha, legacyTuning.board.trail.glowMaxAlpha, t)
+          + glowBoost
           + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.6 : 0),
         0,
         1
@@ -464,12 +543,12 @@ export class BoardRenderer {
         isBacktrack
           ? legacyTuning.board.trail.backtrackInsetRatio
           : legacyTuning.board.trail.insetRatio
-      );
+      ) * insetScale;
       const nodeRadius = Math.max(
         2,
         tileSize * (
           isHead
-            ? legacyTuning.board.trail.headRadiusRatio * (headPulse + cueHeadBoost)
+            ? legacyTuning.board.trail.headRadiusRatio * (headPulse + cueHeadBoost + (demoEmphasis ? 0.06 : 0))
             : isBacktrack
               ? legacyTuning.board.trail.backtrackNodeRadiusRatio
               : legacyTuning.board.trail.nodeRadiusRatio
@@ -532,7 +611,7 @@ export class BoardRenderer {
         this.trail.fillCircle(centerX, centerY, nodeRadius);
       }
 
-      if (i === 0) {
+      if (i === trailStart) {
         previousCenterX = centerX;
         previousCenterY = centerY;
         continue;
@@ -646,6 +725,41 @@ export class BoardRenderer {
     const tileY = this.tileY(index);
     const centerX = tileX + tileSize / 2;
     const centerY = tileY + tileSize / 2;
+    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now);
+  }
+
+  public drawActorMotion(
+    fromIndex: number,
+    toIndex: number,
+    progress: number,
+    direction: 0 | 1 | 2 | 3 | null = null,
+    cue: DemoWalkerCue = 'explore'
+  ): void {
+    const { tileSize } = this.layout;
+    const now = this.scene.time.now;
+    const fromTileX = this.tileX(fromIndex);
+    const fromTileY = this.tileY(fromIndex);
+    const toTileX = this.tileX(toIndex);
+    const toTileY = this.tileY(toIndex);
+    const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+    const easedProgress = clampedProgress * clampedProgress * (3 - (2 * clampedProgress));
+    const centerX = Phaser.Math.Linear(fromTileX + (tileSize / 2), toTileX + (tileSize / 2), easedProgress);
+    const centerY = Phaser.Math.Linear(fromTileY + (tileSize / 2), toTileY + (tileSize / 2), easedProgress);
+    const tileX = Phaser.Math.Linear(fromTileX, toTileX, easedProgress);
+    const tileY = Phaser.Math.Linear(fromTileY, toTileY, easedProgress);
+    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now);
+  }
+
+  private drawActorAt(
+    centerX: number,
+    centerY: number,
+    tileX: number,
+    tileY: number,
+    tileSize: number,
+    direction: 0 | 1 | 2 | 3 | null,
+    cue: DemoWalkerCue,
+    now: number
+  ): void {
     const actorTuning = legacyTuning.board.actor;
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
     const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];
@@ -774,6 +888,7 @@ export class BoardRenderer {
     this.chromeBack.destroy();
     this.base.destroy();
     this.grid.destroy();
+    this.start.destroy();
     this.goal.destroy();
     this.signal.destroy();
     this.trail.destroy();

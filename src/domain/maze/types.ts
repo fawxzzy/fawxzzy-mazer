@@ -1,5 +1,6 @@
 export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
+export type MazeDifficulty = 'chill' | 'standard' | 'spicy' | 'brutal';
 
 export interface MazeCore {
   width: number;
@@ -70,6 +71,8 @@ export interface MazeEpisode {
   metrics: MazeMetrics;
   shortcutsCreated: number;
   accepted: boolean;
+  difficulty: MazeDifficulty;
+  difficultyScore: number;
 }
 
 export interface MazeGenerationState {

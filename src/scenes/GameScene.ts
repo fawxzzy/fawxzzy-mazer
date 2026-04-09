@@ -11,6 +11,7 @@ import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 import { mazerStorage } from '../storage/mazerStorage';
+import { buildWinSummaryData } from './gameSceneSummary';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
@@ -24,9 +25,11 @@ export class GameScene extends Phaser.Scene {
   private maze?: MazeEpisode;
   private boardRenderer?: BoardRenderer;
   private playerIndex = 0;
+  private moveCount = 0;
   private timerStartMs = 0;
   private timerPausedAtMs = 0;
   private paused = false;
+  private completionPending = false;
   private overlayKey: 'PauseScene' | 'WinScene' | null = null;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: {
@@ -35,12 +38,14 @@ export class GameScene extends Phaser.Scene {
     s: Phaser.Input.Keyboard.Key;
     d: Phaser.Input.Keyboard.Key;
     p: Phaser.Input.Keyboard.Key;
+    r: Phaser.Input.Keyboard.Key;
+    n: Phaser.Input.Keyboard.Key;
   };
   private readonly moveCooldownMs = legacyTuning.game.playerMovement.cooldownMs;
   private readonly directionSwitchBypassMs = legacyTuning.game.playerMovement.directionSwitchBypassMs;
   private readonly blockedFeedbackCooldownMs = Math.max(110, legacyTuning.game.playerMovement.cooldownMs + 24);
   private readonly pauseOverlayDelayMs = 72;
-  private readonly winOverlayDelayMs = 150;
+  private readonly winOverlayDelayMs = 360;
   private lastMoveAtMs = 0;
   private lastBlockedAtMs = Number.NEGATIVE_INFINITY;
   private lastMoveDirection: 0 | 1 | 2 | 3 | null = null;
@@ -85,11 +90,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   public update(time: number): void {
-    if (this.paused || this.overlayKey === 'WinScene' || !this.maze || !this.boardRenderer) {
+    if (!this.maze || !this.boardRenderer) {
       return;
     }
 
-    this.hud?.setElapsedMs(time - this.timerStartMs);
+    const presentationCue = this.completionPending || this.overlayKey === 'WinScene'
+      ? 'goal'
+      : this.moveCount === 0
+        ? 'spawn'
+        : 'explore';
+    this.boardRenderer.drawStart(presentationCue);
+    this.boardRenderer.drawGoal(presentationCue);
+    this.boardRenderer.drawActor(this.playerIndex, this.lastMoveDirection, presentationCue);
+
+    if (!this.paused && this.overlayKey !== 'WinScene') {
+      this.hud?.setElapsedMs(time - this.timerStartMs);
+    }
+
+    if (this.paused || this.overlayKey === 'WinScene' || this.completionPending) {
+      return;
+    }
 
     const direction = this.readDirection();
     if (direction === null) {
@@ -103,11 +123,13 @@ export class GameScene extends Phaser.Scene {
     this.disposeRunState();
     this.overlayKey = null;
     this.paused = false;
+    this.completionPending = false;
     this.timerPausedAtMs = 0;
     this.lastBlockedAtMs = Number.NEGATIVE_INFINITY;
     this.lastMoveDirection = null;
     this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
     this.bufferedDirection = null;
+    this.moveCount = 0;
 
     const { width, height } = this.scale;
     const compact = width <= legacyTuning.game.layout.compactBreakpoint;
@@ -133,21 +155,24 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer = new BoardRenderer(this, maze, layout);
     this.boardRenderer.drawBoardChrome();
     this.boardRenderer.drawBase();
+    this.boardRenderer.drawStart('spawn');
     this.boardRenderer.drawGoal();
     this.boardRenderer.startAmbientMotion(1.25, 2800);
 
     this.playerIndex = maze.raster.startIndex;
     this.trailIndices = [this.playerIndex];
     this.boardRenderer.drawTrail(this.trailIndices);
-    this.boardRenderer.drawActor(this.playerIndex);
+    this.boardRenderer.drawActor(this.playerIndex, null, 'spawn');
 
     this.timerStartMs = this.time.now;
     this.hud = createHudRenderer(this, maze);
     this.hud.setElapsedMs(0);
+    this.hud.setMoveCount(0);
     this.hud.setGoalArrow(this.playerIndex);
+    this.hud.setComplete(false);
 
     this.cursors = this.input.keyboard?.createCursorKeys();
-    this.wasd = this.input.keyboard?.addKeys('W,A,S,D,P') as GameScene['wasd'];
+    this.wasd = this.input.keyboard?.addKeys('W,A,S,D,P,R,N') as GameScene['wasd'];
     this.input.keyboard?.on('keydown-ESC', this.handlePauseHotkey, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', this.handlePauseHotkey, this);
@@ -168,9 +193,23 @@ export class GameScene extends Phaser.Scene {
     this.trailIndices.length = 0;
     this.queuedTouchDirection = null;
     this.pointerDownAt = null;
+    this.completionPending = false;
   }
 
   private readDirection(): 0 | 1 | 2 | 3 | null {
+    if (this.wasd?.r && Phaser.Input.Keyboard.JustDown(this.wasd.r)) {
+      playSfx('confirm');
+      this.scene.restart();
+      return null;
+    }
+
+    if (this.wasd?.n && Phaser.Input.Keyboard.JustDown(this.wasd.n)) {
+      playSfx('confirm');
+      this.runSeed += 1;
+      this.scene.restart();
+      return null;
+    }
+
     if (this.wasd?.p && Phaser.Input.Keyboard.JustDown(this.wasd.p)) {
       this.openPause();
       return null;
@@ -283,30 +322,46 @@ export class GameScene extends Phaser.Scene {
     this.playerIndex = nextIndex;
     this.lastMoveAtMs = this.time.now;
     this.lastMoveDirection = direction;
+    this.moveCount += 1;
     this.trailIndices.push(this.playerIndex);
     if (this.trailIndices.length > legacyTuning.board.trail.maxLength) {
       this.trailIndices.shift();
     }
     boardRenderer.drawTrail(this.trailIndices);
-    boardRenderer.drawActor(this.playerIndex);
+    boardRenderer.drawActor(this.playerIndex, direction);
+    this.hud?.setMoveCount(this.moveCount);
     this.hud?.setGoalArrow(this.playerIndex);
     playSfx('move');
 
     if (this.playerIndex === maze.raster.endIndex) {
+      const elapsedMs = this.time.now - this.timerStartMs;
       mazerStorage.recordBestTime({
-        elapsedMs: this.time.now - this.timerStartMs,
+        elapsedMs,
         seed: this.runSeed
       });
       playSfx('win');
+      this.completionPending = true;
       this.overlayKey = 'WinScene';
       this.paused = true;
       this.bufferedDirection = null;
       this.queuedTouchDirection = null;
+      this.hud?.setComplete(true);
+      boardRenderer.drawTrail(this.trailIndices, { cue: 'goal' });
+      this.cameras.main.flash(180, 196, 255, 212, false);
+      this.tweens.add({
+        targets: this.cameras.main,
+        zoom: { from: 1, to: 1.02 },
+        duration: 120,
+        yoyo: true,
+        ease: 'Sine.easeOut'
+      });
+      const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount);
       this.pendingOverlayLaunch?.remove(false);
       this.pendingOverlayLaunch = this.time.delayedCall(this.winOverlayDelayMs, () => {
         this.pendingOverlayLaunch = undefined;
+        this.completionPending = false;
         if (this.scene.isActive() && this.overlayKey === 'WinScene') {
-          this.scene.launch('WinScene');
+          this.scene.launch('WinScene', winSummary);
         }
       });
     }

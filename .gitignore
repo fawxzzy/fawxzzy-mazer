@@ -3,15 +3,22 @@
 node_modules/
 
 # Build output
-dist/
+/dist/
 
 # Local verification artifacts
-.tmp-*.log
-devserver*.log
-artifacts-*.png
-review-*.png
-desktopcheck.png
-mobilecheck*.png
+/.tmp-*.log
+/devserver*.log
+/artifacts-*.png
+/review-*.png
+/Screenshot*.png
+/desktopcheck.png
+/mobilecheck*.png
+
+# Local scratch/export folders
+/tmp/
+/scratch/
+/export/
+/exports/
 
 *.log
 npm-debug.log*

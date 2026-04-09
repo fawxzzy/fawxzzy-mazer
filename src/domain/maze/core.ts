@@ -340,7 +340,7 @@ export class PatternEngine {
       case 'kiosk':
         return elapsed > base;
       case 'demo':
-        return elapsed > base * 1.15;
+        return elapsed > resolveDemoFrameDuration(frame.episode);
       default:
         return false;
     }
@@ -785,4 +785,15 @@ const bumpScratchEpoch = (
   reset.fill(0);
   scratch[key] = 1;
   return 1;
+};
+
+const resolveDemoFrameDuration = (episode: MazeEpisode): number => {
+  const difficultyLinger = episode.difficulty === 'chill'
+    ? 0.48
+    : episode.difficulty === 'standard'
+      ? 0.34
+      : episode.difficulty === 'spicy'
+        ? 0.22
+        : 0.14;
+  return Math.max(4.4, 1.74 + difficultyLinger + (episode.raster.pathIndices.length * 0.104));
 };

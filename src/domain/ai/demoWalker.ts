@@ -3,6 +3,7 @@ import { resolveDirectionBetween, type MazeEpisode } from '../maze';
 export interface DemoWalkerConfig {
   seed: number;
   cadence: {
+    spawnHoldMs: number;
     exploreStepMs: number;
     backtrackStepMs: number;
     decisionPauseMs: number;
@@ -27,6 +28,18 @@ export interface DemoWalkerAdvance {
   delayMs: number;
   shouldRegenerateMaze?: boolean;
   nextSeed?: number;
+}
+
+export interface DemoWalkerViewFrame {
+  currentIndex: number;
+  nextIndex: number;
+  previousIndex: number;
+  direction: 0 | 1 | 2 | 3 | null;
+  progress: number;
+  cue: DemoWalkerCue;
+  trailStart: number;
+  trailLimit: number;
+  cycleComplete: boolean;
 }
 
 export type DemoWalkerPhase = 'explore' | 'goal-hold' | 'reset-hold';
@@ -56,6 +69,7 @@ export interface DemoWalkerState {
 const defaultConfig: DemoWalkerConfig = {
   seed: 1988,
   cadence: {
+    spawnHoldMs: 220,
     exploreStepMs: 104,
     backtrackStepMs: 76,
     decisionPauseMs: 228,
@@ -149,6 +163,114 @@ export const stepDemoWalker = (
   state: DemoWalkerState,
   config: DemoWalkerConfig = defaultConfig
 ): DemoWalkerState => advanceDemoWalker(episode, state, config).state;
+
+export const resolveDemoWalkerViewFrame = (
+  episode: MazeEpisode,
+  elapsedMs: number,
+  config: DemoWalkerConfig = defaultConfig,
+  trailWindow = config.behavior.trailMaxLength
+): DemoWalkerViewFrame => {
+  const path = episode.raster.pathIndices;
+  const startIndex = episode.raster.startIndex;
+  const endIndex = episode.raster.endIndex;
+  const spawnHoldMs = Math.max(0, config.cadence.spawnHoldMs);
+  const stepMs = Math.max(1, config.cadence.exploreStepMs);
+  const goalHoldMs = Math.max(0, config.cadence.goalHoldMs);
+  const resetHoldMs = Math.max(0, config.cadence.resetHoldMs);
+  const visibleWindow = Math.max(1, trailWindow);
+  const lastPathIndex = Math.max(0, path.length - 1);
+
+  if (path.length <= 1) {
+    return {
+      currentIndex: startIndex,
+      nextIndex: endIndex,
+      previousIndex: startIndex,
+      direction: null,
+      progress: 1,
+      cue: elapsedMs < spawnHoldMs ? 'spawn' : 'goal',
+      trailStart: 0,
+      trailLimit: Math.min(1, path.length),
+      cycleComplete: elapsedMs >= spawnHoldMs + goalHoldMs + resetHoldMs
+    };
+  }
+
+  if (elapsedMs < spawnHoldMs) {
+    return {
+      currentIndex: startIndex,
+      nextIndex: path[1],
+      previousIndex: startIndex,
+      direction: resolveDirectionBetween(startIndex, path[1], episode.raster.width),
+      progress: 0,
+      cue: 'spawn',
+      trailStart: 0,
+      trailLimit: 1,
+      cycleComplete: false
+    };
+  }
+
+  const traverseMs = lastPathIndex * stepMs;
+  const moveElapsedMs = elapsedMs - spawnHoldMs;
+  if (moveElapsedMs < traverseMs) {
+    const segment = Math.min(lastPathIndex - 1, Math.floor(moveElapsedMs / stepMs));
+    const segmentElapsedMs = moveElapsedMs - (segment * stepMs);
+    const progress = Math.min(1, segmentElapsedMs / stepMs);
+    const currentIndex = path[segment];
+    const nextIndex = path[segment + 1];
+    const visibleCursor = progress >= 0.58 ? segment + 1 : segment;
+
+    return {
+      currentIndex,
+      nextIndex,
+      previousIndex: segment === 0 ? startIndex : path[segment - 1],
+      direction: resolveDirectionBetween(currentIndex, nextIndex, episode.raster.width),
+      progress,
+      cue: segment >= lastPathIndex - 2 && progress >= 0.42 ? 'anticipate' : 'explore',
+      trailStart: Math.max(0, visibleCursor - visibleWindow + 1),
+      trailLimit: visibleCursor + 1,
+      cycleComplete: false
+    };
+  }
+
+  if (moveElapsedMs < traverseMs + goalHoldMs) {
+    return {
+      currentIndex: endIndex,
+      nextIndex: endIndex,
+      previousIndex: path[lastPathIndex - 1] ?? endIndex,
+      direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
+      progress: 1,
+      cue: 'goal',
+      trailStart: Math.max(0, path.length - visibleWindow),
+      trailLimit: path.length,
+      cycleComplete: false
+    };
+  }
+
+  if (moveElapsedMs < traverseMs + goalHoldMs + resetHoldMs) {
+    return {
+      currentIndex: endIndex,
+      nextIndex: endIndex,
+      previousIndex: path[lastPathIndex - 1] ?? endIndex,
+      direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
+      progress: 1,
+      cue: 'reset',
+      trailStart: Math.max(0, path.length - visibleWindow),
+      trailLimit: path.length,
+      cycleComplete: false
+    };
+  }
+
+  return {
+    currentIndex: endIndex,
+    nextIndex: endIndex,
+    previousIndex: path[lastPathIndex - 1] ?? endIndex,
+    direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
+    progress: 1,
+    cue: 'reset',
+    trailStart: Math.max(0, path.length - visibleWindow),
+    trailLimit: path.length,
+    cycleComplete: true
+  };
+};
 
 const appendTrail = (trail: number[], nextIndex: number, maxLength: number): number[] => {
   const nextTrail = trail.slice(Math.max(0, trail.length - maxLength + 1));

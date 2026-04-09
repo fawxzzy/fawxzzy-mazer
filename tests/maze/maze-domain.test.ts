@@ -2,10 +2,13 @@ import { describe, expect, test } from 'vitest';
 
 import {
   buildMaze,
+  classifyMazeDifficulty,
   createGrid,
   type CortexSample,
+  disposeMazeEpisode,
   generateMaze,
   getNeighborIndex,
+  PatternEngine,
   resetAndRegenerate,
   runBatch,
   type MazeConfig
@@ -143,5 +146,64 @@ describe('maze domain generation', () => {
     expect(samples).toHaveLength(24);
     expect(samples.every((sample) => sample.solutionLength > 0)).toBe(true);
     expect(samples.every((sample) => sample.metrics.solutionLength === sample.solutionLength)).toBe(true);
+  });
+
+  test('classifies difficulty buckets deterministically from measured metrics', () => {
+    expect(classifyMazeDifficulty({
+      solutionLength: 34,
+      deadEnds: 8,
+      junctions: 4,
+      straightness: 0.86,
+      coverage: 0.18
+    }, 42, 42, 1).difficulty).toBe('chill');
+
+    expect(classifyMazeDifficulty({
+      solutionLength: 80,
+      deadEnds: 16,
+      junctions: 10,
+      straightness: 0.55,
+      coverage: 0.32
+    }, 50, 50, 3).difficulty).toBe('standard');
+
+    expect(classifyMazeDifficulty({
+      solutionLength: 104,
+      deadEnds: 28,
+      junctions: 18,
+      straightness: 0.42,
+      coverage: 0.42
+    }, 50, 50, 6).difficulty).toBe('spicy');
+
+    expect(classifyMazeDifficulty({
+      solutionLength: 130,
+      deadEnds: 36,
+      junctions: 24,
+      straightness: 0.36,
+      coverage: 0.5
+    }, 50, 50, 9).difficulty).toBe('brutal');
+  });
+
+  test('pattern engine resumeFresh skips hidden-tab backlog and creates one fresh demo frame', () => {
+    let seed = 900;
+    const engine = new PatternEngine(
+      () => generateMaze({
+        scale: 30,
+        seed: seed++,
+        checkPointModifier: 0.35,
+        shortcutCountModifier: 0.13
+      }),
+      'demo'
+    );
+
+    const initial = engine.next(0);
+    engine.suspend();
+    expect(engine.next(30)).toBe(initial);
+
+    engine.resumeFresh();
+    const resumed = engine.next(0);
+
+    expect(resumed).not.toBe(initial);
+    expect(resumed.episode.seed).toBe(901);
+    disposeMazeEpisode(initial.episode);
+    engine.destroy();
   });
 });

@@ -6,7 +6,7 @@
 
 ## Archive handling
 - Canonical archive path for this repo lane: `legacy/old-project.zip`.
-- Extraction was performed into temporary workspace only (`/tmp/legacy_extract`).
+- Extraction was performed into a temporary non-repo workspace only.
 - Only these paths were extracted for analysis:
   - `Source/Mazer/**/*.cpp`
   - `Source/Mazer/**/*.h`

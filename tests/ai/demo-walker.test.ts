@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
-import { advanceDemoWalker, createDemoWalkerState } from '../../src/domain/ai';
+import { advanceDemoWalker, createDemoWalkerState, resolveDemoWalkerViewFrame } from '../../src/domain/ai';
+import { legacyTuning } from '../../src/config/tuning';
 import { generateMaze } from '../../src/domain/maze';
 
 describe('demo walker', () => {
@@ -82,6 +83,7 @@ describe('demo walker', () => {
       state = advanceDemoWalker(episode, state, {
         seed: 1988,
         cadence: {
+          spawnHoldMs: 1,
           exploreStepMs: 1,
           backtrackStepMs: 1,
           decisionPauseMs: 1,
@@ -103,5 +105,23 @@ describe('demo walker', () => {
       expect(state.trailIndices.length).toBeLessThanOrEqual(3);
       expect(state.trailSteps.length).toBeLessThanOrEqual(3);
     }
+  });
+
+  test('view frames stay on canonical pathIndices with a bounded visible window', () => {
+    const episode = generateMaze({
+      scale: 40,
+      seed: 73,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    });
+
+    const elapsedMs = legacyTuning.demo.cadence.spawnHoldMs + (legacyTuning.demo.cadence.exploreStepMs * 2.5);
+    const frame = resolveDemoWalkerViewFrame(episode, elapsedMs, legacyTuning.demo, 4);
+
+    expect(episode.raster.pathIndices.includes(frame.currentIndex)).toBe(true);
+    expect(episode.raster.pathIndices.includes(frame.nextIndex)).toBe(true);
+    expect(frame.trailLimit - frame.trailStart).toBeLessThanOrEqual(4);
+    expect(frame.progress).toBeGreaterThan(0);
+    expect(frame.progress).toBeLessThan(1);
   });
 });

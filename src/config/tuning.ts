@@ -35,15 +35,15 @@ export const legacyTuning = {
     tile: {
       floorInsetRatio: 0.1,
       floorOuterAlpha: 1,
-      floorInsetAlpha: 0.96,
-      floorSheenAlpha: 0.14,
-      wallAlpha: 0.98,
-      wallGridAlpha: 0.4,
+      floorInsetAlpha: 0.98,
+      floorSheenAlpha: 0.18,
+      wallAlpha: 1,
+      wallGridAlpha: 0.46,
       floorGridAlpha: 0.12,
       bevelRatio: 0.08,
-      floorHighlightAlpha: 0.26,
-      floorShadowAlpha: 0.16,
-      wallEdgeAlpha: 0.16
+      floorHighlightAlpha: 0.32,
+      floorShadowAlpha: 0.2,
+      wallEdgeAlpha: 0.24
     },
     goalPulse: {
       basePulse: 0.98,
@@ -215,9 +215,9 @@ export const legacyTuning = {
     compactBreakpoint: 620,
     ultraCompactBreakpoint: 420,
     panelY: 34,
-    panelHeight: 54,
-    compactPanelHeight: 46,
-    ultraCompactPanelHeight: 40,
+    panelHeight: 66,
+    compactPanelHeight: 58,
+    ultraCompactPanelHeight: 54,
     panelInsetX: 22,
     compactPanelInsetX: 14,
     ultraCompactPanelInsetX: 10,
@@ -270,6 +270,7 @@ export const legacyTuning = {
     seed: 1988,
     cadence: {
       // Legacy AI was timer-driven (`_PlayerAiDelayDuration`); exact value was BP-driven.
+      spawnHoldMs: 220,
       exploreStepMs: 104,
       backtrackStepMs: 76,
       decisionPauseMs: 228,
