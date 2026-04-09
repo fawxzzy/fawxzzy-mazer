@@ -1,8 +1,9 @@
-import type { MazeDifficulty, MazeEpisode } from '../domain/maze';
+import { getMazeSizeLabel, type MazeDifficulty, type MazeEpisode, type MazeSize } from '../domain/maze';
 import type { RunRecordUpdate } from '../storage/mazerStorage';
 
 export interface GameSceneStartData {
   difficulty?: MazeDifficulty;
+  size?: MazeSize;
   seed?: number;
   seedMode?: 'exact' | 'fresh' | 'next';
 }
@@ -10,6 +11,7 @@ export interface GameSceneStartData {
 export interface ReplaySnapshot {
   completed: boolean;
   difficulty: MazeDifficulty;
+  size: MazeSize;
   seed: number;
 }
 
@@ -67,9 +69,10 @@ export const buildWinSummaryData = (
     detailLines: [
       formatBestLine('TIME', formatElapsedLabel(elapsedMs), previousBestTimeLabel, progressUpdate.isNewBestTime),
       formatBestLine('MOVES', `${moveCount}`, previousBestMovesLabel, progressUpdate.isNewBestMoves),
+      `${getMazeSizeLabel(maze.size).toUpperCase()} / ${maze.difficulty.toUpperCase()}`,
       `SEED #${maze.seed}`
     ],
-    subtitle: `${maze.difficulty.toUpperCase()} / ${hasNewBest ? 'PERSONAL BEST' : 'CORE SECURED'}`,
+    subtitle: `${getMazeSizeLabel(maze.size).toUpperCase()} / ${maze.difficulty.toUpperCase()} / ${hasNewBest ? 'PERSONAL BEST' : 'CORE SECURED'}`,
     title: 'Maze Complete'
   };
 };

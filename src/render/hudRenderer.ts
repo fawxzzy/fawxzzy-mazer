@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { DemoWalkerCue } from '../domain/ai';
-import type { MazeEpisode } from '../domain/maze';
+import { getMazeSizeLabel, type MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { xFromIndex, yFromIndex } from '../domain/maze';
 import { palette } from './palette';
@@ -21,7 +21,7 @@ interface DemoStatusHandle {
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
 const formatDifficultyLabel = (episode: MazeEpisode, compact = false): string => {
-  const label = episode.difficulty.toUpperCase();
+  const label = `${getMazeSizeLabel(episode.size).toUpperCase()} / ${episode.difficulty.toUpperCase()}`;
   return compact ? label : `${label} ROUTE`;
 };
 

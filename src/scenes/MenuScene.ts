@@ -1,15 +1,24 @@
 import Phaser from 'phaser';
 import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue } from '../domain/ai';
-import { disposeMazeEpisode, generateMaze, PatternEngine, type PatternFrame } from '../domain/maze';
+import {
+  disposeMazeEpisode,
+  generateMazeForDifficulty,
+  getMazeSizeLabel,
+  MAZE_SIZE_ORDER,
+  normalizeMazeSize,
+  PatternEngine,
+  type MazeDifficulty,
+  type MazeSize,
+  type PatternFrame
+} from '../domain/maze';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { createDemoStatusHud } from '../render/hudRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
-import { createMenuButton } from '../ui/menuButton';
+import { createMenuButton, type MenuButtonHandle } from '../ui/menuButton';
 import { mazerStorage } from '../storage/mazerStorage';
-import type { MazeDifficulty } from '../domain/maze';
 import type { GameSceneStartData, ReplaySnapshot } from './gameSceneSummary';
 
 const OVERLAY_EVENTS = {
@@ -18,6 +27,7 @@ const OVERLAY_EVENTS = {
 } as const;
 const LAST_RUN_REGISTRY_KEY = 'mazer:last-run';
 const ROTATING_DIFFICULTIES: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
+const ROTATING_SIZES: readonly MazeSize[] = MAZE_SIZE_ORDER;
 
 export class MenuScene extends Phaser.Scene {
   private overlayManager!: OverlayManager;
@@ -40,15 +50,20 @@ export class MenuScene extends Phaser.Scene {
     this.drawStarfield(width, height);
 
     let demoSeed: number = legacyTuning.demo.seed;
+    let demoCycle = 0;
     const patternEngine = new PatternEngine(
       () => {
-        const episode = generateMaze({
+        const cycle = resolveMenuDemoCycle(demoSeed, demoCycle);
+        const resolved = generateMazeForDifficulty({
           scale: legacyTuning.board.scale,
           seed: demoSeed,
+          size: cycle.size,
           checkPointModifier: legacyTuning.board.checkPointModifier,
           shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
-        });
+        }, cycle.difficulty);
+        const episode = resolved.episode;
         demoSeed += legacyTuning.demo.behavior.regenerateSeedStep;
+        demoCycle += 1;
         return episode;
       },
       'demo'
@@ -180,6 +195,16 @@ export class MenuScene extends Phaser.Scene {
       .setAlpha(legacyTuning.menu.title.alpha)
       .setStroke('#17381f', legacyTuning.menu.title.strokePx)
       .setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true)
+      .setDepth(10);
+    this.add
+      .text(width / 2, titleY + Math.round(titlePlateHeight * 0.28), '\u00b0 by fawxzzy', {
+        color: '#a5d7af',
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${isNarrow ? 9 : 10}px`,
+        letterSpacing: 1
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.68)
       .setDepth(10);
 
     this.titlePulseTween = this.tweens.add({
@@ -360,9 +385,10 @@ export class MenuScene extends Phaser.Scene {
       };
       this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
 
-    const progress = mazerStorage.getProgress();
+    let progress = mazerStorage.getProgress();
+    let selectedDifficulty: MazeDifficulty = progress.lastDifficulty;
+    let selectedSize: MazeSize = normalizeMazeSize(progress.lastSize);
     const lastRun = this.registry.get(LAST_RUN_REGISTRY_KEY) as ReplaySnapshot | undefined;
-    const surpriseDifficulty = ROTATING_DIFFICULTIES[progress.clearsCount % ROTATING_DIFFICULTIES.length];
 
     const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
@@ -378,6 +404,9 @@ export class MenuScene extends Phaser.Scene {
     };
 
       const launchRun = (startData: GameSceneStartData): void => {
+        const difficulty = startData.difficulty ?? selectedDifficulty;
+        const size = normalizeMazeSize(startData.size ?? selectedSize);
+        progress = mazerStorage.setLastPlayedSelection(difficulty, size);
         queueTransition(() => {
           this.overlayManager.closeAll();
           this.tweens.add({
@@ -388,13 +417,19 @@ export class MenuScene extends Phaser.Scene {
           ease: 'Sine.easeOut'
         });
         this.cameras.main.fadeOut(140, 0, 0, 0);
-          this.time.delayedCall(140, () => this.scene.start('GameScene', startData));
+          this.time.delayedCall(140, () => this.scene.start('GameScene', {
+            ...startData,
+            difficulty,
+            size
+          } satisfies GameSceneStartData));
         });
       };
 
       const touchPrimary = window.matchMedia('(pointer: coarse)').matches;
       const startTrayWidth = Math.min(layout.boardWidth * 0.94, width - 28);
-      const startTrayHeight = lastRun ? (isNarrow ? 244 : 214) : (isNarrow ? 180 : 156);
+      const startTrayHeight = isNarrow
+        ? (lastRun ? 338 : 280)
+        : (lastRun ? 298 : 248);
       const startTrayY = Math.min(
         layout.boardY + layout.boardHeight + Math.max(34, isNarrow ? 28 : 34),
         height - (startTrayHeight / 2) - 14
@@ -427,7 +462,7 @@ export class MenuScene extends Phaser.Scene {
         .text(
           0,
           trayMeta.y + 18,
-          `Last ${progress.lastDifficulty.toUpperCase()}  /  Clears ${progress.clearsCount}  /  Surprise ${surpriseDifficulty.toUpperCase()}`,
+          '',
           {
             color: '#9ec9ff',
             fontFamily: '"Courier New", monospace',
@@ -438,17 +473,24 @@ export class MenuScene extends Phaser.Scene {
         .setOrigin(0.5, 0.5)
         .setAlpha(0.82);
 
-      const difficultyButtons: Phaser.GameObjects.Container[] = [];
+      const difficultyButtons: MenuButtonHandle[] = [];
       const difficultySpecs: Array<{ difficulty: MazeDifficulty; label: string }> = [
         { difficulty: 'chill', label: 'Chill' },
         { difficulty: 'standard', label: 'Standard' },
         { difficulty: 'spicy', label: 'Spicy' },
         { difficulty: 'brutal', label: 'Brutal' }
       ];
+      const sizeButtons: MenuButtonHandle[] = [];
+      const sizeSpecs = [
+        { size: 'small' as const, label: 'Small' },
+        { size: 'medium' as const, label: 'Medium' },
+        { size: 'large' as const, label: 'Large' },
+        { size: 'huge' as const, label: 'Huge' }
+      ];
       const buttonWidth = isNarrow ? 112 : 118;
       const buttonHeight = 34;
       const difficultySpacingX = isNarrow ? 120 : 126;
-      const difficultyTopY = trayProgress.y + 30;
+      const difficultyTopY = trayProgress.y + 32;
       difficultySpecs.forEach((spec, index) => {
         const col = index % 2;
         const row = Math.floor(index / 2);
@@ -460,28 +502,111 @@ export class MenuScene extends Phaser.Scene {
           height: buttonHeight,
           fontSize: 14,
           hoverSfx: true,
-          onClick: () => launchRun({ difficulty: spec.difficulty, seedMode: 'fresh' }),
+          onClick: () => {
+            selectedDifficulty = spec.difficulty;
+            progress = mazerStorage.setLastPlayedSelection(selectedDifficulty, selectedSize);
+            refreshSelectionUi();
+          },
           tone: progress.lastDifficulty === spec.difficulty ? 'default' : 'subtle'
         }));
       });
 
+      const sizeLabelY = difficultyTopY + (isNarrow ? 92 : 86);
+      const sizeLabel = this.add
+        .text(0, sizeLabelY - 18, 'Size', {
+          color: '#a8d9b7',
+          fontFamily: '"Courier New", monospace',
+          fontSize: `${isNarrow ? 10 : 11}px`,
+          fontStyle: 'bold'
+        })
+        .setOrigin(0.5, 0.5)
+        .setAlpha(0.84);
+      const sizeButtonWidth = isNarrow ? 72 : 82;
+      const sizeSpacingX = isNarrow ? 80 : 90;
+      sizeSpecs.forEach((spec, index) => {
+        sizeButtons.push(createMenuButton(this, {
+          x: ((index - 1.5) * sizeSpacingX),
+          y: sizeLabelY + 10,
+          label: spec.label,
+          width: sizeButtonWidth,
+          height: 30,
+          fontSize: 12,
+          hoverSfx: true,
+          onClick: () => {
+            selectedSize = spec.size;
+            progress = mazerStorage.setLastPlayedSelection(selectedDifficulty, selectedSize);
+            refreshSelectionUi();
+          },
+          tone: progress.lastSize === spec.size ? 'default' : 'subtle'
+        }));
+      });
+
+      const actionRowY = sizeLabelY + (isNarrow ? 54 : 50);
+      const startButton = createMenuButton(this, {
+        x: 0,
+        y: actionRowY,
+        label: 'Start Run',
+        width: Math.min(232, startTrayWidth - 28),
+        height: 34,
+        fontSize: 13,
+        hoverSfx: true,
+        onClick: () => launchRun({ difficulty: selectedDifficulty, size: selectedSize, seedMode: 'fresh' }),
+        tone: 'default'
+      });
+
       const surpriseButton = createMenuButton(this, {
         x: 0,
-        y: difficultyTopY + (isNarrow ? 92 : 86),
-        label: `Surprise: ${surpriseDifficulty.toUpperCase()}`,
+        y: actionRowY + 40,
+        label: '',
         width: Math.min(242, startTrayWidth - 28),
         height: 34,
         fontSize: 13,
         hoverSfx: true,
-        onClick: () => launchRun({ difficulty: surpriseDifficulty, seedMode: 'fresh' }),
+        onClick: () => {
+          const surprise = resolveSurpriseSelection(progress.clearsCount + 1);
+          launchRun({
+            difficulty: surprise.difficulty,
+            size: surprise.size,
+            seedMode: 'fresh'
+          });
+        },
         tone: 'subtle'
       });
 
-      startTray.add([trayPlate, trayInset, trayTitle, trayMeta, trayProgress, ...difficultyButtons, surpriseButton]);
+      const refreshSelectionUi = (): void => {
+        const surprise = resolveSurpriseSelection(progress.clearsCount + 1);
+        trayProgress.setText(
+          `Selected ${selectedDifficulty.toUpperCase()} / ${getMazeSizeLabel(selectedSize).toUpperCase()}`
+          + `  /  Clears ${progress.clearsCount}`
+        );
+        difficultyButtons.forEach((button, index) => {
+          button.setTone(difficultySpecs[index].difficulty === selectedDifficulty ? 'default' : 'subtle');
+        });
+        sizeButtons.forEach((button, index) => {
+          button.setTone(sizeSpecs[index].size === selectedSize ? 'default' : 'subtle');
+        });
+        surpriseButton.setLabel(
+          `Surprise: ${surprise.difficulty.toUpperCase()} / ${getMazeSizeLabel(surprise.size).toUpperCase()}`
+        );
+      };
+
+      refreshSelectionUi();
+      startTray.add([
+        trayPlate,
+        trayInset,
+        trayTitle,
+        trayMeta,
+        trayProgress,
+        ...difficultyButtons,
+        sizeLabel,
+        ...sizeButtons,
+        startButton,
+        surpriseButton
+      ]);
 
       if (lastRun) {
         const replayText = this.add
-          .text(0, surpriseButton.y + 28, `Last seed #${lastRun.seed}  /  ${lastRun.difficulty.toUpperCase()}`, {
+          .text(0, surpriseButton.y + 28, `Last seed #${lastRun.seed}  /  ${lastRun.difficulty.toUpperCase()} / ${getMazeSizeLabel(lastRun.size).toUpperCase()}`, {
             color: '#c8ffd0',
             fontFamily: '"Courier New", monospace',
             fontSize: `${isNarrow ? 9 : 10}px`
@@ -496,7 +621,7 @@ export class MenuScene extends Phaser.Scene {
           height: 32,
           fontSize: 13,
           hoverSfx: true,
-          onClick: () => launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'next' }),
+          onClick: () => launchRun({ difficulty: lastRun.difficulty, size: lastRun.size, seed: lastRun.seed, seedMode: 'next' }),
           tone: 'default'
         });
         const sameSeedButton = createMenuButton(this, {
@@ -507,7 +632,7 @@ export class MenuScene extends Phaser.Scene {
           height: 32,
           fontSize: 13,
           hoverSfx: true,
-          onClick: () => launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'exact' }),
+          onClick: () => launchRun({ difficulty: lastRun.difficulty, size: lastRun.size, seed: lastRun.seed, seedMode: 'exact' }),
           tone: 'subtle'
         });
         startTray.add([replayText, replayButton, sameSeedButton]);
@@ -548,6 +673,11 @@ export class MenuScene extends Phaser.Scene {
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
+    this.events.on('overlay-manual-play', () => launchRun({
+      difficulty: selectedDifficulty,
+      size: selectedSize,
+      seedMode: 'fresh'
+    }));
     const escHandler = () => {
       if (!this.overlayManager.isOverlayActive()) {
         this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
@@ -570,7 +700,7 @@ export class MenuScene extends Phaser.Scene {
         }
 
         if (lastRun && event.code === 'Enter' && event.shiftKey) {
-          launchRun({ difficulty: lastRun.difficulty, seed: lastRun.seed, seedMode: 'exact' });
+          launchRun({ difficulty: lastRun.difficulty, size: lastRun.size, seed: lastRun.seed, seedMode: 'exact' });
           return;
         }
 
@@ -579,7 +709,8 @@ export class MenuScene extends Phaser.Scene {
           || (event.code === 'KeyM' && event.shiftKey);
         if (shouldPlay) {
           launchRun({
-            difficulty: progress.lastDifficulty,
+            difficulty: selectedDifficulty,
+            size: selectedSize,
             seedMode: 'fresh'
           });
         }
@@ -600,6 +731,7 @@ export class MenuScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown', manualShortcutHandler);
       this.events.off(OVERLAY_EVENTS.open);
       this.events.off(OVERLAY_EVENTS.close);
+      this.events.off('overlay-manual-play');
       this.time.removeAllEvents();
       this.tweens.killAll();
       this.children.removeAll(true);
@@ -770,36 +902,83 @@ export class MenuScene extends Phaser.Scene {
   }
 }
 
-const resolveDemoConfig = (episode: PatternFrame['episode']): DemoWalkerConfig => ({
-  ...legacyTuning.demo,
-  cadence: {
-    ...legacyTuning.demo.cadence,
-    spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs
-      + (episode.difficulty === 'chill'
-        ? 120
-        : episode.difficulty === 'standard'
-          ? 60
-          : 0),
-    goalHoldMs: legacyTuning.demo.cadence.goalHoldMs
-      + (episode.difficulty === 'brutal'
-        ? 100
-        : 0),
-    resetHoldMs: legacyTuning.demo.cadence.resetHoldMs
-      + (episode.difficulty === 'chill' ? 40 : 0)
-  }
-});
+const resolveDemoConfig = (episode: PatternFrame['episode']): DemoWalkerConfig => {
+  const plan = resolveMenuDemoCycle(episode.seed, episode.seed);
+  const pace = plan.pacing;
+  return {
+    ...legacyTuning.demo,
+    cadence: {
+      ...legacyTuning.demo.cadence,
+      spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs
+        + pace.spawnHoldMs
+        + (episode.difficulty === 'chill'
+          ? 120
+          : episode.difficulty === 'standard'
+            ? 60
+            : 0),
+      exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + pace.exploreStepMs,
+      goalHoldMs: legacyTuning.demo.cadence.goalHoldMs
+        + pace.goalHoldMs
+        + (episode.difficulty === 'brutal' ? 100 : 0),
+      resetHoldMs: legacyTuning.demo.cadence.resetHoldMs
+        + pace.resetHoldMs
+        + (episode.difficulty === 'chill' ? 40 : 0)
+    }
+  };
+};
 
 const resolveDemoTrailWindow = (episode: PatternFrame['episode']): number => {
+  const sizeOffset = episode.size === 'small'
+    ? -2
+    : episode.size === 'medium'
+      ? 0
+      : episode.size === 'large'
+        ? 2
+        : 4;
   switch (episode.difficulty) {
     case 'chill':
-      return 18;
+      return 18 + sizeOffset;
     case 'standard':
-      return 22;
+      return 22 + sizeOffset;
     case 'spicy':
-      return 26;
+      return 26 + sizeOffset;
     case 'brutal':
-      return 30;
+      return 30 + sizeOffset;
     default:
-      return 22;
+      return 22 + sizeOffset;
   }
+};
+
+interface MenuDemoCycle {
+  difficulty: MazeDifficulty;
+  size: MazeSize;
+  pacing: {
+    exploreStepMs: number;
+    goalHoldMs: number;
+    resetHoldMs: number;
+    spawnHoldMs: number;
+  };
+}
+
+const DEMO_PACING_PROFILES: readonly MenuDemoCycle['pacing'][] = [
+  { exploreStepMs: -8, goalHoldMs: 40, resetHoldMs: 18, spawnHoldMs: 12 },
+  { exploreStepMs: 0, goalHoldMs: 0, resetHoldMs: 0, spawnHoldMs: 0 },
+  { exploreStepMs: 7, goalHoldMs: 86, resetHoldMs: 28, spawnHoldMs: 18 }
+] as const;
+
+export const resolveMenuDemoCycle = (seed: number, cycle: number): MenuDemoCycle => {
+  const mixed = Math.imul((seed >>> 0) ^ Math.imul((cycle + 1) >>> 0, 0x9e3779b1), 0x85ebca6b) >>> 0;
+  return {
+    difficulty: ROTATING_DIFFICULTIES[mixed % ROTATING_DIFFICULTIES.length],
+    size: ROTATING_SIZES[(mixed >>> 5) % ROTATING_SIZES.length],
+    pacing: DEMO_PACING_PROFILES[(mixed >>> 9) % DEMO_PACING_PROFILES.length]
+  };
+};
+
+export const resolveSurpriseSelection = (index: number): { difficulty: MazeDifficulty; size: MazeSize } => {
+  const cycle = resolveMenuDemoCycle(legacyTuning.demo.seed + 41, index);
+  return {
+    difficulty: cycle.difficulty,
+    size: cycle.size
+  };
 };

@@ -5,6 +5,7 @@ import { palette } from '../render/palette';
 export interface MenuButtonHandle extends Phaser.GameObjects.Container {
   setDisabled(disabled: boolean): MenuButtonHandle;
   setLabel(label: string): MenuButtonHandle;
+  setTone(tone: 'default' | 'subtle' | 'danger'): MenuButtonHandle;
 }
 
 interface MenuButtonConfig {
@@ -24,7 +25,6 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
   const width = config.width ?? 180;
   const height = config.height ?? 44;
   const fontSize = config.fontSize ?? (height <= 34 ? 14 : 20);
-  const tone = config.tone ?? 'default';
   const tonePalette = {
     default: {
       fill: palette.ui.buttonFill,
@@ -69,7 +69,8 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
       hoverTint: palette.hud.goalText
     }
   } as const;
-  const colors = tonePalette[tone];
+  let tone: keyof typeof tonePalette = config.tone ?? 'default';
+  let colors = tonePalette[tone];
 
   const rect = scene.add
     .rectangle(0, 0, width, height, colors.fill, colors.fillAlpha)
@@ -173,6 +174,13 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
 
   container.setLabel = (label: string): MenuButtonHandle => {
     text.setText(label);
+    return container;
+  };
+
+  container.setTone = (nextTone: 'default' | 'subtle' | 'danger'): MenuButtonHandle => {
+    tone = nextTone;
+    colors = tonePalette[tone];
+    tweenToState(hovered, false);
     return container;
   };
 

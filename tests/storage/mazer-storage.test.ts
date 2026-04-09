@@ -159,7 +159,8 @@ describe('mazer storage', () => {
         brutal: { bestMoves: null, bestTimeMs: null }
       },
       clearsCount: 0,
-      lastDifficulty: 'standard'
+      lastDifficulty: 'standard',
+      lastSize: 'medium'
     }));
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBeNull();
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.meta)).toBe(JSON.stringify({
@@ -183,7 +184,8 @@ describe('mazer storage', () => {
             brutal: { bestMoves: 'bad', bestTimeMs: [] }
           },
           clearsCount: 1_500_000,
-          lastDifficulty: 'unknown'
+          lastDifficulty: 'unknown',
+          lastSize: 'corrupt'
         })
       }
     });
@@ -199,7 +201,8 @@ describe('mazer storage', () => {
         brutal: { bestMoves: null, bestTimeMs: null }
       },
       clearsCount: 999_999,
-      lastDifficulty: 'standard'
+      lastDifficulty: 'standard',
+      lastSize: 'medium'
     });
 
     const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.progress) ?? '{}') as { clearsCount: number };
@@ -207,12 +210,12 @@ describe('mazer storage', () => {
     expect(persisted.clearsCount).toBe(999_999);
   });
 
-  test('records personal bests by difficulty and persists the last played difficulty', async () => {
+  test('records personal bests by difficulty and persists the last played size and difficulty', async () => {
     const { environment } = createEnvironment();
     const storage = new MazerStorage(environment);
     await storage.bootstrap();
 
-    storage.setLastPlayedDifficulty('spicy');
+    storage.setLastPlayedSelection('spicy', 'large');
     const first = storage.recordRunResult({
       difficulty: 'spicy',
       elapsedMs: 45_000,
@@ -229,6 +232,7 @@ describe('mazer storage', () => {
     expect(second.isNewBestTime).toBe(false);
     expect(second.isNewBestMoves).toBe(true);
     expect(second.progress.lastDifficulty).toBe('spicy');
+    expect(second.progress.lastSize).toBe('large');
     expect(second.progress.clearsCount).toBe(2);
     expect(second.progress.bestByDifficulty.spicy).toEqual({
       bestMoves: 128,
@@ -249,7 +253,8 @@ describe('mazer storage', () => {
             brutal: { bestMoves: null, bestTimeMs: null }
           },
           clearsCount: 4,
-          lastDifficulty: 'chill'
+          lastDifficulty: 'chill',
+          lastSize: 'small'
         }),
         [KNOWN_STORAGE_KEYS.meta]: JSON.stringify({ namespace: APP_NAMESPACE, schemaVersion: 2 }),
         'other:key': 'keep'
@@ -282,7 +287,7 @@ describe('mazer storage', () => {
     await storage.bootstrap();
     const baselineWrites = localStorage.setItemCalls;
 
-    storage.setLastPlayedDifficulty('brutal');
+    storage.setLastPlayedSelection('brutal', 'huge');
     for (let index = 0; index < 6; index += 1) {
       storage.recordRunResult({
         difficulty: 'brutal',
@@ -304,6 +309,7 @@ describe('mazer storage', () => {
       bestByDifficulty: { brutal: { bestMoves: number; bestTimeMs: number } };
       clearsCount: number;
       lastDifficulty: string;
+      lastSize: string;
     };
     expect(Array.isArray(persisted)).toBe(false);
     expect(Object.keys(persisted.bestByDifficulty)).toHaveLength(4);
@@ -313,5 +319,6 @@ describe('mazer storage', () => {
     });
     expect(persisted.clearsCount).toBe(6);
     expect(persisted.lastDifficulty).toBe('brutal');
+    expect(persisted.lastSize).toBe('huge');
   });
 });

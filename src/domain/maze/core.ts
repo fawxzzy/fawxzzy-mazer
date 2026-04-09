@@ -795,5 +795,13 @@ const resolveDemoFrameDuration = (episode: MazeEpisode): number => {
       : episode.difficulty === 'spicy'
         ? 0.22
         : 0.14;
-  return Math.max(4.4, 1.74 + difficultyLinger + (episode.raster.pathIndices.length * 0.104));
+  const sizeLinger = episode.size === 'small'
+    ? -0.08
+    : episode.size === 'medium'
+      ? 0
+      : episode.size === 'large'
+        ? 0.12
+        : 0.2;
+  const pulseJitter = (((episode.seed >>> 0) & 0xf) - 7) * 0.012;
+  return Math.max(4.4, 1.74 + difficultyLinger + sizeLinger + pulseJitter + (episode.raster.pathIndices.length * 0.104));
 };

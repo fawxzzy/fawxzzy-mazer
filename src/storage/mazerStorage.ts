@@ -1,4 +1,5 @@
-import type { MazeDifficulty } from '../domain/maze';
+import type { MazeDifficulty, MazeSize } from '../domain/maze';
+import { normalizeMazeSize } from '../domain/maze';
 
 export interface DifficultyProgress {
   bestMoves: number | null;
@@ -9,6 +10,7 @@ export interface MazerProgress {
   bestByDifficulty: Record<MazeDifficulty, DifficultyProgress>;
   clearsCount: number;
   lastDifficulty: MazeDifficulty;
+  lastSize: MazeSize;
 }
 
 export interface RunRecordUpdate {
@@ -67,6 +69,7 @@ const STORAGE_VERSION = 2;
 const APP_NAMESPACE = `mazer:v${STORAGE_VERSION}`;
 const APP_CACHE_PREFIX = `mazer-v${STORAGE_VERSION}`;
 const DIFFICULTY_ORDER = ['chill', 'standard', 'spicy', 'brutal'] as const satisfies readonly MazeDifficulty[];
+const SIZE_ORDER = ['small', 'medium', 'large', 'huge'] as const satisfies readonly MazeSize[];
 const resolveBaseUrl = (): string => {
   if (typeof document === 'undefined') {
     return '/';
@@ -100,7 +103,8 @@ const DEFAULT_PROGRESS: MazerProgress = {
     brutal: { bestMoves: null, bestTimeMs: null }
   },
   clearsCount: 0,
-  lastDifficulty: 'standard'
+  lastDifficulty: 'standard',
+  lastSize: 'medium'
 };
 
 const resolveEnvironment = (): MazerStorageEnvironment => ({
@@ -138,7 +142,8 @@ const cloneProgress = (progress: MazerProgress): MazerProgress => ({
     brutal: { ...progress.bestByDifficulty.brutal }
   },
   clearsCount: progress.clearsCount,
-  lastDifficulty: progress.lastDifficulty
+  lastDifficulty: progress.lastDifficulty,
+  lastSize: progress.lastSize
 });
 
 const cloneSettings = (settings: MazerSettings): MazerSettings => ({ ...settings });
@@ -223,6 +228,9 @@ const sanitizeProgress = (value: unknown): MazerProgress | null => {
   const lastDifficulty = typeof value.lastDifficulty === 'string' && DIFFICULTY_ORDER.includes(value.lastDifficulty as MazeDifficulty)
     ? value.lastDifficulty as MazeDifficulty
     : DEFAULT_PROGRESS.lastDifficulty;
+  const lastSize = typeof value.lastSize === 'string' && SIZE_ORDER.includes(value.lastSize as MazeSize)
+    ? normalizeMazeSize(value.lastSize)
+    : DEFAULT_PROGRESS.lastSize;
   const clearsCount = typeof value.clearsCount === 'number' && Number.isFinite(value.clearsCount) && value.clearsCount >= 0
     ? Math.min(999_999, Math.round(value.clearsCount))
     : 0;
@@ -235,7 +243,8 @@ const sanitizeProgress = (value: unknown): MazerProgress | null => {
       brutal: sanitizeDifficultyProgress(bestByDifficulty.brutal)
     },
     clearsCount,
-    lastDifficulty
+    lastDifficulty,
+    lastSize
   };
 };
 
@@ -354,15 +363,16 @@ export class MazerStorage {
     };
   }
 
-  public setLastPlayedDifficulty(difficulty: MazeDifficulty): MazerProgress {
+  public setLastPlayedSelection(difficulty: MazeDifficulty, size: MazeSize): MazerProgress {
     this.ensureInitialized();
-    if (this.progress.lastDifficulty === difficulty) {
+    if (this.progress.lastDifficulty === difficulty && this.progress.lastSize === size) {
       return this.getProgress();
     }
 
     this.progress = {
       ...cloneProgress(this.progress),
-      lastDifficulty: difficulty
+      lastDifficulty: difficulty,
+      lastSize: normalizeMazeSize(size)
     };
     this.scheduleWrite(KNOWN_STORAGE_KEYS.progress, this.progress);
     return this.getProgress();

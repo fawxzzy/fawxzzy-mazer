@@ -19,6 +19,7 @@ import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 const defaultConfig: MazeConfig = {
   scale: 50,
   seed: 42,
+  size: 'medium',
   checkPointModifier: 0.35,
   shortcutCountModifier: 0.18
 };
@@ -34,14 +35,17 @@ describe('maze domain generation', () => {
   test('same-seed replay stays deterministic after difficulty-targeted resolution', () => {
     const resolved = generateMazeForDifficulty({
       ...defaultConfig,
+      size: 'large',
       seed: 13_001
     }, 'spicy');
     const replay = generateMazeForDifficulty({
       ...defaultConfig,
+      size: 'large',
       seed: resolved.seed
     }, 'spicy', 0, 1);
 
     expect(resolved.episode.difficulty).toBe('spicy');
+    expect(resolved.episode.size).toBe('large');
     expect(serializeMaze(resolved.episode)).toEqual(serializeMaze(replay.episode));
 
     disposeMazeEpisode(replay.episode);
@@ -50,6 +54,34 @@ describe('maze domain generation', () => {
 
   test('preserves solver-backed maze invariants', () => {
     assertMazeInvariants(generateMaze(defaultConfig));
+  });
+
+  test('size presets map to deterministic board scale bands', () => {
+    const small = generateMaze({
+      ...defaultConfig,
+      size: 'small',
+      seed: 501
+    });
+    const huge = generateMaze({
+      ...defaultConfig,
+      size: 'huge',
+      seed: 501
+    });
+    const smallReplay = generateMaze({
+      ...defaultConfig,
+      size: 'small',
+      seed: 501
+    });
+
+    expect(small.size).toBe('small');
+    expect(huge.size).toBe('huge');
+    expect(serializeMaze(small)).toEqual(serializeMaze(smallReplay));
+    expect(huge.raster.width).toBeGreaterThan(small.raster.width);
+    expect(huge.metrics.solutionLength).toBeGreaterThan(small.metrics.solutionLength);
+
+    disposeMazeEpisode(smallReplay);
+    disposeMazeEpisode(huge);
+    disposeMazeEpisode(small);
   });
 
   test('buildMaze exposes the pattern-engine friendly API surface', () => {
@@ -211,6 +243,7 @@ describe('maze domain generation', () => {
     for (const difficulty of ['chill', 'standard', 'spicy', 'brutal'] as const) {
       const resolved = generateMazeForDifficulty({
         ...defaultConfig,
+        size: 'medium',
         seed: bucketSeeds[difficulty]
       }, difficulty);
 
@@ -222,13 +255,20 @@ describe('maze domain generation', () => {
 
   test('pattern engine resumeFresh skips hidden-tab backlog and creates one fresh demo frame', () => {
     let seed = 900;
+    let cycle = 0;
     const engine = new PatternEngine(
-      () => generateMaze({
-        scale: 30,
-        seed: seed++,
-        checkPointModifier: 0.35,
-        shortcutCountModifier: 0.13
-      }),
+      () => {
+        const size = (['small', 'medium', 'large', 'huge'] as const)[cycle % 4];
+        const difficulty = (['chill', 'standard', 'spicy', 'brutal'] as const)[cycle % 4];
+        cycle += 1;
+        return generateMazeForDifficulty({
+          scale: 50,
+          seed: seed++,
+          size,
+          checkPointModifier: 0.35,
+          shortcutCountModifier: 0.13
+        }, difficulty, 0, 1).episode;
+      },
       'demo'
     );
 
@@ -240,7 +280,8 @@ describe('maze domain generation', () => {
     const resumed = engine.next(0);
 
     expect(resumed).not.toBe(initial);
-    expect(resumed.episode.seed).toBe(901);
+    expect(resumed.episode.seed).toBeGreaterThanOrEqual(901);
+    expect(cycle).toBe(2);
     disposeMazeEpisode(initial.episode);
     engine.destroy();
   });

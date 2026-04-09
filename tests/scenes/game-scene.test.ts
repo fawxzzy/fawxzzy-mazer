@@ -13,6 +13,7 @@ describe('game scene completion loop', () => {
     const maze = generateMaze({
       scale: 40,
       seed: 321,
+      size: 'large',
       checkPointModifier: 0.35,
       shortcutCountModifier: 0.18
     });
@@ -32,15 +33,18 @@ describe('game scene completion loop', () => {
           brutal: { bestMoves: null, bestTimeMs: null }
         },
         clearsCount: 1,
-        lastDifficulty: maze.difficulty
+        lastDifficulty: maze.difficulty,
+        lastSize: maze.size
       }
     });
 
     expect(summary.title).toBe('Maze Complete');
     expect(summary.subtitle).toContain(maze.difficulty.toUpperCase());
+    expect(summary.subtitle).toContain('LARGE');
     expect(summary.detailLines[0]).toContain('01:32');
     expect(summary.detailLines[1]).toContain('148');
     expect(summary.detailLines[1]).toContain('NEW BEST');
-    expect(summary.detailLines[2]).toContain('#321');
+    expect(summary.detailLines[2]).toContain('LARGE');
+    expect(summary.detailLines[3]).toContain('#321');
   });
 });

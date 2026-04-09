@@ -4,6 +4,7 @@ import {
   generateMazeForDifficulty,
   getNeighborIndex,
   isTileFloor,
+  normalizeMazeSize,
   type MazeDifficulty,
   type MazeEpisode
 } from '../domain/maze';
@@ -30,6 +31,12 @@ const DIFFICULTY_SEED_OFFSET: Record<MazeDifficulty, number> = {
   spicy: 4000,
   brutal: 6000
 };
+const SIZE_SEED_OFFSET = {
+  small: 0,
+  medium: 200,
+  large: 400,
+  huge: 600
+} as const;
 
 export class GameScene extends Phaser.Scene {
   private maze?: MazeEpisode;
@@ -69,8 +76,10 @@ export class GameScene extends Phaser.Scene {
   private hud?: ReturnType<typeof createHudRenderer>;
   private runSeed = DEFAULT_RUN_SEED;
   private runDifficulty: MazeDifficulty = 'standard';
+  private runSize = normalizeMazeSize('medium');
   private currentRunData: GameSceneStartData = {
     difficulty: 'standard',
+    size: 'medium',
     seed: DEFAULT_RUN_SEED,
     seedMode: 'exact'
   };
@@ -152,13 +161,15 @@ export class GameScene extends Phaser.Scene {
 
     const resolvedRun = this.resolveRun(startData);
     this.runDifficulty = resolvedRun.difficulty;
+    this.runSize = resolvedRun.maze.size;
     this.runSeed = resolvedRun.seed;
     this.currentRunData = {
       difficulty: this.runDifficulty,
+      size: this.runSize,
       seed: this.runSeed,
       seedMode: 'exact'
     };
-    mazerStorage.setLastPlayedDifficulty(this.runDifficulty);
+    mazerStorage.setLastPlayedSelection(this.runDifficulty, this.runSize);
     this.setReplaySnapshot(false);
 
     const { width, height } = this.scale;
@@ -206,10 +217,12 @@ export class GameScene extends Phaser.Scene {
   } {
     const progress = mazerStorage.getProgress();
     const requestedDifficulty = startData?.difficulty ?? progress.lastDifficulty;
+    const requestedSize = normalizeMazeSize(startData?.size ?? progress.lastSize);
     const config = {
       checkPointModifier: legacyTuning.board.checkPointModifier,
       scale: legacyTuning.board.scale,
-      seed: startData?.seed ?? this.resolveSeedAnchor(requestedDifficulty),
+      seed: startData?.seed ?? this.resolveSeedAnchor(requestedDifficulty, requestedSize),
+      size: requestedSize,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.game
     };
 
@@ -237,20 +250,24 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  private resolveSeedAnchor(difficulty: MazeDifficulty): number {
+  private resolveSeedAnchor(difficulty: MazeDifficulty, size: GameScene['runSize']): number {
     const snapshot = this.registry.get(LAST_RUN_REGISTRY_KEY) as ReplaySnapshot | undefined;
-    if (snapshot && snapshot.difficulty === difficulty) {
+    if (snapshot && snapshot.difficulty === difficulty && snapshot.size === size) {
       return snapshot.seed + 1;
     }
 
     const progress = mazerStorage.getProgress();
-    return DEFAULT_RUN_SEED + DIFFICULTY_SEED_OFFSET[difficulty] + (progress.clearsCount * 17);
+    return DEFAULT_RUN_SEED
+      + DIFFICULTY_SEED_OFFSET[difficulty]
+      + SIZE_SEED_OFFSET[size]
+      + (progress.clearsCount * 17);
   }
 
   private setReplaySnapshot(completed: boolean): void {
     this.registry.set(LAST_RUN_REGISTRY_KEY, {
       completed,
       difficulty: this.runDifficulty,
+      size: this.runSize,
       seed: this.runSeed
     } satisfies ReplaySnapshot);
   }
@@ -283,6 +300,7 @@ export class GameScene extends Phaser.Scene {
       playSfx('confirm');
       this.scene.restart({
         difficulty: this.runDifficulty,
+        size: this.runSize,
         seed: this.runSeed,
         seedMode: 'next'
       } satisfies GameSceneStartData);
@@ -518,6 +536,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.stop('WinScene');
       this.scene.restart({
         difficulty: this.runDifficulty,
+        size: this.runSize,
         seed: this.runSeed,
         seedMode: 'next'
       } satisfies GameSceneStartData);

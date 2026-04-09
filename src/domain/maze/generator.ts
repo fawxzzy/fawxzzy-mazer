@@ -22,6 +22,7 @@ import type {
   MazeEpisode,
   MazeGenerationState,
   MazeMetrics,
+  MazeSize,
   MazeSolveResult,
   TileBoard
 } from './types';
@@ -41,6 +42,7 @@ const DIRS = [
 
 interface RasterizeOptions {
   seed: number;
+  size: MazeSize;
   core: NonNullable<MazeEpisode['core']>;
   shortcutsCreated: number;
   footprint: MazeBuildOptions['footprint'];
@@ -56,6 +58,18 @@ interface MazeVarietyPreset {
   readonly braidScale: number;
   readonly braidOffset: number;
   readonly minSolutionFactor: number;
+}
+
+interface MazeSizePreset {
+  readonly key: MazeSize;
+  readonly label: string;
+  readonly legacyScale: number;
+}
+
+interface DifficultyTuningProfile {
+  readonly shortcutCountModifier: number;
+  readonly minSolutionFactor: number;
+  readonly maxAttempts: number;
 }
 
 export interface DifficultyResolvedMaze {
@@ -111,8 +125,44 @@ const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
 const MENU_VARIETY_POOL = [0, 1, 2, 3] as const;
 const GAME_VARIETY_POOL = [0, 1, 2, 3, 4] as const;
 const DIFFICULTY_ORDER: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
-const TARGET_DIFFICULTY_SEARCH_LIMIT = 512;
+const TARGET_DIFFICULTY_SEARCH_LIMIT = 8;
 const TARGET_DIFFICULTY_SEED_STEP = 977;
+
+export const MAZE_SIZE_PRESETS: readonly MazeSizePreset[] = [
+  { key: 'small', label: 'Small', legacyScale: 25 },
+  { key: 'medium', label: 'Medium', legacyScale: 50 },
+  { key: 'large', label: 'Large', legacyScale: 75 },
+  { key: 'huge', label: 'Huge', legacyScale: 100 }
+] as const;
+
+export const MAZE_SIZE_ORDER: readonly MazeSize[] = MAZE_SIZE_PRESETS.map((preset) => preset.key);
+
+const SIZE_PRESET_BY_KEY = Object.fromEntries(
+  MAZE_SIZE_PRESETS.map((preset) => [preset.key, preset])
+) as Record<MazeSize, MazeSizePreset>;
+
+const DIFFICULTY_TUNING: Record<MazeDifficulty, DifficultyTuningProfile> = {
+  chill: {
+    shortcutCountModifier: 0.08,
+    minSolutionFactor: 0.17,
+    maxAttempts: 72
+  },
+  standard: {
+    shortcutCountModifier: 0.12,
+    minSolutionFactor: 0.21,
+    maxAttempts: 84
+  },
+  spicy: {
+    shortcutCountModifier: 0.18,
+    minSolutionFactor: 0.255,
+    maxAttempts: 96
+  },
+  brutal: {
+    shortcutCountModifier: 0.24,
+    minSolutionFactor: 0.31,
+    maxAttempts: 112
+  }
+};
 
 export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
@@ -121,6 +171,7 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const logicalSize = normalizeLogicalSize(Math.min(options.width, options.height));
   const minSolutionLength = options.minSolutionLength ?? Math.max(18, Math.floor((logicalSize * logicalSize) / 4));
   const maxAttempts = options.maxAttempts ?? 64;
+  const size = normalizeMazeSize(options.size ?? inferMazeSizeFromScale(Math.max(options.width, options.height)));
 
   const built = buildMazeCore({
     width: logicalSize,
@@ -134,6 +185,7 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
 
   return rasterizeMaze({
     seed,
+    size,
     core: built.maze,
     shortcutsCreated: built.shortcutsCreated,
     footprint: options.footprint ?? { width: options.width, height: options.height },
@@ -144,9 +196,11 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
 };
 
 export const generateMaze = (config: MazeConfig): MazeEpisode => {
+  const size = config.size ? normalizeMazeSize(config.size) : inferMazeSizeFromScale(config.scale);
+  const baseScale = config.size ? resolveMazeSizeScale(size, config.scale) : config.scale;
   const variety = resolveMazeVarietyPreset(config);
-  const targetScale = Math.max(9, config.scale + variety.scaleDelta);
-  const footprintTarget = Math.max(targetScale, config.scale + variety.footprintDelta);
+  const targetScale = Math.max(9, baseScale + variety.scaleDelta);
+  const footprintTarget = Math.max(targetScale, baseScale + variety.footprintDelta);
   const braidRatio = clamp(
     (config.shortcutCountModifier * variety.braidScale) + variety.braidOffset,
     0,
@@ -159,6 +213,7 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
   return buildMaze({
     width: targetScale,
     height: targetScale,
+    size,
     seed: config.seed,
     braidRatio,
     minSolutionLength,
@@ -166,7 +221,8 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
       width: footprintTarget,
       height: footprintTarget
     },
-    maxAttempts: config.maxAttempts ?? 96
+    maxAttempts: config.maxAttempts ?? 96,
+    includeCore: false
   });
 };
 
@@ -194,7 +250,7 @@ export const generateMazeForDifficulty = (
         disposeMazeEpisode(fallback.episode);
       }
       return {
-        episode,
+        episode: assignCanonicalDifficulty(episode, targetDifficulty),
         seed: candidateSeed
       };
     }
@@ -218,11 +274,14 @@ export const generateMazeForDifficulty = (
   }
 
   if (fallback) {
-    return fallback;
+    return {
+      episode: assignCanonicalDifficulty(fallback.episode, targetDifficulty),
+      seed: fallback.seed
+    };
   }
 
   return {
-    episode: generateMaze(targetedConfig),
+    episode: assignCanonicalDifficulty(generateMaze(targetedConfig), targetDifficulty),
     seed: baseSeed
   };
 };
@@ -249,6 +308,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
   const {
     core,
     seed,
+    size,
     shortcutsCreated,
     footprint,
     minSolutionLength,
@@ -303,6 +363,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
 
   return {
     seed,
+    size,
     core: includeCore ? core : undefined,
     raster: {
       ...raster,
@@ -513,47 +574,55 @@ const resolveMazeVarietyPreset = (config: MazeConfig): MazeVarietyPreset => {
   const pool = config.shortcutCountModifier <= 0.14
     ? MENU_VARIETY_POOL
     : GAME_VARIETY_POOL;
-  const seedMix = Math.imul((config.seed >>> 0) ^ ((config.scale & 0xff) << 9), 0x9e3779b1) >>> 0;
+  const sizeScale = config.size ? resolveMazeSizeScale(normalizeMazeSize(config.size), config.scale) : config.scale;
+  const seedMix = Math.imul((config.seed >>> 0) ^ ((sizeScale & 0xff) << 9), 0x9e3779b1) >>> 0;
   return MAZE_VARIETY_PRESETS[pool[seedMix % pool.length]];
 };
 
 const resolveTargetDifficultyConfig = (config: MazeConfig, targetDifficulty: MazeDifficulty): MazeConfig => {
-  switch (targetDifficulty) {
-    case 'chill':
-      return {
-        ...config,
-        maxAttempts: config.maxAttempts ?? 72,
-        minSolutionLength: config.minSolutionLength ?? 20,
-        scale: 18,
-        shortcutCountModifier: 0.08
-      };
-    case 'standard':
-      return {
-        ...config,
-        maxAttempts: config.maxAttempts ?? 84,
-        minSolutionLength: config.minSolutionLength ?? 24,
-        scale: 30,
-        shortcutCountModifier: 0.12
-      };
-    case 'spicy':
-      return {
-        ...config,
-        maxAttempts: config.maxAttempts ?? 96,
-        minSolutionLength: config.minSolutionLength ?? 28,
-        scale: 42,
-        shortcutCountModifier: 0.18
-      };
-    case 'brutal':
-      return {
-        ...config,
-        maxAttempts: config.maxAttempts ?? 112,
-        minSolutionLength: config.minSolutionLength ?? 34,
-        scale: 56,
-        shortcutCountModifier: 0.24
-      };
-    default:
-      return config;
+  const size = config.size ? normalizeMazeSize(config.size) : inferMazeSizeFromScale(config.scale);
+  const sizeScale = config.size ? resolveMazeSizeScale(size, config.scale) : config.scale;
+  const tuning = DIFFICULTY_TUNING[targetDifficulty];
+  return {
+    ...config,
+    size,
+    scale: sizeScale,
+    maxAttempts: config.maxAttempts ?? tuning.maxAttempts,
+    minSolutionLength: config.minSolutionLength ?? Math.max(18, Math.floor(sizeScale * tuning.minSolutionFactor)),
+    shortcutCountModifier: tuning.shortcutCountModifier
+  };
+};
+
+export const normalizeMazeSize = (value: unknown): MazeSize => (
+  typeof value === 'string' && MAZE_SIZE_ORDER.includes(value as MazeSize)
+    ? value as MazeSize
+    : 'medium'
+);
+
+export const resolveMazeSizeScale = (size: MazeSize, fallbackScale = SIZE_PRESET_BY_KEY.medium.legacyScale): number => (
+  SIZE_PRESET_BY_KEY[size]?.legacyScale ?? fallbackScale
+);
+
+export const getMazeSizeLabel = (size: MazeSize): string => SIZE_PRESET_BY_KEY[normalizeMazeSize(size)].label;
+
+const assignCanonicalDifficulty = (episode: MazeEpisode, difficulty: MazeDifficulty): MazeEpisode => {
+  episode.difficulty = difficulty;
+  return episode;
+};
+
+const inferMazeSizeFromScale = (scale: number): MazeSize => {
+  let bestSize: MazeSize = 'medium';
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const preset of MAZE_SIZE_PRESETS) {
+    const distance = Math.abs(scale - preset.legacyScale);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestSize = preset.key;
+    }
   }
+
+  return bestSize;
 };
 
 export const classifyMazeDifficulty = (

@@ -1,6 +1,7 @@
 export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
 export type MazeDifficulty = 'chill' | 'standard' | 'spicy' | 'brutal';
+export type MazeSize = 'small' | 'medium' | 'large' | 'huge';
 
 export interface MazeCore {
   width: number;
@@ -17,6 +18,7 @@ export interface MazeConfig {
   seed: number;
   checkPointModifier: number;
   shortcutCountModifier: number;
+  size?: MazeSize;
   minSolutionLength?: number;
   maxAttempts?: number;
 }
@@ -24,6 +26,7 @@ export interface MazeConfig {
 export interface MazeBuildOptions {
   width: number;
   height: number;
+  size?: MazeSize;
   seed?: number;
   braidRatio?: number;
   minSolutionLength?: number;
@@ -66,6 +69,7 @@ export interface TileBoard {
 
 export interface MazeEpisode {
   seed: number;
+  size: MazeSize;
   core?: MazeCore;
   raster: TileBoard;
   metrics: MazeMetrics;
