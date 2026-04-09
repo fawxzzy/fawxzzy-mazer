@@ -6,7 +6,7 @@ import { generateMaze, resetAndRegenerate, type MazeConfig } from '../../src/dom
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
 const soakIterations = Number.parseInt(process.env.MAZE_SOAK_ITERATIONS ?? '200', 10);
-const soakScales = [10, 20, 36, 50];
+const soakScales = [18, 30, 40, 50];
 
 test(
   'soak: repeated seeded generation and reset cycles hold invariants',
@@ -28,7 +28,7 @@ test(
         scale,
         seed: iteration + 1,
         checkPointModifier: 0.35,
-        shortcutCountModifier: scale > 35 ? 0.18 : 0.13
+        shortcutCountModifier: scale >= 40 ? 0.18 : 0.13
       };
 
       const maze = generateMaze(config);
@@ -50,7 +50,7 @@ test(
 );
 
 test(
-  'soak: legacy demo walker stays on path tiles through backtracks and resets',
+  'soak: demo playback stays on the solved path through regeneration loops',
   () => {
     const demoIterations = Math.max(24, Math.floor(soakIterations / 8));
 
@@ -60,7 +60,7 @@ test(
         scale,
         seed: iteration + 700,
         checkPointModifier: 0.35,
-        shortcutCountModifier: scale > 35 ? 0.18 : 0.13
+        shortcutCountModifier: scale >= 40 ? 0.18 : 0.13
       });
       let state = createDemoWalkerState(maze);
       let completedLoop = false;
@@ -70,7 +70,7 @@ test(
         state = advance.state;
 
         expect(maze.tiles[state.currentIndex].floor).toBe(true);
-        expect(maze.tiles[state.currentIndex].path).toBe(true);
+        expect(maze.pathIndices.includes(state.currentIndex)).toBe(true);
 
         if (advance.shouldRegenerateMaze || state.loops > 0) {
           completedLoop = true;

@@ -1,24 +1,22 @@
 import { describe, expect, test } from 'vitest';
 
-import { createSeededRng } from '../../src/domain/rng/seededRng';
 import {
+  buildMaze,
   createGrid,
-  createShortcuts,
-  createWallsFromPath,
   generateMaze,
   isIndexValid,
   isWithinSameRow,
-  mapPathWithCheckpoints,
   resetAndRegenerate,
+  runBatch,
   type MazeConfig
 } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
 const defaultConfig: MazeConfig = {
-  scale: 20,
+  scale: 50,
   seed: 42,
-  checkPointModifier: 0.2,
-  shortcutCountModifier: 0.2
+  checkPointModifier: 0.35,
+  shortcutCountModifier: 0.18
 };
 
 describe('maze domain generation', () => {
@@ -29,73 +27,38 @@ describe('maze domain generation', () => {
     expect(serializeMaze(a)).toEqual(serializeMaze(b));
   });
 
-  test('preserves core maze invariants', () => {
+  test('preserves solver-backed maze invariants', () => {
     assertMazeInvariants(generateMaze(defaultConfig));
   });
 
-  test('keeps checkpoint selection aligned with the recovered legacy sampling band', () => {
-    const maze = generateMaze(defaultConfig);
+  test('buildMaze exposes the pattern-engine friendly API surface', () => {
+    const maze = buildMaze({
+      width: 50,
+      height: 50,
+      seed: 77,
+      braidRatio: 0.08,
+      minSolutionLength: 20
+    });
 
-    expect(maze.checkpointIndices.length).toBeGreaterThan(0);
-    for (const checkpointIndex of maze.checkpointIndices) {
-      expect(checkpointIndex).toBeGreaterThanOrEqual(defaultConfig.scale * 3);
-    }
+    assertMazeInvariants(maze);
+    expect(maze.shortcutsCreated).toBeGreaterThanOrEqual(0);
+    expect(maze.solution.cost).toBe(maze.pathIndices.length - 1);
   });
 
-  test('creates shortcut bridges on larger boards', () => {
+  test('braid ratio opens alternative routes on larger boards', () => {
     const maze = generateMaze({
-      scale: 40,
+      scale: 50,
       seed: 333,
-      checkPointModifier: 0.3,
-      shortcutCountModifier: 0.8
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.24
     });
 
     assertMazeInvariants(maze);
     expect(maze.shortcutsCreated).toBeGreaterThan(0);
+    expect(maze.metrics.deadEnds).toBeGreaterThan(0);
   });
 
-  test('returns the post-shortcut remaining wall list from the legacy pipeline', () => {
-    const config: MazeConfig = {
-      scale: 50,
-      seed: 1988,
-      checkPointModifier: 0.35,
-      shortcutCountModifier: 0.8
-    };
-    const tiles = createGrid(config.scale);
-    const rng = createSeededRng(config.seed);
-    const startIndex = rng.nextInt(0, tiles.length - 1);
-    const checkpointCount = Math.max(1, Math.floor(config.scale + (config.scale * config.checkPointModifier)));
-    const { pathIndices, endIndex } = mapPathWithCheckpoints(tiles, startIndex, config.scale, checkpointCount, rng);
-    const wallIndices = createWallsFromPath(tiles, pathIndices, endIndex);
-    const { shortcutsCreated, wallIndices: remainingWallIndices } = createShortcuts(
-      tiles,
-      wallIndices,
-      Math.max(0, Math.floor(config.scale * config.shortcutCountModifier)),
-      rng
-    );
-    const maze = generateMaze(config);
-
-    expect(shortcutsCreated).toBeGreaterThan(0);
-    expect(remainingWallIndices.length).toBeLessThan(wallIndices.length);
-    expect(maze.shortcutsCreated).toBe(shortcutsCreated);
-    expect(maze.wallIndices).toEqual(remainingWallIndices);
-  });
-
-  test('preserves the legacy wall-array duplicate quirk after shortcut carving', () => {
-    const maze = generateMaze({
-      scale: 50,
-      seed: 1988,
-      checkPointModifier: 0.35,
-      shortcutCountModifier: 0.8
-    });
-
-    expect(maze.shortcutsCreated).toBeGreaterThan(0);
-    expect(
-      maze.wallIndices.some((wallIndex) => maze.tiles[wallIndex].floor || maze.tiles[wallIndex].path)
-    ).toBe(true);
-  });
-
-  test('neighbor logic does not create out-of-bounds neighbors', () => {
+  test('keeps grid neighbor helpers within bounds', () => {
     const scale = 9;
     const grid = createGrid(scale);
 
@@ -161,4 +124,14 @@ describe('maze domain generation', () => {
       );
     }
   }, 20000);
+
+  test('batch harness reports bounded summary metrics', () => {
+    const summary = runBatch(24, 50, 50, 0.08);
+
+    expect(summary.runs).toBe(24);
+    expect(summary.avgSolutionLength).toBeGreaterThan(20);
+    expect(summary.avgCoverage).toBeGreaterThan(0);
+    expect(summary.avgCoverage).toBeLessThanOrEqual(1);
+    expect(summary.maxSolutionLength).toBeGreaterThanOrEqual(summary.minSolutionLength);
+  });
 });

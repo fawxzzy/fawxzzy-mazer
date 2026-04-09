@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { advanceDemoWalker, createDemoWalkerState } from '../domain/ai';
-import { generateMaze } from '../domain/maze/generator';
+import type { DemoWalkerCue } from '../domain/ai';
+import { generateMaze, PatternEngine } from '../domain/maze';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { palette } from '../render/palette';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
@@ -18,7 +18,6 @@ export class MenuScene extends Phaser.Scene {
   private titlePulseTween?: Phaser.Tweens.Tween;
   private starDriftTween?: Phaser.Tweens.Tween;
   private heroRefreshTimer?: Phaser.Time.TimerEvent;
-  private demoStepTimer?: Phaser.Time.TimerEvent;
   private transitionLocked = false;
 
   public constructor() {
@@ -35,13 +34,22 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.fadeIn(280, 0, 0, 0);
     this.drawStarfield(width, height);
 
-    const maze = generateMaze({
-      scale: legacyTuning.board.scale,
-      seed: legacyTuning.demo.seed,
-      checkPointModifier: legacyTuning.board.checkPointModifier,
-      shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
-    });
     let demoSeed: number = legacyTuning.demo.seed;
+    const patternEngine = new PatternEngine(
+      () => {
+        const maze = generateMaze({
+          scale: legacyTuning.board.scale,
+          seed: demoSeed,
+          checkPointModifier: legacyTuning.board.checkPointModifier,
+          shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+        });
+        demoSeed += legacyTuning.demo.behavior.regenerateSeedStep;
+        return maze;
+      },
+      'demo'
+    );
+    let patternFrame = patternEngine.next(0);
+    const maze = patternFrame.maze;
     const boardScale = (isNarrow ? legacyTuning.menu.layout.boardScaleNarrow : legacyTuning.menu.layout.boardScaleWide)
       + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline);
 
@@ -220,30 +228,17 @@ export class MenuScene extends Phaser.Scene {
       ease: 'Sine.easeInOut'
     });
 
-    const primeDemoState = (): ReturnType<typeof createDemoWalkerState> => {
-      let state = createDemoWalkerState(maze);
-      const prerollSteps = legacyTuning.demo.behavior.prerollSteps ?? 0;
-
-      for (let step = 0; step < prerollSteps; step += 1) {
-        const next = advanceDemoWalker(maze, state, legacyTuning.demo);
-        if (next.shouldRegenerateMaze || next.state.phase === 'reset-hold') {
-          break;
-        }
-        state = next.state;
-      }
-
-      return state;
-    };
-
-    let demo = primeDemoState();
-    let lastCue = demo.cue;
+    let lastCue: DemoWalkerCue = 'spawn';
     const syncDemoPresentation = (): void => {
-      boardRenderer.drawGoal(demo.cue);
-      boardRenderer.drawTrail(demo.trailSteps, {
-        cue: demo.cue,
-        targetIndex: demo.targetIndex
-      });
-      boardRenderer.drawActor(demo.currentIndex, demo.lastDirection, demo.cue);
+      const pathCursor = resolvePathCursor(patternFrame.t, maze.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs);
+      const trail = maze.pathIndices.slice(0, pathCursor + 1);
+      const currentIndex = trail.at(-1) ?? maze.startIndex;
+      const cue = resolveDemoCue(patternFrame.t, pathCursor, maze.pathIndices.length);
+      const lastTrailIndex = trail.length > 1 ? trail[trail.length - 2] : currentIndex;
+
+      boardRenderer.drawGoal(cue);
+      boardRenderer.drawTrail(trail, { cue });
+      boardRenderer.drawActor(currentIndex, resolveDirection(maze, lastTrailIndex, currentIndex), cue);
     };
     const accentCueBeat = (): void => {
       const pulseBoard = (
@@ -277,66 +272,48 @@ export class MenuScene extends Phaser.Scene {
         });
       };
 
-      if (demo.cue === 'anticipate') {
-        pulseBoard(0.09, 0.1, 0.14, 170, 1.01);
-      } else if (demo.cue === 'dead-end') {
-        pulseBoard(0.14, 0.14, 0.18, 230, 1.018);
-      } else if (demo.cue === 'backtrack') {
-        pulseBoard(0.08, 0.08, 0.12, 170, 1.008);
-      } else if (demo.cue === 'reacquire') {
-        pulseBoard(0.11, 0.12, 0.16, 210, 1.014);
-      } else if (demo.cue === 'goal') {
+      const cue = resolveDemoCue(patternFrame.t, resolvePathCursor(
+        patternFrame.t,
+        maze.pathIndices.length,
+        legacyTuning.demo.cadence.exploreStepMs
+      ), maze.pathIndices.length);
+      if (cue === 'goal') {
         pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
-      } else if (demo.cue === 'reset') {
+      } else if (cue === 'reset') {
         pulseBoard(0.1, 0.08, 0.12, 200, 1.012);
+      } else if (cue === 'spawn') {
+        pulseBoard(0.1, 0.12, 0.16, 210, 1.012);
       }
     };
     const renderDemo = (): void => {
+      const cue = resolveDemoCue(
+        patternFrame.t,
+        resolvePathCursor(patternFrame.t, maze.pathIndices.length, legacyTuning.demo.cadence.exploreStepMs),
+        maze.pathIndices.length
+      );
       syncDemoPresentation();
-      if (demo.cue !== lastCue) {
+      if (cue !== lastCue) {
         accentCueBeat();
-        lastCue = demo.cue;
+        lastCue = cue;
       }
-    };
-    const scheduleDemoAdvance = (delayMs: number): void => {
-      this.demoStepTimer?.remove(false);
-      this.demoStepTimer = this.time.delayedCall(delayMs, () => {
-        if (!this.scene.isActive()) {
-          return;
-        }
-
-        const next = advanceDemoWalker(maze, demo, legacyTuning.demo);
-        if (next.shouldRegenerateMaze) {
-          demoSeed = next.nextSeed ?? (demoSeed + legacyTuning.demo.behavior.regenerateSeedStep);
-          Object.assign(maze, generateMaze({
-            scale: legacyTuning.board.scale,
-            seed: demoSeed,
-            checkPointModifier: legacyTuning.board.checkPointModifier,
-            shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
-          }));
-          boardRenderer.drawBase();
-          boardRenderer.drawGoal();
-          demo = {
-            ...primeDemoState(),
-            loops: next.state.loops
-          };
-        } else {
-          demo = next.state;
-        }
-
-        renderDemo();
-        scheduleDemoAdvance(next.delayMs);
-      });
     };
 
     renderDemo();
-    scheduleDemoAdvance(legacyTuning.demo.cadence.exploreStepMs);
 
     this.heroRefreshTimer = this.time.addEvent({
       delay: legacyTuning.demo.cadence.heroRefreshMs,
       loop: true,
       callback: () => {
-        syncDemoPresentation();
+        const nextFrame = patternEngine.next(legacyTuning.demo.cadence.heroRefreshMs / 1000);
+        if (nextFrame.maze !== maze) {
+          Object.assign(maze, nextFrame.maze);
+          patternFrame = { ...nextFrame, maze };
+          boardRenderer.drawBase();
+          boardRenderer.drawGoal();
+        } else {
+          patternFrame = nextFrame;
+        }
+        renderDemo();
       }
     });
 
@@ -422,7 +399,6 @@ export class MenuScene extends Phaser.Scene {
       this.titlePulseTween?.remove();
       this.starDriftTween?.remove();
       this.heroRefreshTimer?.remove(false);
-      this.demoStepTimer?.remove(false);
       this.overlayManager.closeAll();
       this.input.keyboard?.off('keydown-ESC', escHandler);
       this.input.keyboard?.off('keydown', manualShortcutHandler);
@@ -593,3 +569,40 @@ export class MenuScene extends Phaser.Scene {
     vignette.fillRect(0, height * (1 - legacyTuning.menu.starfield.vignetteBandRatio), width, height * legacyTuning.menu.starfield.vignetteBandRatio);
   }
 }
+
+const resolvePathCursor = (elapsedSeconds: number, pathLength: number, stepMs: number): number => {
+  if (pathLength <= 1) {
+    return 0;
+  }
+
+  return Math.min(pathLength - 1, Math.floor((elapsedSeconds * 1000) / stepMs));
+};
+
+const resolveDemoCue = (elapsedSeconds: number, pathCursor: number, pathLength: number): DemoWalkerCue => {
+  if (pathCursor >= Math.max(0, pathLength - 1)) {
+    return 'goal';
+  }
+  if (elapsedSeconds <= 0.08) {
+    return 'reset';
+  }
+  if (elapsedSeconds <= 0.2) {
+    return 'spawn';
+  }
+  return 'explore';
+};
+
+const resolveDirection = (
+  maze: { tiles: { neighbors: readonly [number, number, number, number] }[] },
+  fromIndex: number,
+  toIndex: number
+): 0 | 1 | 2 | 3 | null => {
+  if (fromIndex === toIndex) {
+    return null;
+  }
+
+  const direction = maze.tiles[fromIndex].neighbors.findIndex((neighbor) => neighbor === toIndex);
+  if (direction < 0 || direction > 3) {
+    return null;
+  }
+  return direction as 0 | 1 | 2 | 3;
+};
