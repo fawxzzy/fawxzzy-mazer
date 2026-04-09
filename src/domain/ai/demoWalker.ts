@@ -133,7 +133,9 @@ export const advanceDemoWalker = (
       reachedGoal,
       phase: reachedGoal ? 'goal-hold' : 'explore',
       stepsTaken: state.stepsTaken + 1,
-      lastDirection: resolveDirection(episode, state.currentIndex, nextIndex),
+      lastDirection: state.currentIndex === nextIndex
+        ? null
+        : resolveDirectionBetween(state.currentIndex, nextIndex, episode.raster.width),
       resetReason: null,
       cue: reachedGoal ? 'goal' : 'explore',
       pathCursor: nextCursor
@@ -163,16 +165,4 @@ const appendTrailStep = (
   const nextTrail = trail.slice(Math.max(0, trail.length - maxLength + 1));
   nextTrail.push({ index: nextIndex, mode });
   return nextTrail;
-};
-
-const resolveDirection = (
-  episode: MazeEpisode,
-  fromIndex: number,
-  toIndex: number
-): 0 | 1 | 2 | 3 | null => {
-  if (fromIndex === toIndex) {
-    return null;
-  }
-
-  return resolveDirectionBetween(fromIndex, toIndex, episode.raster.width);
 };

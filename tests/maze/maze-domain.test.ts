@@ -6,7 +6,6 @@ import {
   type CortexSample,
   generateMaze,
   getNeighborIndex,
-  isIndexValid,
   resetAndRegenerate,
   runBatch,
   type MazeConfig
@@ -73,7 +72,8 @@ describe('maze domain generation', () => {
           continue;
         }
 
-        expect(isIndexValid(neighborIndex, scale)).toBe(true);
+        expect(neighborIndex).toBeGreaterThanOrEqual(0);
+        expect(neighborIndex).toBeLessThan(scale * scale);
       }
     });
   });

@@ -2,13 +2,17 @@ import { expect } from 'vitest';
 
 import {
   getNeighborIndex,
-  isIndexValid,
   isTileEnd,
   isTileFloor,
   isTilePath,
   resolveDirectionBetween,
   type MazeEpisode
 } from '../../src/domain/maze';
+
+const expectIndexInBounds = (index: number, limit: number): void => {
+  expect(index).toBeGreaterThanOrEqual(0);
+  expect(index).toBeLessThan(limit);
+};
 
 const hasFloorConnection = (episode: MazeEpisode): boolean => {
   const queue = new Int32Array(episode.raster.tiles.length);
@@ -44,10 +48,11 @@ const hasFloorConnection = (episode: MazeEpisode): boolean => {
 };
 
 export const assertMazeInvariants = (episode: MazeEpisode): void => {
+  const tileCount = episode.raster.width * episode.raster.height;
   expect(episode.raster.tiles).toHaveLength(episode.raster.width * episode.raster.height);
   expect(episode.raster.pathIndices.length).toBeGreaterThan(0);
-  expect(isIndexValid(episode.raster.startIndex, episode.raster.width, episode.raster.height)).toBe(true);
-  expect(isIndexValid(episode.raster.endIndex, episode.raster.width, episode.raster.height)).toBe(true);
+  expectIndexInBounds(episode.raster.startIndex, tileCount);
+  expectIndexInBounds(episode.raster.endIndex, tileCount);
   expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
 
   expect(isTileFloor(episode.raster.tiles, episode.raster.startIndex)).toBe(true);
@@ -63,7 +68,7 @@ export const assertMazeInvariants = (episode: MazeEpisode): void => {
         continue;
       }
 
-      expect(isIndexValid(neighborIndex, episode.raster.width, episode.raster.height)).toBe(true);
+      expectIndexInBounds(neighborIndex, tileCount);
     }
 
     if (isTilePath(episode.raster.tiles, index)) {
@@ -77,7 +82,7 @@ export const assertMazeInvariants = (episode: MazeEpisode): void => {
   }
 
   for (const index of episode.raster.pathIndices) {
-    expect(isIndexValid(index, episode.raster.width, episode.raster.height)).toBe(true);
+    expectIndexInBounds(index, tileCount);
     expect(isTilePath(episode.raster.tiles, index)).toBe(true);
     expect(isTileFloor(episode.raster.tiles, index)).toBe(true);
   }
@@ -101,9 +106,5 @@ export const serializeMaze = (episode: MazeEpisode) => ({
   pathIndices: Array.from(episode.raster.pathIndices),
   shortcutsCreated: episode.shortcutsCreated,
   accepted: episode.accepted,
-  tiles: Array.from(episode.raster.tiles, (_tile, index) => ({
-    floor: isTileFloor(episode.raster.tiles, index),
-    path: isTilePath(episode.raster.tiles, index),
-    end: isTileEnd(episode.raster.tiles, index)
-  }))
+  tiles: Array.from(episode.raster.tiles)
 });

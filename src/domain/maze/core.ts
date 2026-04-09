@@ -10,9 +10,12 @@ import type {
   Point
 } from './types';
 import {
+  getAStarScratch,
   getNeighborIndex,
   isTileFloor,
-  pointFromIndex,
+  nextEpoch,
+  reconstructPath,
+  type AStarScratch,
   xFromIndex,
   yFromIndex
 } from './grid';
@@ -61,17 +64,8 @@ interface MazeScratch {
   bfsEpoch: number;
 }
 
-interface SolveScratch {
-  readonly cameFrom: Int32Array;
-  readonly gScore: Float64Array;
-  readonly gScoreEpoch: Uint32Array;
-  readonly closedEpoch: Uint32Array;
-  readonly heap: MinHeap;
-  epoch: number;
-}
-
 const mazeScratchCache = new Map<number, MazeScratch>();
-const solveScratchCache = new Map<number, SolveScratch>();
+const solveScratchCache = new Map<number, AStarScratch>();
 
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   const {
@@ -132,7 +126,7 @@ export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolve
   const goalX = goal.x;
   const goalY = goal.y;
   const scratch = getSolveScratch(maze.cells.length);
-  const epoch = nextSolveEpoch(scratch);
+  const epoch = nextEpoch(scratch, scratch.gScoreEpoch, scratch.closedEpoch);
 
   scratch.cameFrom[startIdx] = -1;
   scratch.gScore[startIdx] = 0;
@@ -144,7 +138,7 @@ export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolve
   let expanded = 0;
 
   while (scratch.heap.pop()) {
-    const currentIdx = scratch.heap.currentIndex;
+    const currentIdx = scratch.heap.current;
     if (scratch.closedEpoch[currentIdx] === epoch) {
       continue;
     }
@@ -270,12 +264,6 @@ export const disposeMazeEpisode = (episode?: MazeEpisode | null): void => {
   episode.raster.scale = 0;
   episode.raster.startIndex = 0;
   episode.raster.endIndex = 0;
-  episode.raster.playableWidth = 0;
-  episode.raster.playableHeight = 0;
-  episode.raster.padding.top = 0;
-  episode.raster.padding.right = 0;
-  episode.raster.padding.bottom = 0;
-  episode.raster.padding.left = 0;
 };
 
 export class PatternEngine {
@@ -446,7 +434,7 @@ const generateWilsonMaze = (
   while (unvisited > 0) {
     let cursor = randomUnvisitedIndex(scratch.inTree, rng);
     const walkStart = cursor;
-    const walkEpoch = nextWalkEpoch(scratch);
+    const walkEpoch = bumpScratchEpoch(scratch, 'walkEpoch', scratch.walkStamp);
 
     while (scratch.inTree[cursor] === 0) {
       const next = randomNeighborIndex(cursor, width, height, rng);
@@ -514,7 +502,7 @@ const farthestReachable = (
   scratch: MazeScratch
 ): { point: Point; distance: number } => {
   const startIdx = indexOf(maze.width, start.x, start.y);
-  const epoch = nextBfsEpoch(scratch);
+  const epoch = bumpScratchEpoch(scratch, 'bfsEpoch', scratch.seenEpoch);
   let head = 0;
   let tail = 0;
   let best = startIdx;
@@ -560,7 +548,10 @@ const farthestReachable = (
   }
 
   return {
-    point: pointFromIndex(best, maze.width),
+    point: {
+      x: best % maze.width,
+      y: Math.floor(best / maze.width)
+    },
     distance: scratch.distance[best]
   };
 };
@@ -573,24 +564,6 @@ const countOpeningsBeyondTree = (maze: MazeCore): number => {
 
   const undirectedEdges = passages / 2;
   return Math.max(0, undirectedEdges - (maze.cells.length - 1));
-};
-
-const reconstructPath = (cameFrom: Int32Array, endIdx: number): Uint32Array => {
-  let length = 0;
-  let cursor = endIdx;
-
-  while (cursor >= 0) {
-    length += 1;
-    cursor = cameFrom[cursor];
-  }
-
-  const path = new Uint32Array(length);
-  cursor = endIdx;
-  for (let writeIndex = length - 1; writeIndex >= 0; writeIndex -= 1) {
-    path[writeIndex] = cursor;
-    cursor = cameFrom[cursor];
-  }
-  return path;
 };
 
 const countOpenNeighbors = (maze: MazeCore, idx: number): number => {
@@ -775,13 +748,18 @@ const shuffleInPlace = <T>(items: T[], rng: () => number): void => {
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const getMazeScratch = (size: number): MazeScratch => {
-  const cached = mazeScratchCache.get(size);
+const getCached = <T>(cache: Map<number, T>, size: number, create: () => T): T => {
+  const cached = cache.get(size);
   if (cached) {
     return cached;
   }
 
-  const scratch: MazeScratch = {
+  const next = create();
+  cache.set(size, next);
+  return next;
+};
+
+const getMazeScratch = (size: number): MazeScratch => getCached(mazeScratchCache, size, () => ({
     inTree: new Uint8Array(size),
     walkNext: new Int32Array(size),
     walkStamp: new Uint32Array(size),
@@ -790,170 +768,21 @@ const getMazeScratch = (size: number): MazeScratch => {
     seenEpoch: new Uint32Array(size),
     walkEpoch: 0,
     bfsEpoch: 0
-  };
-  mazeScratchCache.set(size, scratch);
-  return scratch;
+  }));
+
+const getSolveScratch = (size: number): AStarScratch => getAStarScratch(solveScratchCache, size);
+
+const bumpScratchEpoch = (
+  scratch: MazeScratch,
+  key: 'walkEpoch' | 'bfsEpoch',
+  reset: Uint32Array
+): number => {
+  scratch[key] += 1;
+  if (scratch[key] !== 0) {
+    return scratch[key];
+  }
+
+  reset.fill(0);
+  scratch[key] = 1;
+  return 1;
 };
-
-const getSolveScratch = (size: number): SolveScratch => {
-  const cached = solveScratchCache.get(size);
-  if (cached) {
-    return cached;
-  }
-
-  const scratch: SolveScratch = {
-    cameFrom: new Int32Array(size),
-    gScore: new Float64Array(size),
-    gScoreEpoch: new Uint32Array(size),
-    closedEpoch: new Uint32Array(size),
-    heap: new MinHeap(size),
-    epoch: 0
-  };
-  solveScratchCache.set(size, scratch);
-  return scratch;
-};
-
-const nextWalkEpoch = (scratch: MazeScratch): number => {
-  scratch.walkEpoch += 1;
-  if (scratch.walkEpoch !== 0) {
-    return scratch.walkEpoch;
-  }
-
-  scratch.walkStamp.fill(0);
-  scratch.walkEpoch = 1;
-  return scratch.walkEpoch;
-};
-
-const nextBfsEpoch = (scratch: MazeScratch): number => {
-  scratch.bfsEpoch += 1;
-  if (scratch.bfsEpoch !== 0) {
-    return scratch.bfsEpoch;
-  }
-
-  scratch.seenEpoch.fill(0);
-  scratch.bfsEpoch = 1;
-  return scratch.bfsEpoch;
-};
-
-const nextSolveEpoch = (scratch: SolveScratch): number => {
-  scratch.epoch += 1;
-  if (scratch.epoch !== 0) {
-    return scratch.epoch;
-  }
-
-  scratch.gScoreEpoch.fill(0);
-  scratch.closedEpoch.fill(0);
-  scratch.epoch = 1;
-  return scratch.epoch;
-};
-
-class MinHeap {
-  private indices: Uint32Array;
-  private fScores: Float64Array;
-  private gScores: Float64Array;
-  private sizeValue = 0;
-
-  public currentIndex = 0;
-
-  public constructor(capacity: number) {
-    this.indices = new Uint32Array(Math.max(4, capacity));
-    this.fScores = new Float64Array(Math.max(4, capacity));
-    this.gScores = new Float64Array(Math.max(4, capacity));
-  }
-
-  public clear(): void {
-    this.sizeValue = 0;
-  }
-
-  public push(index: number, g: number, f: number): void {
-    this.ensureCapacity(this.sizeValue + 1);
-    let cursor = this.sizeValue;
-    this.sizeValue += 1;
-    this.indices[cursor] = index;
-    this.gScores[cursor] = g;
-    this.fScores[cursor] = f;
-    this.bubbleUp(cursor);
-  }
-
-  public pop(): boolean {
-    if (this.sizeValue === 0) {
-      return false;
-    }
-
-    this.currentIndex = this.indices[0];
-    this.sizeValue -= 1;
-    if (this.sizeValue > 0) {
-      this.indices[0] = this.indices[this.sizeValue];
-      this.gScores[0] = this.gScores[this.sizeValue];
-      this.fScores[0] = this.fScores[this.sizeValue];
-      this.bubbleDown(0);
-    }
-
-    return true;
-  }
-
-  private ensureCapacity(size: number): void {
-    if (size <= this.indices.length) {
-      return;
-    }
-
-    const nextCapacity = Math.max(size, this.indices.length * 2);
-    const nextIndices = new Uint32Array(nextCapacity);
-    nextIndices.set(this.indices);
-    this.indices = nextIndices;
-
-    const nextGScores = new Float64Array(nextCapacity);
-    nextGScores.set(this.gScores);
-    this.gScores = nextGScores;
-
-    const nextFScores = new Float64Array(nextCapacity);
-    nextFScores.set(this.fScores);
-    this.fScores = nextFScores;
-  }
-
-  private bubbleUp(index: number): void {
-    while (index > 0) {
-      const parent = Math.floor((index - 1) / 2);
-      if (this.compare(index, parent) >= 0) {
-        break;
-      }
-      this.swap(index, parent);
-      index = parent;
-    }
-  }
-
-  private bubbleDown(index: number): void {
-    while (true) {
-      const left = (index * 2) + 1;
-      const right = left + 1;
-      let smallest = index;
-
-      if (left < this.sizeValue && this.compare(left, smallest) < 0) {
-        smallest = left;
-      }
-      if (right < this.sizeValue && this.compare(right, smallest) < 0) {
-        smallest = right;
-      }
-      if (smallest === index) {
-        break;
-      }
-
-      this.swap(index, smallest);
-      index = smallest;
-    }
-  }
-
-  private compare(a: number, b: number): number {
-    const fDelta = this.fScores[a] - this.fScores[b];
-    if (fDelta !== 0) {
-      return fDelta;
-    }
-    return this.gScores[a] - this.gScores[b];
-  }
-
-  private swap(a: number, b: number): void {
-    [this.indices[a], this.indices[b]] = [this.indices[b], this.indices[a]];
-    [this.gScores[a], this.gScores[b]] = [this.gScores[b], this.gScores[a]];
-    [this.fScores[a], this.fScores[b]] = [this.fScores[b], this.fScores[a]];
-  }
-}

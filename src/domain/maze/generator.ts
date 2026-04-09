@@ -1,24 +1,27 @@
 import { createSeededRng } from '../rng/seededRng';
 import { buildMazeCore } from './core';
 import {
+  getAStarScratch,
   createGrid,
   getNeighborIndex,
   indexFromCoordinates,
   isTileFloor,
-  setTileFlag,
+  nextEpoch,
+  reconstructPath,
   TILE_END,
   TILE_FLOOR,
   TILE_PATH,
+  type AStarScratch,
   xFromIndex,
   yFromIndex
 } from './grid';
 import type {
   MazeBuildOptions,
-  MazeBuildResult,
   MazeConfig,
+  MazeEpisode,
   MazeGenerationState,
   MazeMetrics,
-  PathBuffer,
+  MazeSolveResult,
   TileBoard
 } from './types';
 
@@ -37,7 +40,7 @@ const DIRS = [
 
 interface RasterizeOptions {
   seed: number;
-  core: NonNullable<MazeBuildResult['core']>;
+  core: NonNullable<MazeEpisode['core']>;
   shortcutsCreated: number;
   footprint: MazeBuildOptions['footprint'];
   minSolutionLength: number;
@@ -45,26 +48,9 @@ interface RasterizeOptions {
   includeCore: boolean;
 }
 
-interface SolveScratch {
-  readonly cameFrom: Int32Array;
-  readonly gScore: Float64Array;
-  readonly gScoreEpoch: Uint32Array;
-  readonly closedEpoch: Uint32Array;
-  readonly heap: MinHeap;
-  epoch: number;
-}
+const solveScratchCache = new Map<number, AStarScratch>();
 
-interface TileSolveResult {
-  found: boolean;
-  pathIndices: PathBuffer;
-  visited: number;
-  expanded: number;
-  cost: number;
-}
-
-const solveScratchCache = new Map<number, SolveScratch>();
-
-export const buildMaze = (options: MazeBuildOptions): MazeBuildResult => {
+export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
   const seeded = options.rng ? null : createSeededRng(seed);
   const rng = options.rng ?? (() => seeded!.nextFloat());
@@ -93,7 +79,7 @@ export const buildMaze = (options: MazeBuildOptions): MazeBuildResult => {
   });
 };
 
-export const generateMaze = (config: MazeConfig): MazeBuildResult => {
+export const generateMaze = (config: MazeConfig): MazeEpisode => {
   const targetScale = Math.max(9, config.scale);
   return buildMaze({
     width: targetScale,
@@ -126,7 +112,7 @@ export const resetAndRegenerate = (state: MazeGenerationState, config: MazeConfi
   };
 };
 
-const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
+const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
   const { core, seed, shortcutsCreated, footprint, minSolutionLength, acceptedCore, includeCore } = options;
   const playableWidth = (core.width * 2) - 1;
   const playableHeight = (core.height * 2) - 1;
@@ -138,7 +124,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
       const centerX = x * 2;
       const centerY = y * 2;
       const centerIndex = indexFromCoordinates(centerX, centerY, playableWidth);
-      setTileFlag(tiles, centerIndex, TILE_FLOOR);
+      tiles[centerIndex] |= TILE_FLOOR;
 
       for (let direction = 0; direction < DIRS.length; direction += 1) {
         const dir = DIRS[direction];
@@ -147,7 +133,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
         }
 
         const passageIndex = indexFromCoordinates(centerX + dir.dx, centerY + dir.dy, playableWidth);
-        setTileFlag(tiles, passageIndex, TILE_FLOOR);
+        tiles[passageIndex] |= TILE_FLOOR;
       }
     }
   }
@@ -161,22 +147,14 @@ const rasterizeMaze = (options: RasterizeOptions): MazeBuildResult => {
     tiles,
     pathIndices: EMPTY_PATH,
     startIndex,
-    endIndex,
-    playableWidth,
-    playableHeight,
-    padding: {
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0
-    }
+    endIndex
   }, footprint);
 
   const solved = solveTileAStar(raster.tiles, raster.width, raster.height, raster.startIndex, raster.endIndex);
   for (let pathCursor = 0; pathCursor < solved.pathIndices.length; pathCursor += 1) {
-    setTileFlag(raster.tiles, solved.pathIndices[pathCursor], TILE_PATH);
+    raster.tiles[solved.pathIndices[pathCursor]] |= TILE_PATH;
   }
-  setTileFlag(raster.tiles, raster.endIndex, TILE_END);
+  raster.tiles[raster.endIndex] |= TILE_END;
 
   const metrics = measureTileMaze(raster.tiles, raster.width, raster.height, solved.pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
@@ -203,9 +181,7 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
   }
 
   const left = Math.floor((targetWidth - board.width) / 2);
-  const right = targetWidth - board.width - left;
   const top = Math.floor((targetHeight - board.height) / 2);
-  const bottom = targetHeight - board.height - top;
   const tiles = createGrid(targetWidth, targetHeight);
 
   for (let index = 0; index < board.tiles.length; index += 1) {
@@ -215,7 +191,7 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
 
     const x = xFromIndex(index, board.width);
     const y = yFromIndex(index, board.width);
-    setTileFlag(tiles, indexFromCoordinates(x + left, y + top, targetWidth), TILE_FLOOR);
+    tiles[indexFromCoordinates(x + left, y + top, targetWidth)] |= TILE_FLOOR;
   }
 
   const shiftIndex = (index: number): number => {
@@ -236,15 +212,7 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
     tiles,
     pathIndices: shiftedPathIndices,
     startIndex: shiftIndex(board.startIndex),
-    endIndex: shiftIndex(board.endIndex),
-    playableWidth: board.playableWidth,
-    playableHeight: board.playableHeight,
-    padding: {
-      top: board.padding.top + top,
-      right: board.padding.right + right,
-      bottom: board.padding.bottom + bottom,
-      left: board.padding.left + left
-    }
+    endIndex: shiftIndex(board.endIndex)
   };
 };
 
@@ -254,9 +222,9 @@ const solveTileAStar = (
   height: number,
   startIndex: number,
   goalIndex: number
-): TileSolveResult => {
+): MazeSolveResult => {
   const scratch = getSolveScratch(tiles.length);
-  const epoch = nextEpoch(scratch);
+  const epoch = nextEpoch(scratch, scratch.gScoreEpoch, scratch.closedEpoch);
   const goalX = xFromIndex(goalIndex, width);
   const goalY = yFromIndex(goalIndex, width);
 
@@ -270,7 +238,7 @@ const solveTileAStar = (
   let expanded = 0;
 
   while (scratch.heap.pop()) {
-    const currentIndex = scratch.heap.currentIndex;
+    const currentIndex = scratch.heap.current;
     if (scratch.closedEpoch[currentIndex] === epoch) {
       continue;
     }
@@ -281,7 +249,7 @@ const solveTileAStar = (
     if (currentIndex === goalIndex) {
       return {
         found: true,
-        pathIndices: reconstructTilePath(scratch.cameFrom, currentIndex),
+        pathIndices: reconstructPath(scratch.cameFrom, currentIndex),
         visited,
         expanded,
         cost: scratch.gScore[currentIndex]
@@ -377,24 +345,6 @@ const countOpenFloorNeighbors = (tiles: Uint8Array, width: number, height: numbe
   return count;
 };
 
-const reconstructTilePath = (cameFrom: Int32Array, endIndex: number): PathBuffer => {
-  let length = 0;
-  let cursor = endIndex;
-
-  while (cursor >= 0) {
-    length += 1;
-    cursor = cameFrom[cursor];
-  }
-
-  const path = new Uint32Array(length);
-  cursor = endIndex;
-  for (let writeIndex = length - 1; writeIndex >= 0; writeIndex -= 1) {
-    path[writeIndex] = cursor;
-    cursor = cameFrom[cursor];
-  }
-  return path;
-};
-
 const indexOfCore = (width: number, x: number, y: number): number => (y * width) + x;
 
 const normalizeLogicalSize = (targetScale: number): number => Math.max(4, Math.floor((targetScale + 1) / 2));
@@ -413,143 +363,4 @@ const passesRasterQualityGate = (metrics: MazeMetrics, minSolutionLength: number
   && metrics.coverage > 0
 );
 
-const getSolveScratch = (size: number): SolveScratch => {
-  const cached = solveScratchCache.get(size);
-  if (cached) {
-    return cached;
-  }
-
-  const scratch: SolveScratch = {
-    cameFrom: new Int32Array(size),
-    gScore: new Float64Array(size),
-    gScoreEpoch: new Uint32Array(size),
-    closedEpoch: new Uint32Array(size),
-    heap: new MinHeap(size),
-    epoch: 0
-  };
-  solveScratchCache.set(size, scratch);
-  return scratch;
-};
-
-const nextEpoch = (scratch: SolveScratch): number => {
-  scratch.epoch += 1;
-  if (scratch.epoch !== 0) {
-    return scratch.epoch;
-  }
-
-  scratch.gScoreEpoch.fill(0);
-  scratch.closedEpoch.fill(0);
-  scratch.epoch = 1;
-  return scratch.epoch;
-};
-
-class MinHeap {
-  private indices: Uint32Array;
-  private fScores: Float64Array;
-  private gScores: Float64Array;
-  private sizeValue = 0;
-
-  public currentIndex = 0;
-
-  public constructor(capacity: number) {
-    this.indices = new Uint32Array(Math.max(4, capacity));
-    this.fScores = new Float64Array(Math.max(4, capacity));
-    this.gScores = new Float64Array(Math.max(4, capacity));
-  }
-
-  public clear(): void {
-    this.sizeValue = 0;
-  }
-
-  public push(index: number, g: number, f: number): void {
-    this.ensureCapacity(this.sizeValue + 1);
-    let cursor = this.sizeValue;
-    this.sizeValue += 1;
-    this.indices[cursor] = index;
-    this.gScores[cursor] = g;
-    this.fScores[cursor] = f;
-    this.bubbleUp(cursor);
-  }
-
-  public pop(): boolean {
-    if (this.sizeValue === 0) {
-      return false;
-    }
-
-    this.currentIndex = this.indices[0];
-    this.sizeValue -= 1;
-    if (this.sizeValue > 0) {
-      this.indices[0] = this.indices[this.sizeValue];
-      this.gScores[0] = this.gScores[this.sizeValue];
-      this.fScores[0] = this.fScores[this.sizeValue];
-      this.bubbleDown(0);
-    }
-
-    return true;
-  }
-
-  private ensureCapacity(size: number): void {
-    if (size <= this.indices.length) {
-      return;
-    }
-
-    const nextCapacity = Math.max(size, this.indices.length * 2);
-    const nextIndices = new Uint32Array(nextCapacity);
-    nextIndices.set(this.indices);
-    this.indices = nextIndices;
-
-    const nextGScores = new Float64Array(nextCapacity);
-    nextGScores.set(this.gScores);
-    this.gScores = nextGScores;
-
-    const nextFScores = new Float64Array(nextCapacity);
-    nextFScores.set(this.fScores);
-    this.fScores = nextFScores;
-  }
-
-  private bubbleUp(index: number): void {
-    while (index > 0) {
-      const parent = Math.floor((index - 1) / 2);
-      if (this.compare(index, parent) >= 0) {
-        break;
-      }
-      this.swap(index, parent);
-      index = parent;
-    }
-  }
-
-  private bubbleDown(index: number): void {
-    while (true) {
-      const left = (index * 2) + 1;
-      const right = left + 1;
-      let smallest = index;
-
-      if (left < this.sizeValue && this.compare(left, smallest) < 0) {
-        smallest = left;
-      }
-      if (right < this.sizeValue && this.compare(right, smallest) < 0) {
-        smallest = right;
-      }
-      if (smallest === index) {
-        break;
-      }
-
-      this.swap(index, smallest);
-      index = smallest;
-    }
-  }
-
-  private compare(a: number, b: number): number {
-    const fDelta = this.fScores[a] - this.fScores[b];
-    if (fDelta !== 0) {
-      return fDelta;
-    }
-    return this.gScores[a] - this.gScores[b];
-  }
-
-  private swap(a: number, b: number): void {
-    [this.indices[a], this.indices[b]] = [this.indices[b], this.indices[a]];
-    [this.gScores[a], this.gScores[b]] = [this.gScores[b], this.gScores[a]];
-    [this.fScores[a], this.fScores[b]] = [this.fScores[b], this.fScores[a]];
-  }
-}
+const getSolveScratch = (size: number): AStarScratch => getAStarScratch(solveScratchCache, size);

@@ -1,13 +1,10 @@
 export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
-export type TileBuffer = Uint8Array;
-export type PathBuffer = Uint32Array;
-export type MazeCells = Uint8Array;
 
 export interface MazeCore {
   width: number;
   height: number;
-  cells: MazeCells;
+  cells: Uint8Array;
   start: Point;
   goal: Point;
   seed: number;
@@ -37,7 +34,7 @@ export interface MazeBuildOptions {
 
 export interface MazeSolveResult {
   found: boolean;
-  pathIndices: PathBuffer;
+  pathIndices: Uint32Array;
   visited: number;
   expanded: number;
   cost: number;
@@ -56,24 +53,14 @@ export interface BoardFootprintTarget {
   height?: number;
 }
 
-export interface BoardFootprintPadding {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-
 export interface TileBoard {
   width: number;
   height: number;
   scale: number;
-  tiles: TileBuffer;
-  pathIndices: PathBuffer;
+  tiles: Uint8Array;
+  pathIndices: Uint32Array;
   startIndex: number;
   endIndex: number;
-  playableWidth: number;
-  playableHeight: number;
-  padding: BoardFootprintPadding;
 }
 
 export interface MazeEpisode {
@@ -84,8 +71,6 @@ export interface MazeEpisode {
   shortcutsCreated: number;
   accepted: boolean;
 }
-
-export type MazeBuildResult = MazeEpisode;
 
 export interface MazeGenerationState {
   processCount: number;

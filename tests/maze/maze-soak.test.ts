@@ -24,6 +24,10 @@ const maybeCollect = (): void => {
   (globalThis as { gc?: () => void }).gc?.();
 };
 
+const yieldToRunner = async (): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
 const captureMemory = (iteration: number): MemorySample => {
   maybeCollect();
   const usage = process.memoryUsage();
@@ -48,7 +52,7 @@ const captureMemory = (iteration: number): MemorySample => {
 
 test(
   'soak: repeated seeded generation and reset cycles hold invariants',
-  () => {
+  async () => {
     const memorySamples: MemorySample[] = [];
     let state = {
       processCount: 7,
@@ -98,6 +102,10 @@ test(
           || completedIteration === soakIterations)) {
         memorySamples.push(captureMemory(completedIteration));
       }
+
+      if (completedIteration % 25 === 0) {
+        await yieldToRunner();
+      }
     }
 
     expect(memorySamples.length).toBeGreaterThanOrEqual(2);
@@ -143,7 +151,7 @@ test(
 
 test(
   'soak: demo playback stays on the solved path through regeneration loops',
-  () => {
+  async () => {
     const demoIterations = Math.max(24, Math.floor(soakIterations / 8));
 
     for (let iteration = 0; iteration < demoIterations; iteration += 1) {
@@ -172,6 +180,9 @@ test(
 
       expect(completedLoop).toBe(true);
       disposeMazeEpisode(maze);
+      if ((iteration + 1) % 8 === 0) {
+        await yieldToRunner();
+      }
     }
   },
   soakIterations > 1000 ? 180000 : 120000

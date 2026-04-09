@@ -251,7 +251,13 @@ export class MenuScene extends Phaser.Scene {
 
       boardRenderer.drawGoal(cue);
       boardRenderer.drawTrail(path, { cue, limit: pathCursor + 1 });
-      boardRenderer.drawActor(currentIndex, resolveDirection(patternFrame.episode, lastTrailIndex, currentIndex), cue);
+      boardRenderer.drawActor(
+        currentIndex,
+        lastTrailIndex === currentIndex
+          ? null
+          : resolveDirectionBetween(lastTrailIndex, currentIndex, patternFrame.episode.raster.width),
+        cue
+      );
     };
     const accentCueBeat = (): void => {
       const pulseBoard = (
@@ -636,16 +642,4 @@ const resolveDemoCue = (elapsedSeconds: number, pathCursor: number, pathLength: 
     return 'spawn';
   }
   return 'explore';
-};
-
-const resolveDirection = (
-  episode: { raster: { width: number } },
-  fromIndex: number,
-  toIndex: number
-): 0 | 1 | 2 | 3 | null => {
-  if (fromIndex === toIndex) {
-    return null;
-  }
-
-  return resolveDirectionBetween(fromIndex, toIndex, episode.raster.width);
 };
