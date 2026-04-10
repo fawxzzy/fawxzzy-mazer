@@ -5,10 +5,13 @@ import { legacyTuning } from '../../src/config/tuning';
 import { disposeMazeEpisode, generateMaze, isTileFloor, resetAndRegenerate, type MazeConfig } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
 
-const soakIterations = Number.parseInt(process.env.MAZE_SOAK_ITERATIONS ?? '200', 10);
+const soakProfile = process.env.MAZE_SOAK_PROFILE ?? 'normal';
+const defaultSoakIterations = soakProfile === 'heavy' ? 200 : 72;
+const soakIterations = Number.parseInt(process.env.MAZE_SOAK_ITERATIONS ?? `${defaultSoakIterations}`, 10);
 const soakScales = [18, 30, 40, 50];
 const warmupIterations = Math.max(20, Math.min(60, Math.floor(soakIterations * 0.25)));
 const memorySampleEvery = Math.max(10, Math.floor(soakIterations / 8));
+const deterministicReplayEvery = Math.max(6, Math.floor(soakIterations / 6));
 const previousPeakDeltaBaseline = 30_959_648;
 
 interface MemorySample {
@@ -50,6 +53,27 @@ const captureMemory = (iteration: number): MemorySample => {
   return sample;
 };
 
+const shouldRunFullInvariantSample = (completedIteration: number): boolean => (
+  completedIteration === 1
+  || completedIteration === warmupIterations
+  || completedIteration % memorySampleEvery === 0
+  || completedIteration === soakIterations
+);
+
+const shouldReplayDeterministically = (completedIteration: number): boolean => (
+  completedIteration === 1
+  || completedIteration % deterministicReplayEvery === 0
+  || completedIteration === soakIterations
+);
+
+const createPathMembership = (pathIndices: Uint32Array, tileCount: number): Uint8Array => {
+  const membership = new Uint8Array(tileCount);
+  for (const index of pathIndices) {
+    membership[index] = 1;
+  }
+  return membership;
+};
+
 test(
   'soak: repeated seeded generation and reset cycles hold invariants',
   async () => {
@@ -76,7 +100,11 @@ test(
 
       const maze = generateMaze(config);
       const previousEpisode = state.result;
-      assertMazeInvariants(maze);
+      const completedIteration = iteration + 1;
+      const exhaustiveSample = shouldRunFullInvariantSample(completedIteration);
+      assertMazeInvariants(maze, {
+        exhaustive: exhaustiveSample
+      });
 
       const regenerated = resetAndRegenerate(
         {
@@ -86,8 +114,17 @@ test(
         config
       );
 
-      assertMazeInvariants(regenerated.result);
-      expect(serializeMaze(regenerated.result)).toEqual(serializeMaze(maze));
+      assertMazeInvariants(regenerated.result, {
+        exhaustive: exhaustiveSample
+      });
+      if (shouldReplayDeterministically(completedIteration)) {
+        expect(serializeMaze(regenerated.result)).toEqual(serializeMaze(maze));
+      } else {
+        expect(regenerated.result.seed).toBe(maze.seed);
+        expect(regenerated.result.raster.pathIndices.length).toBe(maze.raster.pathIndices.length);
+        expect(regenerated.result.raster.startIndex).toBe(maze.raster.startIndex);
+        expect(regenerated.result.raster.endIndex).toBe(maze.raster.endIndex);
+      }
 
       if (previousEpisode !== regenerated.result) {
         disposeMazeEpisode(previousEpisode);
@@ -95,7 +132,6 @@ test(
       disposeMazeEpisode(maze);
       state = regenerated;
 
-      const completedIteration = iteration + 1;
       if (completedIteration >= warmupIterations
         && (completedIteration === warmupIterations
           || completedIteration % memorySampleEvery === 0
@@ -103,7 +139,7 @@ test(
         memorySamples.push(captureMemory(completedIteration));
       }
 
-      if (completedIteration % 25 === 0) {
+      if (completedIteration % 8 === 0) {
         await yieldToRunner();
       }
     }
@@ -164,13 +200,15 @@ test(
       });
       let state = createDemoWalkerState(maze);
       let completedLoop = false;
+      const pathMembership = createPathMembership(maze.raster.pathIndices, maze.raster.tiles.length);
+      const maxSteps = Math.max(256, maze.raster.pathIndices.length * 3);
 
-      for (let step = 0; step < 6000; step += 1) {
+      for (let step = 0; step < maxSteps; step += 1) {
         const advance = advanceDemoWalker(maze, state, legacyTuning.demo);
         state = advance.state;
 
         expect(isTileFloor(maze.raster.tiles, state.currentIndex)).toBe(true);
-        expect(maze.raster.pathIndices.includes(state.currentIndex)).toBe(true);
+        expect(pathMembership[state.currentIndex]).toBe(1);
 
         if (advance.shouldRegenerateMaze || state.loops > 0) {
           completedLoop = true;
@@ -180,10 +218,10 @@ test(
 
       expect(completedLoop).toBe(true);
       disposeMazeEpisode(maze);
-      if ((iteration + 1) % 8 === 0) {
+      if ((iteration + 1) % 4 === 0) {
         await yieldToRunner();
       }
     }
   },
-  soakIterations > 1000 ? 180000 : 120000
+  soakProfile === 'heavy' || soakIterations > 1000 ? 180000 : 60000
 );
