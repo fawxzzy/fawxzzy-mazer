@@ -292,6 +292,7 @@ describe('demo-only build', () => {
     expect(titleBand.top).toBeGreaterThanOrEqual(0);
     expect(titleBand.bottom).toBeLessThanOrEqual(layout.safeBounds.top);
     expect(titleBand.bottom).toBeLessThan(layout.boardY);
+    expect(layout.boardY - titleBand.bottom).toBeGreaterThanOrEqual(Math.max(12, Math.round(layout.tileSize * 1.05)));
     expect(titleBand.right + titleBand.reservedRight).toBeLessThanOrEqual(presentationModel.viewport.width);
     expect(titleBand.centerX).toBeGreaterThan(titleBand.left);
     expect(titleBand.centerX).toBeLessThan(titleBand.right);
@@ -304,9 +305,11 @@ describe('demo-only build', () => {
       const report = getPaletteReadabilityReport(resolveAmbientThemeProfile(theme).palette);
       expect(report.failures, `${theme}: ${report.failures.map((failure) => failure.key).join(', ')}`).toEqual([]);
       expect(report.checkpoints.map((checkpoint) => checkpoint.key)).toEqual([
+        'wall-vs-floor',
         'wall-vs-route',
         'wall-vs-player',
         'floor-vs-route',
+        'floor-vs-trail',
         'route-vs-trail',
         'trail-vs-player',
         'goal-vs-background',

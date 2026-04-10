@@ -190,21 +190,26 @@ export const createBoardLayout = (
   const height = viewport.height;
   const rasterWidth = sanitizePositive(episode?.raster?.width, 1, 1);
   const rasterHeight = sanitizePositive(episode?.raster?.height, 1, 1);
-  const availableWidth = Math.max(MIN_BOARD_SIZE, width - (sidePadding * 2));
-  const availableHeight = Math.max(MIN_BOARD_SIZE, height - topReserve - bottomPadding);
-  const boardSize = Math.max(MIN_BOARD_SIZE, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
+  const availableWidth = Math.max(1, width - (sidePadding * 2));
+  const availableHeight = Math.max(1, height - topReserve - bottomPadding);
+  const minimumBoardSize = Math.min(MIN_BOARD_SIZE, availableWidth, availableHeight);
+  const boardSize = Math.max(minimumBoardSize, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
   const tileSize = Math.max(1, Math.floor(boardSize / Math.max(rasterWidth, rasterHeight)));
   const boardWidth = tileSize * rasterWidth;
   const boardHeight = tileSize * rasterHeight;
+  const maxBoardX = Math.max(0, width - sidePadding - boardWidth);
+  const minBoardX = Math.min(sidePadding, maxBoardX);
+  const maxBoardY = Math.max(0, height - bottomPadding - boardHeight);
+  const minBoardY = Math.min(topReserve, maxBoardY);
   const boardX = Phaser.Math.Clamp(
     (width / 2) - (boardWidth / 2),
-    sidePadding,
-    Math.max(sidePadding, width - sidePadding - boardWidth)
+    minBoardX,
+    Math.max(minBoardX, maxBoardX)
   );
   const boardY = Phaser.Math.Clamp(
     topReserve + ((availableHeight - boardHeight) / 2),
-    topReserve,
-    Math.max(topReserve, height - bottomPadding - boardHeight)
+    minBoardY,
+    Math.max(minBoardY, maxBoardY)
   );
   const safeBounds = createBounds(sidePadding, topReserve, availableWidth, availableHeight);
   const boardBounds = createBounds(boardX, boardY, boardWidth, boardHeight);
@@ -417,23 +422,23 @@ export class BoardRenderer {
       topHighlightHeightPx,
       topHighlightAlpha
     } = legacyTuning.board.frame;
-    const outerAlphaGlass = Math.min(0.66, outerAlpha * 0.52);
-    const panelAlphaGlass = Math.min(0.56, panelAlpha * 0.62);
-    const wellAlphaGlass = Math.min(0.34, (wellAlpha * 1.1) + 0.05);
-    const shadowAlphaGlass = Math.min(0.44, shadowAlpha * 0.84);
-    const glowAlphaGlass = Math.min(0.22, glowAlpha * 0.82);
-    const edgeShadeAlphaGlass = edgeShadeAlpha * 0.42;
-    const topHighlightAlphaGlass = topHighlightAlpha * 0.52;
+    const outerAlphaGlass = Math.min(0.48, outerAlpha * 0.34);
+    const panelAlphaGlass = Math.min(0.42, panelAlpha * 0.5);
+    const wellAlphaGlass = Math.min(0.2, (wellAlpha * 0.74) + 0.02);
+    const shadowAlphaGlass = Math.min(0.28, shadowAlpha * 0.54);
+    const glowAlphaGlass = Math.min(0.09, glowAlpha * 0.42);
+    const edgeShadeAlphaGlass = edgeShadeAlpha * 0.22;
+    const topHighlightAlphaGlass = topHighlightAlpha * 0.34;
 
     this.chromeBack.clear();
     this.chromeFront.clear();
 
     this.chromeBack.fillStyle(colors.board.shadow, shadowAlphaGlass);
     this.chromeBack.fillRect(
-      centerX - (boardWidth + scaleMetric(shadowExpandPx)) / 2,
-      centerY - (boardHeight + scaleMetric(shadowExpandPx)) / 2 + scaleMetric(shadowOffsetY),
-      boardWidth + scaleMetric(shadowExpandPx),
-      boardHeight + scaleMetric(shadowExpandPx)
+      centerX - (boardWidth + scaleMetric(shadowExpandPx * 0.72)) / 2,
+      centerY - (boardHeight + scaleMetric(shadowExpandPx * 0.48)) / 2 + scaleMetric(shadowOffsetY * 0.7),
+      boardWidth + scaleMetric(shadowExpandPx * 0.72),
+      boardHeight + scaleMetric(shadowExpandPx * 0.48)
     );
 
     this.chromeBack.fillStyle(colors.board.glow, glowAlphaGlass);
@@ -461,14 +466,14 @@ export class BoardRenderer {
 
     this.chromeBack.fillStyle(colors.board.panel, panelAlphaGlass);
     this.chromeBack.fillRect(boardX, boardY, boardWidth, boardHeight);
-    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.5);
+    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.28);
     this.chromeBack.strokeRect(
-      boardX + scaleMetric(4),
-      boardY + scaleMetric(4),
-      boardWidth - scaleMetric(8),
-      boardHeight - scaleMetric(8)
+      boardX + scaleMetric(5),
+      boardY + scaleMetric(5),
+      boardWidth - scaleMetric(10),
+      boardHeight - scaleMetric(10)
     );
-    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.54);
+    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.42);
     this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardWidth - 2, boardHeight - 2);
 
     this.chromeBack.fillStyle(colors.board.well, wellAlphaGlass);
@@ -481,13 +486,11 @@ export class BoardRenderer {
 
     const sheenInset = scaleMetric(Math.max(wellInsetPx + 4, 10));
     const sheenWidth = Math.max(12, boardWidth - (sheenInset * 2));
-    const upperSheenHeight = Math.max(2, scaleMetric(16));
-    const lowerShadeHeight = Math.max(2, scaleMetric(12));
-    this.chromeBack.fillStyle(colors.board.topHighlight, 0.075);
+    const upperSheenHeight = Math.max(2, scaleMetric(12));
+    const lowerShadeHeight = Math.max(2, scaleMetric(8));
+    this.chromeBack.fillStyle(colors.board.topHighlight, 0.048);
     this.chromeBack.fillRect(boardX + sheenInset, boardY + sheenInset, sheenWidth, upperSheenHeight);
-    this.chromeBack.fillStyle(colors.board.topHighlight, 0.032);
-    this.chromeBack.fillRect(boardX + sheenInset, boardY + sheenInset + upperSheenHeight + 2, sheenWidth, Math.max(2, scaleMetric(6)));
-    this.chromeBack.fillStyle(colors.board.shadow, 0.09);
+    this.chromeBack.fillStyle(colors.board.shadow, 0.05);
     this.chromeBack.fillRect(
       boardX + sheenInset,
       boardY + boardHeight - sheenInset - lowerShadeHeight,
@@ -512,15 +515,15 @@ export class BoardRenderer {
 
     this.chromeBack.fillStyle(colors.board.topHighlight, topHighlightAlphaGlass);
     this.chromeBack.fillRect(
-      boardX + scaleMetric(topHighlightInsetPx),
-      boardY + scaleMetric(topHighlightInsetPx),
-      boardWidth - (scaleMetric(topHighlightInsetPx) * 2),
-      scaleMetric(topHighlightHeightPx)
+      boardX + scaleMetric(topHighlightInsetPx + 2),
+      boardY + scaleMetric(topHighlightInsetPx + 2),
+      boardWidth - (scaleMetric(topHighlightInsetPx + 2) * 2),
+      Math.max(1, scaleMetric(topHighlightHeightPx))
     );
 
     const tickInset = scaleMetric(cornerTickInsetPx);
     const tickLength = scaleMetric(cornerTickLengthPx);
-    this.chromeFront.lineStyle(scaleMetric(2), colors.board.outerStroke, cornerTickAlpha);
+    this.chromeFront.lineStyle(scaleMetric(1), colors.board.outerStroke, cornerTickAlpha * 0.58);
     this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset + tickLength, boardY + tickInset);
     this.chromeFront.lineBetween(boardX + tickInset, boardY + tickInset, boardX + tickInset, boardY + tickInset + tickLength);
     this.chromeFront.lineBetween(boardX + boardWidth - tickInset, boardY + tickInset, boardX + boardWidth - tickInset - tickLength, boardY + tickInset);
@@ -553,7 +556,7 @@ export class BoardRenderer {
     this.base.clear();
     this.grid.clear();
 
-    this.base.fillStyle(colors.board.panel, 0.06);
+    this.base.fillStyle(colors.board.panel, 0.025);
     this.base.fillRect(boardX, boardY, boardWidth, boardHeight);
 
     for (let index = 0; index < this.episode.raster.tiles.length; index += 1) {
@@ -561,22 +564,22 @@ export class BoardRenderer {
       const y = this.tileY(index);
 
       if (isTileFloor(this.episode.raster.tiles, index)) {
-        this.base.fillStyle(colors.board.path, legacyTuning.board.tile.floorOuterAlpha);
+        this.base.fillStyle(colors.board.path, 0.82);
         this.base.fillRect(x, y, tileSize, tileSize);
 
         const floorInset = tileSize * legacyTuning.board.tile.floorInsetRatio;
         this.base.fillStyle(colors.board.floor, legacyTuning.board.tile.floorInsetAlpha * presetProfile.floorInsetAlphaScale);
         this.base.fillRect(x + floorInset, y + floorInset, tileSize - floorInset * 2, tileSize - floorInset * 2);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha * 0.72);
         this.base.fillRect(x + bevel, y + bevel, tileSize - (bevel * 2), bevel);
         this.base.fillRect(x + bevel, y + bevel, bevel, tileSize - (bevel * 2));
 
         if (showSolutionPath && isTilePath(this.episode.raster.tiles, index)) {
-          const hintInset = tileSize * 0.22;
+          const hintInset = tileSize * 0.28;
           this.base.fillStyle(
-            colors.board.routeGlow,
-            0.18 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
+            colors.board.route,
+            0.24 * solutionPathAlpha * presetProfile.pathGlowAlphaScale
           );
           this.base.fillRect(
             x + hintInset,
@@ -585,9 +588,9 @@ export class BoardRenderer {
             tileSize - (hintInset * 2)
           );
           this.grid.lineStyle(
-            Math.max(1, tileSize * 0.03),
-            colors.board.routeCore,
-            0.28 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
+            Math.max(1, tileSize * 0.048),
+            colors.board.routeGlow,
+            0.28 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
           );
           this.grid.strokeRect(
             x + hintInset + 0.5,
@@ -595,9 +598,20 @@ export class BoardRenderer {
             tileSize - (hintInset * 2) - 1,
             tileSize - (hintInset * 2) - 1
           );
+          this.grid.lineStyle(
+            Math.max(1, tileSize * 0.03),
+            colors.board.routeCore,
+            0.52 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
+          );
+          this.grid.strokeRect(
+            x + hintInset + tileSize * 0.08 + 0.5,
+            y + hintInset + tileSize * 0.08 + 0.5,
+            tileSize - ((hintInset + tileSize * 0.08) * 2) - 1,
+            tileSize - ((hintInset + tileSize * 0.08) * 2) - 1
+          );
         }
 
-        this.base.fillStyle(colors.board.shadow, legacyTuning.board.tile.floorShadowAlpha);
+        this.base.fillStyle(colors.board.shadow, legacyTuning.board.tile.floorShadowAlpha * 0.7);
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
         this.base.fillRect(x + bevel, y + tileSize - (bevel * 2), tileSize - (bevel * 2), bevel);
 
@@ -605,7 +619,7 @@ export class BoardRenderer {
         this.grid.lineStyle(1, colors.board.innerStroke, floorGridAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha * 0.58);
         this.base.fillRect(x + 1, y + 1, tileSize - 2, Math.max(1, tileSize * 0.2));
       } else {
         this.base.fillStyle(colors.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale);
@@ -613,9 +627,9 @@ export class BoardRenderer {
       }
     }
 
-    this.base.fillStyle(colors.board.topHighlight, 0.04);
+    this.base.fillStyle(colors.board.topHighlight, 0.025);
     this.base.fillRect(boardX + 1, boardY + 1, Math.max(2, boardWidth - 2), Math.max(2, Math.round(tileSize * 0.55)));
-    this.base.fillStyle(colors.board.shadow, 0.08);
+    this.base.fillStyle(colors.board.shadow, 0.05);
     this.base.fillRect(
       boardX + 1,
       boardY + boardHeight - Math.max(2, Math.round(tileSize * 0.46)) - 1,
@@ -680,11 +694,11 @@ export class BoardRenderer {
     const outerSize = Math.max(3, tileSize * 0.72);
 
     this.start.clear();
-    this.start.fillStyle(colors.board.startGlow, 0.12 * pulse * haloScale);
+    this.start.fillStyle(colors.board.startGlow, 0.08 * pulse * haloScale);
     this.start.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.startGlow, 0.5 * pulse * haloScale);
+    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.startGlow, 0.36 * pulse * haloScale);
     this.start.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
-    this.start.fillStyle(colors.board.start, 0.16 * pulse * haloScale);
+    this.start.fillStyle(colors.board.start, 0.12 * pulse * haloScale);
     this.start.fillCircle(centerX, centerY, tileSize * 0.42);
     this.start.lineStyle(Math.max(1, tileSize * 0.048), colors.board.start, 0.84 * pulse);
     this.start.strokeRect(centerX - (outerSize / 2), centerY - (outerSize / 2), outerSize, outerSize);
@@ -734,18 +748,18 @@ export class BoardRenderer {
     const beaconRadius = tileSize * legacyTuning.board.goalPulse.beaconRadiusRatio * cueBoost;
     const sweepPulse = 0.76 + (Math.sin((now * legacyTuning.board.goalPulse.waveSpeed * 0.34) + 1.3) * 0.24);
 
-    this.goal.fillStyle(colors.board.goal, 0.16 * pulse * goalGlowScale);
+    this.goal.fillStyle(colors.board.goal, 0.09 * pulse * goalGlowScale);
     this.goal.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.goal.lineStyle(Math.max(1, tileSize * 0.055), colors.board.goalCore, 0.82 * pulse);
+    this.goal.lineStyle(Math.max(1, tileSize * 0.055), colors.board.goalCore, 0.7 * pulse);
     this.goal.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
 
     this.goal.fillStyle(colors.board.goal, legacyTuning.board.goalPulse.beaconAlpha * pulse * goalGlowScale);
     this.goal.fillCircle(centerX, centerY, beaconRadius);
 
-    this.goal.fillStyle(colors.board.goal, legacyTuning.board.goalPulse.tileHaloAlpha * pulse * goalGlowScale);
+    this.goal.fillStyle(colors.board.goal, legacyTuning.board.goalPulse.tileHaloAlpha * 0.64 * pulse * goalGlowScale);
     this.goal.fillRect(centerX - haloSize / 2, centerY - haloSize / 2, haloSize, haloSize);
 
-    this.goal.fillStyle(colors.board.goal, legacyTuning.board.goalPulse.glowAlpha * pulse * goalGlowScale);
+    this.goal.fillStyle(colors.board.goal, legacyTuning.board.goalPulse.glowAlpha * 0.74 * pulse * goalGlowScale);
     this.goal.fillCircle(centerX, centerY, tileSize * legacyTuning.board.goalPulse.glowRadiusRatio);
 
     this.goal.lineStyle(
@@ -954,7 +968,7 @@ export class BoardRenderer {
           renderCenterY,
           bodyGlowWidth,
           segmentGlowColor,
-          glowAlpha * (isHead ? 0.88 : isBacktrack ? 0.58 : 0.48) * trailGlowScale
+          glowAlpha * (isHead ? 0.64 : isBacktrack ? 0.46 : 0.3) * trailGlowScale
         );
         this.fillAxisAlignedSegment(
           this.trail,
@@ -996,7 +1010,7 @@ export class BoardRenderer {
         this.trail.lineBetween(renderCenterX - nodeRadius, renderCenterY - nodeRadius, renderCenterX + nodeRadius, renderCenterY + nodeRadius);
       } else {
         if (!isHead || !hasActiveMotion || isGoalStep) {
-          this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.92 : 0.58) * trailFillScale);
+          this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.74 : 0.28) * trailFillScale);
           this.trail.fillRect(
             tileX + cellInset,
             tileY + cellInset,
@@ -1014,7 +1028,7 @@ export class BoardRenderer {
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + 0.22) * trailCoreScale);
         this.trail.fillRect(renderCenterX - coreSize / 2, renderCenterY - coreSize / 2, coreSize, coreSize);
       } else if (isHead || isGoalStep) {
-        this.trail.fillStyle(segmentGlowColor, glowAlpha * (isHead ? 0.78 : 0.52) * trailGlowScale);
+        this.trail.fillStyle(segmentGlowColor, glowAlpha * (isHead ? 0.56 : 0.4) * trailGlowScale);
         this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 1.42 : 1.18));
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + (isGoalStep ? 0.28 : 0.2)) * trailCoreScale);
         this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 0.92 : 0.78));
@@ -1231,29 +1245,31 @@ export class BoardRenderer {
         : colors.board.playerCore;
 
     this.actor.clear();
-    this.actor.fillStyle(colors.board.player, cue === 'anticipate' ? 0.2 : 0.16);
+    this.actor.fillStyle(colors.board.player, cue === 'anticipate' ? 0.12 : 0.08);
     this.actor.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.05), colors.board.playerHalo, (cue === 'dead-end' ? 0.8 : 0.66) * actorHaloScale);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.05), colors.board.playerHalo, (cue === 'dead-end' ? 0.56 : 0.42) * actorHaloScale);
     this.actor.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
-    this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha);
+    this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha * 0.72);
     this.actor.fillCircle(
       bodyCenterX,
       bodyCenterY + tileSize * actorTuning.shadowOffsetYRatio,
       tileSize * actorTuning.shadowRadiusRatio
     );
 
-    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.74 * actorHaloScale);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.haloRadiusRatio * actorPulse);
 
+    this.actor.fillStyle(colors.board.player, 1);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio * 1.06);
     this.actor.fillStyle(colors.board.playerCore, 1);
-    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio * 0.54);
 
-    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), ringColor, cue === 'backtrack' ? 0.86 : 0.95);
+    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), colors.board.playerHalo, cue === 'backtrack' ? 0.74 : 0.88);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.ringRadiusRatio);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.03), pointerColor, outerRingAlpha);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.03), ringColor, outerRingAlpha * 0.72);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
 
-    this.actor.fillStyle(colors.board.playerHalo, 0.85 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, 0.62 * actorHaloScale);
     this.actor.fillCircle(
       bodyCenterX - tileSize * actorTuning.highlightOffsetRatio,
       bodyCenterY - tileSize * actorTuning.highlightOffsetRatio,

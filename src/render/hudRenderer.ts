@@ -55,7 +55,7 @@ interface HudVariantProfile {
 }
 
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
-const META_SEPARATOR = '   ';
+const META_SEPARATOR = '  |  ';
 
 const moodLabels: Record<DemoMood, string> = {
   solve: 'SOLVE',
@@ -205,7 +205,12 @@ const resolveModeLabel = (
   }
 };
 
-const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVariant, chrome: PresentationChrome): string => {
+const resolveMetaLabel = (
+  episode: MazeEpisode,
+  variant: AmbientPresentationVariant,
+  chrome: PresentationChrome,
+  compactMeta = false
+): string => {
   const size = getMazeSizeLabel(episode?.size ?? 'medium').toUpperCase();
   const difficulty = (episode?.difficulty ?? 'standard').toUpperCase();
   const seed = isFiniteNumber(episode?.seed) ? episode.seed : 0;
@@ -214,6 +219,12 @@ const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVari
 
   if (chrome === 'none') {
     return '';
+  }
+
+  if (compactMeta) {
+    return variant === 'loading'
+      ? [`SEED ${seed}`, `GRID ${rasterWidth}x${rasterHeight}`].join(META_SEPARATOR)
+      : [`SIZE ${size}`, `SEED ${seed}`].join(META_SEPARATOR);
   }
 
   if (chrome === 'minimal') {
@@ -278,9 +289,14 @@ export const createDemoStatusHud = (
   const boardY = isFiniteNumber(layout.boardY) ? layout.boardY : 0;
   const boardWidth = Math.max(80, isFiniteNumber(layout.boardWidth) ? layout.boardWidth : 80);
   const boardHeight = Math.max(80, isFiniteNumber(layout.boardHeight) ? layout.boardHeight : 80);
-  const leftX = boardX + deploymentProfile.railInset;
-  const rightX = boardX + boardWidth - deploymentProfile.railInset;
-  const baselineY = boardY + boardHeight + (compact ? 12 : 14) + deploymentProfile.baselineGap;
+  const compactMeta = compact || boardWidth <= 448;
+  const railInset = deploymentProfile.railInset + (compactMeta ? 2 : 4);
+  const leftX = boardX + railInset;
+  const rightX = boardX + boardWidth - railInset;
+  const baselineY = Math.min(
+    boardY + boardHeight + (compact ? 18 : 22) + deploymentProfile.baselineGap,
+    layout.safeBounds.bottom - (compact ? 10 : 12)
+  );
   const flashX = boardX + boardWidth - deploymentProfile.flashInsetX;
   const flashY = boardY + (compact ? 8 : 10) + deploymentProfile.flashInsetY;
   let lastModeLabel = '';
@@ -291,31 +307,31 @@ export const createDemoStatusHud = (
   const root = scene.add.container(0, 0).setDepth(10);
   const railBack = scene.add.rectangle(
     boardX + (boardWidth / 2),
-    baselineY - (compact ? 10 : 11),
-    Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
-    compact ? 8 : 10,
+    baselineY - (compact ? 12 : 13),
+    Math.max(24, boardWidth - (railInset * 2)),
+    compact ? 7 : 8,
     colors.board.panel,
-    0.08
+    0.06
   ).setOrigin(0.5);
   const rail = scene.add.rectangle(
     boardX + (boardWidth / 2),
-    baselineY - (compact ? 10 : 11),
-    Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
-    2,
+    baselineY - (compact ? 12 : 13),
+    Math.max(24, boardWidth - (railInset * 2)),
+    1,
     colors.board.innerStroke,
-    0.2
+    0.18
   ).setOrigin(0.5);
   const modeText = scene.add.text(leftX, baselineY, '', {
     color: toCssColor(colors.hud.accent),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${Math.round((compact ? 9 : 10) * deploymentProfile.modeFontScale)}px`,
+    fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.modeFontScale)}px`,
     fontStyle: 'bold'
   }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2);
   const metaText = scene.add.text(rightX, baselineY, '', {
     color: toCssColor(colors.hud.hintText),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.metaFontScale)}px`
-  }).setOrigin(1, 0.5).setLetterSpacing(1);
+    fontSize: `${Math.round((compact ? 7 : 8) * deploymentProfile.metaFontScale)}px`
+  }).setOrigin(1, 0.5).setLetterSpacing(compactMeta ? 0 : 1);
   const flashText = scene.add.text(flashX, flashY, '', {
     color: toCssColor(colors.board.topHighlight),
     fontFamily: '"Courier New", monospace',
@@ -343,7 +359,7 @@ export const createDemoStatusHud = (
         modeText.setText(nextModeLabel);
       }
 
-      const nextMeta = resolveMetaLabel(episode, safeVariant, chrome);
+      const nextMeta = resolveMetaLabel(episode, safeVariant, chrome, compactMeta);
       if (nextMeta !== lastMeta || safeVariant !== lastVariant) {
         lastMeta = nextMeta;
         metaText.setText(nextMeta);

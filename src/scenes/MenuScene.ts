@@ -364,20 +364,20 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         wall: 0x13171d,
         floor: 0xd2d9e0,
         path: 0xa8b2bb,
-        route: 0x4fae61,
-        routeCore: 0xf5fff7,
-        routeGlow: 0x2b7f47,
-        trail: 0x5b7fcf,
-        trailCore: 0xf3f7f8,
-        trailGlow: 0x7b6dff,
-        start: 0xd7b36f,
+        route: 0x36cd84,
+        routeCore: 0xf5fff8,
+        routeGlow: 0x164f3d,
+        trail: 0x536ee2,
+        trailCore: 0xf2f5ff,
+        trailGlow: 0xa0abff,
+        start: 0xe0bc70,
         startCore: 0xfff4d8,
         startGlow: 0x8b6931,
-        goal: 0xf0f2f6,
-        goalCore: 0xffffff,
-        player: 0x2b9fc3,
-        playerCore: 0xf2fbf8,
-        playerHalo: 0x8fe2ff,
+        goal: 0xba4a74,
+        goalCore: 0xfff2f6,
+        player: 0x37cbf4,
+        playerCore: 0xf8feff,
+        playerHalo: 0x90eaff,
         playerShadow: 0x030303
       },
       hud: {
@@ -416,14 +416,14 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       haloColor: 0xf0f4f8,
       shadeColor: 0x9da6b0,
       veilColor: 0x050607,
-      auraAlphaBias: -0.01,
-      haloAlphaBias: 0.008,
-      shadeAlphaBias: 0.01,
-      veilAlphaBias: 0.014,
+      auraAlphaBias: -0.014,
+      haloAlphaBias: -0.004,
+      shadeAlphaBias: -0.002,
+      veilAlphaBias: 0.008,
       auraScaleBias: -0.006,
       haloScaleBias: -0.003,
-      motifPrimaryAlpha: 0.12,
-      motifSecondaryAlpha: 0.06,
+      motifPrimaryAlpha: 0.07,
+      motifSecondaryAlpha: 0.03,
       blueprintAccentAlphaScale: 0.82
     },
     presentation: {
@@ -440,9 +440,9 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#f2f4f8',
       titleStroke: '#111418',
-      titleShadow: '#88bcb2',
-      signatureColor: '#bcc5d0',
-      supportColor: '#dde3ea',
+      titleShadow: '#0d1318',
+      signatureColor: '#c4ccd6',
+      supportColor: '#d8dfe7',
       installColor: '#f2f4f8',
       pendingColor: '#c7d0db',
       plateShadowColor: 0x000000,
@@ -478,20 +478,20 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         wall: 0x29130d,
         floor: 0xf3d1b3,
         path: 0xae6f49,
-        route: 0x6aa55b,
-        routeCore: 0xf7f8db,
-        routeGlow: 0x355f2a,
-        trail: 0xd97d46,
-        trailCore: 0xffd8b6,
-        trailGlow: 0xff9f61,
+        route: 0x47b977,
+        routeCore: 0xf4ffef,
+        routeGlow: 0x244d35,
+        trail: 0x5f70de,
+        trailCore: 0xf6f1ff,
+        trailGlow: 0xa3afff,
         start: 0xf0ca76,
         startCore: 0xfff0cf,
         startGlow: 0x8e5e28,
-        goal: 0xffb36c,
-        goalCore: 0xffefdb,
-        player: 0x3e8ea6,
-        playerCore: 0xe8fbff,
-        playerHalo: 0x9be6f2,
+        goal: 0xff7485,
+        goalCore: 0xfff1ef,
+        player: 0x39c6dc,
+        playerCore: 0xf0fdff,
+        playerHalo: 0x96ebf5,
         playerShadow: 0x1b0c07
       },
       hud: {
@@ -530,14 +530,14 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       haloColor: 0xffc07a,
       shadeColor: 0xff8e4a,
       veilColor: 0x130907,
-      auraAlphaBias: 0.02,
-      haloAlphaBias: 0.012,
-      shadeAlphaBias: 0.006,
+      auraAlphaBias: 0.008,
+      haloAlphaBias: 0.002,
+      shadeAlphaBias: -0.004,
       veilAlphaBias: -0.004,
       auraScaleBias: 0.01,
       haloScaleBias: 0.006,
-      motifPrimaryAlpha: 0.14,
-      motifSecondaryAlpha: 0.08,
+      motifPrimaryAlpha: 0.08,
+      motifSecondaryAlpha: 0.04,
       blueprintAccentAlphaScale: 0.92
     },
     presentation: {
@@ -554,7 +554,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#ffd3a3',
       titleStroke: '#3d1e10',
-      titleShadow: '#c6662f',
+      titleShadow: '#31150b',
       signatureColor: '#efc097',
       supportColor: '#f7d3b1',
       installColor: '#ffd39e',
@@ -592,20 +592,20 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         wall: 0x132744,
         floor: 0xe0f6ff,
         path: 0x5aa8cf,
-        route: 0x49d28c,
-        routeCore: 0xf0fff7,
-        routeGlow: 0x2d8b63,
-        trail: 0x8d7cff,
-        trailCore: 0xe8ffff,
-        trailGlow: 0xc4a9ff,
+        route: 0x45c885,
+        routeCore: 0xf0fff8,
+        routeGlow: 0x1d7054,
+        trail: 0x6d70ea,
+        trailCore: 0xf0fbff,
+        trailGlow: 0xb8aeff,
         start: 0xffcf7f,
         startCore: 0xfff2d7,
         startGlow: 0x8d6c32,
-        goal: 0xc59dff,
-        goalCore: 0xf6f2ff,
-        player: 0x3fbde6,
-        playerCore: 0xe6ffff,
-        playerHalo: 0x93f1ff,
+        goal: 0xff84b2,
+        goalCore: 0xfff4fa,
+        player: 0x45d3ff,
+        playerCore: 0xf3ffff,
+        playerHalo: 0x9cf1ff,
         playerShadow: 0x040916
       },
       hud: {
@@ -644,14 +644,14 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       haloColor: 0xd0c3ff,
       shadeColor: 0x7af5ff,
       veilColor: 0x08111f,
-      auraAlphaBias: 0.026,
-      haloAlphaBias: 0.018,
-      shadeAlphaBias: 0,
+      auraAlphaBias: 0.008,
+      haloAlphaBias: 0.004,
+      shadeAlphaBias: -0.006,
       veilAlphaBias: -0.008,
       auraScaleBias: 0.014,
       haloScaleBias: 0.008,
-      motifPrimaryAlpha: 0.15,
-      motifSecondaryAlpha: 0.1,
+      motifPrimaryAlpha: 0.08,
+      motifSecondaryAlpha: 0.05,
       blueprintAccentAlphaScale: 1
     },
     presentation: {
@@ -668,7 +668,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#c5fbff',
       titleStroke: '#13203f',
-      titleShadow: '#8c74ff',
+      titleShadow: '#0d1831',
       signatureColor: '#b8d4f3',
       supportColor: '#dcfbff',
       installColor: '#c7f9ff',
@@ -706,20 +706,20 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         wall: 0x5c6d80,
         floor: 0xfbfbf4,
         path: 0xadc2d3,
-        route: 0x111f14,
-        routeCore: 0xf9fbf2,
-        routeGlow: 0x5f9364,
-        trail: 0x6c79bc,
-        trailCore: 0xfdfdf8,
-        trailGlow: 0x9aa2d8,
+        route: 0x162715,
+        routeCore: 0xf7fbf2,
+        routeGlow: 0x6e9469,
+        trail: 0x4f63c5,
+        trailCore: 0xfbfdff,
+        trailGlow: 0x9ba8e0,
         start: 0xd4b36f,
         startCore: 0xfff4dc,
         startGlow: 0x8a6d3b,
-        goal: 0x547393,
-        goalCore: 0xf9f8f2,
-        player: 0x0f1f3d,
-        playerCore: 0xfcfbf5,
-        playerHalo: 0xa8c0de,
+        goal: 0xaf586d,
+        goalCore: 0xfff6f9,
+        player: 0x102845,
+        playerCore: 0xfafbff,
+        playerHalo: 0xa9c5e3,
         playerShadow: 0xb4a487
       },
       hud: {
@@ -759,13 +759,13 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       shadeColor: 0xf2e8d3,
       veilColor: 0xf4efe1,
       auraAlphaBias: -0.018,
-      haloAlphaBias: -0.006,
-      shadeAlphaBias: -0.01,
+      haloAlphaBias: -0.012,
+      shadeAlphaBias: -0.018,
       veilAlphaBias: -0.02,
       auraScaleBias: -0.012,
       haloScaleBias: -0.008,
-      motifPrimaryAlpha: 0.12,
-      motifSecondaryAlpha: 0.1,
+      motifPrimaryAlpha: 0.06,
+      motifSecondaryAlpha: 0.04,
       blueprintAccentAlphaScale: 1.18
     },
     presentation: {
@@ -782,7 +782,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#415571',
       titleStroke: '#efe6d0',
-      titleShadow: '#9eb7ca',
+      titleShadow: '#c1b199',
       signatureColor: '#627a95',
       supportColor: '#536a85',
       installColor: '#445a74',
@@ -820,20 +820,20 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         wall: 0x17191e,
         floor: 0xe0e3e7,
         path: 0x9da3aa,
-        route: 0x66c97b,
-        routeCore: 0xf7fff8,
-        routeGlow: 0x2e7c49,
-        trail: 0x7f90a8,
-        trailCore: 0xffffff,
-        trailGlow: 0xaab3d8,
+        route: 0x4acb7e,
+        routeCore: 0xf7fff9,
+        routeGlow: 0x1d6546,
+        trail: 0x697fd1,
+        trailCore: 0xf7f9ff,
+        trailGlow: 0xaab8ff,
         start: 0xd5bb78,
         startCore: 0xfff6de,
         startGlow: 0x8a7040,
-        goal: 0xf0f2f4,
-        goalCore: 0xffffff,
-        player: 0x4f88c7,
-        playerCore: 0xffffff,
-        playerHalo: 0xa9d8ff,
+        goal: 0xff7f96,
+        goalCore: 0xfff4f7,
+        player: 0x49d1ff,
+        playerCore: 0xfcffff,
+        playerHalo: 0xa6e5ff,
         playerShadow: 0x020202
       },
       hud: {
@@ -872,14 +872,14 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       haloColor: 0xe6e8ec,
       shadeColor: 0x484d56,
       veilColor: 0x090a0d,
-      auraAlphaBias: -0.028,
-      haloAlphaBias: -0.012,
-      shadeAlphaBias: 0.014,
+      auraAlphaBias: -0.034,
+      haloAlphaBias: -0.02,
+      shadeAlphaBias: 0.002,
       veilAlphaBias: 0.01,
       auraScaleBias: -0.016,
       haloScaleBias: -0.01,
-      motifPrimaryAlpha: 0.14,
-      motifSecondaryAlpha: 0.04,
+      motifPrimaryAlpha: 0.08,
+      motifSecondaryAlpha: 0.02,
       blueprintAccentAlphaScale: 0.72
     },
     presentation: {
@@ -896,7 +896,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#f1f2f4',
       titleStroke: '#121316',
-      titleShadow: '#696f78',
+      titleShadow: '#0d0f12',
       signatureColor: '#babec4',
       supportColor: '#d7d9dd',
       installColor: '#f1f2f4',
@@ -1094,23 +1094,23 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
   title: {
     boardScaleWide: 0.982,
     boardScaleNarrow: 0.962,
-    topReserveRatio: 0.102,
-    topReserveMinPx: 88,
-    bottomPaddingPx: 26,
-    sidePaddingPx: 12,
-    titleScale: 1.05,
-    titleAlpha: Math.min(0.94, legacyTuning.menu.title.alpha + 0.08),
-    signatureAlpha: 0.78,
-    passiveAlpha: 0.42,
-    plateAlpha: 0.18,
-    panelAlpha: 0.26,
+    topReserveRatio: 0.118,
+    topReserveMinPx: 104,
+    bottomPaddingPx: 34,
+    sidePaddingPx: 14,
+    titleScale: 0.96,
+    titleAlpha: 0.9,
+    signatureAlpha: 0.7,
+    passiveAlpha: 0.34,
+    plateAlpha: 0.12,
+    panelAlpha: 0.18,
     titleYOffsetRatio: 0.18,
     titleAnchor: 'center',
-    titleDriftX: 2,
-    titleDriftY: 1,
+    titleDriftX: 0,
+    titleDriftY: 0,
     titleDriftMs: 4000,
-    titleLetterSpacingWide: 5,
-    titleLetterSpacingNarrow: 3,
+    titleLetterSpacingWide: 2,
+    titleLetterSpacingNarrow: 1,
     solutionPathScale: 1.04,
     metadataAlphaScale: 0.84,
     flashAlphaScale: 0.92,
@@ -1128,10 +1128,10 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
   ambient: {
     boardScaleWide: 0.994,
     boardScaleNarrow: 0.978,
-    topReserveRatio: 0.086,
-    topReserveMinPx: 72,
-    bottomPaddingPx: 24,
-    sidePaddingPx: 10,
+    topReserveRatio: 0.09,
+    topReserveMinPx: 78,
+    bottomPaddingPx: 30,
+    sidePaddingPx: 12,
     titleScale: 0.72,
     titleAlpha: 0.34,
     signatureAlpha: 0.42,
@@ -1140,11 +1140,11 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
     panelAlpha: 0.1,
     titleYOffsetRatio: 0.11,
     titleAnchor: 'center',
-    titleDriftX: 3,
-    titleDriftY: 1,
+    titleDriftX: 0,
+    titleDriftY: 0,
     titleDriftMs: 4600,
-    titleLetterSpacingWide: 4,
-    titleLetterSpacingNarrow: 2,
+    titleLetterSpacingWide: 2,
+    titleLetterSpacingNarrow: 1,
     solutionPathScale: 0.78,
     metadataAlphaScale: 0.62,
     flashAlphaScale: 0,
@@ -1162,23 +1162,23 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
   loading: {
     boardScaleWide: 0.986,
     boardScaleNarrow: 0.968,
-    topReserveRatio: 0.092,
-    topReserveMinPx: 76,
-    bottomPaddingPx: 34,
-    sidePaddingPx: 12,
-    titleScale: 0.84,
-    titleAlpha: 0.62,
-    signatureAlpha: 0.58,
-    passiveAlpha: 0.48,
-    plateAlpha: 0.12,
-    panelAlpha: 0.2,
+    topReserveRatio: 0.102,
+    topReserveMinPx: 82,
+    bottomPaddingPx: 40,
+    sidePaddingPx: 14,
+    titleScale: 0.8,
+    titleAlpha: 0.58,
+    signatureAlpha: 0.54,
+    passiveAlpha: 0.42,
+    plateAlpha: 0.09,
+    panelAlpha: 0.14,
     titleYOffsetRatio: 0.13,
     titleAnchor: 'left',
-    titleDriftX: 2,
-    titleDriftY: 2,
+    titleDriftX: 0,
+    titleDriftY: 0,
     titleDriftMs: 3200,
-    titleLetterSpacingWide: 3,
-    titleLetterSpacingNarrow: 2,
+    titleLetterSpacingWide: 2,
+    titleLetterSpacingNarrow: 1,
     solutionPathScale: 0.92,
     metadataAlphaScale: 1.16,
     flashAlphaScale: 1.08,
@@ -1209,10 +1209,10 @@ const CHROME_PROFILES: Record<PresentationChrome, ChromeProfile> = {
     panelAlpha: 1
   },
   minimal: {
-    boardScaleBias: 0.008,
-    topReserveBias: -18,
-    bottomPaddingBias: -4,
-    sidePaddingBias: -1,
+    boardScaleBias: 0.004,
+    topReserveBias: -12,
+    bottomPaddingBias: 0,
+    sidePaddingBias: 0,
     titleScale: 0.88,
     titleAlpha: 0.58,
     signatureAlpha: 0.56,
@@ -1266,22 +1266,22 @@ const DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE: DeploymentPresentationProfile = {
 
 const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, DeploymentPresentationProfile> = {
   tv: {
-    boardScaleBias: 0.018,
+    boardScaleBias: 0.014,
     portraitBoardScaleBias: -0.006,
-    topReserveBias: -12,
+    topReserveBias: -8,
     portraitTopReserveBias: 6,
-    bottomPaddingBias: -4,
+    bottomPaddingBias: 0,
     sidePaddingBias: -4,
     maxBoardScale: 0.996,
     titlePlateWidthScale: 0.92,
     titlePlateHeightScale: 0.96,
     titleLineSpacingScale: 1,
     titleYOffsetBias: -4,
-    titleAlphaScale: 2.55,
-    signatureAlphaScale: 2.1,
-    passiveAlphaScale: 1.8,
-    plateAlphaScale: 3,
-    panelAlphaScale: 2.2,
+    titleAlphaScale: 1.8,
+    signatureAlphaScale: 1.4,
+    passiveAlphaScale: 1.2,
+    plateAlphaScale: 1.6,
+    panelAlphaScale: 1.6,
     offsetScale: 0.56,
     driftScale: 0.72,
     driftDurationScale: 1.34,
@@ -1426,18 +1426,20 @@ export function resolveTitleBandFrame(
 ): TitleBandFrame {
   const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
   const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
-  const reservedRight = Math.max(compact ? 96 : 132, Math.round(viewportWidth * (compact ? 0.22 : 0.18)));
-  const left = Math.max(viewportSafeInsets.left + 12, sceneLayout.sidePadding + 8);
+  const bandInset = compact ? 14 : 18;
+  const reservedRight = Math.max(compact ? 84 : 116, Math.round(viewportWidth * (compact ? 0.18 : 0.15)));
+  const left = Math.max(viewportSafeInsets.left + bandInset, sceneLayout.sidePadding + bandInset);
   const right = Math.max(
-    left + 72,
-    viewportWidth - Math.max(viewportSafeInsets.right + 12, sceneLayout.sidePadding + 8) - reservedRight
+    left + 88,
+    viewportWidth - Math.max(viewportSafeInsets.right + bandInset, sceneLayout.sidePadding + bandInset) - reservedRight
   );
-  const top = Math.max(viewportSafeInsets.top + 8, 8);
+  const top = Math.max(viewportSafeInsets.top + bandInset, bandInset);
+  const bandGap = Math.max(compact ? 12 : 18, Math.round(boardLayout.tileSize * (compact ? 1.05 : 1.35)));
   const bottom = Math.max(
-    top + 28,
+    top + (compact ? 34 : 42),
     Math.min(
-      boardLayout.safeBounds.top - 8,
-      boardLayout.boardY - Math.max(10, Math.round(boardLayout.tileSize * 0.8))
+      boardLayout.safeBounds.top - bandInset,
+      boardLayout.boardY - bandGap
     )
   );
 
@@ -1656,6 +1658,12 @@ export class MenuScene extends Phaser.Scene {
         const boardCenterY = layout.boardY + (layout.boardHeight / 2);
         // Keep the backdrop field viewport-filling while the board itself stays inside the safe frame.
         const backdropFrame = resolvePresentationBackdropFrame(width, height, boardCenterX, boardCenterY);
+        const boardShellWidth = Math.max(24, Math.round(layout.boardWidth + (layout.tileSize * 10)));
+        const boardShellHeight = Math.max(24, Math.round(layout.boardHeight + (layout.tileSize * 10)));
+        const boardAuraWidth = Math.max(24, Math.round(layout.boardWidth * 1.22));
+        const boardAuraHeight = Math.max(24, Math.round(layout.boardHeight * 1.18));
+        const boardHaloWidth = Math.max(20, Math.round(layout.boardWidth * 1.08));
+        const boardHaloHeight = Math.max(20, Math.round(layout.boardHeight * 1.08));
         const boardRenderer = new BoardRenderer(this, episode, layout, {
           theme: {
             ...themeProfile.boardTheme,
@@ -1667,32 +1675,32 @@ export class MenuScene extends Phaser.Scene {
         const boardAura = this.add.ellipse(
           backdropFrame.centerX,
           backdropFrame.centerY,
-          Math.max(24, Math.round(backdropFrame.width * 0.94)),
-          Math.max(24, Math.round(backdropFrame.height * 0.9)),
+          boardAuraWidth,
+          boardAuraHeight,
           themeProfile.shell.auraColor,
-          0.08
+          0.05
         ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardHalo = this.add.ellipse(
           backdropFrame.centerX,
           backdropFrame.centerY,
-          Math.max(20, Math.round(backdropFrame.width * 0.82)),
-          Math.max(20, Math.round(backdropFrame.height * 0.78)),
+          boardHaloWidth,
+          boardHaloHeight,
           themeProfile.shell.haloColor,
-          0.026
-        ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
+          0.018
+        ).setOrigin(0.5).setDepth(-1.8).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardShade = this.add.rectangle(
           backdropFrame.centerX,
           backdropFrame.centerY,
-          Math.max(18, backdropFrame.width),
-          Math.max(18, backdropFrame.height),
+          boardShellWidth,
+          boardShellHeight,
           themeProfile.shell.shadeColor,
-          0.028
-        ).setOrigin(0.5).setDepth(7);
+          0.02
+        ).setOrigin(0.5).setDepth(-1.2);
         const boardVeil = this.add.rectangle(
           backdropFrame.centerX,
           backdropFrame.centerY,
-          Math.max(18, backdropFrame.width),
-          Math.max(18, backdropFrame.height),
+          Math.max(18, layout.boardWidth + 2),
+          Math.max(18, layout.boardHeight + 2),
           themeProfile.shell.veilColor,
           0
         ).setOrigin(0.5).setDepth(7.2);
@@ -1865,27 +1873,27 @@ export class MenuScene extends Phaser.Scene {
 
       if (titleVisible) {
         const titleBandFrame = resolveTitleBandFrame(width, sceneLayout, layout, viewportSafeInsets);
-        const titlePlateMaxWidth = Math.max(96, titleBandFrame.width - 12);
+        const titlePlateMaxWidth = Math.max(112, titleBandFrame.width - 18);
         const titlePlateWidth = Phaser.Math.Clamp(
           Math.round(
             layout.boardSize
-              * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio)
+              * (sceneLayout.isNarrow ? 0.52 : legacyTuning.menu.title.plateWidthRatio + 0.04)
               * variantProfile.titleScale
               * chromeProfile.titleScale
               * deploymentProfile.titlePlateWidthScale
           ),
-          Math.min(variantProfile.titleAnchor === 'left' ? 200 : 216, titlePlateMaxWidth),
-          Math.max(Math.min(sceneLayout.isPortrait ? 332 : 372, titlePlateMaxWidth), 96)
+          Math.min(variantProfile.titleAnchor === 'left' ? 220 : 236, titlePlateMaxWidth),
+          Math.max(Math.min(sceneLayout.isPortrait ? 348 : 404, titlePlateMaxWidth), 112)
         );
         const titlePlateHeight = Phaser.Math.Clamp(
           Math.round(
             layout.boardSize
               * legacyTuning.menu.title.plateHeightRatio
-              * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))
+              * Phaser.Math.Linear(0.92, 1.04, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))
               * deploymentProfile.titlePlateHeightScale
           ),
-          sceneLayout.isTiny ? 28 : 38,
-          legacyTuning.menu.title.plateHeightMaxPx
+          sceneLayout.isTiny ? 34 : 42,
+          Math.max(legacyTuning.menu.title.plateHeightMaxPx + 4, 62)
         );
         const titleY = Phaser.Math.Clamp(
           titleBandFrame.centerY + Math.round(deploymentProfile.titleYOffsetBias * 0.2),
@@ -1896,8 +1904,8 @@ export class MenuScene extends Phaser.Scene {
           ? titleBandFrame.left + (titlePlateWidth / 2)
           : titleBandFrame.centerX;
         const titleShadowY = Math.min(
-          layout.safeBounds.top - 6,
-          titleY + Math.max(10, Math.round(titlePlateHeight * 0.72))
+          layout.safeBounds.top - 8,
+          titleY + Math.max(10, Math.round(titlePlateHeight * 0.58))
         );
         const titleShadowContainer = this.add.container(titleX, titleShadowY).setDepth(6.9);
         const titleContainer = this.add.container(titleX, titleY).setDepth(9);
@@ -1906,71 +1914,65 @@ export class MenuScene extends Phaser.Scene {
         const passiveAlpha = variantProfile.passiveAlpha * chromeProfile.passiveAlpha * deploymentProfile.passiveAlphaScale;
         const plateAlpha = variantProfile.plateAlpha * chromeProfile.plateAlpha * deploymentProfile.plateAlphaScale;
         const panelAlpha = variantProfile.panelAlpha * chromeProfile.panelAlpha * deploymentProfile.panelAlphaScale;
-        const titleShadowAlpha = Math.min(0.16, 0.1 * titleAlpha);
-        const shadowScaleX = sceneLayout.isNarrow ? 0.94 : 0.98;
-        const shadowScaleY = 0.64;
+        const titleShadowAlpha = Math.min(0.1, 0.055 * titleAlpha);
+        const titleFontSize = Phaser.Math.Clamp(
+          Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale),
+          24,
+          78
+        );
+        const titleLetterSpacing = sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide;
+        const titleStrokeWidth = Phaser.Math.Clamp(Math.round(legacyTuning.menu.title.strokePx * 0.66), 1, 2);
+        const signatureY = Math.round(titlePlateHeight * 0.13 * deploymentProfile.titleLineSpacingScale);
+        const supportY = Math.round(titlePlateHeight * 0.34 * deploymentProfile.titleLineSpacingScale);
         titleContainer.add([
           this.add.rectangle(
             0,
-            6,
-            titlePlateWidth + 8,
-            titlePlateHeight + 10,
+            Math.round(titlePlateHeight * 0.4),
+            Math.max(92, titlePlateWidth - 24),
+            Math.max(10, Math.round(titlePlateHeight * 0.34)),
             sceneThemeProfile.title.plateShadowColor,
-            0.26 * plateAlpha
-          ),
+            0.14 * plateAlpha
+          ).setScale(0.94, 0.52),
           this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, sceneThemeProfile.title.plateOuterColor, plateAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.18 * titleAlpha),
-          this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, sceneThemeProfile.title.plateInnerColor, panelAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.08 * titleAlpha),
+            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.14 * titleAlpha),
+          this.add.rectangle(0, 0, titlePlateWidth - 12, titlePlateHeight - 10, sceneThemeProfile.title.plateInnerColor, panelAlpha)
+            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.14 * titleAlpha),
           this.add.rectangle(
             0,
-            -(titlePlateHeight / 2) + 7,
-            titlePlateWidth - 18,
-            2,
+            -(titlePlateHeight / 2) + 8,
+            titlePlateWidth - 24,
+            1,
             sceneThemeProfile.title.plateLineColor,
-            0.12 * titleAlpha
+            0.22 * titleAlpha
           )
         ]);
         titleShadowContainer.add([
-          this.add.text(0, 0, legacyTuning.menu.title.text, {
+          this.add.text(2, 2, legacyTuning.menu.title.text, {
             color: sceneThemeProfile.title.titleShadow,
             fontFamily: sceneThemeProfile.title.fontFamily,
-            fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale), 24, 84)}px`,
+            fontSize: `${titleFontSize}px`,
             fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
-          }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide)
-            .setAlpha(titleShadowAlpha)
-            .setScale(shadowScaleX, shadowScaleY),
-          this.add.text(
-            0,
-            Math.max(12, Math.round(titlePlateHeight * 0.42)),
-            '\u00b0 by fawxzzy',
-            {
-              color: sceneThemeProfile.title.titleShadow,
-              fontFamily: sceneThemeProfile.title.signatureFontFamily,
-              fontSize: `${Math.round((sceneLayout.isTiny ? 7 : sceneLayout.isNarrow ? 8 : 9) * deploymentProfile.titleLineSpacingScale)}px`
-            }
-          ).setOrigin(0.5).setAlpha(titleShadowAlpha * 0.72).setScale(0.98, 0.68)
+          }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing).setAlpha(titleShadowAlpha)
         ]);
-        const title = this.add.text(0, -7, legacyTuning.menu.title.text, {
+        const title = this.add.text(0, -Math.round(titlePlateHeight * 0.12), legacyTuning.menu.title.text, {
           color: sceneThemeProfile.title.titleColor,
           fontFamily: sceneThemeProfile.title.fontFamily,
-          fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale), 24, 84)}px`,
+          fontSize: `${titleFontSize}px`,
           fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
-        }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide)
+        }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing)
           .setAlpha(titleAlpha)
-          .setStroke(sceneThemeProfile.title.titleStroke, legacyTuning.menu.title.strokePx)
-          .setShadow(0, 0, sceneThemeProfile.title.titleShadow, legacyTuning.menu.title.shadowBlur - 4, true, true);
+          .setStroke(sceneThemeProfile.title.titleStroke, titleStrokeWidth);
         const signature = this.add.text(
           0,
-          Math.round(titlePlateHeight * 0.23 * deploymentProfile.titleLineSpacingScale),
+          signatureY,
           '\u00b0 by fawxzzy',
           {
-          color: sceneThemeProfile.title.signatureColor,
-          fontFamily: sceneThemeProfile.title.signatureFontFamily,
+            color: sceneThemeProfile.title.signatureColor,
+            fontFamily: sceneThemeProfile.title.signatureFontFamily,
             fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
           }
-        ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(1);
-        const supportSlot = this.add.container(0, Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale));
+        ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+        const supportSlot = this.add.container(0, supportY);
         const renderSupportSlot = (): void => {
           supportSlot.removeAll(true);
           const supportText = this.add.text(
@@ -1980,14 +1982,13 @@ export class MenuScene extends Phaser.Scene {
             {
               color: sceneThemeProfile.title.supportColor,
               fontFamily: sceneThemeProfile.title.supportFontFamily,
-              fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
+              fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`,
               wordWrap: {
-                width: Math.max(118, titlePlateWidth - 28),
+                width: Math.max(132, titlePlateWidth - 28),
                 useAdvancedWrap: true
               }
             }
-          ).setOrigin(0.5).setAlpha(passiveAlpha)
-            .setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+          ).setOrigin(0.5).setAlpha(passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
           supportSlot.add(supportText);
         };
 
@@ -1995,14 +1996,14 @@ export class MenuScene extends Phaser.Scene {
         renderSupportSlot();
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
-          titleShadowContainer.setAlpha(1).setScale(shadowScaleX, shadowScaleY);
+          titleShadowContainer.setAlpha(1).setScale(1);
         } else {
           titleContainer.setAlpha(0);
-          titleContainer.y -= 12;
-          titleContainer.setScale(0.985);
+          titleContainer.y -= 8;
+          titleContainer.setScale(0.992);
           titleShadowContainer.setAlpha(0);
-          titleShadowContainer.y -= 8;
-          titleShadowContainer.setScale(shadowScaleX, shadowScaleY);
+          titleShadowContainer.y -= 4;
+          titleShadowContainer.setScale(1);
           runOptional('title motion', () => {
             this.tweens.add({
               targets: titleContainer,
@@ -2017,39 +2018,8 @@ export class MenuScene extends Phaser.Scene {
               targets: titleShadowContainer,
               alpha: 1,
               y: titleShadowY,
-              scaleX: shadowScaleX,
-              scaleY: shadowScaleY,
-              duration: 760,
+              duration: 640,
               ease: 'Cubic.easeOut'
-            });
-            this.titlePulseTween = this.tweens.add({
-              targets: title,
-              alpha: {
-                from: Math.max(0.18, titleAlpha - 0.08),
-                to: Math.min(0.92, titleAlpha + 0.06)
-              },
-              duration: legacyTuning.menu.title.pulseDurationMs,
-              yoyo: true,
-              repeat: -1,
-              ease: 'Sine.easeInOut'
-            });
-            this.titleDriftTween = this.tweens.add({
-              targets: titleContainer,
-              x: titleX + variantProfile.titleDriftX,
-              y: titleY + variantProfile.titleDriftY,
-              duration: variantProfile.titleDriftMs,
-              yoyo: true,
-              repeat: -1,
-              ease: 'Sine.easeInOut'
-            });
-            this.tweens.add({
-              targets: titleShadowContainer,
-              x: titleX + Math.max(5, variantProfile.titleDriftX + 4),
-              y: titleShadowY + Math.max(2, variantProfile.titleDriftY + 2),
-              duration: Math.max(variantProfile.titleDriftMs + 1400, 5400),
-              yoyo: true,
-              repeat: -1,
-              ease: 'Sine.easeInOut'
             });
           });
         }
@@ -2543,7 +2513,7 @@ export function resolveSceneLayoutProfile(
     isTiny ? 0.82 : 0.92,
     Math.min(safeChrome === 'none' ? 0.998 : 0.996, deploymentProfile.maxBoardScale)
   );
-  const topReserve = Math.max(
+  let topReserve = Math.max(
     Math.max(
       12,
       profile.topReserveMinPx
@@ -2559,7 +2529,7 @@ export function resolveSceneLayoutProfile(
         * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0))
     ) + chromeProfile.topReserveBias + deploymentProfile.topReserveBias
   ) + viewportSafeInsets.top;
-  const bottomPadding = Math.max(
+  let bottomPadding = Math.max(
     6,
     profile.bottomPaddingPx
       + chromeProfile.bottomPaddingBias
@@ -2568,6 +2538,15 @@ export function resolveSceneLayoutProfile(
       + (safeVariant === 'loading' ? 4 : 0)
       - (isTiny ? 12 : 0)
   ) + viewportSafeInsets.bottom;
+  const minimumBoardSpan = Math.max(24, Math.round(Math.min(safeWidth, safeHeight) * 0.2));
+  const verticalOverflow = (topReserve + bottomPadding + minimumBoardSpan) - safeHeight;
+  if (verticalOverflow > 0) {
+    const minTopReserve = viewportSafeInsets.top + 12;
+    const minBottomPadding = viewportSafeInsets.bottom + 6;
+    const topReduction = Math.min(verticalOverflow, Math.max(0, topReserve - minTopReserve));
+    topReserve -= topReduction;
+    bottomPadding -= Math.min(verticalOverflow - topReduction, Math.max(0, bottomPadding - minBottomPadding));
+  }
   const sidePadding = Math.max(
     2,
     profile.sidePaddingPx
@@ -3150,42 +3129,42 @@ const drawThemeMotifs = (
 
   switch (themeProfile.id) {
     case 'noir':
-      primary.fillStyle(themeProfile.palette.board.shadow, 0.1);
+      primary.fillStyle(themeProfile.palette.board.shadow, 0.06);
       primary.fillRect(-edge, height - Math.max(6, edge * 2), width + (edge * 2), Math.max(6, edge * 2));
-      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.2);
+      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.1);
       primary.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
-      secondary.lineStyle(1, themeProfile.palette.board.innerStroke, 0.14);
+      secondary.lineStyle(1, themeProfile.palette.board.innerStroke, 0.08);
       secondary.strokeRect(inset * 1.6 + 0.5, inset * 1.2 + 0.5, width - Math.round(inset * 3.2) - 1, height - Math.round(inset * 2.4) - 1);
       break;
     case 'ember':
-      primary.lineStyle(Math.max(2, Math.round(layout.tileSize * 0.08)), themeProfile.palette.board.goal, 0.12);
+      primary.lineStyle(Math.max(2, Math.round(layout.tileSize * 0.08)), themeProfile.palette.board.goal, 0.08);
       primary.strokeRect(edge + 0.5, edge + 0.5, width - (edge * 2) - 1, height - (edge * 2) - 1);
-      secondary.fillStyle(themeProfile.palette.board.trailGlow, 0.08);
+      secondary.fillStyle(themeProfile.palette.board.trailGlow, 0.04);
       secondary.fillRect(edge, edge, width - (edge * 2), Math.max(4, edge));
       secondary.fillRect(edge, height - Math.max(4, edge * 2), width - (edge * 2), Math.max(4, edge));
       break;
     case 'aurora':
-      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.16);
+      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.09);
       primary.lineBetween(inset, height * 0.2, width - inset, height * 0.32);
       primary.lineBetween(inset, height * 0.58, width - inset, height * 0.42);
       primary.lineBetween(inset, height * 0.82, width - inset, height * 0.7);
-      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.08);
+      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.04);
       secondary.fillRect(edge, Math.round(height * 0.24), width - (edge * 2), Math.max(4, Math.round(height * 0.08)));
       break;
     case 'vellum':
-      primary.lineStyle(1, themeProfile.palette.board.topHighlight, 0.08);
+      primary.lineStyle(1, themeProfile.palette.board.topHighlight, 0.05);
       primary.lineBetween(inset, height * 0.22, width - inset, height * 0.28);
       primary.lineBetween(inset, height * 0.52, width - inset, height * 0.48);
       primary.lineBetween(inset, height * 0.76, width - inset, height * 0.7);
-      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.05);
+      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.03);
       secondary.fillRect(edge, Math.round(height * 0.18), width - (edge * 2), Math.max(4, Math.round(height * 0.06)));
       secondary.fillRect(edge, Math.round(height * 0.72), width - (edge * 2), Math.max(4, Math.round(height * 0.05)));
       break;
     case 'monolith':
     default:
-      primary.fillStyle(themeProfile.palette.board.shadow, 0.16);
+      primary.fillStyle(themeProfile.palette.board.shadow, 0.08);
       primary.fillRect(-edge, edge, width + (edge * 2), height + edge);
-      secondary.lineStyle(1, themeProfile.palette.board.outerStroke, 0.18);
+      secondary.lineStyle(1, themeProfile.palette.board.outerStroke, 0.1);
       secondary.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
       break;
   }
