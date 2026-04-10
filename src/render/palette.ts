@@ -1,6 +1,59 @@
 import { legacyTuning, toHex } from '../config/tuning';
 
-export const palette = {
+export interface PresentationPalette {
+  background: {
+    deepSpace: number;
+    nebula: number;
+    nebulaCore: number;
+    vignette: number;
+    star: number;
+    cloud: number;
+  };
+  board: {
+    glow: number;
+    panel: number;
+    panelStroke: number;
+    well: number;
+    shadow: number;
+    outer: number;
+    outerStroke: number;
+    innerStroke: number;
+    topHighlight: number;
+    wall: number;
+    floor: number;
+    path: number;
+    trail: number;
+    trailCore: number;
+    trailGlow: number;
+    goal: number;
+    goalCore: number;
+    player: number;
+    playerCore: number;
+    playerHalo: number;
+    playerShadow: number;
+  };
+  hud: {
+    panel: number;
+    panelStroke: number;
+    accent: number;
+    shadow: number;
+    timerText: number;
+    goalText: number;
+    hintText: number;
+  };
+  ui: {
+    title: number;
+    text: number;
+    textDim: number;
+    buttonFill: number;
+    buttonStroke: number;
+    buttonHover: number;
+    overlayFill: number;
+    overlayStroke: number;
+  };
+}
+
+export const palette: PresentationPalette = {
   background: {
     deepSpace: legacyTuning.colors.background.deepSpace,
     nebula: legacyTuning.colors.background.nebula,
@@ -59,4 +112,4 @@ export const palette = {
     overlayFill: 0x0f1020,
     overlayStroke: 0x66608d
   }
-} as const;
+};

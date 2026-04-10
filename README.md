@@ -37,8 +37,15 @@ Use the production preview for freeze validation:
 - `http://127.0.0.1:4173/?profile=tv&title=show`
 - `http://127.0.0.1:4173/?profile=obs&chrome=none`
 - `http://127.0.0.1:4173/?profile=mobile`
+- `http://127.0.0.1:4173/?theme=auto`
+- `http://127.0.0.1:4173/?theme=noir`
+- `http://127.0.0.1:4173/?theme=ember`
+- `http://127.0.0.1:4173/?theme=aurora`
+- `http://127.0.0.1:4173/?theme=vellum`
+- `http://127.0.0.1:4173/?theme=monolith`
 
 Defaults stay unchanged. Launch profiles tune packaging and presentation for deployment surfaces without changing app logic.
+`theme=auto` uses curated family rotation. Explicit theme values lock the presentation family without adding storage or a settings UI.
 
 ## Install Mazer
 - The only install surface is a single `Install Mazer` action inside the title plate when the browser actually exposes `beforeinstallprompt`.
@@ -62,8 +69,11 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Rule: freeze product behavior before adding more polish once deployment profiles are validated.
 - Pattern: use URL-level launch profiles for deployment surfaces instead of branching app logic.
 - Pattern: deployment profiles may constrain motion and framing more aggressively than the default presentation when a surface needs compositional stability.
+- Rule: visual variety should come from clearly different presentation families before touching generator truth.
+- Pattern: decouple theme scheduling from mood scheduling so the same topology can read differently without feeling repetitive.
 - Rule: install UX must be optional and fail-open; ambient presentation must remain usable even when install APIs are unavailable.
 - Pattern: use one intentional install action instead of rebuilding a full settings/options system.
+- Failure Mode: adding too many loosely defined visual variants creates noise, weakens identity, and can reintroduce long-run drift or framing regressions.
 - Failure Mode: tiny packaging issues like icons, manifest wiring, or audio-init warnings can make a polished ambient build feel unfinished even when the core loop is stable.
 - Failure Mode: aesthetically nice drift can make capture surfaces feel misaligned or zoomed even when the layout math is technically valid.
 - Failure Mode: platform-specific install assumptions can create broken or confusing UI if unsupported surfaces are not handled cleanly.
@@ -76,6 +86,8 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Wilson remains the maze generation truth.
 - Solving now runs on a compressed corridor graph, then expands back to tile indices only for rendering.
 - Ambient presentation can route mazes through deterministic `classic`, `braided`, `framed`, and rare `blueprint-rare` presets without adding storage or gameplay state.
+- Ambient themes (`noir`, `ember`, `aurora`, `vellum`, `monolith`) are presentation families layered above the same maze substrate; they are not generator forks.
+- `theme=auto` rotates those families on a curated schedule that is independent from mood scheduling, while explicit `theme=` values lock capture output to one family.
 - Install behavior is intentionally ephemeral and runtime-only; no install preference or launcher state is written into app storage.
 - Deployment profiles tune presentation defaults only:
   - TV ambient loop: `?profile=tv`

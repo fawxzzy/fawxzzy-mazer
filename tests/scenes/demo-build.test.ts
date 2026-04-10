@@ -126,6 +126,7 @@ describe('demo-only build', () => {
       chrome: 'minimal',
       mood: 'auto',
       title: 'hide',
+      theme: 'auto',
       profile: 'tv'
     });
     expect(resolveBootPresentationConfig('?profile=obs')).toEqual({
@@ -133,6 +134,7 @@ describe('demo-only build', () => {
       chrome: 'minimal',
       mood: 'auto',
       title: 'hide',
+      theme: 'auto',
       profile: 'obs'
     });
     expect(resolveBootPresentationConfig('?profile=mobile')).toEqual({
@@ -140,12 +142,14 @@ describe('demo-only build', () => {
       chrome: 'full',
       mood: 'auto',
       title: 'show',
+      theme: 'auto',
       profile: 'mobile'
     });
-    expect(resolveBootPresentationConfig('?presentation=loading&chrome=minimal&mood=scan&seed=42&size=large&difficulty=spicy&title=hide')).toEqual({
+    expect(resolveBootPresentationConfig('?presentation=loading&chrome=minimal&mood=scan&theme=aurora&seed=42&size=large&difficulty=spicy&title=hide')).toEqual({
       presentation: 'loading',
       chrome: 'minimal',
       mood: 'scan',
+      theme: 'aurora',
       seed: 42,
       size: 'large',
       difficulty: 'spicy',
@@ -156,13 +160,15 @@ describe('demo-only build', () => {
       chrome: 'minimal',
       mood: 'auto',
       title: 'show',
+      theme: 'auto',
       profile: 'tv'
     });
-    expect(resolveBootPresentationConfig('?profile=obs&presentation=loading')).toEqual({
+    expect(resolveBootPresentationConfig('?profile=obs&presentation=loading&theme=noir')).toEqual({
       presentation: 'loading',
       chrome: 'minimal',
       mood: 'auto',
       title: 'hide',
+      theme: 'noir',
       profile: 'obs'
     });
     expect(resolveBootPresentationConfig('?profile=mobile&chrome=none')).toEqual({
@@ -170,14 +176,16 @@ describe('demo-only build', () => {
       chrome: 'none',
       mood: 'auto',
       title: 'show',
+      theme: 'auto',
       profile: 'mobile'
     });
     expect(resolveBootPresentationConfig('?presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
       DEFAULT_PRESENTATION_LAUNCH_CONFIG
     );
-    expect(resolveBootPresentationConfig('?profile=nope&presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
-      DEFAULT_PRESENTATION_LAUNCH_CONFIG
-    );
+    expect(resolveBootPresentationConfig('?profile=nope&presentation=nope&chrome=loud&mood=chaos&theme=radioactive&seed=-4&size=massive&difficulty=nightmare&title=gone'))
+      .toEqual(DEFAULT_PRESENTATION_LAUNCH_CONFIG);
+    expect(resolveBootPresentationConfig('?theme=monolith').theme).toBe('monolith');
+    expect(resolveBootPresentationConfig('?theme=bad-value').theme).toBe('auto');
     expect(resolveEffectivePresentationChrome({
       ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
       chrome: 'full',
@@ -234,8 +242,10 @@ describe('demo-only build', () => {
     const seenMoods = new Set<string>();
     const seenSizes = new Set<string>();
     const seenPresets = new Set<string>();
+    const seenThemes = new Set<string>();
     const seenPacing = new Set<string>();
     const moods: string[] = [];
+    const themes: string[] = [];
     const moodCounts = {
       solve: 0,
       scan: 0,
@@ -248,12 +258,15 @@ describe('demo-only build', () => {
       seenMoods.add(step.mood);
       seenSizes.add(step.size);
       seenPresets.add(step.presentationPreset);
+      seenThemes.add(step.theme);
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
+      themes.push(step.theme);
       moodCounts[step.mood] += 1;
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
+      expect(['noir', 'ember', 'aurora', 'vellum', 'monolith']).toContain(step.theme);
       expect(['classic', 'braided', 'framed', 'blueprint-rare']).toContain(step.presentationPreset);
       expect(step.pacing.exploreStepMs).toBeGreaterThanOrEqual(-10);
       expect(step.pacing.exploreStepMs).toBeLessThanOrEqual(8);
@@ -268,9 +281,11 @@ describe('demo-only build', () => {
     expect(seenDifficulties.size).toBeGreaterThan(1);
     expect(seenMoods.size).toBe(3);
     expect(seenSizes.size).toBeGreaterThan(1);
+    expect(seenThemes.size).toBe(5);
     expect(seenPresets.has('classic')).toBe(true);
     expect(seenPresets.has('braided')).toBe(true);
     expect(seenPresets.has('framed')).toBe(true);
+    expect(seenPresets.has('blueprint-rare')).toBe(true);
     expect(seenPacing.size).toBeGreaterThan(1);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeLessThanOrEqual(6);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
@@ -279,32 +294,37 @@ describe('demo-only build', () => {
 
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);
+      expect(themes[index]).not.toBe(themes[index - 1]);
     }
   });
 
-  test('deterministic capture mode locks seed, size, difficulty, and mood for valid launch controls', { timeout: 15000 }, () => {
-    const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&seed=4242&size=huge&difficulty=brutal&title=hide');
+  test('deterministic capture mode locks seed, size, difficulty, mood, and explicit theme for valid launch controls', { timeout: 15000 }, () => {
+    const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&theme=monolith&seed=4242&size=huge&difficulty=brutal&title=hide');
     expect(isDeterministicPresentationCapture(launchConfig)).toBe(true);
 
     const cycleA = resolveMenuDemoCycle(launchConfig.seed!, 0, {
       mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
       size: launchConfig.size,
-      difficulty: launchConfig.difficulty
+      difficulty: launchConfig.difficulty,
+      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme
     });
     const cycleB = resolveMenuDemoCycle(launchConfig.seed!, 8, {
       mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
       size: launchConfig.size,
-      difficulty: launchConfig.difficulty
+      difficulty: launchConfig.difficulty,
+      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme
     });
 
     expect(cycleA.mood).toBe('blueprint');
+    expect(cycleA.theme).toBe('monolith');
     expect(cycleA.size).toBe('huge');
     expect(cycleA.difficulty).toBe('brutal');
     expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint'));
     expect(cycleB.mood).toBe('blueprint');
+    expect(cycleB.theme).toBe('monolith');
     expect(cycleB.size).toBe('huge');
     expect(cycleB.difficulty).toBe('brutal');
-    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 8, 'blueprint'));
+    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint'));
 
     const first = generateMazeForDifficulty({
       scale: legacyTuning.board.scale,
@@ -372,6 +392,7 @@ describe('demo-only build', () => {
       expect(sequenceState.sequence).toBe(checkpoint.sequence);
       expect(presentation.sequence).toBe(checkpoint.sequence);
       expect(presentation.variant).toBe('loading');
+      expect(['noir', 'ember', 'aurora', 'vellum', 'monolith']).toContain(presentation.theme);
       expect(['solve', 'scan', 'blueprint']).toContain(presentation.mood);
       expect(['generating', 'solving', 'pattern sync', 'routing', 'live system']).toContain(presentation.phaseLabel);
       expect(presentation.solutionPathAlpha).toBeGreaterThanOrEqual(0.14);
@@ -394,6 +415,10 @@ describe('demo-only build', () => {
       expect(presentation.boardAuraScale).toBeLessThanOrEqual(1.05);
       expect(presentation.boardHaloScale).toBeGreaterThanOrEqual(1);
       expect(presentation.boardHaloScale).toBeLessThanOrEqual(1.03);
+      expect(presentation.motifPrimaryAlpha).toBeGreaterThanOrEqual(0);
+      expect(presentation.motifPrimaryAlpha).toBeLessThanOrEqual(0.2);
+      expect(presentation.motifSecondaryAlpha).toBeGreaterThanOrEqual(0);
+      expect(presentation.motifSecondaryAlpha).toBeLessThanOrEqual(0.16);
       expect(presentation.metadataAlpha).toBeGreaterThanOrEqual(0.18);
       expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
@@ -439,7 +464,7 @@ describe('demo-only build', () => {
     const menuSceneSource = readFileSync(resolve(process.cwd(), 'src/scenes/MenuScene.ts'), 'utf8');
 
     expect(menuSceneSource).toContain('destroyEpisodePresentationShell();');
-    expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);');
+    expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);');
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
     expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");

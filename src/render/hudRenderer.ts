@@ -37,6 +37,15 @@ interface HudRenderOptions {
   reducedMotion?: boolean;
   chrome?: PresentationChrome;
   profile?: PresentationDeploymentProfile;
+  theme?: HudThemeStyle;
+}
+
+export interface HudThemeStyle {
+  palette?: typeof palette;
+  railAlphaScale?: number;
+  modeAlphaScale?: number;
+  metaAlphaScale?: number;
+  flashAlphaScale?: number;
 }
 
 interface HudVariantProfile {
@@ -262,6 +271,8 @@ export const createDemoStatusHud = (
   const chrome = sanitizePresentationChrome(options.chrome ?? DEFAULT_PRESENTATION_CHROME);
   const chromeProfile = CHROME_PROFILES[chrome];
   const deploymentProfile = resolveHudDeploymentProfile(options.profile);
+  const theme = options.theme ?? {};
+  const colors = theme.palette ?? palette;
   const compact = resolveCompactWidth(scene) <= legacyTuning.menu.layout.narrowBreakpoint;
   const boardX = isFiniteNumber(layout.boardX) ? layout.boardX : 0;
   const boardY = isFiniteNumber(layout.boardY) ? layout.boardY : 0;
@@ -283,22 +294,22 @@ export const createDemoStatusHud = (
     baselineY - (compact ? 10 : 11),
     Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
     1,
-    palette.hud.panelStroke,
+    colors.hud.panelStroke,
     0.2
   ).setOrigin(0.5);
   const modeText = scene.add.text(leftX, baselineY, '', {
-    color: toCssColor(palette.hud.accent),
+    color: toCssColor(colors.hud.accent),
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 9 : 10) * deploymentProfile.modeFontScale)}px`,
     fontStyle: 'bold'
   }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2);
   const metaText = scene.add.text(rightX, baselineY, '', {
-    color: toCssColor(palette.hud.hintText),
+    color: toCssColor(colors.hud.hintText),
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.metaFontScale)}px`
   }).setOrigin(1, 0.5).setLetterSpacing(1);
   const flashText = scene.add.text(flashX, flashY, '', {
-    color: toCssColor(palette.board.topHighlight),
+    color: toCssColor(colors.board.topHighlight),
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.flashFontScale)}px`,
     fontStyle: 'bold'
@@ -338,13 +349,17 @@ export const createDemoStatusHud = (
 
       lastVariant = safeVariant;
       const alpha = Phaser.Math.Clamp(sanitizeAlpha(metadataAlpha, 0.48), 0.16, 0.88);
+      const railAlphaScale = sanitizeAlpha(theme.railAlphaScale, 1);
+      const modeAlphaScale = sanitizeAlpha(theme.modeAlphaScale, 1);
+      const metaAlphaScale = sanitizeAlpha(theme.metaAlphaScale, 1);
+      const flashThemeAlphaScale = sanitizeAlpha(theme.flashAlphaScale, 1);
       root.setPosition(sanitizeOffset(offsetX), sanitizeOffset(offsetY));
-      rail.setAlpha(alpha * profile.railAlphaScale * chromeProfile.railAlphaScale);
-      modeText.setAlpha(chromeProfile.showMode ? alpha * chromeProfile.modeAlphaScale : 0);
-      metaText.setAlpha(chromeProfile.showMeta ? alpha * chromeProfile.metaAlphaScale : 0);
+      rail.setAlpha(alpha * profile.railAlphaScale * chromeProfile.railAlphaScale * railAlphaScale);
+      modeText.setAlpha(chromeProfile.showMode ? alpha * chromeProfile.modeAlphaScale * modeAlphaScale : 0);
+      metaText.setAlpha(chromeProfile.showMeta ? alpha * chromeProfile.metaAlphaScale * metaAlphaScale : 0);
       flashText.setAlpha(
         profile.showFlash && chromeProfile.showFlash
-          ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * chromeProfile.flashAlphaScale
+          ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * chromeProfile.flashAlphaScale * flashThemeAlphaScale
           : 0
       );
     },

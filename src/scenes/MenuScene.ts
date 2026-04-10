@@ -4,11 +4,13 @@ import type {
   PresentationChrome,
   PresentationDeploymentProfile,
   PresentationLaunchConfig,
-  PresentationMood
+  PresentationMood,
+  PresentationThemeFamily
 } from '../boot/presentation';
 import {
   DEFAULT_PRESENTATION_CHROME,
   DEFAULT_PRESENTATION_LAUNCH_CONFIG,
+  PRESENTATION_THEME_FAMILIES,
   DEFAULT_PRESENTATION_VARIANT,
   isDeterministicPresentationCapture,
   resolveEffectivePresentationChrome,
@@ -36,8 +38,8 @@ import {
   type PatternFrame
 } from '../domain/maze';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
-import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
-import { createDemoStatusHud } from '../render/hudRenderer';
+import { createBoardLayout, BoardRenderer, type BoardThemeStyle } from '../render/boardRenderer';
+import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
 import { palette } from '../render/palette';
 import {
   DEFAULT_VIEWPORT_HEIGHT,
@@ -70,6 +72,7 @@ export interface MenuDemoCycle {
   difficulty: MazeDifficulty;
   size: MazeSize;
   mood: DemoMood;
+  theme: PresentationThemeFamily;
   presentationPreset: MazePresentationPreset;
   pacing: {
     exploreStepMs: number;
@@ -82,6 +85,7 @@ export interface MenuDemoCycle {
 export interface MenuDemoPresentation {
   variant: AmbientPresentationVariant;
   mood: DemoMood;
+  theme: PresentationThemeFamily;
   sequence: MenuDemoSequence;
   phaseLabel: string;
   solutionPathAlpha: number;
@@ -99,6 +103,8 @@ export interface MenuDemoPresentation {
   boardShadeAlpha: number;
   boardAuraScale: number;
   boardHaloScale: number;
+  motifPrimaryAlpha: number;
+  motifSecondaryAlpha: number;
   actorPulseBoost: number;
   metadataAlpha: number;
   flashAlpha: number;
@@ -170,12 +176,15 @@ interface EpisodePresentationShell {
   boardShade: Phaser.GameObjects.Rectangle;
   boardVeil: Phaser.GameObjects.Rectangle;
   blueprintAccent: Phaser.GameObjects.Graphics;
+  motifPrimary: Phaser.GameObjects.Graphics;
+  motifSecondary: Phaser.GameObjects.Graphics;
 }
 
 interface MenuDemoCycleOverrides {
   difficulty?: MazeDifficulty;
   size?: MazeSize;
   mood?: DemoMood;
+  theme?: PresentationThemeFamily;
 }
 
 interface ChromeProfile {
@@ -222,6 +231,644 @@ interface DeploymentPresentationProfile {
 }
 
 type MoodPattern = readonly [DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood];
+type ThemePattern = readonly PresentationThemeFamily[];
+
+interface ThemePaletteOverrides {
+  background?: Partial<typeof palette.background>;
+  board?: Partial<typeof palette.board>;
+  hud?: Partial<typeof palette.hud>;
+}
+
+interface AmbientThemeProfile {
+  id: PresentationThemeFamily;
+  label: string;
+  palette: typeof palette;
+  boardTheme: BoardThemeStyle;
+  hudTheme: HudThemeStyle;
+  background: {
+    topLeft: number;
+    topRight: number;
+    bottomLeft: number;
+    bottomRight: number;
+    cloudAlphaScale: number;
+    farStarAlphaScale: number;
+    nearStarAlphaScale: number;
+    vignetteAlphaScale: number;
+  };
+  shell: {
+    auraColor: number;
+    haloColor: number;
+    shadeColor: number;
+    veilColor: number;
+    auraAlphaBias: number;
+    haloAlphaBias: number;
+    shadeAlphaBias: number;
+    veilAlphaBias: number;
+    auraScaleBias: number;
+    haloScaleBias: number;
+    motifPrimaryAlpha: number;
+    motifSecondaryAlpha: number;
+    blueprintAccentAlphaScale: number;
+  };
+  presentation: {
+    driftScale: number;
+    offsetScale: number;
+    solutionPathAlphaScale: number;
+    metadataAlphaBias: number;
+    flashAlphaBias: number;
+    actorPulseBias: number;
+  };
+  title: {
+    fontFamily: string;
+    signatureFontFamily: string;
+    supportFontFamily: string;
+    titleColor: string;
+    titleStroke: string;
+    titleShadow: string;
+    signatureColor: string;
+    supportColor: string;
+    installColor: string;
+    pendingColor: string;
+    plateShadowColor: number;
+    plateOuterColor: number;
+    plateInnerColor: number;
+    plateLineColor: number;
+    buttonFillColor: number;
+    buttonStrokeColor: number;
+  };
+}
+
+const createThemePalette = (overrides: ThemePaletteOverrides): typeof palette => ({
+  background: {
+    ...palette.background,
+    ...overrides.background
+  },
+  board: {
+    ...palette.board,
+    ...overrides.board
+  },
+  hud: {
+    ...palette.hud,
+    ...overrides.hud
+  },
+  ui: palette.ui
+});
+
+const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
+  noir: {
+    id: 'noir',
+    label: 'NOIR',
+    palette: createThemePalette({
+      background: {
+        deepSpace: 0x040507,
+        nebula: 0x0b0e12,
+        nebulaCore: 0x151920,
+        vignette: 0x010101,
+        star: 0xe4e8ee,
+        cloud: 0x171b22
+      },
+      board: {
+        glow: 0x0d1115,
+        panel: 0x090b0f,
+        panelStroke: 0x6e7886,
+        well: 0x040608,
+        shadow: 0x000000,
+        outer: 0x11151a,
+        outerStroke: 0xc8d0db,
+        innerStroke: 0x7a8494,
+        topHighlight: 0xe3e8ef,
+        wall: 0x13171d,
+        floor: 0xd2d9e0,
+        path: 0xa8b2bb,
+        trail: 0x9db8b2,
+        trailCore: 0xf3f7f8,
+        trailGlow: 0x84c6bd,
+        goal: 0xf0f2f6,
+        goalCore: 0xffffff,
+        player: 0x8ea9a4,
+        playerCore: 0xf2fbf8,
+        playerHalo: 0xb2d3cd,
+        playerShadow: 0x030303
+      },
+      hud: {
+        panelStroke: 0xa4adba,
+        accent: 0xe6ebf2,
+        hintText: 0x9ca6b4
+      }
+    }),
+    boardTheme: {
+      solutionPathGlowAlphaScale: 0.82,
+      solutionPathCoreAlphaScale: 1.08,
+      trailFillAlphaScale: 0.92,
+      trailGlowAlphaScale: 0.88,
+      trailCoreAlphaScale: 1.04,
+      actorHaloAlphaScale: 0.86,
+      goalGlowAlphaScale: 0.92
+    },
+    hudTheme: {
+      railAlphaScale: 0.82,
+      modeAlphaScale: 0.9,
+      metaAlphaScale: 0.84,
+      flashAlphaScale: 0.88
+    },
+    background: {
+      topLeft: 0x050608,
+      topRight: 0x06080b,
+      bottomLeft: 0x10151a,
+      bottomRight: 0x171c22,
+      cloudAlphaScale: 0.72,
+      farStarAlphaScale: 0.88,
+      nearStarAlphaScale: 0.96,
+      vignetteAlphaScale: 1.1
+    },
+    shell: {
+      auraColor: 0x9cb5b0,
+      haloColor: 0xf0f4f8,
+      shadeColor: 0x9da6b0,
+      veilColor: 0x050607,
+      auraAlphaBias: -0.01,
+      haloAlphaBias: 0.008,
+      shadeAlphaBias: 0.01,
+      veilAlphaBias: 0.014,
+      auraScaleBias: -0.006,
+      haloScaleBias: -0.003,
+      motifPrimaryAlpha: 0.12,
+      motifSecondaryAlpha: 0.06,
+      blueprintAccentAlphaScale: 0.82
+    },
+    presentation: {
+      driftScale: 0.92,
+      offsetScale: 0.84,
+      solutionPathAlphaScale: 1.06,
+      metadataAlphaBias: -0.02,
+      flashAlphaBias: -0.02,
+      actorPulseBias: 0.004
+    },
+    title: {
+      fontFamily: 'Optima, "Segoe UI", sans-serif',
+      signatureFontFamily: '"Consolas", "Courier New", monospace',
+      supportFontFamily: '"Consolas", "Courier New", monospace',
+      titleColor: '#f2f4f8',
+      titleStroke: '#111418',
+      titleShadow: '#88bcb2',
+      signatureColor: '#bcc5d0',
+      supportColor: '#dde3ea',
+      installColor: '#f2f4f8',
+      pendingColor: '#c7d0db',
+      plateShadowColor: 0x000000,
+      plateOuterColor: 0x050608,
+      plateInnerColor: 0x10141a,
+      plateLineColor: 0xe0e5ec,
+      buttonFillColor: 0x0c1015,
+      buttonStrokeColor: 0xb4c1cb
+    }
+  },
+  ember: {
+    id: 'ember',
+    label: 'EMBER',
+    palette: createThemePalette({
+      background: {
+        deepSpace: 0x120b09,
+        nebula: 0x241412,
+        nebulaCore: 0x3a201b,
+        vignette: 0x060302,
+        star: 0xffddc2,
+        cloud: 0x4a271d
+      },
+      board: {
+        glow: 0x29140f,
+        panel: 0x190d09,
+        panelStroke: 0xa86e49,
+        well: 0x120907,
+        shadow: 0x050201,
+        outer: 0x301610,
+        outerStroke: 0xd7a073,
+        innerStroke: 0xc98557,
+        topHighlight: 0xffd19d,
+        wall: 0x29130d,
+        floor: 0xf3d1b3,
+        path: 0xae6f49,
+        trail: 0xd97d46,
+        trailCore: 0xffd8b6,
+        trailGlow: 0xff9f61,
+        goal: 0xffb36c,
+        goalCore: 0xffefdb,
+        player: 0xca7148,
+        playerCore: 0xffdeb7,
+        playerHalo: 0xffb779,
+        playerShadow: 0x1b0c07
+      },
+      hud: {
+        panelStroke: 0xc98557,
+        accent: 0xffca98,
+        hintText: 0xe5b78f
+      }
+    }),
+    boardTheme: {
+      solutionPathGlowAlphaScale: 1.08,
+      solutionPathCoreAlphaScale: 1.04,
+      trailFillAlphaScale: 1.02,
+      trailGlowAlphaScale: 1.1,
+      trailCoreAlphaScale: 1,
+      actorHaloAlphaScale: 1.04,
+      goalGlowAlphaScale: 1.08
+    },
+    hudTheme: {
+      railAlphaScale: 0.94,
+      modeAlphaScale: 1,
+      metaAlphaScale: 0.92,
+      flashAlphaScale: 1
+    },
+    background: {
+      topLeft: 0x140b08,
+      topRight: 0x22110d,
+      bottomLeft: 0x3b1d15,
+      bottomRight: 0x4d2618,
+      cloudAlphaScale: 0.92,
+      farStarAlphaScale: 0.72,
+      nearStarAlphaScale: 0.82,
+      vignetteAlphaScale: 1.04
+    },
+    shell: {
+      auraColor: 0xb65b2f,
+      haloColor: 0xffc07a,
+      shadeColor: 0xff8e4a,
+      veilColor: 0x130907,
+      auraAlphaBias: 0.02,
+      haloAlphaBias: 0.012,
+      shadeAlphaBias: 0.006,
+      veilAlphaBias: -0.004,
+      auraScaleBias: 0.01,
+      haloScaleBias: 0.006,
+      motifPrimaryAlpha: 0.14,
+      motifSecondaryAlpha: 0.08,
+      blueprintAccentAlphaScale: 0.92
+    },
+    presentation: {
+      driftScale: 1.02,
+      offsetScale: 1,
+      solutionPathAlphaScale: 0.98,
+      metadataAlphaBias: 0.02,
+      flashAlphaBias: 0.02,
+      actorPulseBias: 0.01
+    },
+    title: {
+      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+      signatureFontFamily: '"Consolas", "Courier New", monospace',
+      supportFontFamily: '"Consolas", "Courier New", monospace',
+      titleColor: '#ffd3a3',
+      titleStroke: '#3d1e10',
+      titleShadow: '#c6662f',
+      signatureColor: '#efc097',
+      supportColor: '#f7d3b1',
+      installColor: '#ffd39e',
+      pendingColor: '#e0b390',
+      plateShadowColor: 0x0a0403,
+      plateOuterColor: 0x160906,
+      plateInnerColor: 0x2a140f,
+      plateLineColor: 0xffcb98,
+      buttonFillColor: 0x2a140e,
+      buttonStrokeColor: 0xffbb74
+    }
+  },
+  aurora: {
+    id: 'aurora',
+    label: 'AURORA',
+    palette: createThemePalette({
+      background: {
+        deepSpace: 0x07111f,
+        nebula: 0x12243f,
+        nebulaCore: 0x1d3560,
+        vignette: 0x02050a,
+        star: 0xdffcff,
+        cloud: 0x244c74
+      },
+      board: {
+        glow: 0x0d1b33,
+        panel: 0x0a1426,
+        panelStroke: 0x5ea0ff,
+        well: 0x09101f,
+        shadow: 0x02050c,
+        outer: 0x13233e,
+        outerStroke: 0xb89cff,
+        innerStroke: 0x8dc8ff,
+        topHighlight: 0xcffeff,
+        wall: 0x132744,
+        floor: 0xe0f6ff,
+        path: 0x5aa8cf,
+        trail: 0x65bff7,
+        trailCore: 0xe8ffff,
+        trailGlow: 0x8b79ff,
+        goal: 0xc59dff,
+        goalCore: 0xf6f2ff,
+        player: 0x59cce9,
+        playerCore: 0xe6ffff,
+        playerHalo: 0x98f6ff,
+        playerShadow: 0x040916
+      },
+      hud: {
+        panelStroke: 0x7abfff,
+        accent: 0xcffbff,
+        hintText: 0xb0d4f0
+      }
+    }),
+    boardTheme: {
+      solutionPathGlowAlphaScale: 1.12,
+      solutionPathCoreAlphaScale: 1.08,
+      trailFillAlphaScale: 0.98,
+      trailGlowAlphaScale: 1.16,
+      trailCoreAlphaScale: 1.08,
+      actorHaloAlphaScale: 1.08,
+      goalGlowAlphaScale: 1.08
+    },
+    hudTheme: {
+      railAlphaScale: 1,
+      modeAlphaScale: 1,
+      metaAlphaScale: 0.94,
+      flashAlphaScale: 1
+    },
+    background: {
+      topLeft: 0x08111f,
+      topRight: 0x102043,
+      bottomLeft: 0x182f57,
+      bottomRight: 0x30215a,
+      cloudAlphaScale: 0.88,
+      farStarAlphaScale: 0.84,
+      nearStarAlphaScale: 0.92,
+      vignetteAlphaScale: 1
+    },
+    shell: {
+      auraColor: 0x4cc9ff,
+      haloColor: 0xd0c3ff,
+      shadeColor: 0x7af5ff,
+      veilColor: 0x08111f,
+      auraAlphaBias: 0.026,
+      haloAlphaBias: 0.018,
+      shadeAlphaBias: 0,
+      veilAlphaBias: -0.008,
+      auraScaleBias: 0.014,
+      haloScaleBias: 0.008,
+      motifPrimaryAlpha: 0.15,
+      motifSecondaryAlpha: 0.1,
+      blueprintAccentAlphaScale: 1
+    },
+    presentation: {
+      driftScale: 1.06,
+      offsetScale: 1.04,
+      solutionPathAlphaScale: 0.92,
+      metadataAlphaBias: 0.03,
+      flashAlphaBias: 0.04,
+      actorPulseBias: 0.006
+    },
+    title: {
+      fontFamily: '"Segoe UI", "Trebuchet MS", sans-serif',
+      signatureFontFamily: '"Consolas", "Courier New", monospace',
+      supportFontFamily: '"Consolas", "Courier New", monospace',
+      titleColor: '#c5fbff',
+      titleStroke: '#13203f',
+      titleShadow: '#8c74ff',
+      signatureColor: '#b8d4f3',
+      supportColor: '#dcfbff',
+      installColor: '#c7f9ff',
+      pendingColor: '#a8ccf0',
+      plateShadowColor: 0x030914,
+      plateOuterColor: 0x091422,
+      plateInnerColor: 0x15253f,
+      plateLineColor: 0xc9f8ff,
+      buttonFillColor: 0x14233c,
+      buttonStrokeColor: 0x92f5ff
+    }
+  },
+  vellum: {
+    id: 'vellum',
+    label: 'VELLUM',
+    palette: createThemePalette({
+      background: {
+        deepSpace: 0xe6dcc5,
+        nebula: 0xd5cbb5,
+        nebulaCore: 0xc4d6de,
+        vignette: 0xb59f7b,
+        star: 0x526887,
+        cloud: 0xd8d1c1
+      },
+      board: {
+        glow: 0xd3cab7,
+        panel: 0xf0e7d2,
+        panelStroke: 0x8297af,
+        well: 0xf7f2e6,
+        shadow: 0xbba98d,
+        outer: 0xe3dac9,
+        outerStroke: 0x70839c,
+        innerStroke: 0x9cb4c8,
+        topHighlight: 0x6f90b4,
+        wall: 0x6f7f90,
+        floor: 0xfbfbf4,
+        path: 0xc9d9e4,
+        trail: 0x7a96b1,
+        trailCore: 0xfdfdf8,
+        trailGlow: 0xadc4da,
+        goal: 0x7590aa,
+        goalCore: 0xf9f8f2,
+        player: 0x607995,
+        playerCore: 0xfcfbf5,
+        playerHalo: 0xc4d8e6,
+        playerShadow: 0xb4a487
+      },
+      hud: {
+        panelStroke: 0x8fa7bd,
+        accent: 0x4b6280,
+        hintText: 0x7289a0
+      }
+    }),
+    boardTheme: {
+      solutionPathGlowAlphaScale: 0.74,
+      solutionPathCoreAlphaScale: 0.92,
+      trailFillAlphaScale: 0.84,
+      trailGlowAlphaScale: 0.8,
+      trailCoreAlphaScale: 0.94,
+      actorHaloAlphaScale: 0.78,
+      goalGlowAlphaScale: 0.86
+    },
+    hudTheme: {
+      railAlphaScale: 0.76,
+      modeAlphaScale: 0.84,
+      metaAlphaScale: 0.86,
+      flashAlphaScale: 0.7
+    },
+    background: {
+      topLeft: 0xede5d2,
+      topRight: 0xe3dbc8,
+      bottomLeft: 0xc4d5dd,
+      bottomRight: 0xd4cab7,
+      cloudAlphaScale: 0.52,
+      farStarAlphaScale: 0.26,
+      nearStarAlphaScale: 0.32,
+      vignetteAlphaScale: 0.56
+    },
+    shell: {
+      auraColor: 0xb5c6d2,
+      haloColor: 0x7292b0,
+      shadeColor: 0xf2e8d3,
+      veilColor: 0xf4efe1,
+      auraAlphaBias: -0.018,
+      haloAlphaBias: -0.006,
+      shadeAlphaBias: -0.01,
+      veilAlphaBias: -0.02,
+      auraScaleBias: -0.012,
+      haloScaleBias: -0.008,
+      motifPrimaryAlpha: 0.12,
+      motifSecondaryAlpha: 0.1,
+      blueprintAccentAlphaScale: 1.18
+    },
+    presentation: {
+      driftScale: 0.88,
+      offsetScale: 0.9,
+      solutionPathAlphaScale: 1.02,
+      metadataAlphaBias: 0.01,
+      flashAlphaBias: -0.04,
+      actorPulseBias: -0.004
+    },
+    title: {
+      fontFamily: '"Garamond", Georgia, serif',
+      signatureFontFamily: '"Consolas", "Courier New", monospace',
+      supportFontFamily: '"Consolas", "Courier New", monospace',
+      titleColor: '#415571',
+      titleStroke: '#efe6d0',
+      titleShadow: '#9eb7ca',
+      signatureColor: '#627a95',
+      supportColor: '#536a85',
+      installColor: '#445a74',
+      pendingColor: '#6b7e95',
+      plateShadowColor: 0xc0b19a,
+      plateOuterColor: 0xf4eee2,
+      plateInnerColor: 0xe9e1cf,
+      plateLineColor: 0x6d8aaa,
+      buttonFillColor: 0xe0d6c0,
+      buttonStrokeColor: 0x7e98b3
+    }
+  },
+  monolith: {
+    id: 'monolith',
+    label: 'MONOLITH',
+    palette: createThemePalette({
+      background: {
+        deepSpace: 0x0c0d10,
+        nebula: 0x16181d,
+        nebulaCore: 0x21242a,
+        vignette: 0x020202,
+        star: 0xd7d9dd,
+        cloud: 0x25282d
+      },
+      board: {
+        glow: 0x111317,
+        panel: 0x0d0f13,
+        panelStroke: 0x7d828a,
+        well: 0x07080b,
+        shadow: 0x000000,
+        outer: 0x181a1f,
+        outerStroke: 0xbfc3c9,
+        innerStroke: 0x8c9199,
+        topHighlight: 0xe5e7ea,
+        wall: 0x17191e,
+        floor: 0xe0e3e7,
+        path: 0x9da3aa,
+        trail: 0x9ea4ab,
+        trailCore: 0xffffff,
+        trailGlow: 0xc9ccd1,
+        goal: 0xf0f2f4,
+        goalCore: 0xffffff,
+        player: 0xa5abb2,
+        playerCore: 0xffffff,
+        playerHalo: 0xd5d8dd,
+        playerShadow: 0x020202
+      },
+      hud: {
+        panelStroke: 0x9ca1a8,
+        accent: 0xf0f2f4,
+        hintText: 0xaab0b8
+      }
+    }),
+    boardTheme: {
+      solutionPathGlowAlphaScale: 0.66,
+      solutionPathCoreAlphaScale: 1.02,
+      trailFillAlphaScale: 0.88,
+      trailGlowAlphaScale: 0.72,
+      trailCoreAlphaScale: 1.04,
+      actorHaloAlphaScale: 0.62,
+      goalGlowAlphaScale: 0.82
+    },
+    hudTheme: {
+      railAlphaScale: 0.68,
+      modeAlphaScale: 0.8,
+      metaAlphaScale: 0.74,
+      flashAlphaScale: 0.62
+    },
+    background: {
+      topLeft: 0x0c0d10,
+      topRight: 0x121419,
+      bottomLeft: 0x1d2025,
+      bottomRight: 0x26292e,
+      cloudAlphaScale: 0.62,
+      farStarAlphaScale: 0.58,
+      nearStarAlphaScale: 0.64,
+      vignetteAlphaScale: 1.08
+    },
+    shell: {
+      auraColor: 0x6a7078,
+      haloColor: 0xe6e8ec,
+      shadeColor: 0x484d56,
+      veilColor: 0x090a0d,
+      auraAlphaBias: -0.028,
+      haloAlphaBias: -0.012,
+      shadeAlphaBias: 0.014,
+      veilAlphaBias: 0.01,
+      auraScaleBias: -0.016,
+      haloScaleBias: -0.01,
+      motifPrimaryAlpha: 0.14,
+      motifSecondaryAlpha: 0.04,
+      blueprintAccentAlphaScale: 0.72
+    },
+    presentation: {
+      driftScale: 0.82,
+      offsetScale: 0.7,
+      solutionPathAlphaScale: 0.94,
+      metadataAlphaBias: -0.04,
+      flashAlphaBias: -0.06,
+      actorPulseBias: -0.002
+    },
+    title: {
+      fontFamily: '"Bahnschrift", "Segoe UI", sans-serif',
+      signatureFontFamily: '"Consolas", "Courier New", monospace',
+      supportFontFamily: '"Consolas", "Courier New", monospace',
+      titleColor: '#f1f2f4',
+      titleStroke: '#121316',
+      titleShadow: '#696f78',
+      signatureColor: '#babec4',
+      supportColor: '#d7d9dd',
+      installColor: '#f1f2f4',
+      pendingColor: '#afb4bb',
+      plateShadowColor: 0x000000,
+      plateOuterColor: 0x08090c,
+      plateInnerColor: 0x14161a,
+      plateLineColor: 0xe1e3e7,
+      buttonFillColor: 0x111317,
+      buttonStrokeColor: 0xbfc4cb
+    }
+  }
+};
+
+const CURATED_THEME_BAG: readonly PresentationThemeFamily[] = [
+  'noir',
+  'ember',
+  'aurora',
+  'vellum',
+  'monolith',
+  'noir',
+  'ember',
+  'aurora',
+  'vellum',
+  'monolith'
+] as const;
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
@@ -569,6 +1216,10 @@ const resolveDeploymentPresentationProfile = (
   profile ? DEPLOYMENT_PRESENTATION_PROFILES[profile] : DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE
 );
 
+const resolveAmbientThemeProfile = (theme: PresentationThemeFamily): AmbientThemeProfile => (
+  THEME_PROFILES[theme]
+);
+
 export function resolveMenuPresentationModel(
   width: number,
   height: number,
@@ -591,6 +1242,7 @@ export class MenuScene extends Phaser.Scene {
   private starDriftTween?: Phaser.Tweens.Tween;
   private presentationVariant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT;
   private launchConfig: PresentationLaunchConfig = { ...DEFAULT_PRESENTATION_LAUNCH_CONFIG };
+  private activeTheme: PresentationThemeFamily = PRESENTATION_THEME_FAMILIES[0];
 
   public constructor() {
     super('MenuScene');
@@ -672,6 +1324,8 @@ export class MenuScene extends Phaser.Scene {
       ]);
       episodePresentationShell.demoStatusHud.destroy();
       episodePresentationShell.boardRenderer.destroy();
+      episodePresentationShell.motifSecondary.destroy();
+      episodePresentationShell.motifPrimary.destroy();
       episodePresentationShell.blueprintAccent.destroy();
       episodePresentationShell.boardVeil.destroy();
       episodePresentationShell.boardShade.destroy();
@@ -716,8 +1370,7 @@ export class MenuScene extends Phaser.Scene {
 
     try {
       this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 220 : 280, 0, 0, 0);
-      this.drawStarfield(width, height);
-
+      const themeLock = launchConfig.theme === 'auto' ? undefined : launchConfig.theme;
       let demoSeed = launchConfig.seed ?? legacyTuning.demo.seed;
       let demoCycle = 0;
       let pendingCyclePlan: MenuDemoCycle | undefined;
@@ -726,7 +1379,8 @@ export class MenuScene extends Phaser.Scene {
         const cycle = resolveMenuDemoCycle(cycleSeed, deterministicCapture ? 0 : demoCycle, {
           difficulty: launchConfig.difficulty,
           size: launchConfig.size,
-          mood: moodOverride
+          mood: moodOverride,
+          theme: themeLock
         });
         pendingCyclePlan = cycle;
         const resolved = generateMazeForDifficulty({
@@ -750,11 +1404,19 @@ export class MenuScene extends Phaser.Scene {
       let demoCyclePlan = pendingCyclePlan ?? resolveMenuDemoCycle(patternFrame.episode.seed, 0, {
         difficulty: launchConfig.difficulty,
         size: launchConfig.size,
-        mood: moodOverride
+        mood: moodOverride,
+        theme: themeLock
       });
       pendingCyclePlan = undefined;
+      this.activeTheme = demoCyclePlan.theme;
+      const sceneThemeProfile = resolveAmbientThemeProfile(demoCyclePlan.theme);
+      this.drawStarfield(width, height, sceneThemeProfile);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
-      const createEpisodePresentationShell = (episode: MazeEpisode): EpisodePresentationShell => {
+      const createEpisodePresentationShell = (
+        episode: MazeEpisode,
+        themeId: PresentationThemeFamily
+      ): EpisodePresentationShell => {
+        const themeProfile = resolveAmbientThemeProfile(themeId);
         const layout = createBoardLayout(this, episode, {
           boardScale: sceneLayout.boardScale
             + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
@@ -764,7 +1426,12 @@ export class MenuScene extends Phaser.Scene {
         });
         const boardCenterX = layout.boardX + (layout.boardWidth / 2);
         const boardCenterY = layout.boardY + (layout.boardHeight / 2);
-        const boardRenderer = new BoardRenderer(this, episode, layout);
+        const boardRenderer = new BoardRenderer(this, episode, layout, {
+          theme: {
+            ...themeProfile.boardTheme,
+            palette: themeProfile.palette
+          }
+        });
         boardRenderer.drawBoardChrome();
 
         const boardAura = this.add.ellipse(
@@ -772,7 +1439,7 @@ export class MenuScene extends Phaser.Scene {
           boardCenterY,
           Math.max(24, layout.boardWidth * 1.14),
           Math.max(24, layout.boardHeight * 1.08),
-          palette.background.nebulaCore,
+          themeProfile.shell.auraColor,
           0.1
         ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardHalo = this.add.ellipse(
@@ -780,7 +1447,7 @@ export class MenuScene extends Phaser.Scene {
           boardCenterY,
           Math.max(20, layout.boardWidth * 1.05),
           Math.max(20, layout.boardHeight * 1.03),
-          palette.board.topHighlight,
+          themeProfile.shell.haloColor,
           0.032
         ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardShade = this.add.rectangle(
@@ -788,7 +1455,7 @@ export class MenuScene extends Phaser.Scene {
           boardCenterY,
           Math.max(16, layout.boardWidth),
           Math.max(16, layout.boardHeight),
-          palette.board.topHighlight,
+          themeProfile.shell.shadeColor,
           0.02
         ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardVeil = this.add.rectangle(
@@ -796,12 +1463,17 @@ export class MenuScene extends Phaser.Scene {
           boardCenterY,
           Math.max(16, layout.boardWidth),
           Math.max(16, layout.boardHeight),
-          palette.background.deepSpace,
+          themeProfile.shell.veilColor,
           0
         ).setOrigin(0.5).setDepth(7.2);
         const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
+        const motifPrimary = this.add.graphics().setDepth(5.8);
+        const motifSecondary = this.add.graphics().setDepth(6.15);
         runOptional('blueprint accent setup', () => {
-          drawBlueprintAccent(blueprintAccent, layout);
+          drawBlueprintAccent(blueprintAccent, layout, themeProfile.palette.board.topHighlight);
+        });
+        runOptional('theme motif setup', () => {
+          drawThemeMotifs(themeProfile, motifPrimary, motifSecondary, layout);
         });
 
         return {
@@ -809,15 +1481,25 @@ export class MenuScene extends Phaser.Scene {
           boardCenterX,
           boardCenterY,
           boardRenderer,
-          demoStatusHud: createDemoStatusHud(this, layout, { reducedMotion, chrome, profile: deploymentProfileId }),
+          demoStatusHud: createDemoStatusHud(this, layout, {
+            reducedMotion,
+            chrome,
+            profile: deploymentProfileId,
+            theme: {
+              ...themeProfile.hudTheme,
+              palette: themeProfile.palette
+            }
+          }),
           boardAura,
           boardHalo,
           boardShade,
           boardVeil,
-          blueprintAccent
+          blueprintAccent,
+          motifPrimary,
+          motifSecondary
         };
       };
-      episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);
+      episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
       const layout = episodePresentationShell.layout;
 
       if (titleVisible) {
@@ -860,28 +1542,43 @@ export class MenuScene extends Phaser.Scene {
         const plateAlpha = variantProfile.plateAlpha * chromeProfile.plateAlpha * deploymentProfile.plateAlphaScale;
         const panelAlpha = variantProfile.panelAlpha * chromeProfile.panelAlpha * deploymentProfile.panelAlphaScale;
         titleContainer.add([
-          this.add.rectangle(0, 6, titlePlateWidth + 8, titlePlateHeight + 10, palette.board.shadow, 0.26 * plateAlpha),
-          this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, palette.board.well, plateAlpha)
-            .setStrokeStyle(1, palette.board.innerStroke, 0.18 * titleAlpha),
-          this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, palette.board.panel, panelAlpha)
-            .setStrokeStyle(1, palette.board.topHighlight, 0.08 * titleAlpha),
-          this.add.rectangle(0, -(titlePlateHeight / 2) + 7, titlePlateWidth - 18, 2, palette.board.topHighlight, 0.12 * titleAlpha)
+          this.add.rectangle(
+            0,
+            6,
+            titlePlateWidth + 8,
+            titlePlateHeight + 10,
+            sceneThemeProfile.title.plateShadowColor,
+            0.26 * plateAlpha
+          ),
+          this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, sceneThemeProfile.title.plateOuterColor, plateAlpha)
+            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.18 * titleAlpha),
+          this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, sceneThemeProfile.title.plateInnerColor, panelAlpha)
+            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.08 * titleAlpha),
+          this.add.rectangle(
+            0,
+            -(titlePlateHeight / 2) + 7,
+            titlePlateWidth - 18,
+            2,
+            sceneThemeProfile.title.plateLineColor,
+            0.12 * titleAlpha
+          )
         ]);
         const title = this.add.text(0, -7, legacyTuning.menu.title.text, {
-          color: '#75f78f',
-          fontFamily: 'monospace',
+          color: sceneThemeProfile.title.titleColor,
+          fontFamily: sceneThemeProfile.title.fontFamily,
           fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale), 24, 84)}px`,
           fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
         }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide)
           .setAlpha(titleAlpha)
-          .setStroke('#17381f', legacyTuning.menu.title.strokePx).setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true);
+          .setStroke(sceneThemeProfile.title.titleStroke, legacyTuning.menu.title.strokePx)
+          .setShadow(0, 0, sceneThemeProfile.title.titleShadow, legacyTuning.menu.title.shadowBlur - 4, true, true);
         const signature = this.add.text(
           0,
           Math.round(titlePlateHeight * 0.23 * deploymentProfile.titleLineSpacingScale),
           '\u00b0 by fawxzzy',
           {
-          color: '#a5d7af',
-          fontFamily: '"Courier New", monospace',
+          color: sceneThemeProfile.title.signatureColor,
+          fontFamily: sceneThemeProfile.title.signatureFontFamily,
             fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
           }
         ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(1);
@@ -892,8 +1589,8 @@ export class MenuScene extends Phaser.Scene {
 
           if (state.mode === 'available') {
             const label = this.add.text(0, 0, installPromptPending ? 'Install Mazer...' : 'Install Mazer', {
-              color: installPromptPending ? '#d7deef' : '#75f78f',
-              fontFamily: '"Courier New", monospace',
+              color: installPromptPending ? sceneThemeProfile.title.pendingColor : sceneThemeProfile.title.installColor,
+              fontFamily: sceneThemeProfile.title.supportFontFamily,
               fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
               fontStyle: 'bold'
             }).setOrigin(0.5).setLetterSpacing(1);
@@ -903,26 +1600,26 @@ export class MenuScene extends Phaser.Scene {
               Math.max(138, titlePlateWidth - 18)
             );
             const buttonHeight = sceneLayout.isTiny ? 20 : 22;
-            const shadow = this.add.rectangle(0, 2, buttonWidth + 4, buttonHeight + 4, palette.board.shadow, 0.2);
+            const shadow = this.add.rectangle(0, 2, buttonWidth + 4, buttonHeight + 4, sceneThemeProfile.title.plateShadowColor, 0.2);
             const button = this.add.rectangle(
               0,
               0,
               buttonWidth,
               buttonHeight,
-              palette.board.panel,
+              sceneThemeProfile.title.buttonFillColor,
               installPromptPending ? 0.3 : Math.min(0.86, panelAlpha + 0.16)
-            ).setStrokeStyle(1, palette.board.topHighlight, installPromptPending ? 0.12 : 0.28);
+            ).setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, installPromptPending ? 0.12 : 0.28);
             const highlightAlpha = Math.min(0.18, 0.08 + (titleAlpha * 0.12));
             const setButtonState = (hovered: boolean): void => {
               button.setFillStyle(
-                palette.board.panel,
+                sceneThemeProfile.title.buttonFillColor,
                 installPromptPending
                   ? 0.3
                   : hovered
                     ? Math.min(0.94, panelAlpha + 0.26)
                     : Math.min(0.86, panelAlpha + 0.16)
               );
-              button.setStrokeStyle(1, palette.board.topHighlight, hovered && !installPromptPending ? 0.36 : 0.28);
+              button.setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, hovered && !installPromptPending ? 0.36 : 0.28);
               label.setAlpha(hovered && !installPromptPending ? 1 : 0.96);
             };
 
@@ -956,7 +1653,14 @@ export class MenuScene extends Phaser.Scene {
             supportSlot.add([
               shadow,
               button,
-              this.add.rectangle(0, -(buttonHeight / 2) + 3, buttonWidth - 10, 2, palette.board.topHighlight, highlightAlpha),
+              this.add.rectangle(
+                0,
+                -(buttonHeight / 2) + 3,
+                buttonWidth - 10,
+                2,
+                sceneThemeProfile.title.buttonStrokeColor,
+                highlightAlpha
+              ),
               label
             ]);
             return;
@@ -967,8 +1671,8 @@ export class MenuScene extends Phaser.Scene {
             0,
             state.mode === 'manual' && state.instruction ? state.instruction : PASSIVE_TAGLINES[variant],
             {
-              color: '#d7deef',
-              fontFamily: '"Courier New", monospace',
+              color: sceneThemeProfile.title.supportColor,
+              fontFamily: sceneThemeProfile.title.supportFontFamily,
               fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
               wordWrap: {
                 width: Math.max(118, titlePlateWidth - 28),
@@ -1044,6 +1748,7 @@ export class MenuScene extends Phaser.Scene {
           return;
         }
 
+        const themeProfile = resolveAmbientThemeProfile(presentation.theme);
         const offsetX = sanitizeOffset(presentation.frameOffsetX);
         const offsetY = sanitizeOffset(presentation.frameOffsetY);
         shell.boardRenderer.setPresentationOffset(offsetX, offsetY);
@@ -1058,8 +1763,12 @@ export class MenuScene extends Phaser.Scene {
             .setAlpha(presentation.boardShadeAlpha);
           shell.boardVeil.setPosition(shell.boardCenterX + offsetX, shell.boardCenterY + offsetY)
             .setAlpha(presentation.boardVeilAlpha);
+          shell.motifPrimary.setPosition(shell.layout.boardX + offsetX, shell.layout.boardY + offsetY)
+            .setAlpha(presentation.motifPrimaryAlpha);
+          shell.motifSecondary.setPosition(shell.layout.boardX + offsetX, shell.layout.boardY + offsetY)
+            .setAlpha(presentation.motifSecondaryAlpha);
           shell.blueprintAccent.setPosition(shell.layout.boardX + offsetX, shell.layout.boardY + offsetY)
-            .setAlpha(resolveBlueprintAccentAlpha(presentation));
+            .setAlpha(resolveBlueprintAccentAlpha(presentation, themeProfile));
         });
       };
       const applyEpisodePresentation = (): void => {
@@ -1068,7 +1777,8 @@ export class MenuScene extends Phaser.Scene {
         }
 
         destroyEpisodePresentationShell();
-        episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);
+        this.activeTheme = demoCyclePlan.theme;
+        episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
         demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
         demoPresentation = resolveMenuDemoPresentation(
           patternFrame.episode,
@@ -1313,15 +2023,15 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
-  private drawStarfield(width: number, height: number): void {
+  private drawStarfield(width: number, height: number, themeProfile: AmbientThemeProfile): void {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
     const bg = this.add.graphics();
     bg.fillGradientStyle(
-      palette.background.deepSpace,
-      palette.background.deepSpace,
-      palette.background.nebulaCore,
-      palette.background.nebula,
+      themeProfile.background.topLeft,
+      themeProfile.background.topRight,
+      themeProfile.background.bottomLeft,
+      themeProfile.background.bottomRight,
       1
     );
     bg.fillRect(0, 0, safeWidth, safeHeight);
@@ -1333,8 +2043,9 @@ export class MenuScene extends Phaser.Scene {
       const y = Phaser.Math.Between(safeHeight * 0.16, safeHeight * 0.84);
       const radius = Phaser.Math.Between(legacyTuning.menu.starfield.cloudRadiusMin, legacyTuning.menu.starfield.cloudRadiusMax);
       clouds.fillStyle(
-        palette.background.cloud,
+        themeProfile.palette.background.cloud,
         Phaser.Math.FloatBetween(legacyTuning.menu.starfield.cloudAlphaMin, legacyTuning.menu.starfield.cloudAlphaMax)
+          * themeProfile.background.cloudAlphaScale
       );
       clouds.fillCircle(x, y, radius);
     }
@@ -1348,11 +2059,11 @@ export class MenuScene extends Phaser.Scene {
         legacyTuning.menu.starfield.starRadiusMax * 0.72
       );
       farStars.fillStyle(
-        palette.background.star,
+        themeProfile.palette.background.star,
         Phaser.Math.FloatBetween(
           legacyTuning.menu.starfield.starAlphaMin * 0.7,
           legacyTuning.menu.starfield.starAlphaMax * 0.52
-        )
+        ) * themeProfile.background.farStarAlphaScale
       );
       farStars.fillCircle(x, y, r);
     }
@@ -1363,8 +2074,9 @@ export class MenuScene extends Phaser.Scene {
       const y = Phaser.Math.Between(0, safeHeight);
       const r = Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starRadiusMin, legacyTuning.menu.starfield.starRadiusMax);
       nearStars.fillStyle(
-        palette.background.star,
+        themeProfile.palette.background.star,
         Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starAlphaMin, legacyTuning.menu.starfield.starAlphaMax)
+          * themeProfile.background.nearStarAlphaScale
       );
       nearStars.fillCircle(x, y, r);
     }
@@ -1383,7 +2095,10 @@ export class MenuScene extends Phaser.Scene {
     }
 
     const vignette = this.add.graphics();
-    vignette.fillStyle(palette.background.vignette, legacyTuning.menu.starfield.vignetteAlpha);
+    vignette.fillStyle(
+      themeProfile.palette.background.vignette,
+      legacyTuning.menu.starfield.vignetteAlpha * themeProfile.background.vignetteAlphaScale
+    );
     vignette.fillRect(0, 0, safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
     vignette.fillRect(0, safeHeight * (1 - legacyTuning.menu.starfield.vignetteBandRatio), safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
   }
@@ -1391,6 +2106,7 @@ export class MenuScene extends Phaser.Scene {
   private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
+    const themeProfile = resolveAmbientThemeProfile(this.activeTheme);
     const layoutModel = resolveMenuPresentationModel(
       safeWidth,
       safeHeight,
@@ -1400,21 +2116,21 @@ export class MenuScene extends Phaser.Scene {
       this.launchConfig.profile
     );
 
-    this.drawStarfield(safeWidth, safeHeight);
+    this.drawStarfield(safeWidth, safeHeight, themeProfile);
     this.add.text(safeWidth / 2, Math.max(56, safeHeight * 0.18), legacyTuning.menu.title.text, {
-      color: '#75f78f',
-      fontFamily: 'monospace',
+      color: themeProfile.title.titleColor,
+      fontFamily: themeProfile.title.fontFamily,
       fontSize: `${Math.max(32, Math.round(Math.min(safeWidth, safeHeight) * 0.08))}px`,
       fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(20);
     this.add.text(safeWidth / 2, Math.max(100, safeHeight * 0.26), '\u00b0 by fawxzzy', {
-      color: '#a5d7af',
-      fontFamily: '"Courier New", monospace',
+      color: themeProfile.title.signatureColor,
+      fontFamily: themeProfile.title.signatureFontFamily,
       fontSize: '14px'
     }).setOrigin(0.5).setDepth(20);
     this.add.text(safeWidth / 2, Math.max(132, safeHeight * 0.32), 'recovery demo', {
-      color: '#d7deef',
-      fontFamily: '"Courier New", monospace',
+      color: themeProfile.title.supportColor,
+      fontFamily: themeProfile.title.supportFontFamily,
       fontSize: '12px'
     }).setOrigin(0.5).setDepth(20);
 
@@ -1429,7 +2145,12 @@ export class MenuScene extends Phaser.Scene {
         sidePadding: Math.max(12, layoutModel.layout.sidePadding + 8),
         bottomPadding: Math.max(20, layoutModel.layout.bottomPadding)
       });
-      const recoveryBoard = new BoardRenderer(this, episode, layout);
+      const recoveryBoard = new BoardRenderer(this, episode, layout, {
+        theme: {
+          ...themeProfile.boardTheme,
+          palette: themeProfile.palette
+        }
+      });
       recoveryBoard.drawBoardChrome();
       recoveryBoard.drawBase({ solutionPathAlpha: 0.2 });
       recoveryBoard.drawStart('spawn');
@@ -1592,6 +2313,7 @@ export const resolveMenuDemoPresentation = (
   const safeVariant = sanitizePresentationVariant(variant);
   const variantProfile = VARIANT_PROFILES[safeVariant];
   const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
+  const themeProfile = resolveAmbientThemeProfile(cycle.theme);
   const sequenceState = resolveMenuDemoSequence(episode, elapsedMs, config);
   const progress = ease(sequenceState.progress);
   const oscillationTimeMs = normalizeAnimationTime(elapsedMs);
@@ -1680,30 +2402,105 @@ export const resolveMenuDemoPresentation = (
   }
   const boardAuraScaleDelta = (boardAuraScale - 1) * deploymentProfile.boardAuraMotionScale;
   const boardHaloScaleDelta = (boardHaloScale - 1) * deploymentProfile.boardHaloMotionScale;
+  const motifPrimarySequenceScale = sequenceState.sequence === 'arrival'
+    ? 1
+    : sequenceState.sequence === 'reveal'
+      ? 0.86
+      : sequenceState.sequence === 'intro'
+        ? 0.72
+        : 0.54;
+  const motifSecondarySequenceScale = sequenceState.sequence === 'reveal'
+    ? 1
+    : sequenceState.sequence === 'arrival'
+      ? 0.82
+      : sequenceState.sequence === 'intro'
+        ? 0.64
+        : 0.42;
 
   return {
     variant: safeVariant,
     mood: cycle.mood,
+    theme: cycle.theme,
     sequence: sequenceState.sequence,
     phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
-    solutionPathAlpha: clamp(moodProfile.solutionPathAlpha * variantProfile.solutionPathScale, 0.14, 1),
+    solutionPathAlpha: clamp(
+      moodProfile.solutionPathAlpha * variantProfile.solutionPathScale * themeProfile.presentation.solutionPathAlphaScale,
+      0.14,
+      1
+    ),
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
-    ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
-    ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
+    ambientDriftPxX: offsets.driftX
+      * moodProfile.ambientDriftPx
+      * variantProfile.driftScale
+      * deploymentProfile.driftScale
+      * themeProfile.presentation.driftScale
+      || 0,
+    ambientDriftPxY: offsets.driftY
+      * moodProfile.ambientDriftPx
+      * variantProfile.driftScale
+      * deploymentProfile.driftScale
+      * themeProfile.presentation.driftScale
+      || 0,
     ambientDriftMs: clamp(Math.round(moodProfile.ambientDriftMs * deploymentProfile.driftDurationScale), 1200, 12000),
-    frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale) || 0,
-    frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale) || 0,
-    hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale) || 0,
-    hudOffsetY: Math.round(offsets.hudOffsetY * deploymentProfile.offsetScale) || 0,
-    boardVeilAlpha: clamp(boardVeilAlpha + (variantProfile.boardVeilBias * deploymentProfile.boardVeilBiasScale), 0, 0.24),
-    boardAuraAlpha: clamp(boardAuraAlpha + (variantProfile.boardAuraBias * deploymentProfile.boardAuraBiasScale), 0.06, 0.22),
-    boardHaloAlpha: clamp(boardHaloAlpha + (variantProfile.boardHaloBias * deploymentProfile.boardHaloBiasScale), 0.018, 0.16),
-    boardShadeAlpha: clamp(boardShadeAlpha + (variantProfile.boardShadeBias * deploymentProfile.boardShadeBiasScale), 0.012, 0.18),
-    boardAuraScale: clamp(1 + boardAuraScaleDelta + (wave * variantProfile.boardAuraBias * 0.1 * deploymentProfile.boardAuraBiasScale), 1, 1.05),
-    boardHaloScale: clamp(1 + boardHaloScaleDelta + (wave * variantProfile.boardHaloBias * 0.1 * deploymentProfile.boardHaloBiasScale), 1, 1.03),
-    actorPulseBoost: clamp(moodProfile.actorPulseBoost + variantProfile.actorPulseBias, 0, 0.12),
-    metadataAlpha: clamp(metadataAlpha * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
-    flashAlpha: clamp(flashAlpha * variantProfile.flashAlphaScale * deploymentProfile.flashAlphaScale, 0, 0.84)
+    frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale * themeProfile.presentation.offsetScale) || 0,
+    frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale * themeProfile.presentation.offsetScale) || 0,
+    hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale * themeProfile.presentation.offsetScale) || 0,
+    hudOffsetY: Math.round(offsets.hudOffsetY * deploymentProfile.offsetScale * themeProfile.presentation.offsetScale) || 0,
+    boardVeilAlpha: clamp(
+      boardVeilAlpha
+        + (variantProfile.boardVeilBias * deploymentProfile.boardVeilBiasScale)
+        + themeProfile.shell.veilAlphaBias,
+      0,
+      0.24
+    ),
+    boardAuraAlpha: clamp(
+      boardAuraAlpha
+        + (variantProfile.boardAuraBias * deploymentProfile.boardAuraBiasScale)
+        + themeProfile.shell.auraAlphaBias,
+      0.06,
+      0.22
+    ),
+    boardHaloAlpha: clamp(
+      boardHaloAlpha
+        + (variantProfile.boardHaloBias * deploymentProfile.boardHaloBiasScale)
+        + themeProfile.shell.haloAlphaBias,
+      0.018,
+      0.16
+    ),
+    boardShadeAlpha: clamp(
+      boardShadeAlpha
+        + (variantProfile.boardShadeBias * deploymentProfile.boardShadeBiasScale)
+        + themeProfile.shell.shadeAlphaBias,
+      0.012,
+      0.18
+    ),
+    boardAuraScale: clamp(
+      1
+        + boardAuraScaleDelta
+        + (wave * variantProfile.boardAuraBias * 0.1 * deploymentProfile.boardAuraBiasScale)
+        + themeProfile.shell.auraScaleBias,
+      1,
+      1.05
+    ),
+    boardHaloScale: clamp(
+      1
+        + boardHaloScaleDelta
+        + (wave * variantProfile.boardHaloBias * 0.1 * deploymentProfile.boardHaloBiasScale)
+        + themeProfile.shell.haloScaleBias,
+      1,
+      1.03
+    ),
+    motifPrimaryAlpha: clamp(themeProfile.shell.motifPrimaryAlpha * motifPrimarySequenceScale, 0, 0.2),
+    motifSecondaryAlpha: clamp(themeProfile.shell.motifSecondaryAlpha * motifSecondarySequenceScale, 0, 0.16),
+    actorPulseBoost: clamp(moodProfile.actorPulseBoost + variantProfile.actorPulseBias + themeProfile.presentation.actorPulseBias, 0, 0.12),
+    metadataAlpha: clamp((metadataAlpha + themeProfile.presentation.metadataAlphaBias) * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
+    flashAlpha: clamp(
+      (flashAlpha + themeProfile.presentation.flashAlphaBias)
+        * variantProfile.flashAlphaScale
+        * deploymentProfile.flashAlphaScale,
+      0,
+      0.84
+    )
   };
 };
 
@@ -1714,6 +2511,7 @@ export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: Men
     difficulty: overrides.difficulty ?? pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: overrides.size ?? pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
+    theme: overrides.theme ?? resolveCuratedTheme(seed, cycle),
     presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood),
     pacing: DEMO_PACING_PROFILES[mix(seed, cycle, 0x6d2b79f5) % DEMO_PACING_PROFILES.length]
   };
@@ -1727,12 +2525,12 @@ export const resolveMenuDemoPreset = (
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
   switch (mood) {
     case 'scan':
-      return (mixed & 1) === 0 ? 'framed' : 'braided';
+      return mixed % 5 === 0 ? 'classic' : (mixed & 1) === 0 ? 'framed' : 'braided';
     case 'blueprint':
-      return mixed % 7 === 0 ? 'blueprint-rare' : 'framed';
+      return mixed % 4 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'framed';
     case 'solve':
     default:
-      return mixed % 5 === 0 ? 'braided' : 'classic';
+      return mixed % 6 === 0 ? 'framed' : mixed % 4 === 0 ? 'braided' : 'classic';
   }
 };
 
@@ -1741,6 +2539,39 @@ const resolveCuratedMood = (seed: number, cycle: number): DemoMood => {
   const slot = cycle % CURATED_MOOD_PATTERNS[0].length;
   const pattern = CURATED_MOOD_PATTERNS[mix(seed, block, 0x7f4a7c15) % CURATED_MOOD_PATTERNS.length];
   return pattern[slot];
+};
+
+const resolveCuratedTheme = (seed: number, cycle: number): PresentationThemeFamily => {
+  const block = Math.floor(cycle / CURATED_THEME_BAG.length);
+  const slot = cycle % CURATED_THEME_BAG.length;
+  return buildCuratedThemeBlock(seed, block)[slot] ?? PRESENTATION_THEME_FAMILIES[0];
+};
+
+const buildCuratedThemeBlock = (seed: number, block: number): ThemePattern => {
+  const remaining = [...CURATED_THEME_BAG];
+  const ordered: PresentationThemeFamily[] = [];
+  let state = mix(seed ^ 0x4d9f47c3, block, 0x4d9f47c3) || 1;
+  let previous = block > 0
+    ? buildCuratedThemeBlock(seed, block - 1)[CURATED_THEME_BAG.length - 1]
+    : undefined;
+
+  while (remaining.length > 0) {
+    state = lcg(state);
+    let pickIndex = state % remaining.length;
+
+    if (remaining[pickIndex] === previous) {
+      const alternateIndex = remaining.findIndex((theme) => theme !== previous);
+      if (alternateIndex >= 0) {
+        pickIndex = alternateIndex;
+      }
+    }
+
+    const [nextTheme] = remaining.splice(pickIndex, 1);
+    ordered.push(nextTheme);
+    previous = nextTheme;
+  }
+
+  return ordered;
 };
 
 const resolveForcedDemoMood = (mood: PresentationMood): DemoMood | undefined => (
@@ -1793,7 +2624,10 @@ const resolvePhaseLabel = (
   return labels[mix(seed, mood.charCodeAt(0), sequence.charCodeAt(0)) % labels.length];
 };
 
-const resolveBlueprintAccentAlpha = (presentation: MenuDemoPresentation): number => {
+const resolveBlueprintAccentAlpha = (
+  presentation: MenuDemoPresentation,
+  themeProfile: AmbientThemeProfile = resolveAmbientThemeProfile(presentation.theme)
+): number => {
   if (presentation.mood !== 'blueprint') {
     return 0;
   }
@@ -1808,12 +2642,16 @@ const resolveBlueprintAccentAlpha = (presentation: MenuDemoPresentation): number
     : presentation.sequence === 'arrival'
       ? 0.82
       : presentation.sequence === 'intro'
-        ? 0.54
-        : 0.36;
-  return clamp(variantBase * sequenceScale, 0, 0.42);
+      ? 0.54
+      : 0.36;
+  return clamp(variantBase * sequenceScale * themeProfile.shell.blueprintAccentAlphaScale, 0, 0.42);
 };
 
-const drawBlueprintAccent = (graphics: Phaser.GameObjects.Graphics, layout: ReturnType<typeof createBoardLayout>): void => {
+const drawBlueprintAccent = (
+  graphics: Phaser.GameObjects.Graphics,
+  layout: ReturnType<typeof createBoardLayout>,
+  accentColor = palette.board.topHighlight
+): void => {
   const safeTileSize = Math.max(2, Math.round(layout.tileSize));
   const width = Math.max(16, Math.round(layout.boardWidth));
   const height = Math.max(16, Math.round(layout.boardHeight));
@@ -1821,15 +2659,74 @@ const drawBlueprintAccent = (graphics: Phaser.GameObjects.Graphics, layout: Retu
   const inset = Math.max(2, Math.round(safeTileSize * 0.45));
 
   graphics.clear();
-  graphics.lineStyle(1, palette.board.topHighlight, 0.12);
+  graphics.lineStyle(1, accentColor, 0.12);
   for (let x = step; x < width; x += step) {
     graphics.lineBetween(x + 0.5, inset, x + 0.5, height - inset);
   }
   for (let y = step; y < height; y += step) {
     graphics.lineBetween(inset, y + 0.5, width - inset, y + 0.5);
   }
-  graphics.lineStyle(1, palette.board.innerStroke, 0.22);
+  graphics.lineStyle(1, accentColor, 0.22);
   graphics.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
+};
+
+const drawThemeMotifs = (
+  themeProfile: AmbientThemeProfile,
+  primary: Phaser.GameObjects.Graphics,
+  secondary: Phaser.GameObjects.Graphics,
+  layout: ReturnType<typeof createBoardLayout>
+): void => {
+  const width = Math.max(24, Math.round(layout.boardWidth));
+  const height = Math.max(24, Math.round(layout.boardHeight));
+  const inset = Math.max(4, Math.round(layout.tileSize * 1.1));
+  const edge = Math.max(2, Math.round(layout.tileSize * 0.75));
+
+  primary.clear();
+  secondary.clear();
+
+  switch (themeProfile.id) {
+    case 'noir':
+      primary.fillStyle(themeProfile.palette.board.shadow, 0.1);
+      primary.fillRect(-edge, height - Math.max(6, edge * 2), width + (edge * 2), Math.max(6, edge * 2));
+      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.2);
+      primary.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
+      secondary.lineStyle(1, themeProfile.palette.board.innerStroke, 0.14);
+      secondary.strokeRect(inset * 1.6 + 0.5, inset * 1.2 + 0.5, width - Math.round(inset * 3.2) - 1, height - Math.round(inset * 2.4) - 1);
+      break;
+    case 'ember':
+      primary.lineStyle(Math.max(2, Math.round(layout.tileSize * 0.08)), themeProfile.palette.board.goal, 0.12);
+      primary.strokeRect(edge + 0.5, edge + 0.5, width - (edge * 2) - 1, height - (edge * 2) - 1);
+      secondary.fillStyle(themeProfile.palette.board.trailGlow, 0.08);
+      secondary.fillRect(edge, edge, width - (edge * 2), Math.max(4, edge));
+      secondary.fillRect(edge, height - Math.max(4, edge * 2), width - (edge * 2), Math.max(4, edge));
+      break;
+    case 'aurora':
+      primary.lineStyle(1, themeProfile.palette.board.trailGlow, 0.16);
+      primary.lineBetween(inset, height * 0.2, width - inset, height * 0.32);
+      primary.lineBetween(inset, height * 0.58, width - inset, height * 0.42);
+      primary.lineBetween(inset, height * 0.82, width - inset, height * 0.7);
+      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.08);
+      secondary.fillRect(edge, Math.round(height * 0.24), width - (edge * 2), Math.max(4, Math.round(height * 0.08)));
+      break;
+    case 'vellum':
+      primary.lineStyle(1, themeProfile.palette.board.topHighlight, 0.12);
+      for (let x = inset; x < width - inset; x += Math.max(8, Math.round(layout.tileSize * 3))) {
+        primary.lineBetween(x + 0.5, inset, x + 0.5, height - inset);
+      }
+      for (let y = inset; y < height - inset; y += Math.max(8, Math.round(layout.tileSize * 3))) {
+        primary.lineBetween(inset, y + 0.5, width - inset, y + 0.5);
+      }
+      secondary.lineStyle(1, themeProfile.palette.board.shadow, 0.12);
+      secondary.strokeRect(edge + 0.5, edge + 0.5, width - (edge * 2) - 1, height - (edge * 2) - 1);
+      break;
+    case 'monolith':
+    default:
+      primary.fillStyle(themeProfile.palette.board.shadow, 0.16);
+      primary.fillRect(-edge, edge, width + (edge * 2), height + edge);
+      secondary.lineStyle(1, themeProfile.palette.board.outerStroke, 0.18);
+      secondary.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
+      break;
+  }
 };
 
 const resolveSignedRange = (value: number, range: number): number => (

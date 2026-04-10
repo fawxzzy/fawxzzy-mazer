@@ -5,12 +5,15 @@ export type PresentationChrome = 'full' | 'minimal' | 'none';
 export type PresentationMood = 'auto' | 'solve' | 'scan' | 'blueprint';
 export type PresentationTitleMode = 'show' | 'hide';
 export type PresentationDeploymentProfile = 'tv' | 'obs' | 'mobile';
+export type PresentationTheme = 'auto' | 'noir' | 'ember' | 'aurora' | 'vellum' | 'monolith';
+export type PresentationThemeFamily = Exclude<PresentationTheme, 'auto'>;
 
 export interface PresentationLaunchConfig {
   presentation: AmbientPresentationVariant;
   chrome: PresentationChrome;
   mood: PresentationMood;
   title: PresentationTitleMode;
+  theme: PresentationTheme;
   profile?: PresentationDeploymentProfile;
   seed?: number;
   size?: MazeSize;
@@ -21,12 +24,21 @@ export const DEFAULT_PRESENTATION_VARIANT: AmbientPresentationVariant = 'title';
 export const DEFAULT_PRESENTATION_CHROME: PresentationChrome = 'full';
 export const DEFAULT_PRESENTATION_MOOD: PresentationMood = 'auto';
 export const DEFAULT_PRESENTATION_TITLE_MODE: PresentationTitleMode = 'show';
+export const DEFAULT_PRESENTATION_THEME: PresentationTheme = 'auto';
+export const PRESENTATION_THEME_FAMILIES: readonly PresentationThemeFamily[] = [
+  'noir',
+  'ember',
+  'aurora',
+  'vellum',
+  'monolith'
+] as const;
 
 export const DEFAULT_PRESENTATION_LAUNCH_CONFIG: PresentationLaunchConfig = {
   presentation: DEFAULT_PRESENTATION_VARIANT,
   chrome: DEFAULT_PRESENTATION_CHROME,
   mood: DEFAULT_PRESENTATION_MOOD,
-  title: DEFAULT_PRESENTATION_TITLE_MODE
+  title: DEFAULT_PRESENTATION_TITLE_MODE,
+  theme: DEFAULT_PRESENTATION_THEME
 };
 
 const PRESENTATION_QUERY_KEYS = {
@@ -34,6 +46,7 @@ const PRESENTATION_QUERY_KEYS = {
   presentation: 'presentation',
   chrome: 'chrome',
   mood: 'mood',
+  theme: 'theme',
   seed: 'seed',
   size: 'size',
   difficulty: 'difficulty',
@@ -58,6 +71,23 @@ export const isPresentationChrome = (value: string | null | undefined): value is
 
 export const isPresentationMood = (value: string | null | undefined): value is PresentationMood => (
   value === 'auto' || value === 'solve' || value === 'scan' || value === 'blueprint'
+);
+
+export const isPresentationTheme = (value: string | null | undefined): value is PresentationTheme => (
+  value === 'auto'
+  || value === 'noir'
+  || value === 'ember'
+  || value === 'aurora'
+  || value === 'vellum'
+  || value === 'monolith'
+);
+
+export const isPresentationThemeFamily = (value: string | null | undefined): value is PresentationThemeFamily => (
+  value === 'noir'
+  || value === 'ember'
+  || value === 'aurora'
+  || value === 'vellum'
+  || value === 'monolith'
 );
 
 export const isPresentationTitleMode = (value: string | null | undefined): value is PresentationTitleMode => (
@@ -96,6 +126,11 @@ export const sanitizePresentationChrome = (value: unknown): PresentationChrome =
 export const sanitizePresentationMood = (value: unknown): PresentationMood => {
   const normalized = normalizeString(value);
   return isPresentationMood(normalized) ? normalized : DEFAULT_PRESENTATION_MOOD;
+};
+
+export const sanitizePresentationTheme = (value: unknown): PresentationTheme => {
+  const normalized = normalizeString(value);
+  return isPresentationTheme(normalized) ? normalized : DEFAULT_PRESENTATION_THEME;
 };
 
 export const sanitizePresentationTitleMode = (value: unknown): PresentationTitleMode => {
@@ -143,6 +178,7 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
     chrome: sanitizePresentationChrome(candidate.chrome),
     mood: sanitizePresentationMood(candidate.mood),
     title: sanitizePresentationTitleMode(candidate.title),
+    theme: sanitizePresentationTheme(candidate.theme),
     ...(profile ? { profile } : {}),
     ...(seed !== undefined ? { seed } : {}),
     ...(size ? { size } : {}),
@@ -156,6 +192,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     chrome: 'minimal',
     mood: DEFAULT_PRESENTATION_MOOD,
     title: 'hide',
+    theme: DEFAULT_PRESENTATION_THEME,
     profile: 'tv'
   },
   obs: {
@@ -163,6 +200,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     chrome: 'minimal',
     mood: DEFAULT_PRESENTATION_MOOD,
     title: 'hide',
+    theme: DEFAULT_PRESENTATION_THEME,
     profile: 'obs'
   },
   mobile: {
@@ -170,6 +208,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     chrome: DEFAULT_PRESENTATION_CHROME,
     mood: DEFAULT_PRESENTATION_MOOD,
     title: DEFAULT_PRESENTATION_TITLE_MODE,
+    theme: DEFAULT_PRESENTATION_THEME,
     profile: 'mobile'
   }
 };
@@ -212,6 +251,7 @@ export const resolveBootPresentationConfig = (
     const presentation = params.get(PRESENTATION_QUERY_KEYS.presentation);
     const chrome = params.get(PRESENTATION_QUERY_KEYS.chrome);
     const mood = params.get(PRESENTATION_QUERY_KEYS.mood);
+    const theme = params.get(PRESENTATION_QUERY_KEYS.theme);
     const title = params.get(PRESENTATION_QUERY_KEYS.title);
     const seed = params.get(PRESENTATION_QUERY_KEYS.seed);
     const size = params.get(PRESENTATION_QUERY_KEYS.size);
@@ -225,6 +265,9 @@ export const resolveBootPresentationConfig = (
     }
     if (mood !== null) {
       resolved.mood = sanitizePresentationMood(mood);
+    }
+    if (theme !== null) {
+      resolved.theme = sanitizePresentationTheme(theme);
     }
     if (title !== null) {
       resolved.title = sanitizePresentationTitleMode(title);
