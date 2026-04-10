@@ -16,11 +16,18 @@ vi.mock('phaser', () => ({
 let BootScene: typeof import('../../src/scenes/BootScene').BootScene;
 let phaserConfig: typeof import('../../src/boot/phaserConfig').phaserConfig;
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
+let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
+let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
+let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
+let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
+let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
 
 beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
-  ({ resolveMenuDemoCycle } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence } = await import('../../src/scenes/MenuScene'));
+  ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
+  ({ legacyTuning } = await import('../../src/config/tuning'));
 });
 
 describe('demo-only build', () => {
@@ -41,31 +48,95 @@ describe('demo-only build', () => {
     expect((phaserConfig.scene as Array<{ name?: string }>).map((scene) => scene.name)).toEqual(['BootScene', 'MenuScene']);
   });
 
-  test('demo cycle stays bounded while varying size, difficulty, and pacing', () => {
+  test('demo cycle stays bounded while varying size, difficulty, mood, and pacing', () => {
     const seenDifficulties = new Set<string>();
+    const seenMoods = new Set<string>();
     const seenSizes = new Set<string>();
     const seenPacing = new Set<string>();
 
     for (let cycle = 0; cycle < 32; cycle += 1) {
       const step = resolveMenuDemoCycle(9001, cycle);
       seenDifficulties.add(step.difficulty);
+      seenMoods.add(step.mood);
       seenSizes.add(step.size);
       seenPacing.add(JSON.stringify(step.pacing));
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
+      expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
-      expect(step.pacing.exploreStepMs).toBeGreaterThanOrEqual(-8);
-      expect(step.pacing.exploreStepMs).toBeLessThanOrEqual(7);
-      expect(step.pacing.goalHoldMs).toBeGreaterThanOrEqual(0);
-      expect(step.pacing.goalHoldMs).toBeLessThanOrEqual(86);
-      expect(step.pacing.resetHoldMs).toBeGreaterThanOrEqual(0);
-      expect(step.pacing.resetHoldMs).toBeLessThanOrEqual(28);
-      expect(step.pacing.spawnHoldMs).toBeGreaterThanOrEqual(0);
-      expect(step.pacing.spawnHoldMs).toBeLessThanOrEqual(18);
+      expect(step.pacing.exploreStepMs).toBeGreaterThanOrEqual(-10);
+      expect(step.pacing.exploreStepMs).toBeLessThanOrEqual(8);
+      expect(step.pacing.goalHoldMs).toBeGreaterThanOrEqual(16);
+      expect(step.pacing.goalHoldMs).toBeLessThanOrEqual(96);
+      expect(step.pacing.resetHoldMs).toBeGreaterThanOrEqual(12);
+      expect(step.pacing.resetHoldMs).toBeLessThanOrEqual(44);
+      expect(step.pacing.spawnHoldMs).toBeGreaterThanOrEqual(12);
+      expect(step.pacing.spawnHoldMs).toBeLessThanOrEqual(34);
     }
 
     expect(seenDifficulties.size).toBeGreaterThan(1);
+    expect(seenMoods.size).toBe(3);
     expect(seenSizes.size).toBeGreaterThan(1);
     expect(seenPacing.size).toBeGreaterThan(1);
+  });
+
+  test('demo presentation sequence stays bounded across intro, reveal, arrival, and fade', () => {
+    const cycle = resolveMenuDemoCycle(9001, 4);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 9001,
+      size: cycle.size,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, cycle.difficulty, 0, 1);
+    const config = {
+      ...legacyTuning.demo,
+      cadence: {
+        ...legacyTuning.demo.cadence,
+        spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
+        exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
+        goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
+        resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
+      }
+    };
+    const episode = resolved.episode;
+    const traverseMs = (episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs;
+    const checkpoints = [
+      { elapsedMs: Math.max(1, Math.floor(config.cadence.spawnHoldMs * 0.5)), sequence: 'intro' },
+      { elapsedMs: config.cadence.spawnHoldMs + Math.max(1, Math.floor(traverseMs * 0.35)), sequence: 'reveal' },
+      { elapsedMs: config.cadence.spawnHoldMs + traverseMs + Math.max(1, Math.floor(config.cadence.goalHoldMs * 0.5)), sequence: 'arrival' },
+      { elapsedMs: config.cadence.spawnHoldMs + traverseMs + config.cadence.goalHoldMs + Math.max(1, Math.floor(config.cadence.resetHoldMs * 0.5)), sequence: 'fade' }
+    ] as const;
+
+    for (const checkpoint of checkpoints) {
+      const sequenceState = resolveMenuDemoSequence(episode, checkpoint.elapsedMs, config);
+      const presentation = resolveMenuDemoPresentation(episode, cycle, checkpoint.elapsedMs, config);
+
+      expect(sequenceState.sequence).toBe(checkpoint.sequence);
+      expect(presentation.sequence).toBe(checkpoint.sequence);
+      expect(['solve', 'scan', 'blueprint']).toContain(presentation.mood);
+      expect(presentation.solutionPathAlpha).toBeGreaterThanOrEqual(0.14);
+      expect(presentation.solutionPathAlpha).toBeLessThanOrEqual(1);
+      expect(presentation.trailWindow).toBeGreaterThanOrEqual(4);
+      expect(presentation.trailWindow).toBeLessThanOrEqual(38);
+      expect(presentation.boardVeilAlpha).toBeGreaterThanOrEqual(0);
+      expect(presentation.boardVeilAlpha).toBeLessThanOrEqual(0.24);
+      expect(presentation.boardAuraAlpha).toBeGreaterThanOrEqual(0.06);
+      expect(presentation.boardAuraAlpha).toBeLessThanOrEqual(0.22);
+      expect(presentation.boardHaloAlpha).toBeGreaterThanOrEqual(0.018);
+      expect(presentation.boardHaloAlpha).toBeLessThanOrEqual(0.16);
+      expect(presentation.boardShadeAlpha).toBeGreaterThanOrEqual(0.012);
+      expect(presentation.boardShadeAlpha).toBeLessThanOrEqual(0.18);
+      expect(presentation.boardAuraScale).toBeGreaterThanOrEqual(1);
+      expect(presentation.boardAuraScale).toBeLessThanOrEqual(1.05);
+      expect(presentation.boardHaloScale).toBeGreaterThanOrEqual(1);
+      expect(presentation.boardHaloScale).toBeLessThanOrEqual(1.03);
+      expect(presentation.metadataAlpha).toBeGreaterThanOrEqual(0.18);
+      expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
+      expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
+      expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
+    }
+
+    disposeMazeEpisode(episode);
   });
 
   test('play, options, and win scene files are removed and no gameplay CTA remains in the menu scene', () => {
@@ -91,5 +162,6 @@ describe('demo-only build', () => {
     expect(menuSceneSource).not.toContain('Play Again');
     expect(menuSceneSource).not.toContain('Same Seed');
     expect(menuSceneSource).not.toContain('Next Maze');
+    expect(menuSceneSource).not.toContain('PauseScene');
   });
 });

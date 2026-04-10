@@ -23,6 +23,7 @@ interface BoardLayoutOptions {
 
 interface BaseRenderOptions {
   showSolutionPath?: boolean;
+  solutionPathAlpha?: number;
 }
 
 export interface BoardCueOptions {
@@ -286,7 +287,12 @@ export class BoardRenderer {
   public drawBase(options: BaseRenderOptions = {}): void {
     const { tileSize } = this.layout;
     const bevel = Math.max(1, Math.round(tileSize * legacyTuning.board.tile.bevelRatio));
-    const showSolutionPath = options.showSolutionPath === true;
+    const solutionPathAlpha = Phaser.Math.Clamp(
+      options.solutionPathAlpha ?? (options.showSolutionPath === true ? 1 : 0),
+      0,
+      1
+    );
+    const showSolutionPath = solutionPathAlpha > 0;
     this.base.clear();
     this.grid.clear();
 
@@ -308,14 +314,14 @@ export class BoardRenderer {
 
         if (showSolutionPath && isTilePath(this.episode.raster.tiles, index)) {
           const hintInset = tileSize * 0.22;
-          this.base.fillStyle(palette.board.trailGlow, 0.18);
+          this.base.fillStyle(palette.board.trailGlow, 0.18 * solutionPathAlpha);
           this.base.fillRect(
             x + hintInset,
             y + hintInset,
             tileSize - (hintInset * 2),
             tileSize - (hintInset * 2)
           );
-          this.grid.lineStyle(Math.max(1, tileSize * 0.03), palette.board.trailCore, 0.28);
+          this.grid.lineStyle(Math.max(1, tileSize * 0.03), palette.board.trailCore, 0.28 * solutionPathAlpha);
           this.grid.strokeRect(
             x + hintInset + 0.5,
             y + hintInset + 0.5,

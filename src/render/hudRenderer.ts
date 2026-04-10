@@ -1,11 +1,21 @@
 import Phaser from 'phaser';
-import type { DemoWalkerCue } from '../domain/ai';
-import { getMazeSizeLabel, type MazeEpisode } from '../domain/maze';
+import type { MazeEpisode } from '../domain/maze';
+import { getMazeSizeLabel } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
+import type { BoardLayout } from './boardRenderer';
 import { palette } from './palette';
 
+type DemoMood = 'solve' | 'scan' | 'blueprint';
+type DemoSequence = 'intro' | 'reveal' | 'arrival' | 'fade';
+
 interface DemoStatusHandle {
-  setState(cue: DemoWalkerCue, episode: MazeEpisode): void;
+  setState(
+    episode: MazeEpisode,
+    mood: DemoMood,
+    sequence: DemoSequence,
+    metadataAlpha: number,
+    flashAlpha: number
+  ): void;
   destroy(): void;
 }
 
@@ -14,89 +24,103 @@ interface HudRenderOptions {
 }
 
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
-const formatDifficultyLabel = (episode: MazeEpisode): string => `${getMazeSizeLabel(episode.size).toUpperCase()} / ${episode.difficulty.toUpperCase()}`;
 
-const demoCueLabels: Record<DemoWalkerCue, string> = {
-  spawn: 'LIVE DEMO: SCANNING',
-  anticipate: 'LIVE DEMO: LOCKING IN',
-  explore: 'LIVE DEMO: EXPLORING',
-  'dead-end': 'LIVE DEMO: DEAD END',
-  backtrack: 'LIVE DEMO: BACKTRACK',
-  reacquire: 'LIVE DEMO: NEW ROUTE',
-  goal: 'LIVE DEMO: GOAL LOCK',
-  reset: 'LIVE DEMO: RESETTING'
+const moodLabels: Record<DemoMood, string> = {
+  solve: 'SOLVE MODE',
+  scan: 'SCAN MODE',
+  blueprint: 'BLUEPRINT MODE'
 };
 
-const demoCueColors: Record<DemoWalkerCue, number> = {
-  spawn: palette.hud.accent,
-  anticipate: palette.board.topHighlight,
-  explore: palette.hud.timerText,
-  'dead-end': palette.hud.goalText,
-  backtrack: palette.board.topHighlight,
-  reacquire: palette.hud.accent,
-  goal: palette.hud.goalText,
-  reset: palette.hud.hintText
+const sequenceLabels: Record<DemoSequence, string> = {
+  intro: 'SETTLING',
+  reveal: 'REVEAL',
+  arrival: 'ARRIVAL',
+  fade: 'REGENERATE'
 };
 
 export const createDemoStatusHud = (
   scene: Phaser.Scene,
-  x: number,
-  y: number,
-  maxWidth: number,
+  layout: BoardLayout,
   options: HudRenderOptions = {}
 ): DemoStatusHandle => {
   const reducedMotion = options.reducedMotion === true;
   const compact = scene.scale.width <= legacyTuning.menu.layout.narrowBreakpoint;
-  const width = Phaser.Math.Clamp(maxWidth * legacyTuning.menu.status.maxWidthRatio, legacyTuning.menu.status.minWidthPx, maxWidth);
-  const height = compact ? legacyTuning.menu.status.compactHeightPx + 10 : legacyTuning.menu.status.heightPx + 12;
-  let lastCue: DemoWalkerCue = 'spawn';
+  const leftX = layout.boardX + 6;
+  const rightX = layout.boardX + layout.boardWidth - 6;
+  const baselineY = layout.boardY + layout.boardHeight + (compact ? 12 : 14);
+  const flashX = layout.boardX + layout.boardWidth - 4;
+  const flashY = layout.boardY + (compact ? 8 : 10);
+  let lastModeLabel = '';
   let lastMeta = '';
+  let lastFlash = '';
 
-  const shadow = scene.add.rectangle(x, y + 3, width + 8, height + 6, palette.hud.shadow, 0.28).setDepth(10);
-  const plate = scene.add.rectangle(x, y, width, height, palette.hud.panel, 0.62).setStrokeStyle(1, palette.hud.panelStroke, 0.44).setDepth(10);
-  const text = scene.add.text(x, y - (compact ? 6 : 7), demoCueLabels.spawn, {
-    color: toCssColor(demoCueColors.spawn),
+  const rail = scene.add.rectangle(
+    layout.boardX + (layout.boardWidth / 2),
+    baselineY - (compact ? 10 : 11),
+    layout.boardWidth,
+    1,
+    palette.hud.panelStroke,
+    0.2
+  ).setOrigin(0.5).setDepth(10);
+  const modeText = scene.add.text(leftX, baselineY, '', {
+    color: toCssColor(palette.hud.accent),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? legacyTuning.menu.status.compactFontPx : legacyTuning.menu.status.fontPx}px`,
+    fontSize: `${compact ? 9 : 10}px`,
     fontStyle: 'bold'
-  }).setOrigin(0.5).setDepth(11).setAlpha(0.86);
-  const meta = scene.add.text(x, y + (compact ? 5 : 6), '', {
+  }).setOrigin(0, 0.5).setDepth(11).setAlpha(0.58);
+  const metaText = scene.add.text(rightX, baselineY, '', {
     color: toCssColor(palette.hud.hintText),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? Math.max(9, legacyTuning.menu.status.compactFontPx - 1) : legacyTuning.menu.status.fontPx - 1}px`
-  }).setOrigin(0.5).setDepth(11).setAlpha(0.74);
+    fontSize: `${compact ? 9 : 10}px`
+  }).setOrigin(1, 0.5).setDepth(11).setAlpha(0.54);
+  const flashText = scene.add.text(flashX, flashY, '', {
+    color: toCssColor(palette.board.topHighlight),
+    fontFamily: '"Courier New", monospace',
+    fontSize: `${compact ? 9 : 10}px`,
+    fontStyle: 'bold'
+  }).setOrigin(1, 0).setDepth(11).setAlpha(0);
 
   const pulseTween = reducedMotion ? undefined : scene.tweens.add({
-    targets: [plate, text, meta],
-    alpha: { from: 0.78, to: 1 },
-    duration: legacyTuning.menu.status.pulseDurationMs,
+    targets: rail,
+    alpha: { from: 0.12, to: 0.24 },
+    duration: 2600,
     yoyo: true,
     repeat: -1,
     ease: 'Sine.easeInOut'
   });
 
   return {
-    setState(cue: DemoWalkerCue, episode: MazeEpisode): void {
-      if (cue !== lastCue) {
-        lastCue = cue;
-        text.setText(demoCueLabels[cue]);
-        text.setColor(toCssColor(demoCueColors[cue]));
-        plate.setStrokeStyle(1, demoCueColors[cue], 0.44);
-        shadow.setFillStyle(palette.hud.shadow, cue === 'goal' ? 0.34 : 0.28);
+    setState(episode, mood, sequence, metadataAlpha, flashAlpha): void {
+      const nextModeLabel = `${moodLabels[mood]} / ${sequenceLabels[sequence]}`;
+      if (nextModeLabel !== lastModeLabel) {
+        lastModeLabel = nextModeLabel;
+        modeText.setText(nextModeLabel);
       }
 
-      const nextMeta = `${formatDifficultyLabel(episode)} / #${episode.seed}`;
+      const nextMeta = `${getMazeSizeLabel(episode.size).toUpperCase()} / ${episode.difficulty.toUpperCase()} / #${episode.seed}`;
       if (nextMeta !== lastMeta) {
         lastMeta = nextMeta;
-        meta.setText(nextMeta);
+        metaText.setText(nextMeta);
       }
+
+      const nextFlash = `${episode.raster.width}x${episode.raster.height} / ${episode.difficulty.toUpperCase()} / #${episode.seed}`;
+      if (nextFlash !== lastFlash) {
+        lastFlash = nextFlash;
+        flashText.setText(nextFlash);
+      }
+
+      const alpha = Phaser.Math.Clamp(metadataAlpha, 0.18, 0.82);
+      rail.setAlpha(alpha * 0.34);
+      modeText.setAlpha(alpha);
+      metaText.setAlpha(alpha * 0.92);
+      flashText.setAlpha(mood === 'blueprint' ? Phaser.Math.Clamp(flashAlpha, 0, 0.84) : 0);
     },
     destroy(): void {
       pulseTween?.remove();
-      shadow.destroy();
-      plate.destroy();
-      text.destroy();
-      meta.destroy();
+      rail.destroy();
+      modeText.destroy();
+      metaText.destroy();
+      flashText.destroy();
     }
   };
 };
