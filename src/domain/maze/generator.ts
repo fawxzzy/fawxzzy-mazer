@@ -16,6 +16,8 @@ import type {
   MazeConfig,
   MazeDifficulty,
   MazeEpisode,
+  MazeFamily,
+  MazeFamilyMode,
   MazeGenerationState,
   MazeMetrics,
   MazePresentationPreset,
@@ -70,6 +72,16 @@ interface DifficultyTuningProfile {
   readonly maxAttempts: number;
 }
 
+interface MazeFamilyTuningProfile {
+  readonly key: MazeFamily;
+  readonly braidScale: number;
+  readonly braidOffset: number;
+  readonly shortcutScale: number;
+  readonly checkpointScale: number;
+  readonly minSolutionFactorBias: number;
+  readonly maxAttemptsBias: number;
+}
+
 export interface DifficultyResolvedMaze {
   episode: MazeEpisode;
   seed: number;
@@ -80,6 +92,15 @@ const PRESENTATION_PRESET_ORDER: readonly MazePresentationPreset[] = [
   'braided',
   'framed',
   'blueprint-rare'
+] as const;
+
+export const MAZE_FAMILY_ORDER: readonly MazeFamily[] = [
+  'classic',
+  'braided',
+  'sparse',
+  'dense',
+  'framed',
+  'split-flow'
 ] as const;
 
 const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
@@ -167,6 +188,63 @@ const DIFFICULTY_TUNING: Record<MazeDifficulty, DifficultyTuningProfile> = {
   }
 };
 
+const FAMILY_TUNING: Record<MazeFamily, MazeFamilyTuningProfile> = {
+  classic: {
+    key: 'classic',
+    braidScale: 0.94,
+    braidOffset: 0,
+    shortcutScale: 0.96,
+    checkpointScale: 1,
+    minSolutionFactorBias: 0,
+    maxAttemptsBias: 0
+  },
+  braided: {
+    key: 'braided',
+    braidScale: 1.52,
+    braidOffset: 0.08,
+    shortcutScale: 1.32,
+    checkpointScale: 0.94,
+    minSolutionFactorBias: -0.01,
+    maxAttemptsBias: 8
+  },
+  sparse: {
+    key: 'sparse',
+    braidScale: 0.48,
+    braidOffset: 0.01,
+    shortcutScale: 0.7,
+    checkpointScale: 1.18,
+    minSolutionFactorBias: 0.045,
+    maxAttemptsBias: 12
+  },
+  dense: {
+    key: 'dense',
+    braidScale: 1.18,
+    braidOffset: 0.05,
+    shortcutScale: 1.18,
+    checkpointScale: 1.08,
+    minSolutionFactorBias: 0.03,
+    maxAttemptsBias: 10
+  },
+  framed: {
+    key: 'framed',
+    braidScale: 0.9,
+    braidOffset: 0.02,
+    shortcutScale: 0.88,
+    checkpointScale: 1.12,
+    minSolutionFactorBias: 0.028,
+    maxAttemptsBias: 10
+  },
+  'split-flow': {
+    key: 'split-flow',
+    braidScale: 0.96,
+    braidOffset: 0.03,
+    shortcutScale: 1.04,
+    checkpointScale: 1.16,
+    minSolutionFactorBias: 0.05,
+    maxAttemptsBias: 14
+  }
+};
+
 export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const seed = options.seed ?? Math.floor(Math.random() * 0x7fffffff);
   const seeded = options.rng ? null : createSeededRng(seed);
@@ -176,12 +254,21 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const maxAttempts = options.maxAttempts ?? 64;
   const size = normalizeMazeSize(options.size ?? inferMazeSizeFromScale(Math.max(options.width, options.height)));
   const presentationPreset = normalizeMazePresentationPreset(options.presentationPreset);
+  const family = resolveMazeFamily(
+    options.family,
+    seed,
+    size,
+    presentationPreset,
+    options.braidRatio ?? 0,
+    minSolutionLength
+  );
 
   const built = buildMazeCore({
     width: logicalSize,
     height: logicalSize,
     seed,
     braidRatio: clamp(options.braidRatio ?? 0, 0, 0.35),
+    family,
     presentationPreset,
     minSolutionLength,
     maxAttempts,
@@ -206,17 +293,35 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
   const baseScale = config.size ? resolveMazeSizeScale(size, config.scale) : config.scale;
   const variety = resolveMazeVarietyPreset(config);
   const presentationPreset = normalizeMazePresentationPreset(config.presentationPreset);
+  const family = resolveMazeFamily(
+    config.family,
+    config.seed,
+    size,
+    presentationPreset,
+    config.shortcutCountModifier,
+    config.minSolutionLength
+  );
+  const familyTuning = FAMILY_TUNING[family];
   const presentationFootprintPadding = resolvePresentationFootprintPadding(presentationPreset);
   const targetScale = Math.max(9, baseScale + variety.scaleDelta);
   const footprintTarget = Math.max(targetScale, baseScale + variety.footprintDelta + presentationFootprintPadding);
-  const braidRatio = clamp(
-    (config.shortcutCountModifier * variety.braidScale) + variety.braidOffset,
+  const adjustedShortcutModifier = clamp(
+    (config.shortcutCountModifier * familyTuning.shortcutScale) + familyTuning.braidOffset,
     0,
-    0.35
+    0.4
+  );
+  const adjustedCheckPointModifier = clamp(config.checkPointModifier * familyTuning.checkpointScale, 0, 1);
+  const braidRatio = clamp(
+    (adjustedShortcutModifier * variety.braidScale * familyTuning.braidScale) + variety.braidOffset,
+    0,
+    0.42
   );
   const minSolutionLength = config.minSolutionLength ?? Math.max(
     18,
-    Math.floor(((normalizeLogicalSize(targetScale) ** 2) * (variety.minSolutionFactor + (config.checkPointModifier * 0.08))))
+    Math.floor(
+      (normalizeLogicalSize(targetScale) ** 2)
+      * (variety.minSolutionFactor + familyTuning.minSolutionFactorBias + (adjustedCheckPointModifier * 0.08))
+    )
   );
   return buildMaze({
     width: targetScale,
@@ -224,13 +329,14 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
     size,
     seed: config.seed,
     braidRatio,
+    family,
     presentationPreset,
     minSolutionLength,
     footprint: {
       width: footprintTarget,
       height: footprintTarget
     },
-    maxAttempts: config.maxAttempts ?? 96,
+    maxAttempts: config.maxAttempts ?? (96 + familyTuning.maxAttemptsBias),
     includeCore: false
   });
 };
@@ -382,6 +488,8 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     accepted: acceptedCore && solution.found && passesRasterQualityGate(metrics, rasterMinSolutionLength),
     difficulty: difficultyResult.difficulty,
     difficultyScore: difficultyResult.score,
+    family: core.family,
+    placementStrategy: core.placementStrategy,
     presentationPreset: core.presentationPreset
   };
 };
@@ -560,6 +668,18 @@ export const normalizeMazeSize = (value: unknown): MazeSize => (
     : 'medium'
 );
 
+export const normalizeMazeFamilyMode = (value: unknown): MazeFamilyMode => (
+  typeof value === 'string' && (value === 'auto' || MAZE_FAMILY_ORDER.includes(value as MazeFamily))
+    ? value as MazeFamilyMode
+    : 'auto'
+);
+
+export const normalizeMazeFamily = (value: unknown): MazeFamily => (
+  typeof value === 'string' && MAZE_FAMILY_ORDER.includes(value as MazeFamily)
+    ? value as MazeFamily
+    : 'classic'
+);
+
 export const normalizeMazePresentationPreset = (value: unknown): MazePresentationPreset => (
   typeof value === 'string' && PRESENTATION_PRESET_ORDER.includes(value as MazePresentationPreset)
     ? value as MazePresentationPreset
@@ -571,6 +691,12 @@ export const resolveMazeSizeScale = (size: MazeSize, fallbackScale = SIZE_PRESET
 );
 
 export const getMazeSizeLabel = (size: MazeSize): string => SIZE_PRESET_BY_KEY[normalizeMazeSize(size)].label;
+
+export const getMazeFamilyLabel = (family: MazeFamily): string => (
+  family === 'split-flow'
+    ? 'Split Flow'
+    : family.charAt(0).toUpperCase() + family.slice(1)
+);
 
 const assignCanonicalDifficulty = (episode: MazeEpisode, difficulty: MazeDifficulty): MazeEpisode => {
   episode.difficulty = difficulty;
@@ -590,6 +716,30 @@ const inferMazeSizeFromScale = (scale: number): MazeSize => {
   }
 
   return bestSize;
+};
+
+const resolveMazeFamily = (
+  mode: MazeFamilyMode | undefined,
+  seed: number,
+  size: MazeSize,
+  presentationPreset: MazePresentationPreset,
+  varianceSignal: number,
+  solutionSignal: number | undefined
+): MazeFamily => {
+  const normalizedMode = normalizeMazeFamilyMode(mode);
+  if (normalizedMode !== 'auto') {
+    return normalizedMode;
+  }
+
+  const presetSalt = presentationPreset.charCodeAt(0) ^ presentationPreset.charCodeAt(presentationPreset.length - 1);
+  const sizeSalt = resolveMazeSizeScale(size) & 0xff;
+  const varianceSalt = Math.round(clamp(varianceSignal, 0, 1_000) * 100) & 0xffff;
+  const solutionSalt = (solutionSignal ?? 0) & 0xffff;
+  const mixed = Math.imul(
+    (seed >>> 0) ^ (sizeSalt << 7) ^ (varianceSalt << 13) ^ (solutionSalt << 3),
+    (0x9e3779b1 ^ presetSalt) >>> 0
+  ) >>> 0;
+  return MAZE_FAMILY_ORDER[mixed % MAZE_FAMILY_ORDER.length];
 };
 
 const resolvePresentationFootprintPadding = (preset: MazePresentationPreset): number => (

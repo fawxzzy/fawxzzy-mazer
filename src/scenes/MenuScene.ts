@@ -29,6 +29,7 @@ import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue }
 import {
   disposeMazeEpisode,
   generateMazeForDifficulty,
+  type MazeFamily,
   MAZE_SIZE_ORDER,
   type MazePresentationPreset,
   PatternEngine,
@@ -56,6 +57,7 @@ const PASSIVE_TAGLINES: Record<AmbientPresentationVariant, string> = {
 };
 const ROTATING_DIFFICULTIES: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
 const ROTATING_SIZES: readonly MazeSize[] = MAZE_SIZE_ORDER;
+const ROTATING_FAMILIES: readonly MazeFamily[] = ['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow'];
 const LOADING_PHASE_LABELS: Record<MenuDemoSequence, readonly string[]> = {
   intro: ['generating', 'routing'],
   reveal: ['solving', 'pattern sync'],
@@ -73,6 +75,7 @@ export interface MenuDemoCycle {
   size: MazeSize;
   mood: DemoMood;
   theme: PresentationThemeFamily;
+  family: MazeFamily;
   presentationPreset: MazePresentationPreset;
   entropy: {
     checkPointModifier: number;
@@ -192,6 +195,7 @@ interface MenuDemoCycleOverrides {
   size?: MazeSize;
   mood?: DemoMood;
   theme?: PresentationThemeFamily;
+  family?: MazeFamily;
 }
 
 interface ChromeProfile {
@@ -1433,6 +1437,7 @@ export class MenuScene extends Phaser.Scene {
       this.cameras.main.roundPixels = true;
       this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 220 : 280, 0, 0, 0);
       const themeLock = launchConfig.theme === 'auto' ? undefined : launchConfig.theme;
+      const familyLock = launchConfig.family && launchConfig.family !== 'auto' ? launchConfig.family : undefined;
       let demoSeed = launchConfig.seed ?? legacyTuning.demo.seed;
       let demoCycle = 0;
       let pendingCyclePlan: MenuDemoCycle | undefined;
@@ -1442,13 +1447,15 @@ export class MenuScene extends Phaser.Scene {
           difficulty: launchConfig.difficulty,
           size: launchConfig.size,
           mood: moodOverride,
-          theme: themeLock
+          theme: themeLock,
+          family: familyLock
         });
         pendingCyclePlan = cycle;
         const resolved = generateMazeForDifficulty({
           scale: legacyTuning.board.scale,
           seed: cycleSeed,
           size: cycle.size,
+          family: cycle.family,
           presentationPreset: cycle.presentationPreset,
           checkPointModifier: cycle.entropy.checkPointModifier,
           shortcutCountModifier: cycle.entropy.shortcutCountModifier
@@ -1467,7 +1474,8 @@ export class MenuScene extends Phaser.Scene {
         difficulty: launchConfig.difficulty,
         size: launchConfig.size,
         mood: moodOverride,
-        theme: themeLock
+        theme: themeLock,
+        family: familyLock
       });
       pendingCyclePlan = undefined;
       this.activeTheme = demoCyclePlan.theme;
@@ -2662,14 +2670,18 @@ export const resolveMenuDemoPresentation = (
 export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: MenuDemoCycleOverrides = {}): MenuDemoCycle => {
   const mood = overrides.mood ?? resolveCuratedMood(seed, cycle);
   const theme = overrides.theme ?? resolveCuratedTheme(seed, cycle);
-  const presetCycle = overrides.mood || overrides.size || overrides.difficulty ? 0 : cycle;
-  const entropy = resolveAmbientCycleEntropy(seed, cycle, mood, theme);
+  const familyCycle = overrides.family || overrides.mood || overrides.size || overrides.difficulty ? 0 : cycle;
+  const familySeed = (seed - cycle) >>> 0;
+  const family = overrides.family ?? resolveCuratedFamily(familySeed, familyCycle);
+  const presetCycle = familyCycle;
+  const entropy = resolveAmbientCycleEntropy(seed, cycle, mood, theme, family);
   return {
     difficulty: overrides.difficulty ?? pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: overrides.size ?? pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
     theme,
-    presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood, theme),
+    family,
+    presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood, theme, family),
     entropy,
     pacing: DEMO_PACING_PROFILES[mix(seed, cycle, 0x6d2b79f5) % DEMO_PACING_PROFILES.length]
   };
@@ -2679,10 +2691,26 @@ export const resolveMenuDemoPreset = (
   seed: number,
   cycle: number,
   mood: DemoMood,
-  theme?: PresentationThemeFamily
+  theme?: PresentationThemeFamily,
+  family?: MazeFamily
 ): MazePresentationPreset => {
   const safeTheme = theme ?? PRESENTATION_THEME_FAMILIES[mix(seed, cycle, 0x34c2ab51) % PRESENTATION_THEME_FAMILIES.length];
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ safeTheme.charCodeAt(0));
+  if (family === 'framed') {
+    return mixed % 4 === 0 ? 'classic' : 'framed';
+  }
+  if (family === 'braided') {
+    return mixed % 5 === 0 ? 'framed' : 'braided';
+  }
+  if (family === 'sparse') {
+    return mixed % 5 === 0 ? 'framed' : 'classic';
+  }
+  if (family === 'dense') {
+    return mixed % 7 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'braided' : 'framed';
+  }
+  if (family === 'split-flow') {
+    return mixed % 6 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'framed' : 'classic';
+  }
   switch (mood) {
     case 'scan':
       if (safeTheme === 'noir' || safeTheme === 'vellum') {
@@ -2707,21 +2735,40 @@ const resolveAmbientCycleEntropy = (
   seed: number,
   cycle: number,
   mood: DemoMood,
-  theme: PresentationThemeFamily
+  theme: PresentationThemeFamily,
+  family: MazeFamily
 ): MenuDemoCycle['entropy'] => {
   const moodSalt = mood.charCodeAt(0);
-  const themeSalt = theme.charCodeAt(0) ^ theme.charCodeAt(theme.length - 1);
+  const themeSalt = theme.charCodeAt(0) ^ theme.charCodeAt(theme.length - 1) ^ family.charCodeAt(0);
   const mixed = mix(seed ^ 0x6f23ad5b, cycle + moodSalt, 0x5a9dc15f ^ themeSalt);
   const blend = (mixed & 0xff) / 255;
   const drift = ((mixed >>> 8) & 0xff) / 255;
+  const familyCheckBias = family === 'sparse'
+    ? 0.06
+    : family === 'split-flow'
+      ? 0.08
+      : family === 'dense'
+        ? 0.04
+        : family === 'framed'
+          ? 0.03
+          : 0;
+  const familyShortcutBias = family === 'braided'
+    ? 0.06
+    : family === 'dense'
+      ? 0.04
+      : family === 'sparse'
+        ? -0.04
+        : family === 'framed'
+          ? -0.02
+          : 0;
   return {
     checkPointModifier: clamp(
-      legacyTuning.board.checkPointModifier + ((blend - 0.5) * 0.16) + (mood === 'blueprint' ? 0.05 : mood === 'scan' ? -0.03 : 0.02),
+      legacyTuning.board.checkPointModifier + ((blend - 0.5) * 0.16) + (mood === 'blueprint' ? 0.05 : mood === 'scan' ? -0.03 : 0.02) + familyCheckBias,
       0.16,
       0.56
     ),
     shortcutCountModifier: clamp(
-      legacyTuning.board.shortcutCountModifier.menu + ((drift - 0.5) * 0.12) + (theme === 'monolith' ? 0.03 : theme === 'vellum' ? -0.01 : 0),
+      legacyTuning.board.shortcutCountModifier.menu + ((drift - 0.5) * 0.12) + (theme === 'monolith' ? 0.03 : theme === 'vellum' ? -0.01 : 0) + familyShortcutBias,
       0.04,
       0.3
     )
@@ -2739,6 +2786,12 @@ const resolveCuratedTheme = (seed: number, cycle: number): PresentationThemeFami
   const block = Math.floor(cycle / CURATED_THEME_BAG.length);
   const slot = cycle % CURATED_THEME_BAG.length;
   return buildCuratedThemeBlock(seed, block)[slot] ?? PRESENTATION_THEME_FAMILIES[0];
+};
+
+const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
+  const block = Math.floor(cycle / ROTATING_FAMILIES.length);
+  const slot = cycle % ROTATING_FAMILIES.length;
+  return buildCuratedFamilyBlock(seed, block)[slot] ?? ROTATING_FAMILIES[0];
 };
 
 const buildCuratedThemeBlock = (seed: number, block: number): ThemePattern => {
@@ -2763,6 +2816,33 @@ const buildCuratedThemeBlock = (seed: number, block: number): ThemePattern => {
     const [nextTheme] = remaining.splice(pickIndex, 1);
     ordered.push(nextTheme);
     previous = nextTheme;
+  }
+
+  return ordered;
+};
+
+const buildCuratedFamilyBlock = (seed: number, block: number): readonly MazeFamily[] => {
+  const remaining = [...ROTATING_FAMILIES];
+  const ordered: MazeFamily[] = [];
+  let state = mix(seed ^ 0x15c37b4d, block, 0x15c37b4d) || 1;
+  let previous = block > 0
+    ? buildCuratedFamilyBlock(seed, block - 1)[ROTATING_FAMILIES.length - 1]
+    : undefined;
+
+  while (remaining.length > 0) {
+    state = lcg(state);
+    let pickIndex = state % remaining.length;
+
+    if (remaining[pickIndex] === previous) {
+      const alternateIndex = remaining.findIndex((family) => family !== previous);
+      if (alternateIndex >= 0) {
+        pickIndex = alternateIndex;
+      }
+    }
+
+    const [nextFamily] = remaining.splice(pickIndex, 1);
+    ordered.push(nextFamily);
+    previous = nextFamily;
   }
 
   return ordered;

@@ -158,6 +158,8 @@ describe('demo-only build', () => {
       difficulty: 'spicy',
       title: 'hide'
     });
+    expect(resolveBootPresentationConfig('?family=split-flow').family).toBe('split-flow');
+    expect(resolveBootPresentationConfig('?family=nope').family).toBe('auto');
     expect(resolveBootPresentationConfig('?profile=tv&title=show')).toEqual({
       presentation: 'ambient',
       chrome: 'minimal',
@@ -266,6 +268,7 @@ describe('demo-only build', () => {
     const seenMoods = new Set<string>();
     const seenSizes = new Set<string>();
     const seenPresets = new Set<string>();
+    const seenFamilies = new Set<string>();
     const seenThemes = new Set<string>();
     const seenPacing = new Set<string>();
     const moods: string[] = [];
@@ -282,6 +285,7 @@ describe('demo-only build', () => {
       seenMoods.add(step.mood);
       seenSizes.add(step.size);
       seenPresets.add(step.presentationPreset);
+      seenFamilies.add(step.family);
       seenThemes.add(step.theme);
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
@@ -294,6 +298,7 @@ describe('demo-only build', () => {
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
+      expect(['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow']).toContain(step.family);
       expect(['noir', 'ember', 'aurora', 'vellum', 'monolith']).toContain(step.theme);
       expect(['classic', 'braided', 'framed', 'blueprint-rare']).toContain(step.presentationPreset);
       expect(step.pacing.exploreStepMs).toBeGreaterThanOrEqual(-10);
@@ -309,6 +314,7 @@ describe('demo-only build', () => {
     expect(seenDifficulties.size).toBeGreaterThan(1);
     expect(seenMoods.size).toBe(3);
     expect(seenSizes.size).toBeGreaterThan(1);
+    expect(seenFamilies.size).toBe(6);
     expect(seenThemes.size).toBe(5);
     expect(seenPresets.has('classic')).toBe(true);
     expect(seenPresets.has('braided')).toBe(true);
@@ -326,38 +332,43 @@ describe('demo-only build', () => {
     }
   });
 
-  test('deterministic capture mode locks seed, size, difficulty, mood, and explicit theme for valid launch controls', { timeout: 15000 }, () => {
-    const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&theme=monolith&seed=4242&size=huge&difficulty=brutal&title=hide');
+  test('deterministic capture mode locks seed, size, difficulty, mood, theme, and family for valid launch controls', { timeout: 15000 }, () => {
+    const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&theme=monolith&family=framed&seed=4242&size=huge&difficulty=brutal&title=hide');
     expect(isDeterministicPresentationCapture(launchConfig)).toBe(true);
 
     const cycleA = resolveMenuDemoCycle(launchConfig.seed!, 0, {
       mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
       size: launchConfig.size,
       difficulty: launchConfig.difficulty,
-      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme
+      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme,
+      family: launchConfig.family === 'auto' || !launchConfig.family ? undefined : launchConfig.family
     });
     const cycleB = resolveMenuDemoCycle(launchConfig.seed!, 8, {
       mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
       size: launchConfig.size,
       difficulty: launchConfig.difficulty,
-      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme
+      theme: launchConfig.theme === 'auto' ? undefined : launchConfig.theme,
+      family: launchConfig.family === 'auto' || !launchConfig.family ? undefined : launchConfig.family
     });
 
     expect(cycleA.mood).toBe('blueprint');
     expect(cycleA.theme).toBe('monolith');
+    expect(cycleA.family).toBe('framed');
     expect(cycleA.size).toBe('huge');
     expect(cycleA.difficulty).toBe('brutal');
-    expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith'));
+    expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith', 'framed'));
     expect(cycleB.mood).toBe('blueprint');
     expect(cycleB.theme).toBe('monolith');
+    expect(cycleB.family).toBe('framed');
     expect(cycleB.size).toBe('huge');
     expect(cycleB.difficulty).toBe('brutal');
-    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith'));
+    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith', 'framed'));
 
     const first = generateMazeForDifficulty({
       scale: legacyTuning.board.scale,
       seed: launchConfig.seed!,
       size: launchConfig.size!,
+      family: cycleA.family,
       presentationPreset: cycleA.presentationPreset,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
@@ -366,6 +377,7 @@ describe('demo-only build', () => {
       scale: legacyTuning.board.scale,
       seed: launchConfig.seed!,
       size: launchConfig.size!,
+      family: cycleA.family,
       presentationPreset: cycleA.presentationPreset,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
@@ -375,6 +387,8 @@ describe('demo-only build', () => {
     expect(second.episode.seed).toBe(launchConfig.seed);
     expect(first.episode.difficulty).toBe('brutal');
     expect(second.episode.difficulty).toBe('brutal');
+    expect(first.episode.family).toBe('framed');
+    expect(second.episode.family).toBe('framed');
     expect(first.episode.presentationPreset).toBe(cycleA.presentationPreset);
     expect(second.episode.presentationPreset).toBe(cycleA.presentationPreset);
     expect(first.episode.raster.width).toBe(second.episode.raster.width);
@@ -391,6 +405,7 @@ describe('demo-only build', () => {
       scale: 50,
       seed: 9001,
       size: cycle.size,
+      family: cycle.family,
       checkPointModifier: 0.35,
       shortcutCountModifier: 0.13
     }, cycle.difficulty, 0, 1);
@@ -490,6 +505,7 @@ describe('demo-only build', () => {
       scale: 50,
       seed: 90210,
       size: cycle.size,
+      family: cycle.family,
       presentationPreset: cycle.presentationPreset,
       checkPointModifier: cycle.entropy.checkPointModifier,
       shortcutCountModifier: cycle.entropy.shortcutCountModifier
@@ -554,6 +570,7 @@ describe('demo-only build', () => {
         scale: 50,
         seed: 20260410 + cycleIndex,
         size: cycle.size,
+        family: cycle.family,
         presentationPreset: cycle.presentationPreset,
         checkPointModifier: 0.35,
         shortcutCountModifier: 0.13
@@ -715,6 +732,7 @@ describe('demo-only build', () => {
       scale: 50,
       seed: 4242,
       size: cycle.size,
+      family: cycle.family,
       checkPointModifier: 0.35,
       shortcutCountModifier: 0.13
     }, cycle.difficulty, 0, 1);

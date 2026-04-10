@@ -1,4 +1,4 @@
-import type { MazeDifficulty, MazeSize, PatternEngineMode } from '../domain/maze';
+import type { MazeDifficulty, MazeFamilyMode, MazeSize, PatternEngineMode } from '../domain/maze';
 
 export type AmbientPresentationVariant = 'title' | 'ambient' | 'loading';
 export type PresentationChrome = 'full' | 'minimal' | 'none';
@@ -18,6 +18,7 @@ export interface PresentationLaunchConfig {
   seed?: number;
   size?: MazeSize;
   difficulty?: MazeDifficulty;
+  family?: MazeFamilyMode;
 }
 
 export const DEFAULT_PRESENTATION_VARIANT: AmbientPresentationVariant = 'title';
@@ -50,6 +51,7 @@ const PRESENTATION_QUERY_KEYS = {
   seed: 'seed',
   size: 'size',
   difficulty: 'difficulty',
+  family: 'family',
   title: 'title'
 } as const;
 
@@ -102,6 +104,16 @@ export const isPresentationDifficulty = (value: string | null | undefined): valu
   value === 'chill' || value === 'standard' || value === 'spicy' || value === 'brutal'
 );
 
+export const isPresentationFamily = (value: string | null | undefined): value is MazeFamilyMode => (
+  value === 'auto'
+  || value === 'classic'
+  || value === 'braided'
+  || value === 'sparse'
+  || value === 'dense'
+  || value === 'framed'
+  || value === 'split-flow'
+);
+
 const normalizeString = (value: unknown): string | undefined => (
   typeof value === 'string'
     ? value.trim().toLowerCase()
@@ -148,6 +160,15 @@ export const sanitizePresentationDifficulty = (value: unknown): MazeDifficulty |
   return isPresentationDifficulty(normalized) ? normalized : undefined;
 };
 
+export const sanitizePresentationFamily = (value: unknown): MazeFamilyMode | undefined => {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return isPresentationFamily(normalized) ? normalized : 'auto';
+};
+
 export const sanitizePresentationSeed = (value: unknown): number | undefined => {
   const normalized = typeof value === 'number'
     ? value
@@ -172,6 +193,7 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
   const seed = sanitizePresentationSeed(candidate.seed);
   const size = sanitizePresentationSize(candidate.size);
   const difficulty = sanitizePresentationDifficulty(candidate.difficulty);
+  const family = sanitizePresentationFamily(candidate.family);
 
   return {
     presentation: sanitizePresentationVariant(candidate.presentation),
@@ -182,7 +204,8 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
     ...(profile ? { profile } : {}),
     ...(seed !== undefined ? { seed } : {}),
     ...(size ? { size } : {}),
-    ...(difficulty ? { difficulty } : {})
+    ...(difficulty ? { difficulty } : {}),
+    ...(family ? { family } : {})
   };
 };
 
@@ -256,6 +279,7 @@ export const resolveBootPresentationConfig = (
     const seed = params.get(PRESENTATION_QUERY_KEYS.seed);
     const size = params.get(PRESENTATION_QUERY_KEYS.size);
     const difficulty = params.get(PRESENTATION_QUERY_KEYS.difficulty);
+    const family = params.get(PRESENTATION_QUERY_KEYS.family);
 
     if (presentation !== null) {
       resolved.presentation = sanitizePresentationVariant(presentation);
@@ -295,6 +319,9 @@ export const resolveBootPresentationConfig = (
       } else {
         resolved.difficulty = sanitizedDifficulty;
       }
+    }
+    if (family !== null) {
+      resolved.family = sanitizePresentationFamily(family) ?? 'auto';
     }
 
     return sanitizePresentationLaunchConfig(resolved);

@@ -3,9 +3,12 @@ import {
   disposeMazeEpisode,
   generateMaze,
   generateMazeForDifficulty,
+  MAZE_FAMILY_ORDER,
   MAZE_SIZE_ORDER,
   type MazeDifficulty,
   type MazeEpisode,
+  type MazeFamily,
+  type MazePlacementStrategy,
   type MazePresentationPreset,
   type MazeSize
 } from '../../src/domain/maze';
@@ -26,6 +29,8 @@ type EpisodeSample = {
   size: MazeSize;
   difficulty: MazeDifficulty;
   mood: DemoMood;
+  family: MazeFamily;
+  placementStrategy: MazePlacementStrategy;
   preset: MazePresentationPreset;
   accepted: boolean;
   solutionLength: number;
@@ -69,15 +74,32 @@ type VarietyReport = {
     seedStart: number;
     seedStep: number;
     presetCounts: Record<string, number>;
+    familyCounts: Record<string, number>;
+    placementStrategyCounts: Record<string, number>;
     moodCounts: Record<string, number>;
     sizeCounts: Record<string, number>;
     difficultyCounts: Record<string, number>;
+    byFamily: Record<string, BucketSummary>;
     byPreset: Record<string, BucketSummary>;
     byMood: Record<string, BucketSummary>;
     bySize: Record<string, BucketSummary>;
     byDifficulty: Record<string, BucketSummary>;
     topShapeSignatures: Array<{ signature: string; count: number; share: number }>;
     uniqueShapeSignatureRate: number;
+  };
+  familyComparison: {
+    sampleCountPerFamily: number;
+    byFamily: Record<string, BucketSummary>;
+    deltaVsClassic: Record<string, {
+      solutionLength: number;
+      deadEnds: number;
+      junctions: number;
+      straightness: number;
+      coverage: number;
+      meanBranchingFactor: number;
+      corridorMean: number;
+      corridorP90: number;
+    }>;
   };
   presetComparison: {
     sampleCountPerPreset: number;
@@ -97,6 +119,7 @@ type VarietyReport = {
 
 const ROTATING_DIFFICULTIES: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
 const ROTATING_SIZES: readonly MazeSize[] = MAZE_SIZE_ORDER;
+const ROTATING_FAMILIES: readonly MazeFamily[] = MAZE_FAMILY_ORDER;
 const CURATED_MOOD_PATTERNS: readonly DemoMood[][] = [
   ['solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve', 'solve'],
   ['solve', 'solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve'],
@@ -147,8 +170,62 @@ const pickCuratedCycleValue = <T>(items: readonly T[], seed: number, cycle: numb
   return items[order[slot]];
 };
 
-const resolveMenuDemoPreset = (seed: number, cycle: number, mood: DemoMood): MazePresentationPreset => {
+const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
+  const block = Math.floor(cycle / ROTATING_FAMILIES.length);
+  const slot = cycle % ROTATING_FAMILIES.length;
+  return buildCuratedFamilyBlock(seed, block)[slot] ?? ROTATING_FAMILIES[0];
+};
+
+const buildCuratedFamilyBlock = (seed: number, block: number): readonly MazeFamily[] => {
+  const remaining = [...ROTATING_FAMILIES];
+  const ordered: MazeFamily[] = [];
+  let state = mix(seed ^ 0x15c37b4d, block, 0x15c37b4d) || 1;
+  let previous = block > 0
+    ? buildCuratedFamilyBlock(seed, block - 1)[ROTATING_FAMILIES.length - 1]
+    : undefined;
+
+  while (remaining.length > 0) {
+    state = lcg(state);
+    let pickIndex = state % remaining.length;
+
+    if (remaining[pickIndex] === previous) {
+      const alternateIndex = remaining.findIndex((family) => family !== previous);
+      if (alternateIndex >= 0) {
+        pickIndex = alternateIndex;
+      }
+    }
+
+    const [nextFamily] = remaining.splice(pickIndex, 1);
+    ordered.push(nextFamily);
+    previous = nextFamily;
+  }
+
+  return ordered;
+};
+
+const resolveMenuDemoPreset = (
+  seed: number,
+  cycle: number,
+  mood: DemoMood,
+  family?: MazeFamily
+): MazePresentationPreset => {
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
+  if (family === 'framed') {
+    return mixed % 4 === 0 ? 'classic' : 'framed';
+  }
+  if (family === 'braided') {
+    return mixed % 5 === 0 ? 'framed' : 'braided';
+  }
+  if (family === 'sparse') {
+    return mixed % 5 === 0 ? 'framed' : 'classic';
+  }
+  if (family === 'dense') {
+    return mixed % 7 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'braided' : 'framed';
+  }
+  if (family === 'split-flow') {
+    return mixed % 6 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'framed' : 'classic';
+  }
+
   switch (mood) {
     case 'scan':
       return (mixed & 1) === 0 ? 'framed' : 'braided';
@@ -164,19 +241,25 @@ const resolveAmbientCycle = (seed: number, cycle: number): {
   size: MazeSize;
   difficulty: MazeDifficulty;
   mood: DemoMood;
+  family: MazeFamily;
   presentationPreset: MazePresentationPreset;
 } => {
   const mood = resolveCuratedMood(seed, cycle);
+  const family = resolveCuratedFamily((seed - cycle) >>> 0, cycle);
   return {
     difficulty: pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
-    presentationPreset: resolveMenuDemoPreset(seed, cycle, mood)
+    family,
+    presentationPreset: resolveMenuDemoPreset(seed, cycle, mood, family)
   };
 };
 
 const main = (): void => {
   const ambientSamples: EpisodeSample[] = [];
+  const familySamples = new Map<MazeFamily, EpisodeSample[]>(
+    ROTATING_FAMILIES.map((family) => [family, [] as EpisodeSample[]])
+  );
   const presetSamples = new Map<MazePresentationPreset, EpisodeSample[]>(
     PRESENTATION_PRESETS.map((preset) => [preset, [] as EpisodeSample[]])
   );
@@ -189,6 +272,7 @@ const main = (): void => {
       scale: legacyTuning.board.scale,
       seed: cycleSeed,
       size: plan.size,
+      family: plan.family,
       presentationPreset: plan.presentationPreset,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
@@ -204,6 +288,23 @@ const main = (): void => {
   for (let seedOffset = 0; seedOffset < compareSeeds; seedOffset += 1) {
     const seed = seedStart + (seedOffset * 17);
     for (const size of MAZE_SIZE_ORDER) {
+      for (const family of ROTATING_FAMILIES) {
+        const episode = generateMaze({
+          scale: legacyTuning.board.scale,
+          seed,
+          size,
+          family,
+          presentationPreset: resolveMenuDemoPreset(seed, seedOffset, 'solve', family),
+          checkPointModifier: legacyTuning.board.checkPointModifier,
+          shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+        });
+
+        try {
+          familySamples.get(family)!.push(toEpisodeSample(episode, seedOffset, 'solve', seed));
+        } finally {
+          disposeMazeEpisode(episode);
+        }
+      }
       for (const preset of PRESENTATION_PRESETS) {
         const episode = generateMaze({
           scale: legacyTuning.board.scale,
@@ -223,6 +324,10 @@ const main = (): void => {
     }
   }
 
+  const familySummary = Object.fromEntries(
+    [...familySamples.entries()].map(([family, samples]) => [family, summarizeSamples(samples)])
+  );
+  const familyClassicBaseline = familySummary.classic;
   const presetSummary = Object.fromEntries(
     [...presetSamples.entries()].map(([preset, samples]) => [preset, summarizeSamples(samples)])
   );
@@ -234,15 +339,28 @@ const main = (): void => {
       seedStart,
       seedStep: legacyTuning.demo.behavior.regenerateSeedStep,
       presetCounts: countBy(ambientSamples, (sample) => sample.preset),
+      familyCounts: countBy(ambientSamples, (sample) => sample.family),
+      placementStrategyCounts: countBy(ambientSamples, (sample) => sample.placementStrategy),
       moodCounts: countBy(ambientSamples, (sample) => sample.mood),
       sizeCounts: countBy(ambientSamples, (sample) => sample.size),
       difficultyCounts: countBy(ambientSamples, (sample) => sample.difficulty),
+      byFamily: summarizeBuckets(ambientSamples, (sample) => sample.family),
       byPreset: summarizeBuckets(ambientSamples, (sample) => sample.preset),
       byMood: summarizeBuckets(ambientSamples, (sample) => sample.mood),
       bySize: summarizeBuckets(ambientSamples, (sample) => sample.size),
       byDifficulty: summarizeBuckets(ambientSamples, (sample) => sample.difficulty),
       topShapeSignatures: topSignatures(ambientSamples),
       uniqueShapeSignatureRate: uniqueRate(ambientSamples.map((sample) => sample.shapeSignature))
+    },
+    familyComparison: {
+      sampleCountPerFamily: compareSeeds * MAZE_SIZE_ORDER.length,
+      byFamily: familySummary,
+      deltaVsClassic: Object.fromEntries(
+        ROTATING_FAMILIES.map((family) => [
+          family,
+          summarizeDelta(familyClassicBaseline, familySummary[family])
+        ])
+      )
     },
     presetComparison: {
       sampleCountPerPreset: compareSeeds * MAZE_SIZE_ORDER.length,
@@ -273,6 +391,8 @@ const toEpisodeSample = (
     size: episode.size,
     difficulty: episode.difficulty,
     mood,
+    family: episode.family,
+    placementStrategy: episode.placementStrategy,
     preset: episode.presentationPreset,
     accepted: episode.accepted,
     solutionLength: episode.metrics.solutionLength,

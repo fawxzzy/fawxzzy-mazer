@@ -4,6 +4,14 @@ export type MazeDifficulty = 'chill' | 'standard' | 'spicy' | 'brutal';
 export type MazeSize = 'small' | 'medium' | 'large' | 'huge';
 export type MazeSolveStrategy = 'astar' | 'corridor-bidirectional';
 export type MazePresentationPreset = 'classic' | 'braided' | 'framed' | 'blueprint-rare';
+export type MazeFamily = 'classic' | 'braided' | 'sparse' | 'dense' | 'framed' | 'split-flow';
+export type MazeFamilyMode = MazeFamily | 'auto';
+export type MazePlacementStrategy =
+  | 'farthest-pair'
+  | 'edge-biased'
+  | 'corner-opposed'
+  | 'region-opposed'
+  | 'corridor-biased';
 
 export interface MazeCore {
   width: number;
@@ -13,6 +21,8 @@ export interface MazeCore {
   goal: Point;
   seed: number;
   braidRatio: number;
+  family: MazeFamily;
+  placementStrategy: MazePlacementStrategy;
   presentationPreset: MazePresentationPreset;
 }
 
@@ -22,6 +32,7 @@ export interface MazeConfig {
   checkPointModifier: number;
   shortcutCountModifier: number;
   size?: MazeSize;
+  family?: MazeFamilyMode;
   presentationPreset?: MazePresentationPreset;
   minSolutionLength?: number;
   maxAttempts?: number;
@@ -33,6 +44,7 @@ export interface MazeBuildOptions {
   size?: MazeSize;
   seed?: number;
   braidRatio?: number;
+  family?: MazeFamilyMode;
   presentationPreset?: MazePresentationPreset;
   minSolutionLength?: number;
   maxAttempts?: number;
@@ -83,6 +95,8 @@ export interface MazeEpisode {
   accepted: boolean;
   difficulty: MazeDifficulty;
   difficultyScore: number;
+  family: MazeFamily;
+  placementStrategy: MazePlacementStrategy;
   presentationPreset: MazePresentationPreset;
 }
 

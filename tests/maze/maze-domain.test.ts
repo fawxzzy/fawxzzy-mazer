@@ -66,6 +66,28 @@ describe('maze domain generation', () => {
     }
   }, 15000);
 
+  test('explicit family locks deterministic replay and survives difficulty targeting', () => {
+    const resolved = generateMazeForDifficulty({
+      ...defaultConfig,
+      seed: 24_024,
+      size: 'large',
+      family: 'split-flow'
+    }, 'spicy');
+    const replay = generateMazeForDifficulty({
+      ...defaultConfig,
+      seed: resolved.seed,
+      size: 'large',
+      family: 'split-flow'
+    }, 'spicy', 0, 1);
+
+    expect(resolved.episode.family).toBe('split-flow');
+    expect(replay.episode.family).toBe('split-flow');
+    expect(serializeMaze(resolved.episode)).toEqual(serializeMaze(replay.episode));
+
+    disposeMazeEpisode(replay.episode);
+    disposeMazeEpisode(resolved.episode);
+  }, 15000);
+
   test('preserves solver-backed maze invariants', () => {
     assertMazeInvariants(generateMaze(defaultConfig));
   });
@@ -125,6 +147,7 @@ describe('maze domain generation', () => {
       height: 50,
       seed: 77,
       braidRatio: 0.08,
+      family: 'braided',
       presentationPreset: 'braided',
       minSolutionLength: 20
     });
@@ -134,6 +157,7 @@ describe('maze domain generation', () => {
     expect(episode.raster.width).toBe(50);
     expect(episode.raster.height).toBe(50);
     expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
+    expect(episode.family).toBe('braided');
     expect(episode.presentationPreset).toBe('braided');
   });
 
@@ -178,6 +202,7 @@ describe('maze domain generation', () => {
     const maze = generateMaze({
       scale: 50,
       seed: 333,
+      family: 'braided',
       checkPointModifier: 0.35,
       shortcutCountModifier: 0.24
     });
@@ -185,6 +210,38 @@ describe('maze domain generation', () => {
     assertMazeInvariants(maze);
     expect(maze.shortcutsCreated).toBeGreaterThan(0);
     expect(maze.metrics.deadEnds).toBeGreaterThan(0);
+  });
+
+  test('family archetypes produce materially different topology signatures', () => {
+    const sampleFamilies = ['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow'] as const;
+    const samples = sampleFamilies.map((family, index) => generateMaze({
+      ...defaultConfig,
+      family,
+      seed: 7_000 + (index * 37),
+      size: 'large'
+    }));
+
+    const byFamily = Object.fromEntries(samples.map((episode) => [episode.family, episode])) as Record<typeof sampleFamilies[number], typeof samples[number]>;
+
+    expect(byFamily.braided.shortcutsCreated).toBeGreaterThanOrEqual(byFamily.classic.shortcutsCreated);
+    expect(byFamily.sparse.metrics.junctions).toBeLessThan(byFamily.dense.metrics.junctions);
+    expect(byFamily.sparse.metrics.straightness).toBeGreaterThanOrEqual(byFamily.classic.metrics.straightness * 0.8);
+    expect(byFamily.dense.metrics.junctions).toBeGreaterThan(byFamily.sparse.metrics.junctions);
+    expect(byFamily.framed.family).toBe('framed');
+    expect(['region-opposed', 'corridor-biased', 'edge-biased']).toContain(byFamily['split-flow'].placementStrategy);
+
+    const signatures = new Set(samples.map((episode) => [
+      episode.family,
+      episode.metrics.solutionLength,
+      episode.metrics.deadEnds,
+      episode.metrics.junctions,
+      episode.placementStrategy
+    ].join(':')));
+    expect(signatures.size).toBe(sampleFamilies.length);
+
+    for (const episode of samples) {
+      disposeMazeEpisode(episode);
+    }
   });
 
   test('keeps grid neighbor helpers within bounds', () => {

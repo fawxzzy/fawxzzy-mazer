@@ -3,7 +3,9 @@ import type {
   CortexSink,
   MazeEpisode,
   MazeCore,
+  MazeFamily,
   MazeMetrics,
+  MazePlacementStrategy,
   MazePresentationPreset,
   MazeSolveResult,
   PatternFrame,
@@ -42,6 +44,7 @@ interface CoreBuildOptions {
   height: number;
   seed: number;
   braidRatio: number;
+  family: MazeFamily;
   presentationPreset: MazePresentationPreset;
   minSolutionLength: number;
   maxAttempts: number;
@@ -52,6 +55,7 @@ interface CoreBuildResult {
   maze: MazeCore;
   solution: MazeSolveResult;
   metrics: MazeMetrics;
+  topology: MazeTopologyStats;
   shortcutsCreated: number;
   accepted: boolean;
 }
@@ -82,6 +86,33 @@ interface CorridorGraph {
   readonly adjacency: ReadonlyArray<readonly number[]>;
 }
 
+interface MazeTopologyStats {
+  readonly corridorMean: number;
+  readonly corridorP90: number;
+  readonly branchingFactor: number;
+  readonly perimeterPathShare: number;
+  readonly centerCrossings: number;
+  readonly quadrantCoverage: number;
+  readonly startGoalSpan: number;
+  readonly startGoalEdgeBias: number;
+  readonly turnRate: number;
+}
+
+interface PlacementResult {
+  readonly start: Point;
+  readonly goal: Point;
+  readonly strategy: MazePlacementStrategy;
+}
+
+interface PlacementCandidate {
+  readonly index: number;
+  readonly x: number;
+  readonly y: number;
+  readonly corridorLead: number;
+  readonly edgeBias: number;
+  readonly borderMask: number;
+}
+
 interface BidirectionalExpansionOptions {
   readonly maze: MazeCore;
   readonly graph: CorridorGraph;
@@ -107,55 +138,88 @@ const solveScratchCache = new Map<number, AStarScratch>();
 const getHeap = (size: number): MinHeap => new MinHeap(size);
 const tieBreakPriority = (_cost: number, nodeId: number): number => nodeId;
 
+const FAMILY_SEARCH_WINDOW: Record<MazeFamily, number> = {
+  classic: 8,
+  braided: 10,
+  sparse: 18,
+  dense: 10,
+  framed: 12,
+  'split-flow': 16
+};
+
+const FAMILY_PLACEMENT_STRATEGIES: Record<MazeFamily, readonly MazePlacementStrategy[]> = {
+  classic: ['farthest-pair', 'corner-opposed', 'edge-biased'],
+  braided: ['edge-biased', 'region-opposed', 'farthest-pair'],
+  sparse: ['corridor-biased', 'corner-opposed', 'farthest-pair'],
+  dense: ['region-opposed', 'edge-biased', 'farthest-pair'],
+  framed: ['edge-biased', 'corner-opposed', 'region-opposed'],
+  'split-flow': ['region-opposed', 'corridor-biased', 'edge-biased']
+};
+
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   const {
     width,
     height,
     seed,
     braidRatio,
+    family,
     presentationPreset,
     minSolutionLength,
     maxAttempts,
     rng
   } = options;
 
-  let fallback: CoreBuildResult | null = null;
+  const attemptLimit = Math.max(1, Math.min(maxAttempts, FAMILY_SEARCH_WINDOW[family]));
+  let fallback: { result: CoreBuildResult; score: number } | null = null;
+  let acceptedFallback: { result: CoreBuildResult; score: number } | null = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const maze = generateWilsonMaze(width, height, seed, braidRatio, presentationPreset, rng);
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+    const maze = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
     const shortestPath = solveCorridorGraph(maze, maze.start, maze.goal);
     if (!shortestPath.found) {
       continue;
     }
 
     const metrics = measureMaze(maze, shortestPath.pathIndices);
+    const topology = measureTopology(maze, shortestPath.pathIndices);
+    const shortcutsCreated = countOpeningsBeyondTree(maze);
     const built = {
       maze,
       solution: shortestPath,
       metrics,
-      shortcutsCreated: countOpeningsBeyondTree(maze),
-      accepted: passesQualityGate(metrics, minSolutionLength)
+      topology,
+      shortcutsCreated,
+      accepted: passesQualityGate(maze.family, metrics, topology, minSolutionLength)
     };
+    const score = scoreFamilyCandidate(built, attempt);
 
-    if (!fallback) {
-      fallback = built;
+    if (!fallback || score > fallback.score) {
+      fallback = { result: built, score };
     }
 
     if (built.accepted) {
-      return built;
+      if (!acceptedFallback || score > acceptedFallback.score) {
+        acceptedFallback = { result: built, score };
+      }
     }
   }
 
-  if (fallback) {
-    return fallback;
+  if (acceptedFallback) {
+    return acceptedFallback.result;
   }
 
-  const maze = generateWilsonMaze(width, height, seed, braidRatio, presentationPreset, rng);
+  if (fallback) {
+    return fallback.result;
+  }
+
+  const maze = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
   const solution = solveCorridorGraph(maze, maze.start, maze.goal);
+  const topology = measureTopology(maze, solution.pathIndices);
   return {
     maze,
     solution,
     metrics: measureMaze(maze, solution.pathIndices),
+    topology,
     shortcutsCreated: countOpeningsBeyondTree(maze),
     accepted: false
   };
@@ -816,6 +880,374 @@ const appendEdgePath = (target: number[], edge: CorridorEdge, fromNode: number, 
   }
 };
 
+const measureTopology = (maze: MazeCore, pathIndices: ArrayLike<number>): MazeTopologyStats => {
+  const graph = buildCorridorGraph(maze, maze.start, maze.goal);
+  const corridorLengths = graph.edges.map((edge) => Math.max(1, edge.cost));
+  let branchDegreeTotal = 0;
+  let branchNodeCount = 0;
+  let perimeterPathCount = 0;
+  let centerCrossings = 0;
+  const quadrants = new Set<number>();
+  const centerX = (maze.width - 1) / 2;
+  const centerY = (maze.height - 1) / 2;
+
+  for (const adjacency of graph.adjacency) {
+    if (adjacency.length < 3) {
+      continue;
+    }
+
+    branchDegreeTotal += adjacency.length;
+    branchNodeCount += 1;
+  }
+
+  for (let index = 0; index < pathIndices.length; index += 1) {
+    const cellIndex = pathIndices[index];
+    const x = xFromIndex(cellIndex, maze.width);
+    const y = yFromIndex(cellIndex, maze.width);
+    if (isOnPerimeter(x, y, maze.width, maze.height)) {
+      perimeterPathCount += 1;
+    }
+
+    quadrants.add(resolveQuadrant(x, y, maze.width, maze.height));
+    if (index === 0) {
+      continue;
+    }
+
+    const previous = pathIndices[index - 1];
+    const previousX = xFromIndex(previous, maze.width);
+    const previousY = yFromIndex(previous, maze.width);
+    if (crossesAxis(previousX, x, centerX) || crossesAxis(previousY, y, centerY)) {
+      centerCrossings += 1;
+    }
+  }
+
+  const dx = Math.abs(maze.goal.x - maze.start.x) / Math.max(1, maze.width - 1);
+  const dy = Math.abs(maze.goal.y - maze.start.y) / Math.max(1, maze.height - 1);
+  return {
+    corridorMean: mean(corridorLengths),
+    corridorP90: quantile(corridorLengths, 0.9),
+    branchingFactor: branchNodeCount === 0 ? 0 : branchDegreeTotal / branchNodeCount,
+    perimeterPathShare: perimeterPathCount / Math.max(1, pathIndices.length),
+    centerCrossings,
+    quadrantCoverage: quadrants.size,
+    startGoalSpan: dx + dy,
+    startGoalEdgeBias: (
+      Number(isOnPerimeter(maze.start.x, maze.start.y, maze.width, maze.height))
+      + Number(isOnPerimeter(maze.goal.x, maze.goal.y, maze.width, maze.height))
+    ) / 2,
+    turnRate: pathIndices.length <= 2 ? 0 : countTurns(pathIndices, maze.width) / Math.max(1, pathIndices.length - 2)
+  };
+};
+
+const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number => {
+  const sizeScale = Math.max(1, Math.sqrt(result.maze.cells.length));
+  const lengthScore = result.metrics.solutionLength / (sizeScale * 3.4);
+  const deadEndScore = result.metrics.deadEnds / sizeScale;
+  const junctionScore = result.metrics.junctions / sizeScale;
+  const coverageScore = result.metrics.coverage * 5;
+  const shortcutScore = result.shortcutsCreated / sizeScale;
+  const recencyPenalty = attempt * 0.015;
+
+  switch (result.maze.family) {
+    case 'braided':
+      return lengthScore + (junctionScore * 1.1) - (deadEndScore * 0.8) + coverageScore + shortcutScore
+        + (result.topology.centerCrossings * 0.08) - recencyPenalty;
+    case 'sparse':
+      return lengthScore + (result.topology.corridorMean * 1.3) + (result.topology.corridorP90 * 0.35)
+        - (junctionScore * 0.55) + (result.topology.startGoalSpan * 0.8) - recencyPenalty;
+    case 'dense':
+      return lengthScore + (junctionScore * 1.45) + (result.topology.branchingFactor * 0.7)
+        + coverageScore - (result.topology.corridorMean * 0.45) + (shortcutScore * 0.4) - recencyPenalty;
+    case 'framed':
+      return lengthScore + (result.topology.perimeterPathShare * 3) + (result.topology.startGoalEdgeBias * 1.8)
+        + (result.topology.corridorP90 * 0.2) - recencyPenalty;
+    case 'split-flow': {
+      const crossingBonus = 1.6 - Math.abs(result.topology.centerCrossings - 2);
+      return lengthScore + coverageScore + (result.topology.quadrantCoverage * 0.45)
+        + (result.topology.startGoalSpan * 0.9) + crossingBonus - recencyPenalty;
+    }
+    case 'classic':
+    default:
+      return lengthScore + (result.topology.turnRate * 1.2) + (coverageScore * 0.85)
+        + (result.topology.startGoalSpan * 0.6) - recencyPenalty;
+  }
+};
+
+const placeFamilyEndpoints = (maze: MazeCore, scratch: MazeScratch): PlacementResult => {
+  const strategies = FAMILY_PLACEMENT_STRATEGIES[maze.family];
+  const mixed = mixPlacementSeed(maze.seed, maze.family, maze.width, maze.height);
+  const strategy = strategies[mixed % strategies.length];
+  const pools = collectPlacementPools(maze);
+  const placed = resolvePlacementByStrategy(maze, scratch, strategy, pools, mixed);
+
+  if (placed.start.x === placed.goal.x && placed.start.y === placed.goal.y) {
+    return resolvePlacementByStrategy(maze, scratch, 'farthest-pair', pools, mixed ^ 0x9e3779b9);
+  }
+
+  return placed;
+};
+
+const resolvePlacementByStrategy = (
+  maze: MazeCore,
+  scratch: MazeScratch,
+  strategy: MazePlacementStrategy,
+  pools: { deadEnds: PlacementCandidate[]; perimeter: PlacementCandidate[]; all: PlacementCandidate[] },
+  seed: number
+): PlacementResult => {
+  switch (strategy) {
+    case 'edge-biased': {
+      const pair = selectBestPlacementPair(
+        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds,
+        maze,
+        (left, right) => {
+          const separation = normalizedSeparation(left, right, maze.width, maze.height);
+          return separation + ((left.edgeBias + right.edgeBias) * 0.9) + opposedBorderBonus(left, right);
+        }
+      );
+      if (pair) {
+        return pairToPlacement(pair, strategy);
+      }
+      break;
+    }
+    case 'corner-opposed': {
+      const pair = selectBestPlacementPair(
+        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds,
+        maze,
+        (left, right) => {
+          const separation = normalizedSeparation(left, right, maze.width, maze.height);
+          const diagonal = diagonalSpan(left, right, maze.width, maze.height);
+          return (separation * 1.1) + (diagonal * 1.4) + ((left.edgeBias + right.edgeBias) * 0.7);
+        }
+      );
+      if (pair) {
+        return pairToPlacement(pair, strategy);
+      }
+      break;
+    }
+    case 'region-opposed': {
+      const candidateSource = pools.deadEnds.length >= 8 ? pools.deadEnds : downsampleCandidates(pools.all, 48, seed);
+      const pair = selectBestPlacementPair(
+        candidateSource,
+        maze,
+        (left, right) => {
+          const separation = normalizedSeparation(left, right, maze.width, maze.height);
+          const diagonal = diagonalSpan(left, right, maze.width, maze.height);
+          const quadrantBonus = isOpposedQuadrantPair(left, right, maze.width, maze.height) ? 1.2 : 0;
+          return (separation * 1.25) + (diagonal * 0.8) + quadrantBonus;
+        }
+      );
+      if (pair) {
+        return pairToPlacement(pair, strategy);
+      }
+      break;
+    }
+    case 'corridor-biased': {
+      const candidateSource = pools.deadEnds.length >= 6 ? pools.deadEnds : pools.perimeter;
+      const pair = selectBestPlacementPair(
+        candidateSource,
+        maze,
+        (left, right) => {
+          const separation = normalizedSeparation(left, right, maze.width, maze.height);
+          return separation + ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 1.6
+            + (diagonalSpan(left, right, maze.width, maze.height) * 0.5);
+        }
+      );
+      if (pair) {
+        return pairToPlacement(pair, strategy);
+      }
+      break;
+    }
+    case 'farthest-pair':
+    default:
+      break;
+  }
+
+  const farA = farthestReachable(maze, { x: 0, y: 0 }, scratch);
+  const farB = farthestReachable(maze, farA.point, scratch);
+  return {
+    start: farA.point,
+    goal: farB.point,
+    strategy: 'farthest-pair'
+  };
+};
+
+const collectPlacementPools = (maze: MazeCore): {
+  deadEnds: PlacementCandidate[];
+  perimeter: PlacementCandidate[];
+  all: PlacementCandidate[];
+} => {
+  const deadEnds: PlacementCandidate[] = [];
+  const perimeter: PlacementCandidate[] = [];
+  const all: PlacementCandidate[] = [];
+
+  for (let index = 0; index < maze.cells.length; index += 1) {
+    const x = xFromIndex(index, maze.width);
+    const y = yFromIndex(index, maze.width);
+    const degree = countOpenNeighbors(maze, index);
+    const edgeDistance = Math.min(x, y, (maze.width - 1) - x, (maze.height - 1) - y);
+    const edgeBias = clamp(1 - (edgeDistance / Math.max(1, Math.floor(Math.min(maze.width, maze.height) / 2))), 0, 1);
+    const candidate: PlacementCandidate = {
+      index,
+      x,
+      y,
+      corridorLead: degree === 1 ? measureDeadEndCorridorLead(maze, index) : 0,
+      edgeBias,
+      borderMask: resolveBorderMask(x, y, maze.width, maze.height)
+    };
+
+    all.push(candidate);
+    if (degree === 1) {
+      deadEnds.push(candidate);
+    }
+    if (candidate.borderMask !== 0) {
+      perimeter.push(candidate);
+    }
+  }
+
+  return {
+    deadEnds,
+    perimeter,
+    all
+  };
+};
+
+const selectBestPlacementPair = (
+  candidates: readonly PlacementCandidate[],
+  maze: MazeCore,
+  scorePair: (left: PlacementCandidate, right: PlacementCandidate) => number
+): [PlacementCandidate, PlacementCandidate] | null => {
+  if (candidates.length < 2) {
+    return null;
+  }
+
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestPair: [PlacementCandidate, PlacementCandidate] | null = null;
+
+  for (let leftIndex = 0; leftIndex < candidates.length - 1; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
+      const left = candidates[leftIndex];
+      const right = candidates[rightIndex];
+      if (left.index === right.index) {
+        continue;
+      }
+
+      const score = scorePair(left, right) + (normalizedSeparation(left, right, maze.width, maze.height) * 0.15);
+      if (score > bestScore) {
+        bestScore = score;
+        bestPair = [left, right];
+      }
+    }
+  }
+
+  return bestPair;
+};
+
+const pairToPlacement = (
+  pair: [PlacementCandidate, PlacementCandidate],
+  strategy: MazePlacementStrategy
+): PlacementResult => ({
+  start: { x: pair[0].x, y: pair[0].y },
+  goal: { x: pair[1].x, y: pair[1].y },
+  strategy
+});
+
+const downsampleCandidates = (
+  candidates: readonly PlacementCandidate[],
+  maxCount: number,
+  seed: number
+): PlacementCandidate[] => {
+  if (candidates.length <= maxCount) {
+    return [...candidates];
+  }
+
+  const stride = Math.max(1, Math.floor(candidates.length / maxCount));
+  const offset = seed % stride;
+  const sampled: PlacementCandidate[] = [];
+
+  for (let index = offset; index < candidates.length && sampled.length < maxCount; index += stride) {
+    sampled.push(candidates[index]);
+  }
+
+  return sampled.length >= 2 ? sampled : candidates.slice(0, maxCount);
+};
+
+const applyMazeFamilyPass = (maze: MazeCore, family: MazeFamily, rng: () => number): void => {
+  switch (family) {
+    case 'braided':
+      braidMaze(maze, 0.18, rng);
+      applyDenseWeavePass(maze, rng, 2);
+      break;
+    case 'sparse':
+      applySparseFlowPass(maze, rng);
+      break;
+    case 'dense':
+      braidMaze(maze, 0.1, rng);
+      applyDenseWeavePass(maze, rng, 3);
+      break;
+    case 'framed':
+      applyFramedPass(maze, rng);
+      break;
+    case 'split-flow':
+      applySplitFlowPass(maze, rng);
+      break;
+    case 'classic':
+    default:
+      break;
+  }
+};
+
+const applySparseFlowPass = (maze: MazeCore, rng: () => number): void => {
+  if (maze.width < 7 || maze.height < 7) {
+    return;
+  }
+
+  const horizontal = rng() >= 0.5;
+  if (horizontal) {
+    const row = clamp(Math.floor(maze.height / 2) + randomInt(3, rng) - 1, 1, maze.height - 2);
+    carveLinearFeature(maze, 1, row, 1, 0, maze.width - 2);
+    return;
+  }
+
+  const column = clamp(Math.floor(maze.width / 2) + randomInt(3, rng) - 1, 1, maze.width - 2);
+  carveLinearFeature(maze, column, 1, 0, 1, maze.height - 2);
+};
+
+const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: number): void => {
+  if (maze.width < 6 || maze.height < 6) {
+    return;
+  }
+
+  for (let cluster = 0; cluster < clusterCount; cluster += 1) {
+    const centerX = clamp(2 + randomInt(Math.max(1, maze.width - 4), rng), 1, maze.width - 2);
+    const centerY = clamp(2 + randomInt(Math.max(1, maze.height - 4), rng), 1, maze.height - 2);
+    carveLinearFeature(maze, clamp(centerX - 1, 1, maze.width - 2), centerY, 1, 0, 2);
+    carveLinearFeature(maze, centerX, clamp(centerY - 1, 1, maze.height - 2), 0, 1, 2);
+  }
+};
+
+const applySplitFlowPass = (maze: MazeCore, rng: () => number): void => {
+  if (maze.width < 8 || maze.height < 8) {
+    return;
+  }
+
+  const midX = Math.floor(maze.width / 2);
+  const midY = Math.floor(maze.height / 2);
+  const upperRow = clamp(Math.floor(maze.height * 0.28) + randomInt(3, rng) - 1, 1, maze.height - 2);
+  const lowerRow = clamp(Math.floor(maze.height * 0.72) + randomInt(3, rng) - 1, 1, maze.height - 2);
+
+  carveLinearFeature(maze, 1, upperRow, 1, 0, Math.max(2, midX - 1));
+  carveLinearFeature(maze, midX, upperRow, 0, upperRow <= midY ? 1 : -1, Math.max(1, Math.abs(midY - upperRow)));
+  carveLinearFeature(maze, midX, midY, 0, lowerRow >= midY ? 1 : -1, Math.max(1, Math.abs(lowerRow - midY)));
+  carveLinearFeature(maze, midX, lowerRow, 1, 0, Math.max(2, maze.width - midX - 2));
+
+  if (rng() > 0.45) {
+    carveLinearFeature(maze, 1, lowerRow, 1, 0, Math.max(2, Math.floor(maze.width * 0.34)));
+  }
+  if (rng() > 0.45) {
+    carveLinearFeature(maze, maze.width - 2, upperRow, -1, 0, Math.max(2, Math.floor(maze.width * 0.34)));
+  }
+};
+
 const applyPresentationPreset = (maze: MazeCore, preset: MazePresentationPreset, rng: () => number): void => {
   switch (preset) {
     case 'braided':
@@ -902,6 +1334,7 @@ const generateWilsonMaze = (
   height: number,
   seed: number,
   braidRatio: number,
+  family: MazeFamily,
   presentationPreset: MazePresentationPreset,
   rng: () => number
 ): MazeCore => {
@@ -918,6 +1351,8 @@ const generateWilsonMaze = (
     goal: { x: width - 1, y: height - 1 },
     seed,
     braidRatio,
+    family,
+    placementStrategy: 'farthest-pair',
     presentationPreset
   };
 
@@ -956,12 +1391,12 @@ const generateWilsonMaze = (
     braidMaze(maze, braidRatio, rng);
   }
 
+  applyMazeFamilyPass(maze, family, rng);
   applyPresentationPreset(maze, presentationPreset, rng);
-
-  const farA = farthestReachable(maze, { x: 0, y: 0 }, scratch);
-  const farB = farthestReachable(maze, farA.point, scratch);
-  maze.start = farA.point;
-  maze.goal = farB.point;
+  const placement = placeFamilyEndpoints(maze, scratch);
+  maze.start = placement.start;
+  maze.goal = placement.goal;
+  maze.placementStrategy = placement.strategy;
   return maze;
 };
 
@@ -988,11 +1423,49 @@ const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
   }
 };
 
-const passesQualityGate = (metrics: MazeMetrics, minSolutionLength: number): boolean => (
-  metrics.solutionLength >= minSolutionLength
-  && metrics.straightness <= 0.82
-  && metrics.coverage >= 0.18
-);
+const passesQualityGate = (
+  family: MazeFamily,
+  metrics: MazeMetrics,
+  topology: MazeTopologyStats,
+  minSolutionLength: number
+): boolean => {
+  const baselineCoverage = metrics.coverage >= 0.14;
+  switch (family) {
+    case 'braided':
+      return metrics.solutionLength >= Math.floor(minSolutionLength * 0.84)
+        && baselineCoverage
+        && metrics.straightness <= 0.9
+        && metrics.deadEnds <= Math.floor(mazeDensityThreshold(minSolutionLength, 0.7))
+        && metrics.junctions >= Math.floor(mazeDensityThreshold(minSolutionLength, 0.12));
+    case 'sparse':
+      return metrics.solutionLength >= Math.floor(minSolutionLength * 0.96)
+        && metrics.coverage >= 0.12
+        && topology.corridorMean >= 3.2
+        && topology.corridorP90 >= 6
+        && topology.startGoalSpan >= 1.1;
+    case 'dense':
+      return metrics.solutionLength >= Math.floor(minSolutionLength * 0.9)
+        && metrics.coverage >= 0.18
+        && metrics.junctions >= Math.floor(mazeDensityThreshold(minSolutionLength, 0.16))
+        && topology.branchingFactor >= 3;
+    case 'framed':
+      return metrics.solutionLength >= Math.floor(minSolutionLength * 0.92)
+        && metrics.coverage >= 0.15
+        && topology.perimeterPathShare >= 0.16
+        && topology.startGoalEdgeBias >= 0.5;
+    case 'split-flow':
+      return metrics.solutionLength >= Math.floor(minSolutionLength * 0.96)
+        && metrics.coverage >= 0.16
+        && topology.quadrantCoverage >= 3
+        && topology.centerCrossings >= 1
+        && topology.centerCrossings <= 4;
+    case 'classic':
+    default:
+      return metrics.solutionLength >= minSolutionLength
+        && metrics.straightness <= 0.82
+        && metrics.coverage >= 0.18;
+  }
+};
 
 const farthestReachable = (
   maze: MazeCore,
@@ -1182,6 +1655,146 @@ const countSolutionBranches = (episode: MazeEpisode): number => {
   }
 
   return branches;
+};
+
+const measureDeadEndCorridorLead = (maze: MazeCore, startIndex: number): number => {
+  let length = 0;
+  let current = startIndex;
+  let previous = -1;
+
+  while (true) {
+    const next = getOpenNeighbors(maze, current).filter((candidate) => candidate !== previous);
+    if (next.length !== 1) {
+      return length;
+    }
+
+    previous = current;
+    current = next[0];
+    length += 1;
+
+    if (countOpenNeighbors(maze, current) !== 2) {
+      return length;
+    }
+  }
+};
+
+const getOpenNeighbors = (maze: MazeCore, idx: number): number[] => {
+  const x = xFromIndex(idx, maze.width);
+  const y = yFromIndex(idx, maze.width);
+  const cell = maze.cells[idx];
+  const neighbors: number[] = [];
+
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if ((cell & dir.bit) !== 0) {
+      continue;
+    }
+
+    const nextX = x + dir.dx;
+    const nextY = y + dir.dy;
+    if (inBounds(nextX, nextY, maze.width, maze.height)) {
+      neighbors.push(indexOf(maze.width, nextX, nextY));
+    }
+  }
+
+  return neighbors;
+};
+
+const normalizedSeparation = (
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  width: number,
+  height: number
+): number => (
+  (Math.abs(left.x - right.x) / Math.max(1, width - 1))
+  + (Math.abs(left.y - right.y) / Math.max(1, height - 1))
+);
+
+const diagonalSpan = (
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  width: number,
+  height: number
+): number => Math.min(
+  Math.abs(left.x - right.x) / Math.max(1, width - 1),
+  Math.abs(left.y - right.y) / Math.max(1, height - 1)
+);
+
+const resolveQuadrant = (x: number, y: number, width: number, height: number): number => {
+  const horizontal = x < ((width - 1) / 2) ? 0 : 1;
+  const vertical = y < ((height - 1) / 2) ? 0 : 1;
+  return (vertical * 2) + horizontal;
+};
+
+const isOpposedQuadrantPair = (
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  width: number,
+  height: number
+): boolean => {
+  const leftQuadrant = resolveQuadrant(left.x, left.y, width, height);
+  const rightQuadrant = resolveQuadrant(right.x, right.y, width, height);
+  return Math.abs(leftQuadrant - rightQuadrant) === 3;
+};
+
+const resolveBorderMask = (x: number, y: number, width: number, height: number): number => (
+  (y === 0 ? 1 : 0)
+  | (x === width - 1 ? 2 : 0)
+  | (y === height - 1 ? 4 : 0)
+  | (x === 0 ? 8 : 0)
+);
+
+const opposedBorderBonus = (left: PlacementCandidate, right: PlacementCandidate): number => {
+  const verticalOpposition = (left.borderMask & 1) !== 0 && (right.borderMask & 4) !== 0
+    || (left.borderMask & 4) !== 0 && (right.borderMask & 1) !== 0;
+  const horizontalOpposition = (left.borderMask & 2) !== 0 && (right.borderMask & 8) !== 0
+    || (left.borderMask & 8) !== 0 && (right.borderMask & 2) !== 0;
+  return verticalOpposition || horizontalOpposition ? 0.9 : 0;
+};
+
+const isOnPerimeter = (x: number, y: number, width: number, height: number): boolean => (
+  x === 0 || y === 0 || x === width - 1 || y === height - 1
+);
+
+const crossesAxis = (from: number, to: number, axis: number): boolean => (
+  (from < axis && to >= axis) || (from > axis && to <= axis)
+);
+
+const mixPlacementSeed = (seed: number, family: MazeFamily, width: number, height: number): number => (
+  Math.imul((seed >>> 0) ^ (width << 8) ^ (height << 16), (family.charCodeAt(0) | 1) >>> 0) >>> 0
+);
+
+const mazeDensityThreshold = (minSolutionLength: number, factor: number): number => (
+  Math.max(1, Math.sqrt(Math.max(1, minSolutionLength)) * factor * 10)
+);
+
+const quantile = (values: readonly number[], q: number): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * clamp(q, 0, 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) {
+    return sorted[lower];
+  }
+
+  const ratio = position - lower;
+  return sorted[lower] + ((sorted[upper] - sorted[lower]) * ratio);
+};
+
+const mean = (values: readonly number[]): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  let total = 0;
+  for (const value of values) {
+    total += value;
+  }
+  return total / values.length;
 };
 
 const heuristicXY = (ax: number, ay: number, bx: number, by: number): number => Math.abs(ax - bx) + Math.abs(ay - by);

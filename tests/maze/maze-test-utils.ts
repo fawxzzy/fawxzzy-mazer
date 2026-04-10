@@ -130,6 +130,8 @@ export const assertMazeInvariants = (
 export const serializeMaze = (episode: MazeEpisode) => ({
   size: episode.size,
   difficulty: episode.difficulty,
+  family: episode.family,
+  placementStrategy: episode.placementStrategy,
   presentationPreset: episode.presentationPreset,
   width: episode.raster.width,
   height: episode.raster.height,
