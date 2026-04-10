@@ -1,6 +1,10 @@
 :root {
   color-scheme: dark;
   font-family: 'Courier New', Courier, monospace;
+  --mazer-safe-area-top: env(safe-area-inset-top, 0px);
+  --mazer-safe-area-right: env(safe-area-inset-right, 0px);
+  --mazer-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --mazer-safe-area-left: env(safe-area-inset-left, 0px);
   --mazer-bg-a: #16223d;
   --mazer-bg-b: #0d1528;
   --mazer-bg-c: #060a12;
@@ -26,6 +30,11 @@ body,
   width: 100%;
   height: 100%;
   min-height: 100dvh;
+}
+
+html {
+  margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -67,85 +76,56 @@ body::after {
 }
 
 #app {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  width: 100%;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
   min-height: 100dvh;
-  padding:
-    calc(var(--mazer-shell-pad-y) + env(safe-area-inset-top))
-    calc(var(--mazer-shell-pad-x) + env(safe-area-inset-right))
-    calc(var(--mazer-shell-pad-y) + env(safe-area-inset-bottom))
-    calc(var(--mazer-shell-pad-x) + env(safe-area-inset-left));
+  overflow: hidden;
+  isolation: isolate;
 }
 
 #app::before {
   content: '';
   position: absolute;
-  inset: 6vh 8vw;
+  inset: max(-12vh, -96px) max(-8vw, -80px);
   background:
-    radial-gradient(circle at 50% 46%, var(--mazer-stage-glow) 0, rgba(120, 182, 255, 0) 52%),
-    radial-gradient(circle at 50% 62%, var(--mazer-stage-shadow) 0, rgba(0, 0, 0, 0) 66%);
+    radial-gradient(circle at 50% 46%, rgba(142, 208, 255, 0.18) 0, rgba(120, 182, 255, 0) 54%),
+    radial-gradient(circle at 50% 62%, var(--mazer-stage-shadow) 0, rgba(0, 0, 0, 0) 72%),
+    radial-gradient(circle at 50% 92%, var(--mazer-stage-glow) 0, rgba(126, 198, 255, 0) 42%);
   pointer-events: none;
-  filter: blur(22px);
+  filter: blur(34px);
+  opacity: 0.92;
 }
 
 canvas {
   display: block;
-  width: auto !important;
-  height: auto !important;
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
-  max-width: min(100vw - (var(--mazer-shell-pad-x) * 2), 1500px);
-  max-height: min(100dvh - (var(--mazer-shell-pad-y) * 2), 980px);
-  margin: 0 auto;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  margin: 0;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
-  border: 1px solid var(--mazer-frame-stroke);
+  border: 0;
   border-radius: 0;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-    0 0 0 4px rgba(5, 9, 18, 0.28),
-    0 30px 64px var(--mazer-canvas-shadow),
-    0 0 42px var(--mazer-canvas-glow);
+  box-shadow: none;
+  background: transparent;
   touch-action: none;
-  transition: box-shadow 200ms ease, border-color 200ms ease;
-  animation: mazer-canvas-breathe 7.2s ease-in-out infinite;
+  transition: outline-color 200ms ease, outline-offset 200ms ease;
 }
 
 canvas:focus-visible {
-  outline: none;
-  border-color: var(--mazer-frame-focus);
-  box-shadow:
-    0 0 0 1px rgba(173, 212, 255, 0.18) inset,
-    0 0 0 6px rgba(5, 9, 18, 0.42),
-    0 32px 52px rgba(0, 0, 0, 0.58),
-    0 0 40px rgba(120, 192, 255, 0.24);
-}
-
-@keyframes mazer-canvas-breathe {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-      0 0 0 4px rgba(5, 9, 18, 0.28),
-      0 28px 58px var(--mazer-canvas-shadow),
-      0 0 28px rgba(104, 160, 255, 0.12);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-      0 0 0 4px rgba(5, 9, 18, 0.34),
-      0 34px 66px rgba(0, 0, 0, 0.66),
-      0 0 38px rgba(120, 184, 255, 0.18);
-  }
+  outline: 1px solid rgba(184, 228, 255, 0.72);
+  outline-offset: -2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  canvas {
-    animation: none;
+  #app::before {
+    filter: blur(28px);
   }
 }
 
@@ -160,14 +140,9 @@ canvas:focus-visible {
     opacity: 0.4;
   }
 
-  canvas {
-    border-color: rgba(126, 153, 192, 0.62);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
-      0 0 0 2px rgba(5, 9, 18, 0.28),
-      0 18px 34px rgba(0, 0, 0, 0.4),
-      0 0 22px rgba(98, 136, 255, 0.12);
-    animation-duration: 7.4s;
+  #app::before {
+    inset: max(-10vh, -80px) max(-6vw, -48px);
+    filter: blur(28px);
   }
 }
 

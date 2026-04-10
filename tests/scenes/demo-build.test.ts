@@ -36,6 +36,7 @@ let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMe
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
 let resolveDemoWalkerViewFrame: typeof import('../../src/domain/ai').resolveDemoWalkerViewFrame;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
@@ -59,7 +60,7 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
@@ -217,6 +218,48 @@ describe('demo-only build', () => {
     expect(model.viewport.height).toBe(720);
     expect(model.layout.boardScale).toBeGreaterThan(0);
     expect(model.layout.topReserve).toBeGreaterThan(0);
+  });
+
+  test('safe insets stay on board framing instead of shrinking the full viewport shell', () => {
+    const baseModel = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile');
+    const insetAwareModel = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile', {
+      top: 48,
+      right: 0,
+      bottom: 34,
+      left: 0
+    });
+    const backdrop = resolvePresentationBackdropFrame(
+      insetAwareModel.viewport.width,
+      insetAwareModel.viewport.height,
+      insetAwareModel.viewport.width / 2,
+      insetAwareModel.viewport.height / 2
+    );
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 404,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const layout = createBoardLayout(createViewportSceneStub(insetAwareModel.viewport.width, insetAwareModel.viewport.height), episode, {
+      boardScale: insetAwareModel.layout.boardScale,
+      topReserve: insetAwareModel.layout.topReserve,
+      sidePadding: insetAwareModel.layout.sidePadding,
+      bottomPadding: insetAwareModel.layout.bottomPadding
+    });
+
+    expect(insetAwareModel.viewport).toEqual(baseModel.viewport);
+    expect(insetAwareModel.layout.topReserve).toBeGreaterThan(baseModel.layout.topReserve);
+    expect(insetAwareModel.layout.bottomPadding).toBeGreaterThan(baseModel.layout.bottomPadding);
+    expect(layout.safeBounds.top).toBeGreaterThanOrEqual(48);
+    expect(layout.safeBounds.bottom).toBeLessThanOrEqual(insetAwareModel.viewport.height - 34);
+    expect(backdrop.left).toBeLessThanOrEqual(0);
+    expect(backdrop.top).toBeLessThanOrEqual(0);
+    expect(backdrop.right).toBeGreaterThanOrEqual(insetAwareModel.viewport.width);
+    expect(backdrop.bottom).toBeGreaterThanOrEqual(insetAwareModel.viewport.height);
+
+    disposeMazeEpisode(episode);
   });
 
   test('BootScene falls back to title when presentation resolution throws', () => {
@@ -560,6 +603,21 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
     expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");
+  });
+
+  test('shell css keeps the viewport full-bleed while board framing stays in-scene', () => {
+    const baseCss = readFileSync(resolve(process.cwd(), 'src/styles/base.css'), 'utf8');
+
+    expect(baseCss).toContain('--mazer-safe-area-top: env(safe-area-inset-top, 0px);');
+    expect(baseCss).toContain('#app {');
+    expect(baseCss).toContain('position: fixed;');
+    expect(baseCss).toContain('inset: 0;');
+    expect(baseCss).toContain('width: 100% !important;');
+    expect(baseCss).toContain('height: 100% !important;');
+    expect(baseCss).toContain('max-width: none;');
+    expect(baseCss).toContain('max-height: none;');
+    expect(baseCss).toContain('border: 0;');
+    expect(baseCss).toContain('box-shadow: none;');
   });
 
   test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: 25000 }, () => {

@@ -166,6 +166,13 @@ export interface SceneLayoutProfile {
   sidePadding: number;
 }
 
+export interface ViewportSafeInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 interface PresentationOffsets {
   frameOffsetX: number;
   frameOffsetY: number;
@@ -891,6 +898,76 @@ const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number
   isFiniteNumber(value) && value >= minimum ? value : fallback
 );
 const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
+const sanitizeInset = (value: unknown): number => Math.max(0, sanitizeOffset(value));
+const DEFAULT_VIEWPORT_SAFE_INSETS: ViewportSafeInsets = Object.freeze({
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0
+});
+const resolveSafeInsetMetric = (source: Pick<CSSStyleDeclaration, 'getPropertyValue'>, name: string): number => {
+  const parsed = Number.parseFloat(source.getPropertyValue(name).trim());
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+const sanitizeViewportSafeInsets = (
+  safeInsets?: Partial<ViewportSafeInsets> | null
+): ViewportSafeInsets => ({
+  top: sanitizeInset(safeInsets?.top),
+  right: sanitizeInset(safeInsets?.right),
+  bottom: sanitizeInset(safeInsets?.bottom),
+  left: sanitizeInset(safeInsets?.left)
+});
+
+export const resolveViewportSafeInsets = (
+  source?: Pick<CSSStyleDeclaration, 'getPropertyValue'> | null
+): ViewportSafeInsets => {
+  if (source) {
+    return {
+      top: resolveSafeInsetMetric(source, '--mazer-safe-area-top'),
+      right: resolveSafeInsetMetric(source, '--mazer-safe-area-right'),
+      bottom: resolveSafeInsetMetric(source, '--mazer-safe-area-bottom'),
+      left: resolveSafeInsetMetric(source, '--mazer-safe-area-left')
+    };
+  }
+
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return DEFAULT_VIEWPORT_SAFE_INSETS;
+  }
+
+  return resolveViewportSafeInsets(window.getComputedStyle(document.documentElement));
+};
+
+export const resolvePresentationBackdropFrame = (
+  viewportWidth: number,
+  viewportHeight: number,
+  centerX: number,
+  centerY: number
+): PresentationBackdropFrame => {
+  const safeWidth = sanitizePositive(viewportWidth, DEFAULT_VIEWPORT_WIDTH, 1);
+  const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
+  const safeCenterX = Phaser.Math.Clamp(isFiniteNumber(centerX) ? centerX : safeWidth / 2, 0, safeWidth);
+  const safeCenterY = Phaser.Math.Clamp(isFiniteNumber(centerY) ? centerY : safeHeight / 2, 0, safeHeight);
+  const bleedX = Math.max(64, Math.round(safeWidth * 0.12));
+  const bleedY = Math.max(64, Math.round(safeHeight * 0.12));
+  const halfWidth = Math.max(safeCenterX, safeWidth - safeCenterX) + bleedX;
+  const halfHeight = Math.max(safeCenterY, safeHeight - safeCenterY) + bleedY;
+  const width = Math.max(safeWidth + (bleedX * 2), Math.round(halfWidth * 2));
+  const height = Math.max(safeHeight + (bleedY * 2), Math.round(halfHeight * 2));
+  const left = safeCenterX - (width / 2);
+  const top = safeCenterY - (height / 2);
+
+  return {
+    centerX: safeCenterX,
+    centerY: safeCenterY,
+    width,
+    height,
+    left,
+    top,
+    right: left + width,
+    bottom: top + height
+  };
+};
+
 const MENU_RESIZE_SETTLE_MS = 900;
 const MENU_RESIZE_BUCKET_PX = 4;
 
@@ -1273,6 +1350,17 @@ export interface MenuPresentationModel {
   layout: SceneLayoutProfile;
 }
 
+export interface PresentationBackdropFrame {
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
 const resolveDeploymentPresentationProfile = (
   profile: PresentationDeploymentProfile | null | undefined
 ): DeploymentPresentationProfile => (
@@ -1289,13 +1377,14 @@ export function resolveMenuPresentationModel(
   variant: AmbientPresentationVariant,
   chrome: PresentationChrome = DEFAULT_PRESENTATION_CHROME,
   titleVisible = true,
-  profile?: PresentationDeploymentProfile
+  profile?: PresentationDeploymentProfile,
+  safeInsets?: Partial<ViewportSafeInsets> | null
 ): MenuPresentationModel {
   const viewport = resolveViewportSize(width, height, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT);
 
   return {
     viewport,
-    layout: resolveSceneLayoutProfile(viewport.width, viewport.height, variant, chrome, titleVisible, profile)
+    layout: resolveSceneLayoutProfile(viewport.width, viewport.height, variant, chrome, titleVisible, profile, safeInsets)
   };
 }
 
@@ -1325,13 +1414,15 @@ export class MenuScene extends Phaser.Scene {
     const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
     const deterministicCapture = isDeterministicPresentationCapture(launchConfig);
     const moodOverride = resolveForcedDemoMood(launchConfig.mood);
+    const viewportSafeInsets = resolveViewportSafeInsets();
     const presentationModel = resolveMenuPresentationModel(
       this.scale.width,
       this.scale.height,
       variant,
       chrome,
       titleVisible,
-      deploymentProfileId
+      deploymentProfileId,
+      viewportSafeInsets
     );
     const { width, height } = presentationModel.viewport;
     const reducedMotion = prefersReducedMotion();
@@ -1496,6 +1587,8 @@ export class MenuScene extends Phaser.Scene {
         });
         const boardCenterX = layout.boardX + (layout.boardWidth / 2);
         const boardCenterY = layout.boardY + (layout.boardHeight / 2);
+        // Keep the backdrop field viewport-filling while the board itself stays inside the safe frame.
+        const backdropFrame = resolvePresentationBackdropFrame(width, height, boardCenterX, boardCenterY);
         const boardRenderer = new BoardRenderer(this, episode, layout, {
           theme: {
             ...themeProfile.boardTheme,
@@ -1505,34 +1598,34 @@ export class MenuScene extends Phaser.Scene {
         boardRenderer.drawBoardChrome();
 
         const boardAura = this.add.ellipse(
-          boardCenterX,
-          boardCenterY,
-          Math.max(24, layout.boardWidth * 1.18),
-          Math.max(24, layout.boardHeight * 1.12),
+          backdropFrame.centerX,
+          backdropFrame.centerY,
+          Math.max(24, Math.round(backdropFrame.width * 0.94)),
+          Math.max(24, Math.round(backdropFrame.height * 0.9)),
           themeProfile.shell.auraColor,
           0.08
         ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardHalo = this.add.ellipse(
-          boardCenterX,
-          boardCenterY,
-          Math.max(20, layout.boardWidth * 1.08),
-          Math.max(20, layout.boardHeight * 1.06),
+          backdropFrame.centerX,
+          backdropFrame.centerY,
+          Math.max(20, Math.round(backdropFrame.width * 0.82)),
+          Math.max(20, Math.round(backdropFrame.height * 0.78)),
           themeProfile.shell.haloColor,
           0.026
         ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardShade = this.add.rectangle(
-          boardCenterX,
-          boardCenterY,
-          Math.max(18, layout.boardWidth + Math.round(layout.tileSize * 0.8)),
-          Math.max(18, layout.boardHeight + Math.round(layout.tileSize * 0.8)),
+          backdropFrame.centerX,
+          backdropFrame.centerY,
+          Math.max(18, backdropFrame.width),
+          Math.max(18, backdropFrame.height),
           themeProfile.shell.shadeColor,
           0.028
         ).setOrigin(0.5).setDepth(7);
         const boardVeil = this.add.rectangle(
-          boardCenterX,
-          boardCenterY,
-          Math.max(18, layout.boardWidth + Math.round(layout.tileSize * 0.6)),
-          Math.max(18, layout.boardHeight + Math.round(layout.tileSize * 0.6)),
+          backdropFrame.centerX,
+          backdropFrame.centerY,
+          Math.max(18, backdropFrame.width),
+          Math.max(18, backdropFrame.height),
           themeProfile.shell.veilColor,
           0
         ).setOrigin(0.5).setDepth(7.2);
@@ -1607,8 +1700,16 @@ export class MenuScene extends Phaser.Scene {
           Math.max(state.mode === 'manual' ? 148 : (compactInstall ? 86 : 118), Math.round(width * (compactInstall ? 0.24 : 0.34)))
         );
         const chipHeight = Math.max(compactInstall ? 22 : 24, Math.ceil(label.height + (compactInstall ? 12 : 14)));
-        const rightInset = Math.max(compactInstall ? 24 : 12, sceneLayout.sidePadding + (compactInstall ? 10 : 6));
-        const topInset = Math.max(12, sceneLayout.sidePadding + (sceneLayout.isPortrait ? 12 : 4));
+        const rightInset = Math.max(
+          compactInstall ? 24 : 12,
+          sceneLayout.sidePadding + (compactInstall ? 10 : 6),
+          viewportSafeInsets.right + (compactInstall ? 18 : 12)
+        );
+        const topInset = Math.max(
+          12,
+          sceneLayout.sidePadding + (sceneLayout.isPortrait ? 12 : 4),
+          viewportSafeInsets.top + (compactInstall ? 14 : 10)
+        );
 
         installChrome.setVisible(true);
         installChrome.setPosition(
@@ -2237,13 +2338,15 @@ export class MenuScene extends Phaser.Scene {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
     const themeProfile = resolveAmbientThemeProfile(this.activeTheme);
+    const viewportSafeInsets = resolveViewportSafeInsets();
     const layoutModel = resolveMenuPresentationModel(
       safeWidth,
       safeHeight,
       this.presentationVariant,
       'full',
       true,
-      this.launchConfig.profile
+      this.launchConfig.profile,
+      viewportSafeInsets
     );
 
     this.drawStarfield(safeWidth, safeHeight, themeProfile);
@@ -2297,15 +2400,18 @@ export function resolveSceneLayoutProfile(
   variant: AmbientPresentationVariant,
   chrome: PresentationChrome = DEFAULT_PRESENTATION_CHROME,
   titleVisible = true,
-  deploymentProfileId?: PresentationDeploymentProfile
+  deploymentProfileId?: PresentationDeploymentProfile,
+  safeInsets?: Partial<ViewportSafeInsets> | null
 ): SceneLayoutProfile {
   const safeVariant = sanitizePresentationVariant(variant);
   const safeChrome = CHROME_PROFILES[chrome] ? chrome : DEFAULT_PRESENTATION_CHROME;
   const chromeProfile = CHROME_PROFILES[safeChrome];
   const profile = VARIANT_PROFILES[safeVariant];
   const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
+  const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
   const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
   const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
+  const safeSideInset = Math.max(viewportSafeInsets.left, viewportSafeInsets.right);
   const isNarrow = safeWidth <= legacyTuning.menu.layout.narrowBreakpoint;
   const isPortrait = safeHeight > (safeWidth * 1.12);
   const isShort = safeHeight < 720;
@@ -2336,7 +2442,7 @@ export function resolveSceneLayoutProfile(
       safeHeight
         * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0))
     ) + chromeProfile.topReserveBias + deploymentProfile.topReserveBias
-  );
+  ) + viewportSafeInsets.top;
   const bottomPadding = Math.max(
     6,
     profile.bottomPaddingPx
@@ -2345,7 +2451,7 @@ export function resolveSceneLayoutProfile(
       + (isPortrait ? 4 : 0)
       + (safeVariant === 'loading' ? 4 : 0)
       - (isTiny ? 12 : 0)
-  );
+  ) + viewportSafeInsets.bottom;
   const sidePadding = Math.max(
     2,
     profile.sidePaddingPx
@@ -2354,7 +2460,7 @@ export function resolveSceneLayoutProfile(
       + (isPortrait ? 2 : 0)
       + (isNarrow ? -2 : 0)
       - (isTiny ? 4 : 0)
-  );
+  ) + safeSideInset;
   const obsSafeVerticalPadding = Math.max(
     topReserve,
     bottomPadding,
