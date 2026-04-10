@@ -1,5 +1,12 @@
 import Phaser from 'phaser';
-import { DEFAULT_PRESENTATION_VARIANT, sanitizePresentationVariant, type AmbientPresentationVariant } from '../boot/presentation';
+import {
+  DEFAULT_PRESENTATION_CHROME,
+  DEFAULT_PRESENTATION_VARIANT,
+  sanitizePresentationChrome,
+  sanitizePresentationVariant,
+  type AmbientPresentationVariant,
+  type PresentationChrome
+} from '../boot/presentation';
 import type { MazeEpisode } from '../domain/maze';
 import { getMazeSizeLabel } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
@@ -27,15 +34,12 @@ interface DemoStatusHandle {
 
 interface HudRenderOptions {
   reducedMotion?: boolean;
+  chrome?: PresentationChrome;
 }
 
 interface HudVariantProfile {
   modePrefix: string;
   railAlphaScale: number;
-  modeAlphaScale: number;
-  metaAlphaScale: number;
-  flashAlphaScale: number;
-  showMode: boolean;
   showFlash: boolean;
 }
 
@@ -55,33 +59,61 @@ const sequenceLabels: Record<DemoSequence, string> = {
   fade: 'FADE'
 };
 
+interface HudChromeProfile {
+  railAlphaScale: number;
+  modeAlphaScale: number;
+  metaAlphaScale: number;
+  flashAlphaScale: number;
+  showMode: boolean;
+  showMeta: boolean;
+  showFlash: boolean;
+}
+
 const VARIANT_PROFILES: Record<AmbientPresentationVariant, HudVariantProfile> = {
   title: {
     modePrefix: 'LIVE',
     railAlphaScale: 0.28,
-    modeAlphaScale: 1,
-    metaAlphaScale: 0.76,
-    flashAlphaScale: 0.58,
-    showMode: true,
     showFlash: true
   },
   ambient: {
     modePrefix: 'AMBIENT',
     railAlphaScale: 0.18,
-    modeAlphaScale: 0.62,
-    metaAlphaScale: 0.58,
-    flashAlphaScale: 0,
-    showMode: true,
     showFlash: false
   },
   loading: {
     modePrefix: 'SYSTEM',
     railAlphaScale: 0.38,
+    showFlash: true
+  }
+};
+
+const CHROME_PROFILES: Record<PresentationChrome, HudChromeProfile> = {
+  full: {
+    railAlphaScale: 1,
     modeAlphaScale: 1,
     metaAlphaScale: 1,
-    flashAlphaScale: 0.78,
+    flashAlphaScale: 1,
     showMode: true,
+    showMeta: true,
     showFlash: true
+  },
+  minimal: {
+    railAlphaScale: 0.54,
+    modeAlphaScale: 0.5,
+    metaAlphaScale: 0.42,
+    flashAlphaScale: 0.22,
+    showMode: true,
+    showMeta: true,
+    showFlash: false
+  },
+  none: {
+    railAlphaScale: 0,
+    modeAlphaScale: 0,
+    metaAlphaScale: 0,
+    flashAlphaScale: 0,
+    showMode: false,
+    showMeta: false,
+    showFlash: false
   }
 };
 
@@ -107,12 +139,23 @@ const resolveModeLabel = (
   }
 };
 
-const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVariant): string => {
+const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVariant, chrome: PresentationChrome): string => {
   const size = getMazeSizeLabel(episode?.size ?? 'medium').toUpperCase();
   const difficulty = (episode?.difficulty ?? 'standard').toUpperCase();
   const seed = isFiniteNumber(episode?.seed) ? episode.seed : 0;
   const rasterWidth = isFiniteNumber(episode?.raster?.width) ? episode.raster.width : 0;
   const rasterHeight = isFiniteNumber(episode?.raster?.height) ? episode.raster.height : 0;
+
+  if (chrome === 'none') {
+    return '';
+  }
+
+  if (chrome === 'minimal') {
+    return variant === 'loading'
+      ? [`SEED ${seed}`, `GRID ${rasterWidth}x${rasterHeight}`].join(META_SEPARATOR)
+      : [`SEED ${seed}`, `SIZE ${size}`].join(META_SEPARATOR);
+  }
+
   switch (variant) {
     case 'ambient':
       return [
@@ -159,6 +202,8 @@ export const createDemoStatusHud = (
   options: HudRenderOptions = {}
 ): DemoStatusHandle => {
   const reducedMotion = options.reducedMotion === true;
+  const chrome = sanitizePresentationChrome(options.chrome ?? DEFAULT_PRESENTATION_CHROME);
+  const chromeProfile = CHROME_PROFILES[chrome];
   const compact = resolveCompactWidth(scene) <= legacyTuning.menu.layout.narrowBreakpoint;
   const boardX = isFiniteNumber(layout.boardX) ? layout.boardX : 0;
   const boardY = isFiniteNumber(layout.boardY) ? layout.boardY : 0;
@@ -221,7 +266,7 @@ export const createDemoStatusHud = (
         modeText.setText(nextModeLabel);
       }
 
-      const nextMeta = resolveMetaLabel(episode, safeVariant);
+      const nextMeta = resolveMetaLabel(episode, safeVariant, chrome);
       if (nextMeta !== lastMeta || safeVariant !== lastVariant) {
         lastMeta = nextMeta;
         metaText.setText(nextMeta);
@@ -236,10 +281,14 @@ export const createDemoStatusHud = (
       lastVariant = safeVariant;
       const alpha = Phaser.Math.Clamp(sanitizeAlpha(metadataAlpha, 0.48), 0.16, 0.88);
       root.setPosition(sanitizeOffset(offsetX), sanitizeOffset(offsetY));
-      rail.setAlpha(alpha * profile.railAlphaScale);
-      modeText.setAlpha(profile.showMode ? alpha * profile.modeAlphaScale : 0);
-      metaText.setAlpha(alpha * profile.metaAlphaScale);
-      flashText.setAlpha(profile.showFlash ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * profile.flashAlphaScale : 0);
+      rail.setAlpha(alpha * profile.railAlphaScale * chromeProfile.railAlphaScale);
+      modeText.setAlpha(chromeProfile.showMode ? alpha * chromeProfile.modeAlphaScale : 0);
+      metaText.setAlpha(chromeProfile.showMeta ? alpha * chromeProfile.metaAlphaScale : 0);
+      flashText.setAlpha(
+        profile.showFlash && chromeProfile.showFlash
+          ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * chromeProfile.flashAlphaScale
+          : 0
+      );
     },
     destroy(): void {
       pulseTween?.remove();

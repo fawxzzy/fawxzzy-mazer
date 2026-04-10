@@ -19,13 +19,18 @@ vi.mock('phaser', () => ({
 
 let BootScene: typeof import('../../src/scenes/BootScene').BootScene;
 let phaserConfig: typeof import('../../src/boot/phaserConfig').phaserConfig;
+let DEFAULT_PRESENTATION_LAUNCH_CONFIG: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_LAUNCH_CONFIG;
 let DEFAULT_PRESENTATION_VARIANT: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_VARIANT;
-let resolveBootPresentationVariant: typeof import('../../src/boot/presentation').resolveBootPresentationVariant;
+let isDeterministicPresentationCapture: typeof import('../../src/boot/presentation').isDeterministicPresentationCapture;
 let presentationModule: typeof import('../../src/boot/presentation');
+let resolveBootPresentationConfig: typeof import('../../src/boot/presentation').resolveBootPresentationConfig;
+let resolveBootPresentationVariant: typeof import('../../src/boot/presentation').resolveBootPresentationVariant;
+let resolveEffectivePresentationChrome: typeof import('../../src/boot/presentation').resolveEffectivePresentationChrome;
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
 let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
 let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
@@ -36,7 +41,15 @@ beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
   presentationModule = await import('../../src/boot/presentation');
-  ({ DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } = await import('../../src/boot/presentation'));
+  ({
+    DEFAULT_PRESENTATION_LAUNCH_CONFIG,
+    DEFAULT_PRESENTATION_VARIANT,
+    isDeterministicPresentationCapture,
+    resolveBootPresentationConfig,
+    resolveBootPresentationVariant,
+    resolveEffectivePresentationChrome,
+    shouldShowPresentationTitle
+  } = await import('../../src/boot/presentation'));
   ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
   ({ createBoardLayout } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
@@ -54,15 +67,38 @@ describe('demo-only build', () => {
       }
     });
 
-    expect(start).toHaveBeenCalledWith('MenuScene', { presentation: DEFAULT_PRESENTATION_VARIANT });
+    expect(start).toHaveBeenCalledWith('MenuScene', DEFAULT_PRESENTATION_LAUNCH_CONFIG);
   });
 
-  test('presentation selection defaults to title and accepts clean alternates', () => {
+  test('launch param selection defaults safely and sanitizes invalid values', () => {
     expect(resolveBootPresentationVariant('')).toBe('title');
     expect(resolveBootPresentationVariant('?presentation=ambient')).toBe('ambient');
     expect(resolveBootPresentationVariant('?presentation=loading')).toBe('loading');
     expect(resolveBootPresentationVariant('?presentation=unknown')).toBe('title');
     expect(resolveBootPresentationVariant({} as unknown as string)).toBe('title');
+
+    expect(resolveBootPresentationConfig('')).toEqual(DEFAULT_PRESENTATION_LAUNCH_CONFIG);
+    expect(resolveBootPresentationConfig('?presentation=loading&chrome=minimal&mood=scan&seed=42&size=large&difficulty=spicy&title=hide')).toEqual({
+      presentation: 'loading',
+      chrome: 'minimal',
+      mood: 'scan',
+      seed: 42,
+      size: 'large',
+      difficulty: 'spicy',
+      title: 'hide'
+    });
+    expect(resolveBootPresentationConfig('?presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
+      DEFAULT_PRESENTATION_LAUNCH_CONFIG
+    );
+    expect(resolveEffectivePresentationChrome({
+      ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
+      chrome: 'full',
+      title: 'hide'
+    })).toBe('minimal');
+    expect(shouldShowPresentationTitle({
+      ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
+      title: 'hide'
+    })).toBe(false);
   });
 
   test('invalid viewport input sanitizes to a safe presentation model', () => {
@@ -82,7 +118,7 @@ describe('demo-only build', () => {
   test('BootScene falls back to title when presentation resolution throws', () => {
     const start = vi.fn();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const resolverSpy = vi.spyOn(presentationModule, 'resolveBootPresentationVariant').mockImplementation(() => {
+    const resolverSpy = vi.spyOn(presentationModule, 'resolveBootPresentationConfig').mockImplementation(() => {
       throw new Error('boom');
     });
 
@@ -92,7 +128,7 @@ describe('demo-only build', () => {
       }
     });
 
-    expect(start).toHaveBeenCalledWith('MenuScene', { presentation: DEFAULT_PRESENTATION_VARIANT });
+    expect(start).toHaveBeenCalledWith('MenuScene', DEFAULT_PRESENTATION_LAUNCH_CONFIG);
     resolverSpy.mockRestore();
     errorSpy.mockRestore();
   });
@@ -147,6 +183,55 @@ describe('demo-only build', () => {
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);
     }
+  });
+
+  test('deterministic capture mode locks seed, size, difficulty, and mood for valid launch controls', () => {
+    const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&seed=4242&size=huge&difficulty=brutal&title=hide');
+    expect(isDeterministicPresentationCapture(launchConfig)).toBe(true);
+
+    const cycleA = resolveMenuDemoCycle(launchConfig.seed!, 0, {
+      mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
+      size: launchConfig.size,
+      difficulty: launchConfig.difficulty
+    });
+    const cycleB = resolveMenuDemoCycle(launchConfig.seed!, 8, {
+      mood: launchConfig.mood === 'auto' ? undefined : launchConfig.mood,
+      size: launchConfig.size,
+      difficulty: launchConfig.difficulty
+    });
+
+    expect(cycleA.mood).toBe('blueprint');
+    expect(cycleA.size).toBe('huge');
+    expect(cycleA.difficulty).toBe('brutal');
+    expect(cycleB.mood).toBe('blueprint');
+    expect(cycleB.size).toBe('huge');
+    expect(cycleB.difficulty).toBe('brutal');
+
+    const first = generateMazeForDifficulty({
+      scale: legacyTuning.board.scale,
+      seed: launchConfig.seed!,
+      size: launchConfig.size!,
+      checkPointModifier: legacyTuning.board.checkPointModifier,
+      shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+    }, launchConfig.difficulty!);
+    const second = generateMazeForDifficulty({
+      scale: legacyTuning.board.scale,
+      seed: launchConfig.seed!,
+      size: launchConfig.size!,
+      checkPointModifier: legacyTuning.board.checkPointModifier,
+      shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+    }, launchConfig.difficulty!);
+
+    expect(first.episode.seed).toBe(launchConfig.seed);
+    expect(second.episode.seed).toBe(launchConfig.seed);
+    expect(first.episode.difficulty).toBe('brutal');
+    expect(second.episode.difficulty).toBe('brutal');
+    expect(first.episode.raster.width).toBe(second.episode.raster.width);
+    expect(first.episode.raster.height).toBe(second.episode.raster.height);
+    expect(Array.from(first.episode.raster.pathIndices)).toEqual(Array.from(second.episode.raster.pathIndices));
+
+    disposeMazeEpisode(first.episode);
+    disposeMazeEpisode(second.episode);
   });
 
   test('demo presentation sequence stays bounded across intro, reveal, arrival, and fade', () => {
@@ -271,6 +356,16 @@ describe('demo-only build', () => {
     }
 
     disposeMazeEpisode(episode);
+  });
+
+  test('default presentation layout stays unchanged unless board-first chrome is requested', () => {
+    const defaultModel = resolveMenuPresentationModel(1280, 720, DEFAULT_PRESENTATION_VARIANT);
+    const explicitDefaultModel = resolveMenuPresentationModel(1280, 720, 'title', 'full', true);
+    const boardFirstModel = resolveMenuPresentationModel(1280, 720, 'ambient', 'none', false);
+
+    expect(defaultModel).toEqual(explicitDefaultModel);
+    expect(defaultModel.layout.topReserve).toBeGreaterThan(boardFirstModel.layout.topReserve);
+    expect(defaultModel.layout.boardScale).toBeLessThan(boardFirstModel.layout.boardScale);
   });
 
   test('play, options, and win scene files are removed and no gameplay CTA remains in the menu scene', () => {

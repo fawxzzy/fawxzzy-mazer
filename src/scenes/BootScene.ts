@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } from '../boot/presentation';
+import { DEFAULT_PRESENTATION_LAUNCH_CONFIG, resolveBootPresentationConfig } from '../boot/presentation';
 import { resolveSceneViewport } from '../render/viewport';
 
 export class BootScene extends Phaser.Scene {
@@ -12,18 +12,16 @@ export class BootScene extends Phaser.Scene {
   }
 
   public create(): void {
-    let presentation = DEFAULT_PRESENTATION_VARIANT;
+    let launchConfig = { ...DEFAULT_PRESENTATION_LAUNCH_CONFIG };
 
     try {
-      presentation = resolveBootPresentationVariant(resolveWindowSearch());
+      launchConfig = resolveBootPresentationConfig(resolveWindowSearch());
     } catch (error) {
       console.error('BootScene presentation resolution failed; falling back to title.', error);
     }
 
     try {
-      this.scene.start('MenuScene', {
-        presentation
-      });
+      this.scene.start('MenuScene', launchConfig);
     } catch (error) {
       console.error('BootScene failed to start MenuScene; rendering recovery shell.', error);
       this.renderRecoveryShell();
