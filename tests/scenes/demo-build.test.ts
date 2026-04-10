@@ -17,6 +17,7 @@ let BootScene: typeof import('../../src/scenes/BootScene').BootScene;
 let phaserConfig: typeof import('../../src/boot/phaserConfig').phaserConfig;
 let DEFAULT_PRESENTATION_VARIANT: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_VARIANT;
 let resolveBootPresentationVariant: typeof import('../../src/boot/presentation').resolveBootPresentationVariant;
+let presentationModule: typeof import('../../src/boot/presentation');
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
@@ -27,6 +28,7 @@ let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
 beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
+  presentationModule = await import('../../src/boot/presentation');
   ({ DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } = await import('../../src/boot/presentation'));
   ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence } = await import('../../src/scenes/MenuScene'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
@@ -51,6 +53,25 @@ describe('demo-only build', () => {
     expect(resolveBootPresentationVariant('?presentation=ambient')).toBe('ambient');
     expect(resolveBootPresentationVariant('?presentation=loading')).toBe('loading');
     expect(resolveBootPresentationVariant('?presentation=unknown')).toBe('title');
+    expect(resolveBootPresentationVariant({} as unknown as string)).toBe('title');
+  });
+
+  test('BootScene falls back to title when presentation resolution throws', () => {
+    const start = vi.fn();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const resolverSpy = vi.spyOn(presentationModule, 'resolveBootPresentationVariant').mockImplementation(() => {
+      throw new Error('boom');
+    });
+
+    BootScene.prototype.create.call({
+      scene: {
+        start
+      }
+    });
+
+    expect(start).toHaveBeenCalledWith('MenuScene', { presentation: DEFAULT_PRESENTATION_VARIANT });
+    resolverSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   test('scene wiring only includes boot and menu scenes', () => {

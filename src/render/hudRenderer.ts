@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { AmbientPresentationVariant } from '../boot/presentation';
+import { DEFAULT_PRESENTATION_VARIANT, sanitizePresentationVariant, type AmbientPresentationVariant } from '../boot/presentation';
 import type { MazeEpisode } from '../domain/maze';
 import { getMazeSizeLabel } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
@@ -83,6 +83,14 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, HudVariantProfile> = 
   }
 };
 
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const sanitizeAlpha = (value: unknown, fallback: number): number => Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, 0, 1);
+const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
+const resolveCompactWidth = (scene: Phaser.Scene): number => {
+  const width = scene.scale.width;
+  return isFiniteNumber(width) && width > 0 ? width : 1280;
+};
+
 const resolveModeLabel = (
   mood: DemoMood,
   sequence: DemoSequence,
@@ -101,16 +109,19 @@ const resolveModeLabel = (
 };
 
 const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVariant): string => {
-  const size = getMazeSizeLabel(episode.size).toUpperCase();
-  const difficulty = episode.difficulty.toUpperCase();
+  const size = getMazeSizeLabel(episode?.size ?? 'medium').toUpperCase();
+  const difficulty = (episode?.difficulty ?? 'standard').toUpperCase();
+  const seed = isFiniteNumber(episode?.seed) ? episode.seed : 0;
+  const rasterWidth = isFiniteNumber(episode?.raster?.width) ? episode.raster.width : 0;
+  const rasterHeight = isFiniteNumber(episode?.raster?.height) ? episode.raster.height : 0;
   switch (variant) {
     case 'ambient':
-      return `${size} / #${episode.seed}`;
+      return `${size} / #${seed}`;
     case 'loading':
-      return `${size} / ${difficulty} / #${episode.seed} / ${episode.raster.width}x${episode.raster.height}`;
+      return `${size} / ${difficulty} / #${seed} / ${rasterWidth}x${rasterHeight}`;
     case 'title':
     default:
-      return `${size} / ${difficulty} / #${episode.seed}`;
+      return `${size} / ${difficulty} / #${seed}`;
   }
 };
 
@@ -120,22 +131,26 @@ export const createDemoStatusHud = (
   options: HudRenderOptions = {}
 ): DemoStatusHandle => {
   const reducedMotion = options.reducedMotion === true;
-  const compact = scene.scale.width <= legacyTuning.menu.layout.narrowBreakpoint;
-  const leftX = layout.boardX + 6;
-  const rightX = layout.boardX + layout.boardWidth - 6;
-  const baselineY = layout.boardY + layout.boardHeight + (compact ? 12 : 14);
-  const flashX = layout.boardX + layout.boardWidth - 4;
-  const flashY = layout.boardY + (compact ? 8 : 10);
+  const compact = resolveCompactWidth(scene) <= legacyTuning.menu.layout.narrowBreakpoint;
+  const boardX = isFiniteNumber(layout.boardX) ? layout.boardX : 0;
+  const boardY = isFiniteNumber(layout.boardY) ? layout.boardY : 0;
+  const boardWidth = Math.max(80, isFiniteNumber(layout.boardWidth) ? layout.boardWidth : 80);
+  const boardHeight = Math.max(80, isFiniteNumber(layout.boardHeight) ? layout.boardHeight : 80);
+  const leftX = boardX + 6;
+  const rightX = boardX + boardWidth - 6;
+  const baselineY = boardY + boardHeight + (compact ? 12 : 14);
+  const flashX = boardX + boardWidth - 4;
+  const flashY = boardY + (compact ? 8 : 10);
   let lastModeLabel = '';
   let lastMeta = '';
   let lastFlash = '';
-  let lastVariant: AmbientPresentationVariant = 'title';
+  let lastVariant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT;
 
   const root = scene.add.container(0, 0).setDepth(10);
   const rail = scene.add.rectangle(
-    layout.boardX + (layout.boardWidth / 2),
+    boardX + (boardWidth / 2),
     baselineY - (compact ? 10 : 11),
-    layout.boardWidth,
+    boardWidth,
     1,
     palette.hud.panelStroke,
     0.2
@@ -170,34 +185,35 @@ export const createDemoStatusHud = (
 
   return {
     setState(episode, mood, sequence, variant, metadataAlpha, flashAlpha, phaseLabel, offsetX, offsetY): void {
-      const profile = VARIANT_PROFILES[variant];
-      const nextModeLabel = resolveModeLabel(mood, sequence, variant, phaseLabel);
-      if (nextModeLabel !== lastModeLabel || variant !== lastVariant) {
+      const safeVariant = sanitizePresentationVariant(variant);
+      const profile = VARIANT_PROFILES[safeVariant];
+      const nextModeLabel = resolveModeLabel(mood, sequence, safeVariant, phaseLabel);
+      if (nextModeLabel !== lastModeLabel || safeVariant !== lastVariant) {
         lastModeLabel = nextModeLabel;
         modeText.setText(nextModeLabel);
       }
 
-      const nextMeta = resolveMetaLabel(episode, variant);
-      if (nextMeta !== lastMeta || variant !== lastVariant) {
+      const nextMeta = resolveMetaLabel(episode, safeVariant);
+      if (nextMeta !== lastMeta || safeVariant !== lastVariant) {
         lastMeta = nextMeta;
         metaText.setText(nextMeta);
       }
 
-      const nextFlash = variant === 'loading'
+      const nextFlash = safeVariant === 'loading'
         ? `${moodLabels[mood]} / ${sequenceLabels[sequence]}`
         : phaseLabel.toUpperCase();
-      if (nextFlash !== lastFlash || variant !== lastVariant) {
+      if (nextFlash !== lastFlash || safeVariant !== lastVariant) {
         lastFlash = nextFlash;
         flashText.setText(nextFlash);
       }
 
-      lastVariant = variant;
-      const alpha = Phaser.Math.Clamp(metadataAlpha, 0.16, 0.88);
-      root.setPosition(offsetX, offsetY);
+      lastVariant = safeVariant;
+      const alpha = Phaser.Math.Clamp(sanitizeAlpha(metadataAlpha, 0.48), 0.16, 0.88);
+      root.setPosition(sanitizeOffset(offsetX), sanitizeOffset(offsetY));
       rail.setAlpha(alpha * profile.railAlphaScale);
       modeText.setAlpha(profile.showMode ? alpha * profile.modeAlphaScale : 0);
       metaText.setAlpha(alpha * profile.metaAlphaScale);
-      flashText.setAlpha(profile.showFlash ? Phaser.Math.Clamp(flashAlpha, 0, 0.9) * profile.flashAlphaScale : 0);
+      flashText.setAlpha(profile.showFlash ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * profile.flashAlphaScale : 0);
     },
     destroy(): void {
       pulseTween?.remove();

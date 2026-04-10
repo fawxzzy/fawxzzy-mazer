@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { AmbientPresentationVariant } from '../boot/presentation';
-import { DEFAULT_PRESENTATION_VARIANT, resolvePatternEngineMode } from '../boot/presentation';
+import { DEFAULT_PRESENTATION_VARIANT, resolvePatternEngineMode, sanitizePresentationVariant } from '../boot/presentation';
 import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue } from '../domain/ai';
 import {
   disposeMazeEpisode,
@@ -128,6 +128,19 @@ interface PresentationOffsets {
   driftX: number;
   driftY: number;
 }
+
+const DEFAULT_VIEWPORT_WIDTH = 1280;
+const DEFAULT_VIEWPORT_HEIGHT = 720;
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
+  isFiniteNumber(value) && value >= minimum ? value : fallback
+);
+const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
+const resolveSceneViewport = (scene: Phaser.Scene): { width: number; height: number } => ({
+  width: sanitizePositive(scene.scale.width, sanitizePositive(scene.cameras.main?.width, DEFAULT_VIEWPORT_WIDTH), 1),
+  height: sanitizePositive(scene.scale.height, sanitizePositive(scene.cameras.main?.height, DEFAULT_VIEWPORT_HEIGHT), 1)
+});
 
 const DEMO_PACING_PROFILES: readonly MenuDemoCycle['pacing'][] = [
   { exploreStepMs: -10, goalHoldMs: 60, resetHoldMs: 36, spawnHoldMs: 34 },
@@ -301,21 +314,51 @@ export class MenuScene extends Phaser.Scene {
   }
 
   public init(data: MenuSceneInitData = {}): void {
-    this.presentationVariant = data.presentation ?? DEFAULT_PRESENTATION_VARIANT;
+    this.presentationVariant = sanitizePresentationVariant(data.presentation);
   }
 
   public create(): void {
-    const { width, height } = this.scale;
+    const { width, height } = resolveSceneViewport(this);
     const reducedMotion = prefersReducedMotion();
-    const variantProfile = VARIANT_PROFILES[this.presentationVariant];
-    const sceneLayout = resolveSceneLayoutProfile(width, height, this.presentationVariant);
-    this.cameras.main.fadeIn(reducedMotion ? 0 : this.presentationVariant === 'loading' ? 220 : 280, 0, 0, 0);
-    this.drawStarfield(width, height);
+    const variant = sanitizePresentationVariant(this.presentationVariant);
+    const variantProfile = VARIANT_PROFILES[variant];
+    const sceneLayout = resolveSceneLayoutProfile(width, height, variant);
+    let recoveryActivated = false;
+    let patternEngine: PatternEngine | undefined;
+    let boardRenderer: BoardRenderer | undefined;
+    let demoStatusHud: ReturnType<typeof createDemoStatusHud> | undefined;
+    let resizeRestart: Phaser.Time.TimerEvent | undefined;
 
-    let demoSeed = legacyTuning.demo.seed;
-    let demoCycle = 0;
-    let pendingCyclePlan: MenuDemoCycle | undefined;
-    const patternEngine = new PatternEngine(() => {
+    const failOpen = (error: unknown): void => {
+      if (recoveryActivated) {
+        return;
+      }
+
+      recoveryActivated = true;
+      console.error('MenuScene failed open to recovery shell.', error);
+      resizeRestart?.remove(false);
+      this.titlePulseTween?.remove();
+      this.titleDriftTween?.remove();
+      this.starDriftTween?.remove();
+      patternEngine?.destroy();
+      demoStatusHud?.destroy();
+      boardRenderer?.destroy();
+      this.scale.removeAllListeners(Phaser.Scale.Events.RESIZE);
+      this.events.removeAllListeners(Phaser.Scenes.Events.UPDATE);
+      this.time.removeAllEvents();
+      this.tweens.killAll();
+      this.children.removeAll(true);
+      this.renderRecoveryShell(width, height);
+    };
+
+    try {
+      this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 220 : 280, 0, 0, 0);
+      this.drawStarfield(width, height);
+
+      let demoSeed = legacyTuning.demo.seed;
+      let demoCycle = 0;
+      let pendingCyclePlan: MenuDemoCycle | undefined;
+      patternEngine = new PatternEngine(() => {
       const cycle = resolveMenuDemoCycle(demoSeed, demoCycle);
       pendingCyclePlan = cycle;
       const resolved = generateMazeForDifficulty({
@@ -328,348 +371,373 @@ export class MenuScene extends Phaser.Scene {
       demoSeed += legacyTuning.demo.behavior.regenerateSeedStep;
       demoCycle += 1;
       return resolved.episode;
-    }, resolvePatternEngineMode(this.presentationVariant));
-    let patternFrame = patternEngine.next(0);
-    let demoCyclePlan = pendingCyclePlan ?? resolveMenuDemoCycle(patternFrame.episode.seed, 0);
-    let sceneHidden = typeof document !== 'undefined' && document.hidden;
+      }, resolvePatternEngineMode(variant));
+      let patternFrame = patternEngine.next(0);
+      let demoCyclePlan = pendingCyclePlan ?? resolveMenuDemoCycle(patternFrame.episode.seed, 0);
+      let sceneHidden = typeof document !== 'undefined' && document.hidden;
 
-    const layout = createBoardLayout(this, patternFrame.episode, {
-      boardScale: sceneLayout.boardScale
-        + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
-      topReserve: sceneLayout.topReserve,
-      sidePadding: sceneLayout.sidePadding,
-      bottomPadding: sceneLayout.bottomPadding
-    });
-    const boardCenterX = layout.boardX + (layout.boardWidth / 2);
-    const boardCenterY = layout.boardY + (layout.boardHeight / 2);
-    const boardRenderer = new BoardRenderer(this, patternFrame.episode, layout);
-    boardRenderer.drawBoardChrome();
-
-    const boardAura = this.add.ellipse(
-      boardCenterX,
-      boardCenterY,
-      layout.boardWidth * 1.14,
-      layout.boardHeight * 1.08,
-      palette.background.nebulaCore,
-      0.1
-    ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
-    const boardHalo = this.add.ellipse(
-      boardCenterX,
-      boardCenterY,
-      layout.boardWidth * 1.05,
-      layout.boardHeight * 1.03,
-      palette.board.topHighlight,
-      0.032
-    ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
-    const boardShade = this.add.rectangle(
-      boardCenterX,
-      boardCenterY,
-      layout.boardWidth,
-      layout.boardHeight,
-      palette.board.topHighlight,
-      0.02
-    ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
-    const boardVeil = this.add.rectangle(
-      boardCenterX,
-      boardCenterY,
-      layout.boardWidth,
-      layout.boardHeight,
-      palette.background.deepSpace,
-      0
-    ).setOrigin(0.5).setDepth(7.2);
-
-    const titlePlateWidth = Phaser.Math.Clamp(
-      Math.round(layout.boardSize * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio) * variantProfile.titleScale),
-      variantProfile.titleAnchor === 'left' ? 200 : 216,
-      sceneLayout.isPortrait ? 356 : 404
-    );
-    const titlePlateHeight = Phaser.Math.Clamp(
-      Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale)),
-      38,
-      legacyTuning.menu.title.plateHeightMaxPx
-    );
-    const titleY = Math.max(
-      titlePlateHeight / 2 + 10,
-      layout.boardY - Math.round(titlePlateHeight * variantProfile.titleYOffsetRatio) - (sceneLayout.isPortrait ? 2 : 0)
-    );
-    const titleX = variantProfile.titleAnchor === 'left'
-      ? layout.boardX + Math.round(titlePlateWidth * 0.54)
-      : width / 2;
-    const titleContainer = this.add.container(titleX, titleY).setDepth(9);
-    titleContainer.add([
-      this.add.rectangle(0, 6, titlePlateWidth + 8, titlePlateHeight + 10, palette.board.shadow, 0.26 * variantProfile.plateAlpha),
-      this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, palette.board.well, variantProfile.plateAlpha)
-        .setStrokeStyle(1, palette.board.innerStroke, 0.18 * variantProfile.titleAlpha),
-      this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, palette.board.panel, variantProfile.panelAlpha)
-        .setStrokeStyle(1, palette.board.topHighlight, 0.08 * variantProfile.titleAlpha),
-      this.add.rectangle(0, -(titlePlateHeight / 2) + 7, titlePlateWidth - 18, 2, palette.board.topHighlight, 0.12 * variantProfile.titleAlpha)
-    ]);
-    const title = this.add.text(0, -7, legacyTuning.menu.title.text, {
-      color: '#75f78f',
-      fontFamily: 'monospace',
-      fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale), 28, 84)}px`,
-      fontStyle: 'bold'
-    }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide).setAlpha(variantProfile.titleAlpha)
-      .setStroke('#17381f', legacyTuning.menu.title.strokePx).setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true);
-    const signature = this.add.text(0, Math.round(titlePlateHeight * 0.23), '\u00b0 by fawxzzy', {
-      color: '#a5d7af',
-      fontFamily: '"Courier New", monospace',
-      fontSize: `${sceneLayout.isNarrow ? 9 : 10}px`
-    }).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha).setLetterSpacing(1);
-    const passiveTag = this.add.text(0, Math.round(titlePlateHeight * 0.42), PASSIVE_TAGLINES[this.presentationVariant], {
-      color: '#d7deef',
-      fontFamily: '"Courier New", monospace',
-      fontSize: `${sceneLayout.isNarrow ? 10 : 11}px`
-    }).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
-    titleContainer.add([title, signature, passiveTag]);
-    if (reducedMotion) {
-      titleContainer.setAlpha(1).setScale(1);
-    } else {
-      titleContainer.setAlpha(0);
-      titleContainer.y -= 12;
-      titleContainer.setScale(0.985);
-      this.tweens.add({
-        targets: titleContainer,
-        alpha: 1,
-        y: titleY,
-        scaleX: 1,
-        scaleY: 1,
-        duration: 760,
-        ease: 'Cubic.easeOut'
+      const layout = createBoardLayout(this, patternFrame.episode, {
+        boardScale: sceneLayout.boardScale
+          + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
+        topReserve: sceneLayout.topReserve,
+        sidePadding: sceneLayout.sidePadding,
+        bottomPadding: sceneLayout.bottomPadding
       });
-      this.titlePulseTween = this.tweens.add({
-        targets: title,
-        alpha: {
-          from: Math.max(0.28, variantProfile.titleAlpha - 0.08),
-          to: Math.min(0.92, variantProfile.titleAlpha + 0.06)
-        },
-        duration: legacyTuning.menu.title.pulseDurationMs,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
-      this.titleDriftTween = this.tweens.add({
-        targets: titleContainer,
-        x: titleX + variantProfile.titleDriftX,
-        y: titleY + variantProfile.titleDriftY,
-        duration: variantProfile.titleDriftMs,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
-    }
+      const boardCenterX = layout.boardX + (layout.boardWidth / 2);
+      const boardCenterY = layout.boardY + (layout.boardHeight / 2);
+      boardRenderer = new BoardRenderer(this, patternFrame.episode, layout);
+      boardRenderer.drawBoardChrome();
 
-    const demoStatusHud = createDemoStatusHud(this, layout, { reducedMotion });
+      const boardAura = this.add.ellipse(
+        boardCenterX,
+        boardCenterY,
+        Math.max(24, layout.boardWidth * 1.14),
+        Math.max(24, layout.boardHeight * 1.08),
+        palette.background.nebulaCore,
+        0.1
+      ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
+      const boardHalo = this.add.ellipse(
+        boardCenterX,
+        boardCenterY,
+        Math.max(20, layout.boardWidth * 1.05),
+        Math.max(20, layout.boardHeight * 1.03),
+        palette.board.topHighlight,
+        0.032
+      ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
+      const boardShade = this.add.rectangle(
+        boardCenterX,
+        boardCenterY,
+        Math.max(16, layout.boardWidth),
+        Math.max(16, layout.boardHeight),
+        palette.board.topHighlight,
+        0.02
+      ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
+      const boardVeil = this.add.rectangle(
+        boardCenterX,
+        boardCenterY,
+        Math.max(16, layout.boardWidth),
+        Math.max(16, layout.boardHeight),
+        palette.background.deepSpace,
+        0
+      ).setOrigin(0.5).setDepth(7.2);
 
-    let lastCue: DemoWalkerCue = 'spawn';
-    let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
-    let demoPresentation = resolveMenuDemoPresentation(
-      patternFrame.episode,
-      demoCyclePlan,
-      0,
-      demoConfig,
-      this.presentationVariant
-    );
-    const applyPresentationOffsets = (presentation: MenuDemoPresentation): void => {
-      boardRenderer.setPresentationOffset(presentation.frameOffsetX, presentation.frameOffsetY);
-      boardAura.setPosition(boardCenterX + presentation.frameOffsetX, boardCenterY + presentation.frameOffsetY);
-      boardHalo.setPosition(boardCenterX + presentation.frameOffsetX, boardCenterY + presentation.frameOffsetY);
-      boardShade.setPosition(boardCenterX + presentation.frameOffsetX, boardCenterY + presentation.frameOffsetY);
-      boardVeil.setPosition(boardCenterX + presentation.frameOffsetX, boardCenterY + presentation.frameOffsetY);
-    };
-    const applyEpisodePresentation = (): void => {
-      demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
-      demoPresentation = resolveMenuDemoPresentation(
+      const titlePlateWidth = Phaser.Math.Clamp(
+        Math.round(layout.boardSize * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio) * variantProfile.titleScale),
+        variantProfile.titleAnchor === 'left' ? 200 : 216,
+        sceneLayout.isPortrait ? 356 : 404
+      );
+      const titlePlateHeight = Phaser.Math.Clamp(
+        Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale)),
+        38,
+        legacyTuning.menu.title.plateHeightMaxPx
+      );
+      const titleY = Math.max(
+        titlePlateHeight / 2 + 10,
+        layout.boardY - Math.round(titlePlateHeight * variantProfile.titleYOffsetRatio) - (sceneLayout.isPortrait ? 2 : 0)
+      );
+      const titleX = variantProfile.titleAnchor === 'left'
+        ? layout.boardX + Math.round(titlePlateWidth * 0.54)
+        : width / 2;
+      const titleContainer = this.add.container(titleX, titleY).setDepth(9);
+      titleContainer.add([
+        this.add.rectangle(0, 6, titlePlateWidth + 8, titlePlateHeight + 10, palette.board.shadow, 0.26 * variantProfile.plateAlpha),
+        this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, palette.board.well, variantProfile.plateAlpha)
+          .setStrokeStyle(1, palette.board.innerStroke, 0.18 * variantProfile.titleAlpha),
+        this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, palette.board.panel, variantProfile.panelAlpha)
+          .setStrokeStyle(1, palette.board.topHighlight, 0.08 * variantProfile.titleAlpha),
+        this.add.rectangle(0, -(titlePlateHeight / 2) + 7, titlePlateWidth - 18, 2, palette.board.topHighlight, 0.12 * variantProfile.titleAlpha)
+      ]);
+      const title = this.add.text(0, -7, legacyTuning.menu.title.text, {
+        color: '#75f78f',
+        fontFamily: 'monospace',
+        fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale), 28, 84)}px`,
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide).setAlpha(variantProfile.titleAlpha)
+        .setStroke('#17381f', legacyTuning.menu.title.strokePx).setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true);
+      const signature = this.add.text(0, Math.round(titlePlateHeight * 0.23), '\u00b0 by fawxzzy', {
+        color: '#a5d7af',
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${sceneLayout.isNarrow ? 9 : 10}px`
+      }).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha).setLetterSpacing(1);
+      const passiveTag = this.add.text(0, Math.round(titlePlateHeight * 0.42), PASSIVE_TAGLINES[variant], {
+        color: '#d7deef',
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${sceneLayout.isNarrow ? 10 : 11}px`
+      }).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+      titleContainer.add([title, signature, passiveTag]);
+      if (reducedMotion) {
+        titleContainer.setAlpha(1).setScale(1);
+      } else {
+        titleContainer.setAlpha(0);
+        titleContainer.y -= 12;
+        titleContainer.setScale(0.985);
+        this.tweens.add({
+          targets: titleContainer,
+          alpha: 1,
+          y: titleY,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 760,
+          ease: 'Cubic.easeOut'
+        });
+        this.titlePulseTween = this.tweens.add({
+          targets: title,
+          alpha: {
+            from: Math.max(0.28, variantProfile.titleAlpha - 0.08),
+            to: Math.min(0.92, variantProfile.titleAlpha + 0.06)
+          },
+          duration: legacyTuning.menu.title.pulseDurationMs,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+        this.titleDriftTween = this.tweens.add({
+          targets: titleContainer,
+          x: titleX + variantProfile.titleDriftX,
+          y: titleY + variantProfile.titleDriftY,
+          duration: variantProfile.titleDriftMs,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+      }
+
+      demoStatusHud = createDemoStatusHud(this, layout, { reducedMotion });
+
+      let lastCue: DemoWalkerCue = 'spawn';
+      let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
+      let demoPresentation = resolveMenuDemoPresentation(
         patternFrame.episode,
         demoCyclePlan,
         0,
         demoConfig,
-        this.presentationVariant
+        variant
       );
-      boardRenderer.setEpisode(patternFrame.episode);
-      applyPresentationOffsets(demoPresentation);
-      boardRenderer.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
-      boardRenderer.drawStart('spawn');
-      boardRenderer.drawGoal();
-      if (!reducedMotion) {
-        boardRenderer.startAmbientMotion(
-          demoPresentation.ambientDriftPxX,
-          demoPresentation.ambientDriftPxY,
-          demoPresentation.ambientDriftMs
+      const applyPresentationOffsets = (presentation: MenuDemoPresentation): void => {
+        const offsetX = sanitizeOffset(presentation.frameOffsetX);
+        const offsetY = sanitizeOffset(presentation.frameOffsetY);
+        boardRenderer?.setPresentationOffset(offsetX, offsetY);
+        boardAura.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
+        boardHalo.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
+        boardShade.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
+        boardVeil.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
+      };
+      const applyEpisodePresentation = (): void => {
+        demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
+        demoPresentation = resolveMenuDemoPresentation(
+          patternFrame.episode,
+          demoCyclePlan,
+          0,
+          demoConfig,
+          variant
         );
-      }
-    };
-    applyEpisodePresentation();
+        boardRenderer?.setEpisode(patternFrame.episode);
+        applyPresentationOffsets(demoPresentation);
+        boardRenderer?.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
+        boardRenderer?.drawStart('spawn');
+        boardRenderer?.drawGoal();
+        if (!reducedMotion) {
+          boardRenderer?.startAmbientMotion(
+            demoPresentation.ambientDriftPxX,
+            demoPresentation.ambientDriftPxY,
+            demoPresentation.ambientDriftMs
+          );
+        }
+      };
+      applyEpisodePresentation();
 
-    const accentCueBeat = (cue: DemoWalkerCue): void => {
-      if (reducedMotion) {
-        return;
-      }
+      const accentCueBeat = (cue: DemoWalkerCue): void => {
+        if (reducedMotion || recoveryActivated) {
+          return;
+        }
 
-      const pulseBoard = (shadeFrom: number, haloFrom: number, auraFrom: number, duration: number, scaleFrom = 1.015): void => {
-        this.tweens.add({ targets: boardShade, alpha: { from: shadeFrom, to: boardShade.alpha }, duration, ease: 'Quad.easeOut' });
-        this.tweens.add({
-          targets: boardHalo,
-          alpha: { from: haloFrom, to: boardHalo.alpha },
-          scaleX: { from: scaleFrom, to: boardHalo.scaleX },
-          scaleY: { from: scaleFrom, to: boardHalo.scaleY },
-          duration,
-          ease: 'Quad.easeOut'
+        const pulseBoard = (shadeFrom: number, haloFrom: number, auraFrom: number, duration: number, scaleFrom = 1.015): void => {
+          this.tweens.add({ targets: boardShade, alpha: { from: shadeFrom, to: boardShade.alpha }, duration, ease: 'Quad.easeOut' });
+          this.tweens.add({
+            targets: boardHalo,
+            alpha: { from: haloFrom, to: boardHalo.alpha },
+            scaleX: { from: scaleFrom, to: boardHalo.scaleX },
+            scaleY: { from: scaleFrom, to: boardHalo.scaleY },
+            duration,
+            ease: 'Quad.easeOut'
+          });
+          this.tweens.add({
+            targets: boardAura,
+            alpha: { from: auraFrom, to: boardAura.alpha },
+            scaleX: { from: scaleFrom + 0.01, to: boardAura.scaleX },
+            scaleY: { from: scaleFrom + 0.01, to: boardAura.scaleY },
+            duration: duration + 60,
+            ease: 'Quad.easeOut'
+          });
+        };
+
+        if (cue === 'goal') {
+          pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
+        } else if (cue === 'reset') {
+          pulseBoard(0.1, 0.08, 0.12, 220, 1.014);
+        } else if (cue === 'spawn') {
+          pulseBoard(0.11, 0.12, 0.16, 240, 1.014);
+        }
+      };
+      const renderDemo = (): void => {
+        demoPresentation = resolveMenuDemoPresentation(
+          patternFrame.episode,
+          demoCyclePlan,
+          patternFrame.t * 1000,
+          demoConfig,
+          variant
+        );
+        const view = resolveDemoWalkerViewFrame(
+          patternFrame.episode,
+          patternFrame.t * 1000,
+          demoConfig,
+          demoPresentation.trailWindow
+        );
+        const path = patternFrame.episode.raster.pathIndices;
+
+        applyPresentationOffsets(demoPresentation);
+        boardAura.setAlpha(demoPresentation.boardAuraAlpha).setScale(demoPresentation.boardAuraScale);
+        boardHalo.setAlpha(demoPresentation.boardHaloAlpha).setScale(demoPresentation.boardHaloScale);
+        boardShade.setAlpha(demoPresentation.boardShadeAlpha);
+        boardVeil.setAlpha(demoPresentation.boardVeilAlpha);
+
+        boardRenderer?.drawStart(view.cue);
+        boardRenderer?.drawGoal(view.cue);
+        boardRenderer?.drawTrail(path, {
+          cue: view.cue,
+          limit: view.trailLimit,
+          start: view.trailStart,
+          emphasis: 'demo'
         });
-        this.tweens.add({
-          targets: boardAura,
-          alpha: { from: auraFrom, to: boardAura.alpha },
-          scaleX: { from: scaleFrom + 0.01, to: boardAura.scaleX },
-          scaleY: { from: scaleFrom + 0.01, to: boardAura.scaleY },
-          duration: duration + 60,
-          ease: 'Quad.easeOut'
+
+        if (view.currentIndex === view.nextIndex || view.progress <= 0) {
+          boardRenderer?.drawActor(view.currentIndex, view.direction, view.cue, demoPresentation.actorPulseBoost);
+        } else {
+          boardRenderer?.drawActorMotion(
+            view.currentIndex,
+            view.nextIndex,
+            view.progress,
+            view.direction,
+            view.cue,
+            demoPresentation.actorPulseBoost
+          );
+        }
+
+        demoStatusHud?.setState(
+          patternFrame.episode,
+          demoPresentation.mood,
+          demoPresentation.sequence,
+          demoPresentation.variant,
+          demoPresentation.metadataAlpha,
+          demoPresentation.flashAlpha,
+          demoPresentation.phaseLabel,
+          demoPresentation.hudOffsetX,
+          demoPresentation.hudOffsetY
+        );
+        if (view.cue !== lastCue) {
+          accentCueBeat(view.cue);
+          lastCue = view.cue;
+        }
+      };
+      const applyPatternFrame = (nextFrame: PatternFrame): void => {
+        const previousEpisode = patternFrame.episode;
+        try {
+          patternFrame = nextFrame;
+          demoCyclePlan = pendingCyclePlan ?? demoCyclePlan;
+          applyEpisodePresentation();
+          renderDemo();
+        } catch (error) {
+          failOpen(error);
+        } finally {
+          disposeMazeEpisode(previousEpisode);
+        }
+      };
+      const handleVisibilityChange = (): void => {
+        if (typeof document === 'undefined' || recoveryActivated) {
+          return;
+        }
+
+        if (document.hidden) {
+          sceneHidden = true;
+          patternEngine?.suspend();
+          return;
+        }
+
+        if (!sceneHidden) {
+          return;
+        }
+
+        sceneHidden = false;
+        try {
+          patternEngine?.resumeFresh();
+          if (patternEngine) {
+            applyPatternFrame(patternEngine.next(0));
+          }
+        } catch (error) {
+          failOpen(error);
+        }
+      };
+
+      const handleResize = (): void => {
+        if (recoveryActivated) {
+          return;
+        }
+
+        resizeRestart?.remove(false);
+        resizeRestart = this.time.delayedCall(80, () => {
+          this.scene.restart({ presentation: variant });
         });
       };
 
-      if (cue === 'goal') {
-        pulseBoard(0.18, 0.16, 0.2, 360, 1.024);
-      } else if (cue === 'reset') {
-        pulseBoard(0.1, 0.08, 0.12, 220, 1.014);
-      } else if (cue === 'spawn') {
-        pulseBoard(0.11, 0.12, 0.16, 240, 1.014);
-      }
-    };
-    const renderDemo = (): void => {
-      demoPresentation = resolveMenuDemoPresentation(
-        patternFrame.episode,
-        demoCyclePlan,
-        patternFrame.t * 1000,
-        demoConfig,
-        this.presentationVariant
-      );
-      const view = resolveDemoWalkerViewFrame(
-        patternFrame.episode,
-        patternFrame.t * 1000,
-        demoConfig,
-        demoPresentation.trailWindow
-      );
-      const path = patternFrame.episode.raster.pathIndices;
-
-      applyPresentationOffsets(demoPresentation);
-      boardAura.setAlpha(demoPresentation.boardAuraAlpha).setScale(demoPresentation.boardAuraScale);
-      boardHalo.setAlpha(demoPresentation.boardHaloAlpha).setScale(demoPresentation.boardHaloScale);
-      boardShade.setAlpha(demoPresentation.boardShadeAlpha);
-      boardVeil.setAlpha(demoPresentation.boardVeilAlpha);
-
-      boardRenderer.drawStart(view.cue);
-      boardRenderer.drawGoal(view.cue);
-      boardRenderer.drawTrail(path, {
-        cue: view.cue,
-        limit: view.trailLimit,
-        start: view.trailStart,
-        emphasis: 'demo'
-      });
-
-      if (view.currentIndex === view.nextIndex || view.progress <= 0) {
-        boardRenderer.drawActor(view.currentIndex, view.direction, view.cue, demoPresentation.actorPulseBoost);
-      } else {
-        boardRenderer.drawActorMotion(
-          view.currentIndex,
-          view.nextIndex,
-          view.progress,
-          view.direction,
-          view.cue,
-          demoPresentation.actorPulseBoost
-        );
-      }
-
-      demoStatusHud.setState(
-        patternFrame.episode,
-        demoPresentation.mood,
-        demoPresentation.sequence,
-        demoPresentation.variant,
-        demoPresentation.metadataAlpha,
-        demoPresentation.flashAlpha,
-        demoPresentation.phaseLabel,
-        demoPresentation.hudOffsetX,
-        demoPresentation.hudOffsetY
-      );
-      if (view.cue !== lastCue) {
-        accentCueBeat(view.cue);
-        lastCue = view.cue;
-      }
-    };
-    const applyPatternFrame = (nextFrame: PatternFrame): void => {
-      const previousEpisode = patternFrame.episode;
-      patternFrame = nextFrame;
-      demoCyclePlan = pendingCyclePlan ?? demoCyclePlan;
-      applyEpisodePresentation();
       renderDemo();
-      disposeMazeEpisode(previousEpisode);
-    };
-    const handleVisibilityChange = (): void => {
-      if (typeof document === 'undefined') {
-        return;
-      }
-
-      if (document.hidden) {
-        sceneHidden = true;
-        patternEngine.suspend();
-        return;
-      }
-
-      if (!sceneHidden) {
-        return;
-      }
-
-      sceneHidden = false;
-      patternEngine.resumeFresh();
-      applyPatternFrame(patternEngine.next(0));
-    };
-
-    let resizeRestart: Phaser.Time.TimerEvent | undefined;
-    const handleResize = (): void => {
-      resizeRestart?.remove(false);
-      resizeRestart = this.time.delayedCall(80, () => {
-        this.scene.restart({ presentation: this.presentationVariant });
-      });
-    };
-
-    renderDemo();
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-    }
-    this.scale.on(Phaser.Scale.Events.RESIZE, handleResize);
-    const updateDemo = (_time: number, delta: number): void => {
-      if (sceneHidden) {
-        return;
-      }
-
-      const nextFrame = patternEngine.next(delta / 1000);
-      if (nextFrame.episode !== patternFrame.episode) {
-        applyPatternFrame(nextFrame);
-        return;
-      }
-
-      patternFrame = nextFrame;
-      renderDemo();
-    };
-    this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      resizeRestart?.remove(false);
-      this.titlePulseTween?.remove();
-      this.titleDriftTween?.remove();
-      this.starDriftTween?.remove();
       if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
       }
-      this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);
-      this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
-      demoStatusHud.destroy();
-      patternEngine.destroy();
-      boardRenderer.destroy();
-      this.time.removeAllEvents();
-      this.tweens.killAll();
-      this.children.removeAll(true);
-    });
+      this.scale.on(Phaser.Scale.Events.RESIZE, handleResize);
+      const updateDemo = (_time: number, delta: number): void => {
+        if (sceneHidden || recoveryActivated || !patternEngine) {
+          return;
+        }
+
+        try {
+          const nextFrame = patternEngine.next(delta / 1000);
+          if (nextFrame.episode !== patternFrame.episode) {
+            applyPatternFrame(nextFrame);
+            return;
+          }
+
+          patternFrame = nextFrame;
+          renderDemo();
+        } catch (error) {
+          failOpen(error);
+        }
+      };
+      this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        resizeRestart?.remove(false);
+        this.titlePulseTween?.remove();
+        this.titleDriftTween?.remove();
+        this.starDriftTween?.remove();
+        if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
+        this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);
+        this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
+        demoStatusHud?.destroy();
+        patternEngine?.destroy();
+        boardRenderer?.destroy();
+        this.time.removeAllEvents();
+        this.tweens.killAll();
+        this.children.removeAll(true);
+      });
+    } catch (error) {
+      failOpen(error);
+    }
   }
 
   private drawStarfield(width: number, height: number): void {
+    const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
+    const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
     const bg = this.add.graphics();
     bg.fillGradientStyle(
       palette.background.deepSpace,
@@ -678,13 +746,13 @@ export class MenuScene extends Phaser.Scene {
       palette.background.nebula,
       1
     );
-    bg.fillRect(0, 0, width, height);
+    bg.fillRect(0, 0, safeWidth, safeHeight);
 
     const clouds = this.add.graphics();
     clouds.setBlendMode(Phaser.BlendModes.SCREEN);
     for (let i = 0; i < legacyTuning.menu.starfield.cloudCount; i += 1) {
-      const x = Phaser.Math.Between(width * 0.12, width * 0.88);
-      const y = Phaser.Math.Between(height * 0.16, height * 0.84);
+      const x = Phaser.Math.Between(safeWidth * 0.12, safeWidth * 0.88);
+      const y = Phaser.Math.Between(safeHeight * 0.16, safeHeight * 0.84);
       const radius = Phaser.Math.Between(legacyTuning.menu.starfield.cloudRadiusMin, legacyTuning.menu.starfield.cloudRadiusMax);
       clouds.fillStyle(
         palette.background.cloud,
@@ -695,8 +763,8 @@ export class MenuScene extends Phaser.Scene {
 
     const farStars = this.add.graphics();
     for (let i = 0; i < Math.floor(legacyTuning.menu.starfield.starCount * 0.58); i += 1) {
-      const x = Phaser.Math.Between(0, width);
-      const y = Phaser.Math.Between(0, height);
+      const x = Phaser.Math.Between(0, safeWidth);
+      const y = Phaser.Math.Between(0, safeHeight);
       const r = Phaser.Math.FloatBetween(
         legacyTuning.menu.starfield.starRadiusMin * 0.8,
         legacyTuning.menu.starfield.starRadiusMax * 0.72
@@ -713,8 +781,8 @@ export class MenuScene extends Phaser.Scene {
 
     const nearStars = this.add.graphics();
     for (let i = 0; i < Math.ceil(legacyTuning.menu.starfield.starCount * 0.42); i += 1) {
-      const x = Phaser.Math.Between(0, width);
-      const y = Phaser.Math.Between(0, height);
+      const x = Phaser.Math.Between(0, safeWidth);
+      const y = Phaser.Math.Between(0, safeHeight);
       const r = Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starRadiusMin, legacyTuning.menu.starfield.starRadiusMax);
       nearStars.fillStyle(
         palette.background.star,
@@ -734,8 +802,54 @@ export class MenuScene extends Phaser.Scene {
 
     const vignette = this.add.graphics();
     vignette.fillStyle(palette.background.vignette, legacyTuning.menu.starfield.vignetteAlpha);
-    vignette.fillRect(0, 0, width, height * legacyTuning.menu.starfield.vignetteBandRatio);
-    vignette.fillRect(0, height * (1 - legacyTuning.menu.starfield.vignetteBandRatio), width, height * legacyTuning.menu.starfield.vignetteBandRatio);
+    vignette.fillRect(0, 0, safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
+    vignette.fillRect(0, safeHeight * (1 - legacyTuning.menu.starfield.vignetteBandRatio), safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
+  }
+
+  private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
+    const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
+    const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
+
+    this.drawStarfield(safeWidth, safeHeight);
+    this.add.text(safeWidth / 2, Math.max(56, safeHeight * 0.18), legacyTuning.menu.title.text, {
+      color: '#75f78f',
+      fontFamily: 'monospace',
+      fontSize: `${Math.max(32, Math.round(Math.min(safeWidth, safeHeight) * 0.08))}px`,
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(20);
+    this.add.text(safeWidth / 2, Math.max(100, safeHeight * 0.26), '\u00b0 by fawxzzy', {
+      color: '#a5d7af',
+      fontFamily: '"Courier New", monospace',
+      fontSize: '14px'
+    }).setOrigin(0.5).setDepth(20);
+    this.add.text(safeWidth / 2, Math.max(132, safeHeight * 0.32), 'recovery demo', {
+      color: '#d7deef',
+      fontFamily: '"Courier New", monospace',
+      fontSize: '12px'
+    }).setOrigin(0.5).setDepth(20);
+
+    try {
+      const recoveryEpisode = episode ?? generateMazeForDifficulty({
+        scale: legacyTuning.board.scale,
+        seed: legacyTuning.demo.seed,
+        size: 'medium',
+        checkPointModifier: legacyTuning.board.checkPointModifier,
+        shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+      }, 'standard').episode;
+      const layout = createBoardLayout(this, recoveryEpisode, {
+        boardScale: 0.72,
+        topReserve: Math.max(160, Math.round(safeHeight * 0.34)),
+        sidePadding: 24,
+        bottomPadding: 32
+      });
+      const recoveryBoard = new BoardRenderer(this, recoveryEpisode, layout);
+      recoveryBoard.drawBoardChrome();
+      recoveryBoard.drawBase({ solutionPathAlpha: 0.2 });
+      recoveryBoard.drawStart('spawn');
+      recoveryBoard.drawGoal();
+    } catch (error) {
+      console.error('MenuScene recovery board render failed.', error);
+    }
   }
 }
 
@@ -744,10 +858,13 @@ const resolveSceneLayoutProfile = (
   height: number,
   variant: AmbientPresentationVariant
 ): SceneLayoutProfile => {
-  const profile = VARIANT_PROFILES[variant];
-  const isNarrow = width <= legacyTuning.menu.layout.narrowBreakpoint;
-  const isPortrait = height > (width * 1.12);
-  const isShort = height < 720;
+  const safeVariant = sanitizePresentationVariant(variant);
+  const profile = VARIANT_PROFILES[safeVariant];
+  const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
+  const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
+  const isNarrow = safeWidth <= legacyTuning.menu.layout.narrowBreakpoint;
+  const isPortrait = safeHeight > (safeWidth * 1.12);
+  const isShort = safeHeight < 720;
   const boardScale = Phaser.Math.Clamp(
     (isNarrow ? profile.boardScaleNarrow : profile.boardScaleWide)
       + (isPortrait ? 0.008 : 0)
@@ -762,10 +879,10 @@ const resolveSceneLayoutProfile = (
     isShort,
     boardScale,
     topReserve: Math.max(
-      profile.topReserveMinPx + (isPortrait ? 12 : 0) - (variant === 'ambient' ? 6 : 0),
-      Math.round(height * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0)))
+      profile.topReserveMinPx + (isPortrait ? 12 : 0) - (safeVariant === 'ambient' ? 6 : 0),
+      Math.round(safeHeight * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0)))
     ),
-    bottomPadding: profile.bottomPaddingPx + (isPortrait ? 4 : 0) + (variant === 'loading' ? 4 : 0),
+    bottomPadding: profile.bottomPaddingPx + (isPortrait ? 4 : 0) + (safeVariant === 'loading' ? 4 : 0),
     sidePadding: profile.sidePaddingPx + (isPortrait ? 2 : 0) + (isNarrow ? -2 : 0)
   };
 };
@@ -830,11 +947,12 @@ export const resolveMenuDemoPresentation = (
   variant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT
 ): MenuDemoPresentation => {
   const moodProfile = DEMO_MOOD_PROFILES[cycle.mood];
-  const variantProfile = VARIANT_PROFILES[variant];
+  const safeVariant = sanitizePresentationVariant(variant);
+  const variantProfile = VARIANT_PROFILES[safeVariant];
   const sequenceState = resolveMenuDemoSequence(episode, elapsedMs, config);
   const progress = ease(sequenceState.progress);
   const wave = 0.5 + (Math.sin((elapsedMs + (episode.seed * 17)) * 0.0022) * 0.5);
-  const offsets = resolvePresentationOffsets(episode.seed, variant);
+  const offsets = resolvePresentationOffsets(episode.seed, safeVariant);
   let boardVeilAlpha = 0.03;
   let boardAuraAlpha = moodProfile.auraAlpha;
   let boardHaloAlpha = moodProfile.haloAlpha;
@@ -842,7 +960,7 @@ export const resolveMenuDemoPresentation = (
   let boardAuraScale = 1;
   let boardHaloScale = 1;
   let metadataAlpha = moodProfile.metadataAlpha * variantProfile.metadataAlphaScale;
-  let flashAlpha = variant === 'loading' ? 0.24 : 0;
+  let flashAlpha = safeVariant === 'loading' ? 0.24 : 0;
 
   switch (sequenceState.sequence) {
     case 'intro':
@@ -885,15 +1003,15 @@ export const resolveMenuDemoPresentation = (
       boardAuraScale = lerp(1.014, 1.024, progress);
       boardHaloScale = lerp(1.01, 1.018, progress);
       metadataAlpha = clamp(lerp(moodProfile.metadataAlpha * 0.9, 0.28, progress) * variantProfile.metadataAlphaScale, 0.18, 0.82);
-      flashAlpha = variant === 'loading' ? lerp(0.22, 0.12, progress) : 0;
+      flashAlpha = safeVariant === 'loading' ? lerp(0.22, 0.12, progress) : 0;
       break;
   }
 
   return {
-    variant,
+    variant: safeVariant,
     mood: cycle.mood,
     sequence: sequenceState.sequence,
-    phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, variant),
+    phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
     solutionPathAlpha: clamp(moodProfile.solutionPathAlpha * variantProfile.solutionPathScale, 0.14, 1),
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
     ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale,
@@ -954,9 +1072,10 @@ const pickCuratedCycleValue = <T>(items: readonly T[], seed: number, cycle: numb
 };
 
 const resolvePresentationOffsets = (seed: number, variant: AmbientPresentationVariant): PresentationOffsets => {
-  const profile = VARIANT_PROFILES[variant];
-  const mixed = mix(seed, 0, variant.charCodeAt(0));
-  const alt = mix(seed ^ 0x9e3779b9, 1, variant.charCodeAt(variant.length - 1));
+  const safeVariant = sanitizePresentationVariant(variant);
+  const profile = VARIANT_PROFILES[safeVariant];
+  const mixed = mix(seed, 0, safeVariant.charCodeAt(0));
+  const alt = mix(seed ^ 0x9e3779b9, 1, safeVariant.charCodeAt(safeVariant.length - 1));
 
   return {
     frameOffsetX: resolveSignedRange(mixed, profile.boardOffsetRangeX),
@@ -974,8 +1093,9 @@ const resolvePhaseLabel = (
   mood: DemoMood,
   variant: AmbientPresentationVariant
 ): string => {
-  if (variant !== 'loading') {
-    return PASSIVE_TAGLINES[variant];
+  const safeVariant = sanitizePresentationVariant(variant);
+  if (safeVariant !== 'loading') {
+    return PASSIVE_TAGLINES[safeVariant];
   }
 
   const labels = LOADING_PHASE_LABELS[sequence];

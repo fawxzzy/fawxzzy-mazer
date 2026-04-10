@@ -48,6 +48,39 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
   { x: 0, y: 1 }
 ] as const;
 
+const DEFAULT_VIEWPORT_WIDTH = 1280;
+const DEFAULT_VIEWPORT_HEIGHT = 720;
+const MIN_BOARD_SIZE = 64;
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
+  isFiniteNumber(value) && value >= minimum ? value : fallback
+);
+const sanitizeRange = (value: unknown, fallback: number, min: number, max: number): number => (
+  Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, min, max)
+);
+const resolveSceneDimension = (primary: unknown, secondary: unknown, fallback: number): number => {
+  if (isFiniteNumber(primary) && primary > 0) {
+    return primary;
+  }
+
+  if (isFiniteNumber(secondary) && secondary > 0) {
+    return secondary;
+  }
+
+  return fallback;
+};
+const isRenderableLayout = (layout: BoardLayout): boolean => (
+  isFiniteNumber(layout.boardX)
+  && isFiniteNumber(layout.boardY)
+  && isFiniteNumber(layout.boardWidth)
+  && isFiniteNumber(layout.boardHeight)
+  && isFiniteNumber(layout.tileSize)
+  && layout.boardWidth > 0
+  && layout.boardHeight > 0
+  && layout.tileSize > 0
+);
+
 export const createBoardLayout = (
   scene: Phaser.Scene,
   episode: MazeEpisode,
@@ -57,18 +90,20 @@ export const createBoardLayout = (
     ? { boardScale: options }
     : options;
 
-  const boardScale = normalizedOptions.boardScale ?? 0.9;
-  const topReserve = normalizedOptions.topReserve ?? 64;
-  const sidePadding = normalizedOptions.sidePadding ?? 16;
-  const bottomPadding = normalizedOptions.bottomPadding ?? sidePadding;
-
-  const { width, height } = scene.scale;
-  const availableWidth = Math.max(0, width - (sidePadding * 2));
-  const availableHeight = Math.max(0, height - topReserve - bottomPadding);
-  const boardSize = Math.floor(Math.min(availableWidth, availableHeight) * boardScale);
-  const tileSize = boardSize / Math.max(episode.raster.width, episode.raster.height);
-  const boardWidth = tileSize * episode.raster.width;
-  const boardHeight = tileSize * episode.raster.height;
+  const boardScale = sanitizeRange(normalizedOptions.boardScale, 0.9, 0.2, 1);
+  const topReserve = sanitizePositive(normalizedOptions.topReserve, 64, 0);
+  const sidePadding = sanitizePositive(normalizedOptions.sidePadding, 16, 0);
+  const bottomPadding = sanitizePositive(normalizedOptions.bottomPadding, sidePadding, 0);
+  const width = resolveSceneDimension(scene.scale.width, scene.cameras.main?.width, DEFAULT_VIEWPORT_WIDTH);
+  const height = resolveSceneDimension(scene.scale.height, scene.cameras.main?.height, DEFAULT_VIEWPORT_HEIGHT);
+  const rasterWidth = sanitizePositive(episode?.raster?.width, 1, 1);
+  const rasterHeight = sanitizePositive(episode?.raster?.height, 1, 1);
+  const availableWidth = Math.max(MIN_BOARD_SIZE, width - (sidePadding * 2));
+  const availableHeight = Math.max(MIN_BOARD_SIZE, height - topReserve - bottomPadding);
+  const boardSize = Math.max(MIN_BOARD_SIZE, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
+  const tileSize = Math.max(1, boardSize / Math.max(rasterWidth, rasterHeight));
+  const boardWidth = tileSize * rasterWidth;
+  const boardHeight = tileSize * rasterHeight;
   const boardX = width / 2 - boardWidth / 2;
   const boardY = topReserve + ((availableHeight - boardHeight) / 2);
 
@@ -128,21 +163,23 @@ export class BoardRenderer {
   }
 
   public getTileSize(): number {
-    return this.layout.tileSize;
+    return Math.max(1, this.layout.tileSize);
   }
 
   public setPresentationOffset(x: number, y: number): void {
-    this.baseOffsetX = x;
-    this.baseOffsetY = y;
-    this.ambientContainer.setPosition(x, y);
+    this.baseOffsetX = isFiniteNumber(x) ? x : 0;
+    this.baseOffsetY = isFiniteNumber(y) ? y : 0;
+    this.ambientContainer.setPosition(this.baseOffsetX, this.baseOffsetY);
   }
 
   private tileX(index: number): number {
-    return this.layout.boardX + (xFromIndex(index, this.episode.raster.width) * this.layout.tileSize);
+    const rasterWidth = sanitizePositive(this.episode?.raster?.width, 1, 1);
+    return this.layout.boardX + (xFromIndex(index, rasterWidth) * this.layout.tileSize);
   }
 
   private tileY(index: number): number {
-    return this.layout.boardY + (yFromIndex(index, this.episode.raster.width) * this.layout.tileSize);
+    const rasterWidth = sanitizePositive(this.episode?.raster?.width, 1, 1);
+    return this.layout.boardY + (yFromIndex(index, rasterWidth) * this.layout.tileSize);
   }
 
   private drawTileBrackets(
@@ -174,6 +211,12 @@ export class BoardRenderer {
   }
 
   public drawBoardChrome(): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.chromeBack.clear();
+      this.chromeFront.clear();
+      return;
+    }
+
     const { boardX, boardY, boardWidth, boardHeight, boardSize } = this.layout;
     const centerX = boardX + boardWidth / 2;
     const centerY = boardY + boardHeight / 2;
@@ -293,6 +336,12 @@ export class BoardRenderer {
   }
 
   public drawBase(options: BaseRenderOptions = {}): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.base.clear();
+      this.grid.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const bevel = Math.max(1, Math.round(tileSize * legacyTuning.board.tile.bevelRatio));
     const solutionPathAlpha = Phaser.Math.Clamp(
@@ -362,6 +411,11 @@ export class BoardRenderer {
   }
 
   public drawStart(cue: DemoWalkerCue = 'spawn'): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.start.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     const tileX = this.tileX(this.episode.raster.startIndex);
@@ -397,6 +451,11 @@ export class BoardRenderer {
   }
 
   public drawGoal(cue: DemoWalkerCue = 'explore'): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.goal.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     this.goal.clear();
@@ -501,6 +560,12 @@ export class BoardRenderer {
   }
 
   public drawTrail(trail: ArrayLike<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.trail.clear();
+      this.signal.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const cue = options.cue ?? 'explore';
     const now = this.scene.time.now;
@@ -742,6 +807,11 @@ export class BoardRenderer {
     cue: DemoWalkerCue = 'explore',
     pulseBoost = 0
   ): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.actor.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     const tileX = this.tileX(index);
@@ -759,6 +829,11 @@ export class BoardRenderer {
     cue: DemoWalkerCue = 'explore',
     pulseBoost = 0
   ): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.actor.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     const fromTileX = this.tileX(fromIndex);
@@ -782,6 +857,11 @@ export class BoardRenderer {
     cue: DemoWalkerCue = 'dead-end',
     pulseBoost = 0
   ): void {
+    if (!isRenderableLayout(this.layout)) {
+      this.actor.clear();
+      return;
+    }
+
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     const tileX = this.tileX(index);
@@ -914,11 +994,16 @@ export class BoardRenderer {
   public startAmbientMotion(distanceX: number, distanceY: number, durationMs: number): void {
     this.ambientTween?.remove();
     this.ambientContainer.setPosition(this.baseOffsetX, this.baseOffsetY);
+    if (!isRenderableLayout(this.layout)) {
+      return;
+    }
+
+    const safeDuration = sanitizePositive(durationMs, 3000, 1);
     this.ambientTween = this.scene.tweens.add({
       targets: this.ambientContainer,
-      x: this.baseOffsetX + distanceX,
-      y: this.baseOffsetY + distanceY,
-      duration: durationMs,
+      x: this.baseOffsetX + (isFiniteNumber(distanceX) ? distanceX : 0),
+      y: this.baseOffsetY + (isFiniteNumber(distanceY) ? distanceY : 0),
+      duration: safeDuration,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
