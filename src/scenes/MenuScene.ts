@@ -40,7 +40,7 @@ import {
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { createBoardLayout, BoardRenderer, type BoardThemeStyle } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
-import { palette } from '../render/palette';
+import { applyPresentationContrastFloors, palette } from '../render/palette';
 import {
   DEFAULT_VIEWPORT_HEIGHT,
   DEFAULT_VIEWPORT_WIDTH,
@@ -74,6 +74,10 @@ export interface MenuDemoCycle {
   mood: DemoMood;
   theme: PresentationThemeFamily;
   presentationPreset: MazePresentationPreset;
+  entropy: {
+    checkPointModifier: number;
+    shortcutCountModifier: number;
+  };
   pacing: {
     exploreStepMs: number;
     goalHoldMs: number;
@@ -106,6 +110,9 @@ export interface MenuDemoPresentation {
   motifPrimaryAlpha: number;
   motifSecondaryAlpha: number;
   actorPulseBoost: number;
+  persistentTrail: boolean;
+  persistentFadeFloor: number;
+  trailPulseBoost: number;
   metadataAlpha: number;
   flashAlpha: number;
 }
@@ -239,6 +246,11 @@ interface ThemePaletteOverrides {
   hud?: Partial<typeof palette.hud>;
 }
 
+interface ResizeRecoveryDecision {
+  shouldRestart: boolean;
+  restartKey?: string;
+}
+
 interface AmbientThemeProfile {
   id: PresentationThemeFamily;
   label: string;
@@ -298,7 +310,7 @@ interface AmbientThemeProfile {
   };
 }
 
-const createThemePalette = (overrides: ThemePaletteOverrides): typeof palette => ({
+const createThemePalette = (overrides: ThemePaletteOverrides): typeof palette => applyPresentationContrastFloors({
   background: {
     ...palette.background,
     ...overrides.background
@@ -654,46 +666,46 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       board: {
         glow: 0xd3cab7,
         panel: 0xf0e7d2,
-        panelStroke: 0x8297af,
+        panelStroke: 0x647e99,
         well: 0xf7f2e6,
         shadow: 0xbba98d,
         outer: 0xe3dac9,
-        outerStroke: 0x70839c,
-        innerStroke: 0x9cb4c8,
-        topHighlight: 0x6f90b4,
-        wall: 0x6f7f90,
+        outerStroke: 0x5e7892,
+        innerStroke: 0x879db3,
+        topHighlight: 0x4f7298,
+        wall: 0x5c6d80,
         floor: 0xfbfbf4,
-        path: 0xc9d9e4,
-        trail: 0x7a96b1,
+        path: 0xadc2d3,
+        trail: 0x4f7298,
         trailCore: 0xfdfdf8,
-        trailGlow: 0xadc4da,
-        goal: 0x7590aa,
+        trailGlow: 0x8ca8c3,
+        goal: 0x547393,
         goalCore: 0xf9f8f2,
-        player: 0x607995,
+        player: 0x3f5d7b,
         playerCore: 0xfcfbf5,
-        playerHalo: 0xc4d8e6,
+        playerHalo: 0x9fb8ce,
         playerShadow: 0xb4a487
       },
       hud: {
-        panelStroke: 0x8fa7bd,
-        accent: 0x4b6280,
-        hintText: 0x7289a0
+        panelStroke: 0x6f89a4,
+        accent: 0x39526d,
+        hintText: 0x567089
       }
     }),
     boardTheme: {
-      solutionPathGlowAlphaScale: 0.74,
-      solutionPathCoreAlphaScale: 0.92,
-      trailFillAlphaScale: 0.84,
-      trailGlowAlphaScale: 0.8,
-      trailCoreAlphaScale: 0.94,
-      actorHaloAlphaScale: 0.78,
-      goalGlowAlphaScale: 0.86
+      solutionPathGlowAlphaScale: 0.94,
+      solutionPathCoreAlphaScale: 1.08,
+      trailFillAlphaScale: 0.94,
+      trailGlowAlphaScale: 0.98,
+      trailCoreAlphaScale: 1.08,
+      actorHaloAlphaScale: 0.92,
+      goalGlowAlphaScale: 1
     },
     hudTheme: {
-      railAlphaScale: 0.76,
-      modeAlphaScale: 0.84,
-      metaAlphaScale: 0.86,
-      flashAlphaScale: 0.7
+      railAlphaScale: 0.9,
+      modeAlphaScale: 0.98,
+      metaAlphaScale: 0.98,
+      flashAlphaScale: 0.86
     },
     background: {
       topLeft: 0xede5d2,
@@ -875,6 +887,45 @@ const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number
   isFiniteNumber(value) && value >= minimum ? value : fallback
 );
 const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
+const MENU_RESIZE_SETTLE_MS = 900;
+const MENU_RESIZE_BUCKET_PX = 4;
+
+const buildViewportRestartKey = (viewport: ViewportSize): string => {
+  const widthBucket = Math.round(sanitizePositive(viewport.width, DEFAULT_VIEWPORT_WIDTH, 0) / MENU_RESIZE_BUCKET_PX) * MENU_RESIZE_BUCKET_PX;
+  const heightBucket = Math.round(sanitizePositive(viewport.height, DEFAULT_VIEWPORT_HEIGHT, 0) / MENU_RESIZE_BUCKET_PX) * MENU_RESIZE_BUCKET_PX;
+  return `${widthBucket}x${heightBucket}`;
+};
+
+export const resolveMenuResizeRecoveryDecision = (
+  currentViewport: ViewportSize,
+  nextViewport: ViewportSize,
+  sceneAgeMs: number,
+  lastRestartKey?: string
+): ResizeRecoveryDecision => {
+  if (!nextViewport.measured) {
+    return { shouldRestart: false };
+  }
+
+  if (sceneAgeMs < MENU_RESIZE_SETTLE_MS) {
+    return { shouldRestart: false };
+  }
+
+  const widthDelta = Math.abs(sanitizePositive(nextViewport.width, 0, 0) - sanitizePositive(currentViewport.width, 0, 0));
+  const heightDelta = Math.abs(sanitizePositive(nextViewport.height, 0, 0) - sanitizePositive(currentViewport.height, 0, 0));
+  if (widthDelta < MENU_RESIZE_BUCKET_PX && heightDelta < MENU_RESIZE_BUCKET_PX) {
+    return { shouldRestart: false };
+  }
+
+  const restartKey = buildViewportRestartKey(nextViewport);
+  if (restartKey === lastRestartKey) {
+    return { shouldRestart: false, restartKey };
+  }
+
+  return {
+    shouldRestart: true,
+    restartKey
+  };
+};
 
 const DEMO_PACING_PROFILES: readonly MenuDemoCycle['pacing'][] = [
   { exploreStepMs: -10, goalHoldMs: 60, resetHoldMs: 36, spawnHoldMs: 34 },
@@ -889,6 +940,8 @@ const DEMO_MOOD_PROFILES: Record<DemoMood, {
   ambientDriftPx: number;
   ambientDriftMs: number;
   actorPulseBoost: number;
+  persistentFadeFloor: number;
+  trailPulseBoost: number;
   metadataAlpha: number;
   auraAlpha: number;
   haloAlpha: number;
@@ -901,6 +954,8 @@ const DEMO_MOOD_PROFILES: Record<DemoMood, {
     ambientDriftPx: 2,
     ambientDriftMs: 3600,
     actorPulseBoost: 0.04,
+    persistentFadeFloor: 0.38,
+    trailPulseBoost: 0.018,
     metadataAlpha: 0.54,
     auraAlpha: 0.094,
     haloAlpha: 0.036,
@@ -913,6 +968,8 @@ const DEMO_MOOD_PROFILES: Record<DemoMood, {
     ambientDriftPx: 2.5,
     ambientDriftMs: 4200,
     actorPulseBoost: 0.018,
+    persistentFadeFloor: 0.28,
+    trailPulseBoost: 0.01,
     metadataAlpha: 0.44,
     auraAlpha: 0.106,
     haloAlpha: 0.038,
@@ -925,6 +982,8 @@ const DEMO_MOOD_PROFILES: Record<DemoMood, {
     ambientDriftPx: 1.6,
     ambientDriftMs: 4400,
     actorPulseBoost: 0.026,
+    persistentFadeFloor: 0.33,
+    trailPulseBoost: 0.014,
     metadataAlpha: 0.62,
     auraAlpha: 0.088,
     haloAlpha: 0.03,
@@ -1275,12 +1334,14 @@ export class MenuScene extends Phaser.Scene {
     const variantProfile = VARIANT_PROFILES[variant];
     const chromeProfile = CHROME_PROFILES[chrome];
     const sceneLayout = presentationModel.layout;
+    const sceneStartedAt = this.time.now;
     let recoveryActivated = false;
     let recoveryEpisode: MazeEpisode | undefined;
     let patternEngine: PatternEngine | undefined;
     let patternFrame: PatternFrame | undefined;
     let episodePresentationShell: EpisodePresentationShell | undefined;
     let resizeRestart: Phaser.Time.TimerEvent | undefined;
+    let lastResizeRestartKey: string | undefined;
     let handleVisibilityChange: (() => void) | undefined;
     let handleResize: ((gameSize?: { width?: number; height?: number }) => void) | undefined;
     let removeInstallSurfaceListener: (() => void) | undefined;
@@ -1369,6 +1430,7 @@ export class MenuScene extends Phaser.Scene {
     };
 
     try {
+      this.cameras.main.roundPixels = true;
       this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 220 : 280, 0, 0, 0);
       const themeLock = launchConfig.theme === 'auto' ? undefined : launchConfig.theme;
       let demoSeed = launchConfig.seed ?? legacyTuning.demo.seed;
@@ -1388,8 +1450,8 @@ export class MenuScene extends Phaser.Scene {
           seed: cycleSeed,
           size: cycle.size,
           presentationPreset: cycle.presentationPreset,
-          checkPointModifier: legacyTuning.board.checkPointModifier,
-          shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
+          checkPointModifier: cycle.entropy.checkPointModifier,
+          shortcutCountModifier: cycle.entropy.shortcutCountModifier
         }, cycle.difficulty);
 
         if (!deterministicCapture) {
@@ -1875,7 +1937,10 @@ export class MenuScene extends Phaser.Scene {
           cue: view.cue,
           limit: view.trailLimit,
           start: view.trailStart,
-          emphasis: 'demo'
+          emphasis: 'demo',
+          persistentTrail: demoPresentation.persistentTrail,
+          persistentFadeFloor: demoPresentation.persistentFadeFloor,
+          pulseBoost: demoPresentation.trailPulseBoost
         });
 
         if (view.currentIndex === view.nextIndex || view.progress <= 0) {
@@ -1959,12 +2024,19 @@ export class MenuScene extends Phaser.Scene {
       };
 
       const refreshAfterResize = (nextViewport: ViewportSize): void => {
-        if (!nextViewport.measured) {
+        const decision = resolveMenuResizeRecoveryDecision(
+          resolveViewportSize(this.scale.width, this.scale.height, width, height),
+          nextViewport,
+          Math.max(0, this.time.now - sceneStartedAt),
+          lastResizeRestartKey
+        );
+        if (!decision.shouldRestart) {
           return;
         }
 
+        lastResizeRestartKey = decision.restartKey ?? lastResizeRestartKey;
         resizeRestart?.remove(false);
-        resizeRestart = this.time.delayedCall(80, () => {
+        resizeRestart = this.time.delayedCall(160, () => {
           if (recoveryActivated) {
             renderVisibleRecovery();
             return;
@@ -2400,6 +2472,18 @@ export const resolveMenuDemoPresentation = (
       : 0.18
     );
   }
+  const persistentFadeFloor = clamp(
+    moodProfile.persistentFadeFloor
+      + (wave * 0.06)
+      + (sequenceState.sequence === 'arrival' ? 0.08 : sequenceState.sequence === 'fade' ? 0.04 : 0),
+    0.22,
+    0.72
+  );
+  const trailPulseBoost = clamp(
+    moodProfile.trailPulseBoost + (themeProfile.presentation.actorPulseBias * 0.6) + ((wave - 0.5) * 0.04),
+    0,
+    0.08
+  );
   const boardAuraScaleDelta = (boardAuraScale - 1) * deploymentProfile.boardAuraMotionScale;
   const boardHaloScaleDelta = (boardHaloScale - 1) * deploymentProfile.boardHaloMotionScale;
   const motifPrimarySequenceScale = sequenceState.sequence === 'arrival'
@@ -2493,6 +2577,9 @@ export const resolveMenuDemoPresentation = (
     motifPrimaryAlpha: clamp(themeProfile.shell.motifPrimaryAlpha * motifPrimarySequenceScale, 0, 0.2),
     motifSecondaryAlpha: clamp(themeProfile.shell.motifSecondaryAlpha * motifSecondarySequenceScale, 0, 0.16),
     actorPulseBoost: clamp(moodProfile.actorPulseBoost + variantProfile.actorPulseBias + themeProfile.presentation.actorPulseBias, 0, 0.12),
+    persistentTrail: true,
+    persistentFadeFloor,
+    trailPulseBoost,
     metadataAlpha: clamp((metadataAlpha + themeProfile.presentation.metadataAlphaBias) * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
     flashAlpha: clamp(
       (flashAlpha + themeProfile.presentation.flashAlphaBias)
@@ -2506,13 +2593,16 @@ export const resolveMenuDemoPresentation = (
 
 export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: MenuDemoCycleOverrides = {}): MenuDemoCycle => {
   const mood = overrides.mood ?? resolveCuratedMood(seed, cycle);
+  const theme = overrides.theme ?? resolveCuratedTheme(seed, cycle);
   const presetCycle = overrides.mood || overrides.size || overrides.difficulty ? 0 : cycle;
+  const entropy = resolveAmbientCycleEntropy(seed, cycle, mood, theme);
   return {
     difficulty: overrides.difficulty ?? pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: overrides.size ?? pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
-    theme: overrides.theme ?? resolveCuratedTheme(seed, cycle),
-    presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood),
+    theme,
+    presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood, theme),
+    entropy,
     pacing: DEMO_PACING_PROFILES[mix(seed, cycle, 0x6d2b79f5) % DEMO_PACING_PROFILES.length]
   };
 };
@@ -2520,18 +2610,54 @@ export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: Men
 export const resolveMenuDemoPreset = (
   seed: number,
   cycle: number,
-  mood: DemoMood
+  mood: DemoMood,
+  theme?: PresentationThemeFamily
 ): MazePresentationPreset => {
-  const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
+  const safeTheme = theme ?? PRESENTATION_THEME_FAMILIES[mix(seed, cycle, 0x34c2ab51) % PRESENTATION_THEME_FAMILIES.length];
+  const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ safeTheme.charCodeAt(0));
   switch (mood) {
     case 'scan':
-      return mixed % 5 === 0 ? 'classic' : (mixed & 1) === 0 ? 'framed' : 'braided';
+      if (safeTheme === 'noir' || safeTheme === 'vellum') {
+        return mixed % 3 === 0 ? 'classic' : 'framed';
+      }
+      return mixed % 7 === 0 ? 'classic' : mixed % 3 === 0 ? 'framed' : 'braided';
     case 'blueprint':
-      return mixed % 4 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'framed';
+      if (safeTheme === 'aurora') {
+        return mixed % 2 === 0 ? 'blueprint-rare' : 'braided';
+      }
+      return mixed % 5 <= 1 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'framed';
     case 'solve':
     default:
-      return mixed % 6 === 0 ? 'framed' : mixed % 4 === 0 ? 'braided' : 'classic';
+      if (safeTheme === 'ember') {
+        return mixed % 3 === 0 ? 'framed' : 'braided';
+      }
+      return mixed % 8 === 0 ? 'blueprint-rare' : mixed % 5 === 0 ? 'framed' : mixed % 3 === 0 ? 'braided' : 'classic';
   }
+};
+
+const resolveAmbientCycleEntropy = (
+  seed: number,
+  cycle: number,
+  mood: DemoMood,
+  theme: PresentationThemeFamily
+): MenuDemoCycle['entropy'] => {
+  const moodSalt = mood.charCodeAt(0);
+  const themeSalt = theme.charCodeAt(0) ^ theme.charCodeAt(theme.length - 1);
+  const mixed = mix(seed ^ 0x6f23ad5b, cycle + moodSalt, 0x5a9dc15f ^ themeSalt);
+  const blend = (mixed & 0xff) / 255;
+  const drift = ((mixed >>> 8) & 0xff) / 255;
+  return {
+    checkPointModifier: clamp(
+      legacyTuning.board.checkPointModifier + ((blend - 0.5) * 0.16) + (mood === 'blueprint' ? 0.05 : mood === 'scan' ? -0.03 : 0.02),
+      0.16,
+      0.56
+    ),
+    shortcutCountModifier: clamp(
+      legacyTuning.board.shortcutCountModifier.menu + ((drift - 0.5) * 0.12) + (theme === 'monolith' ? 0.03 : theme === 'vellum' ? -0.01 : 0),
+      0.04,
+      0.3
+    )
+  };
 };
 
 const resolveCuratedMood = (seed: number, cycle: number): DemoMood => {

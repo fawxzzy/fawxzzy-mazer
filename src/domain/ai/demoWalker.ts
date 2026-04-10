@@ -210,13 +210,20 @@ export const resolveDemoWalkerViewFrame = (
 
   const traverseMs = lastPathIndex * stepMs;
   const moveElapsedMs = elapsedMs - spawnHoldMs;
-  if (moveElapsedMs < traverseMs) {
-    const segment = Math.min(lastPathIndex - 1, Math.floor(moveElapsedMs / stepMs));
-    const segmentElapsedMs = moveElapsedMs - (segment * stepMs);
-    const progress = Math.min(1, segmentElapsedMs / stepMs);
+  if (moveElapsedMs <= traverseMs) {
+    const clampedMoveElapsedMs = Math.min(moveElapsedMs, traverseMs);
+    const segment = Math.min(
+      lastPathIndex - 1,
+      Math.max(0, Math.floor(Math.max(0, clampedMoveElapsedMs - 1) / stepMs))
+    );
+    const segmentElapsedMs = clampedMoveElapsedMs - (segment * stepMs);
+    const progress = segment === lastPathIndex - 1 && clampedMoveElapsedMs >= traverseMs
+      ? 1
+      : Math.min(1, segmentElapsedMs / stepMs);
     const currentIndex = path[segment];
     const nextIndex = path[segment + 1];
-    const visibleCursor = progress >= 0.58 ? segment + 1 : segment;
+    const visibleCursor = Math.min(lastPathIndex, segment + (progress >= 0.16 ? 1 : 0));
+    const trailLimit = Math.max(Math.min(visibleWindow, path.length), visibleCursor + 1);
 
     return {
       currentIndex,
@@ -225,8 +232,8 @@ export const resolveDemoWalkerViewFrame = (
       direction: resolveDirectionBetween(currentIndex, nextIndex, episode.raster.width),
       progress,
       cue: segment >= lastPathIndex - 2 && progress >= 0.42 ? 'anticipate' : 'explore',
-      trailStart: Math.max(0, visibleCursor - visibleWindow + 1),
-      trailLimit: visibleCursor + 1,
+      trailStart: 0,
+      trailLimit,
       cycleComplete: false
     };
   }
@@ -239,7 +246,7 @@ export const resolveDemoWalkerViewFrame = (
       direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
       progress: 1,
       cue: 'goal',
-      trailStart: Math.max(0, path.length - visibleWindow),
+      trailStart: 0,
       trailLimit: path.length,
       cycleComplete: false
     };
@@ -253,7 +260,7 @@ export const resolveDemoWalkerViewFrame = (
       direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
       progress: 1,
       cue: 'reset',
-      trailStart: Math.max(0, path.length - visibleWindow),
+      trailStart: 0,
       trailLimit: path.length,
       cycleComplete: false
     };
@@ -266,7 +273,7 @@ export const resolveDemoWalkerViewFrame = (
     direction: resolveDirectionBetween(path[lastPathIndex - 1] ?? endIndex, endIndex, episode.raster.width),
     progress: 1,
     cue: 'reset',
-    trailStart: Math.max(0, path.length - visibleWindow),
+    trailStart: 0,
     trailLimit: path.length,
     cycleComplete: true
   };

@@ -98,7 +98,9 @@ canvas {
   max-width: min(100vw - (var(--mazer-shell-pad-x) * 2), 1500px);
   max-height: min(100dvh - (var(--mazer-shell-pad-y) * 2), 980px);
   margin: 0 auto;
+  image-rendering: pixelated;
   image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
   border: 1px solid var(--mazer-frame-stroke);
   border-radius: 0;
   box-shadow:

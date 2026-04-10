@@ -124,4 +124,22 @@ describe('demo walker', () => {
     expect(frame.progress).toBeGreaterThan(0);
     expect(frame.progress).toBeLessThan(1);
   });
+
+  test('final traversal segment reveals the goal tile before arrival settles', () => {
+    const episode = generateMaze({
+      scale: 40,
+      seed: 144,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    });
+
+    const elapsedMs = legacyTuning.demo.cadence.spawnHoldMs
+      + ((episode.raster.pathIndices.length - 2) * legacyTuning.demo.cadence.exploreStepMs)
+      + Math.floor(legacyTuning.demo.cadence.exploreStepMs * 0.2);
+    const frame = resolveDemoWalkerViewFrame(episode, elapsedMs, legacyTuning.demo, 4);
+
+    expect(frame.nextIndex).toBe(episode.raster.endIndex);
+    expect(frame.trailLimit).toBe(episode.raster.pathIndices.length);
+    expect(frame.progress).toBeGreaterThan(0);
+  });
 });

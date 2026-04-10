@@ -7,6 +7,8 @@ const VISUAL_ARTIFACT_FILE_PATTERNS = [
   /^Screenshot.*\.png$/i,
   /^desktopcheck\.png$/i,
   /^mobilecheck.*\.png$/i,
+  /^visual-.*\.(png|log)$/i,
+  /^soak-.*\.(png|log)$/i,
   /^devserver.*\.log$/i,
   /^\.tmp-.*\.log$/i
 ] as const;
@@ -51,7 +53,8 @@ export const createPresentationArtifactFixtures = (rootDir = process.cwd()): str
     '.tmp-chrome-smoke',
     'artifacts-drift.png',
     'review-ambient.png',
-    'mobilecheck-long-run.png'
+    'mobilecheck-long-run.png',
+    'visual-theme-pass.png'
   ];
 
   const staleCaptureDir = join(rootDir, '.tmp-chrome-smoke');
@@ -60,6 +63,7 @@ export const createPresentationArtifactFixtures = (rootDir = process.cwd()): str
   writeFileSync(join(rootDir, 'artifacts-drift.png'), 'drift');
   writeFileSync(join(rootDir, 'review-ambient.png'), 'review');
   writeFileSync(join(rootDir, 'mobilecheck-long-run.png'), 'mobile');
+  writeFileSync(join(rootDir, 'visual-theme-pass.png'), 'visual');
 
   return created;
 };

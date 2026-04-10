@@ -348,7 +348,7 @@ export const createDemoStatusHud = (
       }
 
       lastVariant = safeVariant;
-      const alpha = Phaser.Math.Clamp(sanitizeAlpha(metadataAlpha, 0.48), 0.16, 0.88);
+      const alpha = Phaser.Math.Clamp(sanitizeAlpha(metadataAlpha, 0.48), 0.22, 0.92);
       const railAlphaScale = sanitizeAlpha(theme.railAlphaScale, 1);
       const modeAlphaScale = sanitizeAlpha(theme.modeAlphaScale, 1);
       const metaAlphaScale = sanitizeAlpha(theme.metaAlphaScale, 1);
@@ -359,7 +359,7 @@ export const createDemoStatusHud = (
       metaText.setAlpha(chromeProfile.showMeta ? alpha * chromeProfile.metaAlphaScale * metaAlphaScale : 0);
       flashText.setAlpha(
         profile.showFlash && chromeProfile.showFlash
-          ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.9) * chromeProfile.flashAlphaScale * flashThemeAlphaScale
+          ? Phaser.Math.Clamp(sanitizeAlpha(flashAlpha, 0), 0, 0.94) * chromeProfile.flashAlphaScale * flashThemeAlphaScale
           : 0
       );
     },

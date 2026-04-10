@@ -61,6 +61,9 @@ export interface BoardCueOptions {
   limit?: number;
   start?: number;
   emphasis?: 'player' | 'demo';
+  persistentTrail?: boolean;
+  persistentFadeFloor?: number;
+  pulseBoost?: number;
 }
 
 interface BoardRenderPresetProfile {
@@ -185,7 +188,7 @@ export const createBoardLayout = (
   const availableWidth = Math.max(MIN_BOARD_SIZE, width - (sidePadding * 2));
   const availableHeight = Math.max(MIN_BOARD_SIZE, height - topReserve - bottomPadding);
   const boardSize = Math.max(MIN_BOARD_SIZE, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
-  const tileSize = Math.max(1, boardSize / Math.max(rasterWidth, rasterHeight));
+  const tileSize = Math.max(1, Math.floor(boardSize / Math.max(rasterWidth, rasterHeight)));
   const boardWidth = tileSize * rasterWidth;
   const boardHeight = tileSize * rasterHeight;
   const boardX = Phaser.Math.Clamp(
@@ -740,6 +743,9 @@ export class BoardRenderer {
     const trailLength = Math.min(options.limit ?? trail.length, trail.length);
     const trailStart = Math.max(0, Math.min(options.start ?? 0, Math.max(0, trailLength - 1)));
     const demoEmphasis = options.emphasis === 'demo';
+    const persistentTrail = options.persistentTrail === true || demoEmphasis;
+    const persistentFadeFloor = Phaser.Math.Clamp(options.persistentFadeFloor ?? 0.22, 0, 0.92);
+    const pulseBoost = Phaser.Math.Clamp(options.pulseBoost ?? 0, -0.08, 0.18);
     this.trail.clear();
     this.signal.clear();
     if (trailLength === 0 || trailStart >= trailLength) {
@@ -750,7 +756,7 @@ export class BoardRenderer {
     let headCenterX = 0;
     let headCenterY = 0;
     const headIndex = trailLength - 1;
-    const headPulse = 1 + (Math.sin(now * 0.008) * legacyTuning.board.trail.headPulseAmplitude);
+    const headPulse = 1 + (Math.sin(now * 0.008) * (legacyTuning.board.trail.headPulseAmplitude + pulseBoost));
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
     const cueHeadBoost = cue === 'anticipate'
       ? 0.18
@@ -775,8 +781,10 @@ export class BoardRenderer {
       const t = visibleLength <= 1 ? 1 : (i - trailStart) / (visibleLength - 1);
       const isHead = i === headIndex;
       const isBacktrack = mode === 'backtrack';
-      const isGoalStep = mode === 'goal';
-      const alphaBase = Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
+      const isGoalStep = mode === 'goal' || (i === headIndex && (cue === 'goal' || cue === 'reset'));
+      const alphaBase = persistentTrail
+        ? Phaser.Math.Linear(Math.max(legacyTuning.board.trail.minAlpha, persistentFadeFloor), legacyTuning.board.trail.maxAlpha, t)
+        : Phaser.Math.Linear(legacyTuning.board.trail.minAlpha, legacyTuning.board.trail.maxAlpha, t);
       const alphaScale = isBacktrack ? legacyTuning.board.trail.backtrackAlphaScale : 1;
       const alpha = Phaser.Math.Clamp(
         (alphaBase + alphaBoost + (isHead ? legacyTuning.board.trail.headAlphaBoost : 0)) * alphaScale,

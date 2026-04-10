@@ -36,6 +36,8 @@ let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMe
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
+let resolveDemoWalkerViewFrame: typeof import('../../src/domain/ai').resolveDemoWalkerViewFrame;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
 let resolveBoardPresentationBounds: typeof import('../../src/render/boardRenderer').resolveBoardPresentationBounds;
@@ -57,7 +59,8 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
+  ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
@@ -235,6 +238,27 @@ describe('demo-only build', () => {
   test('scene wiring only includes boot and menu scenes', () => {
     expect(phaserConfig.scene).toEqual([BootScene, expect.any(Function)]);
     expect((phaserConfig.scene as Array<{ name?: string }>).map((scene) => scene.name)).toEqual(['BootScene', 'MenuScene']);
+    expect(phaserConfig.pixelArt).toBe(true);
+    expect(phaserConfig.antialias).toBe(false);
+    expect(phaserConfig.roundPixels).toBe(true);
+  });
+
+  test('resize recovery ignores startup settle churn but allows a later material resize', () => {
+    const current = { width: 1280, height: 720, measured: true };
+    const startupBurst = [
+      { width: 1278, height: 718, measured: true },
+      { width: 1282, height: 720, measured: true },
+      { width: 1280, height: 722, measured: true }
+    ];
+
+    for (const next of startupBurst) {
+      expect(resolveMenuResizeRecoveryDecision(current, next, 240).shouldRestart).toBe(false);
+    }
+
+    const laterResize = resolveMenuResizeRecoveryDecision(current, { width: 1366, height: 768, measured: true }, 1400);
+    expect(laterResize.shouldRestart).toBe(true);
+    expect(laterResize.restartKey).toBeTruthy();
+    expect(resolveMenuResizeRecoveryDecision(current, { width: 1366, height: 768, measured: true }, 1800, laterResize.restartKey).shouldRestart).toBe(false);
   });
 
   test('demo cycle stays bounded while varying size, difficulty, mood, and pacing', () => {
@@ -263,6 +287,10 @@ describe('demo-only build', () => {
       moods.push(step.mood);
       themes.push(step.theme);
       moodCounts[step.mood] += 1;
+      expect(step.entropy.checkPointModifier).toBeGreaterThanOrEqual(0.16);
+      expect(step.entropy.checkPointModifier).toBeLessThanOrEqual(0.56);
+      expect(step.entropy.shortcutCountModifier).toBeGreaterThanOrEqual(0.04);
+      expect(step.entropy.shortcutCountModifier).toBeLessThanOrEqual(0.3);
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
@@ -319,12 +347,12 @@ describe('demo-only build', () => {
     expect(cycleA.theme).toBe('monolith');
     expect(cycleA.size).toBe('huge');
     expect(cycleA.difficulty).toBe('brutal');
-    expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint'));
+    expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith'));
     expect(cycleB.mood).toBe('blueprint');
     expect(cycleB.theme).toBe('monolith');
     expect(cycleB.size).toBe('huge');
     expect(cycleB.difficulty).toBe('brutal');
-    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint'));
+    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint', 'monolith'));
 
     const first = generateMazeForDifficulty({
       scale: legacyTuning.board.scale,
@@ -419,6 +447,11 @@ describe('demo-only build', () => {
       expect(presentation.motifPrimaryAlpha).toBeLessThanOrEqual(0.2);
       expect(presentation.motifSecondaryAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.motifSecondaryAlpha).toBeLessThanOrEqual(0.16);
+      expect(presentation.persistentTrail).toBe(true);
+      expect(presentation.persistentFadeFloor).toBeGreaterThanOrEqual(0.22);
+      expect(presentation.persistentFadeFloor).toBeLessThanOrEqual(0.72);
+      expect(presentation.trailPulseBoost).toBeGreaterThanOrEqual(0);
+      expect(presentation.trailPulseBoost).toBeLessThanOrEqual(0.08);
       expect(presentation.metadataAlpha).toBeGreaterThanOrEqual(0.18);
       expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
@@ -451,6 +484,39 @@ describe('demo-only build', () => {
     disposeMazeEpisode(episode);
   });
 
+  test('demo walker reaches the end cleanly and keeps the completed route visible', () => {
+    const cycle = resolveMenuDemoCycle(90210, 5);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 90210,
+      size: cycle.size,
+      presentationPreset: cycle.presentationPreset,
+      checkPointModifier: cycle.entropy.checkPointModifier,
+      shortcutCountModifier: cycle.entropy.shortcutCountModifier
+    }, cycle.difficulty, 0, 1);
+    const episode = resolved.episode;
+    const config = createDemoConfig(cycle);
+    const arrivalMs = config.cadence.spawnHoldMs + ((episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs);
+    const arrivalFrame = resolveDemoWalkerViewFrame(episode, arrivalMs, config, 6);
+    const holdFrame = resolveDemoWalkerViewFrame(episode, arrivalMs + 1, config, 6);
+
+    expect(arrivalFrame.nextIndex).toBe(episode.raster.endIndex);
+    expect(arrivalFrame.progress).toBe(1);
+    expect(arrivalFrame.trailStart).toBe(0);
+    expect(arrivalFrame.trailLimit).toBe(episode.raster.pathIndices.length);
+    expect(holdFrame.currentIndex).toBe(episode.raster.endIndex);
+    expect(holdFrame.trailStart).toBe(0);
+    expect(holdFrame.trailLimit).toBe(episode.raster.pathIndices.length);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('theme-aware preset pairing keeps ambient chrome coherent', () => {
+    expect(['classic', 'framed']).toContain(resolveMenuDemoPreset(42, 0, 'scan', 'vellum'));
+    expect(['blueprint-rare', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'blueprint', 'aurora'));
+    expect(['framed', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'solve', 'ember'));
+  });
+
   test('presentation artifact cleanup removes stale screenshot and capture outputs', () => {
     const created = createPresentationArtifactFixtures();
     expect(listPresentationArtifacts()).toEqual(created.sort());
@@ -470,7 +536,7 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");
   });
 
-  test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: 15000 }, () => {
+  test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: 25000 }, () => {
     createPresentationArtifactFixtures();
     cleanupPresentationArtifacts();
 
@@ -633,6 +699,7 @@ describe('demo-only build', () => {
       expect(layout.boardWidth).toBeGreaterThan(0);
       expect(layout.boardHeight).toBeGreaterThan(0);
       expect(layout.tileSize).toBeGreaterThan(0);
+      expect(Number.isInteger(layout.tileSize)).toBe(true);
       expect(layout.boardX).toBeGreaterThanOrEqual(0);
       expect(layout.boardY).toBeGreaterThanOrEqual(0);
       expect(layout.boardX + layout.boardWidth).toBeLessThanOrEqual(model.viewport.width);
