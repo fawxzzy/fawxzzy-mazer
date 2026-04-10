@@ -82,6 +82,8 @@ interface MazeFamilyTuningProfile {
   readonly maxAttemptsBias: number;
 }
 
+type FamilyRotationBand = 'busy' | 'balanced' | 'composed';
+
 export interface DifficultyResolvedMaze {
   episode: MazeEpisode;
   seed: number;
@@ -102,6 +104,20 @@ export const MAZE_FAMILY_ORDER: readonly MazeFamily[] = [
   'framed',
   'split-flow'
 ] as const;
+
+const FAMILY_ROTATION_PATTERN_OPTIONS: readonly (readonly FamilyRotationBand[])[] = [
+  ['busy', 'balanced', 'composed', 'balanced', 'busy', 'composed'],
+  ['balanced', 'busy', 'composed', 'busy', 'balanced', 'composed']
+] as const;
+
+const FAMILY_ROTATION_BANDS: Record<MazeFamily, FamilyRotationBand> = {
+  classic: 'balanced',
+  braided: 'busy',
+  sparse: 'composed',
+  dense: 'busy',
+  framed: 'composed',
+  'split-flow': 'balanced'
+};
 
 const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
   {
@@ -191,58 +207,97 @@ const DIFFICULTY_TUNING: Record<MazeDifficulty, DifficultyTuningProfile> = {
 const FAMILY_TUNING: Record<MazeFamily, MazeFamilyTuningProfile> = {
   classic: {
     key: 'classic',
-    braidScale: 0.94,
+    braidScale: 0.88,
     braidOffset: 0,
-    shortcutScale: 0.96,
+    shortcutScale: 0.92,
     checkpointScale: 1,
-    minSolutionFactorBias: 0,
-    maxAttemptsBias: 0
+    minSolutionFactorBias: -0.005,
+    maxAttemptsBias: 4
   },
   braided: {
     key: 'braided',
-    braidScale: 1.52,
-    braidOffset: 0.08,
-    shortcutScale: 1.32,
-    checkpointScale: 0.94,
-    minSolutionFactorBias: -0.01,
-    maxAttemptsBias: 8
+    braidScale: 1.68,
+    braidOffset: 0.1,
+    shortcutScale: 1.42,
+    checkpointScale: 0.9,
+    minSolutionFactorBias: -0.02,
+    maxAttemptsBias: 14
   },
   sparse: {
     key: 'sparse',
-    braidScale: 0.48,
+    braidScale: 0.42,
     braidOffset: 0.01,
-    shortcutScale: 0.7,
-    checkpointScale: 1.18,
-    minSolutionFactorBias: 0.045,
-    maxAttemptsBias: 12
-  },
-  dense: {
-    key: 'dense',
-    braidScale: 1.18,
-    braidOffset: 0.05,
-    shortcutScale: 1.18,
-    checkpointScale: 1.08,
-    minSolutionFactorBias: 0.03,
-    maxAttemptsBias: 10
-  },
-  framed: {
-    key: 'framed',
-    braidScale: 0.9,
-    braidOffset: 0.02,
-    shortcutScale: 0.88,
-    checkpointScale: 1.12,
+    shortcutScale: 0.62,
+    checkpointScale: 1.14,
     minSolutionFactorBias: 0.028,
     maxAttemptsBias: 10
   },
+  dense: {
+    key: 'dense',
+    braidScale: 1.28,
+    braidOffset: 0.07,
+    shortcutScale: 1.24,
+    checkpointScale: 1.06,
+    minSolutionFactorBias: 0.02,
+    maxAttemptsBias: 14
+  },
+  framed: {
+    key: 'framed',
+    braidScale: 0.82,
+    braidOffset: 0.015,
+    shortcutScale: 0.84,
+    checkpointScale: 1.08,
+    minSolutionFactorBias: 0.02,
+    maxAttemptsBias: 12
+  },
   'split-flow': {
     key: 'split-flow',
-    braidScale: 0.96,
-    braidOffset: 0.03,
-    shortcutScale: 1.04,
-    checkpointScale: 1.16,
-    minSolutionFactorBias: 0.05,
-    maxAttemptsBias: 14
+    braidScale: 1.06,
+    braidOffset: 0.05,
+    shortcutScale: 1.12,
+    checkpointScale: 1.12,
+    minSolutionFactorBias: 0.04,
+    maxAttemptsBias: 18
   }
+};
+
+export const buildCuratedFamilyRotationBlock = (seed: number, block: number): readonly MazeFamily[] => {
+  const remaining = [...MAZE_FAMILY_ORDER];
+  const ordered: MazeFamily[] = [];
+  let previous = block > 0
+    ? buildCuratedFamilyRotationBlock(seed, block - 1)[MAZE_FAMILY_ORDER.length - 1]
+    : undefined;
+  let state = mixFamilyRotationSeed(seed, block);
+  const pattern = FAMILY_ROTATION_PATTERN_OPTIONS[state % FAMILY_ROTATION_PATTERN_OPTIONS.length];
+
+  for (let slot = 0; slot < pattern.length; slot += 1) {
+    state = lcg(state);
+    const desiredBand = pattern[slot];
+    const preferred = remaining.filter((family) => (
+      FAMILY_ROTATION_BANDS[family] === desiredBand && family !== previous
+    ));
+    const sameBand = remaining.filter((family) => FAMILY_ROTATION_BANDS[family] === desiredBand);
+    const fallback = remaining.filter((family) => family !== previous);
+    const pool = preferred.length > 0
+      ? preferred
+      : sameBand.length > 0
+        ? sameBand
+        : fallback.length > 0
+          ? fallback
+          : remaining;
+    const nextFamily = pool[state % pool.length];
+    ordered.push(nextFamily);
+    remaining.splice(remaining.indexOf(nextFamily), 1);
+    previous = nextFamily;
+  }
+
+  return ordered;
+};
+
+export const resolveCuratedFamilyRotation = (seed: number, cycle: number): MazeFamily => {
+  const block = Math.floor(cycle / MAZE_FAMILY_ORDER.length);
+  const slot = cycle % MAZE_FAMILY_ORDER.length;
+  return buildCuratedFamilyRotationBlock(seed, block)[slot] ?? MAZE_FAMILY_ORDER[0];
 };
 
 export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
@@ -609,6 +664,7 @@ const measureTileMaze = (
     solutionLength: pathIndices.length,
     deadEnds,
     junctions,
+    branchDensity: junctions / Math.max(1, floorTileCount),
     straightness: pathIndices.length <= 2 ? 1 : straightSegments / Math.max(1, pathIndices.length - 2),
     coverage: pathIndices.length / Math.max(1, floorTileCount)
   };
@@ -746,6 +802,12 @@ const resolvePresentationFootprintPadding = (preset: MazePresentationPreset): nu
   preset === 'framed' || preset === 'blueprint-rare' ? 2 : 0
 );
 
+const mixFamilyRotationSeed = (seed: number, block: number): number => (
+  Math.imul((seed >>> 0) ^ ((block & 0xffff) << 11), 0x45d9f3b) >>> 0
+);
+
+const lcg = (state: number): number => (Math.imul(state || 1, 1664525) + 1013904223) >>> 0;
+
 export const classifyMazeDifficulty = (
   metrics: MazeMetrics,
   width: number,
@@ -755,11 +817,18 @@ export const classifyMazeDifficulty = (
   const scale = Math.max(width, height);
   const pathPressure = metrics.solutionLength / Math.max(1, scale * 1.18);
   const branchPressure = metrics.junctions / Math.max(1, scale * 0.19);
+  const branchDensityPressure = metrics.branchDensity * scale * 0.32;
   const deadEndPressure = metrics.deadEnds / Math.max(1, scale * 0.24);
   const coveragePressure = metrics.coverage * 2.7;
   const turnPressure = (1 - metrics.straightness) * 1.65;
   const shortcutPressure = shortcutsCreated / Math.max(1, scale * 0.11);
-  const score = pathPressure + branchPressure + (deadEndPressure * 0.62) + coveragePressure + turnPressure + (shortcutPressure * 0.84);
+  const score = pathPressure
+    + branchPressure
+    + branchDensityPressure
+    + (deadEndPressure * 0.62)
+    + coveragePressure
+    + turnPressure
+    + (shortcutPressure * 0.84);
 
   if (score < 9) {
     return { difficulty: 'chill', score };

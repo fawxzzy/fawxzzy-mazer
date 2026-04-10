@@ -365,6 +365,7 @@ describe('demo-only build', () => {
     const seenPacing = new Set<string>();
     const moods: string[] = [];
     const themes: string[] = [];
+    const families: string[] = [];
     const moodCounts = {
       solve: 0,
       scan: 0,
@@ -378,6 +379,7 @@ describe('demo-only build', () => {
       seenSizes.add(step.size);
       seenPresets.add(step.presentationPreset);
       seenFamilies.add(step.family);
+      families.push(step.family);
       seenThemes.add(step.theme);
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
@@ -417,6 +419,12 @@ describe('demo-only build', () => {
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
     expect(moodCounts.solve).toBeGreaterThan(moodCounts.scan);
     expect(moodCounts.scan).toBeGreaterThan(moodCounts.blueprint);
+    for (let blockStart = 0; blockStart < 18; blockStart += 6) {
+      expect(new Set(families.slice(blockStart, blockStart + 6)).size).toBe(6);
+    }
+    for (let index = 1; index < families.length; index += 1) {
+      expect(families[index]).not.toBe(families[index - 1]);
+    }
 
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);

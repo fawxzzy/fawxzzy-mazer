@@ -5,6 +5,7 @@ import {
   generateMazeForDifficulty,
   MAZE_FAMILY_ORDER,
   MAZE_SIZE_ORDER,
+  resolveCuratedFamilyRotation,
   type MazeDifficulty,
   type MazeEpisode,
   type MazeFamily,
@@ -36,6 +37,7 @@ type EpisodeSample = {
   solutionLength: number;
   deadEnds: number;
   junctions: number;
+  branchDensity: number;
   straightness: number;
   coverage: number;
   floorTiles: number;
@@ -59,12 +61,15 @@ type BucketSummary = {
   solutionLength: SummaryMetric;
   deadEnds: SummaryMetric;
   junctions: SummaryMetric;
+  branchDensity: SummaryMetric;
   straightness: SummaryMetric;
   coverage: SummaryMetric;
   floorTiles: SummaryMetric;
   meanBranchingFactor: SummaryMetric;
   corridorMean: SummaryMetric;
   corridorP90: SummaryMetric;
+  placementStrategyCounts: Record<string, number>;
+  placementStrategyDiversity: number;
 };
 
 type VarietyReport = {
@@ -79,6 +84,8 @@ type VarietyReport = {
     moodCounts: Record<string, number>;
     sizeCounts: Record<string, number>;
     difficultyCounts: Record<string, number>;
+    familyDistributionEntropy: number;
+    endpointStrategyDiversity: number;
     byFamily: Record<string, BucketSummary>;
     byPreset: Record<string, BucketSummary>;
     byMood: Record<string, BucketSummary>;
@@ -94,6 +101,7 @@ type VarietyReport = {
       solutionLength: number;
       deadEnds: number;
       junctions: number;
+      branchDensity: number;
       straightness: number;
       coverage: number;
       meanBranchingFactor: number;
@@ -108,6 +116,7 @@ type VarietyReport = {
       solutionLength: number;
       deadEnds: number;
       junctions: number;
+      branchDensity: number;
       straightness: number;
       coverage: number;
       meanBranchingFactor: number;
@@ -171,36 +180,7 @@ const pickCuratedCycleValue = <T>(items: readonly T[], seed: number, cycle: numb
 };
 
 const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
-  const block = Math.floor(cycle / ROTATING_FAMILIES.length);
-  const slot = cycle % ROTATING_FAMILIES.length;
-  return buildCuratedFamilyBlock(seed, block)[slot] ?? ROTATING_FAMILIES[0];
-};
-
-const buildCuratedFamilyBlock = (seed: number, block: number): readonly MazeFamily[] => {
-  const remaining = [...ROTATING_FAMILIES];
-  const ordered: MazeFamily[] = [];
-  let state = mix(seed ^ 0x15c37b4d, block, 0x15c37b4d) || 1;
-  let previous = block > 0
-    ? buildCuratedFamilyBlock(seed, block - 1)[ROTATING_FAMILIES.length - 1]
-    : undefined;
-
-  while (remaining.length > 0) {
-    state = lcg(state);
-    let pickIndex = state % remaining.length;
-
-    if (remaining[pickIndex] === previous) {
-      const alternateIndex = remaining.findIndex((family) => family !== previous);
-      if (alternateIndex >= 0) {
-        pickIndex = alternateIndex;
-      }
-    }
-
-    const [nextFamily] = remaining.splice(pickIndex, 1);
-    ordered.push(nextFamily);
-    previous = nextFamily;
-  }
-
-  return ordered;
+  return resolveCuratedFamilyRotation(seed, cycle);
 };
 
 const resolveMenuDemoPreset = (
@@ -211,19 +191,19 @@ const resolveMenuDemoPreset = (
 ): MazePresentationPreset => {
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
   if (family === 'framed') {
-    return mixed % 4 === 0 ? 'classic' : 'framed';
+    return mixed % 5 === 0 ? 'classic' : 'framed';
   }
   if (family === 'braided') {
-    return mixed % 5 === 0 ? 'framed' : 'braided';
+    return mixed % 6 === 0 ? 'classic' : 'braided';
   }
   if (family === 'sparse') {
-    return mixed % 5 === 0 ? 'framed' : 'classic';
+    return mixed % 6 === 0 ? 'braided' : 'classic';
   }
   if (family === 'dense') {
-    return mixed % 7 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'braided' : 'framed';
+    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'braided';
   }
   if (family === 'split-flow') {
-    return mixed % 6 === 0 ? 'blueprint-rare' : mixed % 2 === 0 ? 'framed' : 'classic';
+    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'braided' : 'classic';
   }
 
   switch (mood) {
@@ -245,7 +225,7 @@ const resolveAmbientCycle = (seed: number, cycle: number): {
   presentationPreset: MazePresentationPreset;
 } => {
   const mood = resolveCuratedMood(seed, cycle);
-  const family = resolveCuratedFamily((seed - cycle) >>> 0, cycle);
+  const family = resolveCuratedFamily(seed >>> 0, cycle);
   return {
     difficulty: pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
@@ -267,7 +247,7 @@ const main = (): void => {
 
   for (let cycle = 0; cycle < ambientCycles; cycle += 1) {
     const cycleSeed = seedStart + cycle;
-    const plan = resolveAmbientCycle(cycleSeed, cycle);
+    const plan = resolveAmbientCycle(seedStart, cycle);
     const resolved = generateMazeForDifficulty({
       scale: legacyTuning.board.scale,
       seed: cycleSeed,
@@ -344,6 +324,8 @@ const main = (): void => {
       moodCounts: countBy(ambientSamples, (sample) => sample.mood),
       sizeCounts: countBy(ambientSamples, (sample) => sample.size),
       difficultyCounts: countBy(ambientSamples, (sample) => sample.difficulty),
+      familyDistributionEntropy: normalizedEntropy(ambientSamples.map((sample) => sample.family)),
+      endpointStrategyDiversity: normalizedEntropy(ambientSamples.map((sample) => sample.placementStrategy)),
       byFamily: summarizeBuckets(ambientSamples, (sample) => sample.family),
       byPreset: summarizeBuckets(ambientSamples, (sample) => sample.preset),
       byMood: summarizeBuckets(ambientSamples, (sample) => sample.mood),
@@ -398,6 +380,7 @@ const toEpisodeSample = (
     solutionLength: episode.metrics.solutionLength,
     deadEnds: episode.metrics.deadEnds,
     junctions: episode.metrics.junctions,
+    branchDensity: episode.metrics.branchDensity,
     straightness: episode.metrics.straightness,
     coverage: episode.metrics.coverage,
     floorTiles: topology.floorTiles,
@@ -610,12 +593,15 @@ const summarizeSamples = (samples: readonly EpisodeSample[]): BucketSummary => (
   solutionLength: summarizeMetric(samples.map((sample) => sample.solutionLength)),
   deadEnds: summarizeMetric(samples.map((sample) => sample.deadEnds)),
   junctions: summarizeMetric(samples.map((sample) => sample.junctions)),
+  branchDensity: summarizeMetric(samples.map((sample) => sample.branchDensity)),
   straightness: summarizeMetric(samples.map((sample) => sample.straightness)),
   coverage: summarizeMetric(samples.map((sample) => sample.coverage)),
   floorTiles: summarizeMetric(samples.map((sample) => sample.floorTiles)),
   meanBranchingFactor: summarizeMetric(samples.map((sample) => sample.meanBranchingFactor)),
   corridorMean: summarizeMetric(samples.map((sample) => sample.corridorStats.mean)),
-  corridorP90: summarizeMetric(samples.map((sample) => sample.corridorStats.p90))
+  corridorP90: summarizeMetric(samples.map((sample) => sample.corridorStats.p90)),
+  placementStrategyCounts: countBy(samples, (sample) => sample.placementStrategy),
+  placementStrategyDiversity: normalizedEntropy(samples.map((sample) => sample.placementStrategy))
 });
 
 const summarizeMetric = (values: readonly number[]): SummaryMetric => {
@@ -645,6 +631,7 @@ const summarizeDelta = (base: BucketSummary, next: BucketSummary) => ({
   solutionLength: next.solutionLength.mean - base.solutionLength.mean,
   deadEnds: next.deadEnds.mean - base.deadEnds.mean,
   junctions: next.junctions.mean - base.junctions.mean,
+  branchDensity: next.branchDensity.mean - base.branchDensity.mean,
   straightness: next.straightness.mean - base.straightness.mean,
   coverage: next.coverage.mean - base.coverage.mean,
   meanBranchingFactor: next.meanBranchingFactor.mean - base.meanBranchingFactor.mean,
@@ -710,6 +697,21 @@ const mean = (values: readonly number[]): number => {
   }
 
   return total / values.length;
+};
+
+const normalizedEntropy = (values: readonly string[]): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const counts = Object.values(countBy(values, (value) => value));
+  let entropy = 0;
+  for (const count of counts) {
+    const probability = count / values.length;
+    entropy -= probability * Math.log2(probability);
+  }
+
+  return counts.length <= 1 ? 0 : entropy / Math.log2(counts.length);
 };
 
 const mix = (seed: number, cycle: number, salt: number): number => (

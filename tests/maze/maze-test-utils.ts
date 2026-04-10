@@ -12,6 +12,11 @@ export interface MazeInvariantOptions {
   requireFloorConnection?: boolean;
 }
 
+export interface EpisodeTopologySummary {
+  corridorMean: number;
+  corridorP90: number;
+}
+
 const assertInvariant = (condition: boolean, message: string): void => {
   if (!condition) {
     throw new Error(message);
@@ -143,3 +148,150 @@ export const serializeMaze = (episode: MazeEpisode) => ({
   accepted: episode.accepted,
   tiles: episode.raster.tiles.slice()
 });
+
+export const measureEpisodeTopology = (episode: MazeEpisode): EpisodeTopologySummary => {
+  const { tiles, width, height } = episode.raster;
+  const degrees = new Uint8Array(tiles.length);
+  for (let index = 0; index < tiles.length; index += 1) {
+    if (!isTileFloor(tiles, index)) {
+      continue;
+    }
+
+    let degree = 0;
+    for (let direction = 0; direction < 4; direction += 1) {
+      const neighborIndex = getNeighborIndex(index, width, height, direction as 0 | 1 | 2 | 3);
+      if (neighborIndex !== -1 && isTileFloor(tiles, neighborIndex)) {
+        degree += 1;
+      }
+    }
+    degrees[index] = degree;
+  }
+
+  const corridorLengths = collectCorridorLengths(tiles, width, height, degrees);
+  return {
+    corridorMean: mean(corridorLengths),
+    corridorP90: quantile(corridorLengths, 0.9)
+  };
+};
+
+const collectCorridorLengths = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  degrees: Uint8Array
+): number[] => {
+  const visitedEdges = new Set<string>();
+  const lengths: number[] = [];
+  const steps = [
+    { dx: 0, dy: -1 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: -1, dy: 0 }
+  ] as const;
+
+  const edgeKey = (from: number, to: number): string => (
+    from < to ? `${from}:${to}` : `${to}:${from}`
+  );
+
+  const neighborInDirection = (index: number, direction: number): number => {
+    const x = (index % width) + steps[direction].dx;
+    const y = Math.floor(index / width) + steps[direction].dy;
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return -1;
+    }
+
+    const next = (y * width) + x;
+    return isTileFloor(tiles, next) ? next : -1;
+  };
+
+  for (let index = 0; index < tiles.length; index += 1) {
+    if (!isTileFloor(tiles, index)) {
+      continue;
+    }
+
+    for (let direction = 0; direction < steps.length; direction += 1) {
+      const next = neighborInDirection(index, direction);
+      if (next === -1) {
+        continue;
+      }
+
+      const initialEdge = edgeKey(index, next);
+      if (visitedEdges.has(initialEdge)) {
+        continue;
+      }
+
+      visitedEdges.add(initialEdge);
+      let current = next;
+      let previous = index;
+      let length = 1;
+      let heading = direction;
+
+      while (degrees[current] === 2) {
+        const forward = neighborInDirection(current, heading);
+        if (forward !== -1 && forward !== previous) {
+          visitedEdges.add(edgeKey(current, forward));
+          previous = current;
+          current = forward;
+          length += 1;
+          continue;
+        }
+
+        const opposite = (heading + 2) % 4;
+        let turned = false;
+        for (let nextHeading = 0; nextHeading < steps.length; nextHeading += 1) {
+          if (nextHeading === heading || nextHeading === opposite) {
+            continue;
+          }
+          const turnedNeighbor = neighborInDirection(current, nextHeading);
+          if (turnedNeighbor === -1 || turnedNeighbor === previous) {
+            continue;
+          }
+
+          visitedEdges.add(edgeKey(current, turnedNeighbor));
+          previous = current;
+          current = turnedNeighbor;
+          heading = nextHeading;
+          length += 1;
+          turned = true;
+          break;
+        }
+
+        if (!turned) {
+          break;
+        }
+      }
+
+      lengths.push(length);
+    }
+  }
+
+  return lengths;
+};
+
+const quantile = (values: readonly number[], q: number): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * q;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) {
+    return sorted[lower];
+  }
+  const ratio = position - lower;
+  return sorted[lower] + ((sorted[upper] - sorted[lower]) * ratio);
+};
+
+const mean = (values: readonly number[]): number => {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  let total = 0;
+  for (const value of values) {
+    total += value;
+  }
+  return total / values.length;
+};

@@ -111,6 +111,35 @@ interface PlacementCandidate {
   readonly corridorLead: number;
   readonly edgeBias: number;
   readonly borderMask: number;
+  readonly branchReach: number;
+  readonly regionDepth: number;
+}
+
+interface AntiStraightnessPassOptions {
+  readonly minCorridorLength: number;
+  readonly maxInterventions: number;
+  readonly extendChance: number;
+  readonly doglegChance: number;
+  readonly loopChance: number;
+  readonly regionBias: 'balanced' | 'interior' | 'perimeter' | 'split';
+}
+
+interface MazeFamilyTopologyProfile {
+  readonly searchWindow: number;
+  readonly placementStrategies: readonly MazePlacementStrategy[];
+  readonly maxStraightness: number;
+  readonly minCorridorMean?: number;
+  readonly maxCorridorMean?: number;
+  readonly maxCorridorP90?: number;
+  readonly minBranchDensity?: number;
+  readonly maxBranchDensity?: number;
+  readonly maxDeadEndDensity?: number;
+  readonly minTurnRate?: number;
+  readonly minPerimeterPathShare?: number;
+  readonly minQuadrantCoverage?: number;
+  readonly minCenterCrossings?: number;
+  readonly maxCenterCrossings?: number;
+  readonly antiStraightness?: AntiStraightnessPassOptions;
 }
 
 interface BidirectionalExpansionOptions {
@@ -138,22 +167,120 @@ const solveScratchCache = new Map<number, AStarScratch>();
 const getHeap = (size: number): MinHeap => new MinHeap(size);
 const tieBreakPriority = (_cost: number, nodeId: number): number => nodeId;
 
-const FAMILY_SEARCH_WINDOW: Record<MazeFamily, number> = {
-  classic: 8,
-  braided: 10,
-  sparse: 18,
-  dense: 10,
-  framed: 12,
-  'split-flow': 16
-};
-
-const FAMILY_PLACEMENT_STRATEGIES: Record<MazeFamily, readonly MazePlacementStrategy[]> = {
-  classic: ['farthest-pair', 'corner-opposed', 'edge-biased'],
-  braided: ['edge-biased', 'region-opposed', 'farthest-pair'],
-  sparse: ['corridor-biased', 'corner-opposed', 'farthest-pair'],
-  dense: ['region-opposed', 'edge-biased', 'farthest-pair'],
-  framed: ['edge-biased', 'corner-opposed', 'region-opposed'],
-  'split-flow': ['region-opposed', 'corridor-biased', 'edge-biased']
+const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
+  classic: {
+    searchWindow: 10,
+    placementStrategies: ['region-opposed', 'corner-opposed', 'farthest-pair', 'region-opposed'],
+    maxStraightness: 0.76,
+    maxCorridorMean: 3.35,
+    maxCorridorP90: 6.2,
+    minBranchDensity: 0.08,
+    maxDeadEndDensity: 0.19,
+    minTurnRate: 0.22,
+    antiStraightness: {
+      minCorridorLength: 6,
+      maxInterventions: 2,
+      extendChance: 0.34,
+      doglegChance: 0.22,
+      loopChance: 0.14,
+      regionBias: 'balanced'
+    }
+  },
+  braided: {
+    searchWindow: 12,
+    placementStrategies: ['region-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    maxStraightness: 0.74,
+    maxCorridorMean: 3.1,
+    maxCorridorP90: 5.8,
+    minBranchDensity: 0.095,
+    maxDeadEndDensity: 0.14,
+    minTurnRate: 0.26,
+    antiStraightness: {
+      minCorridorLength: 5,
+      maxInterventions: 4,
+      extendChance: 0.54,
+      doglegChance: 0.42,
+      loopChance: 0.4,
+      regionBias: 'balanced'
+    }
+  },
+  sparse: {
+    searchWindow: 16,
+    placementStrategies: ['corner-opposed', 'region-opposed', 'corridor-biased', 'farthest-pair'],
+    maxStraightness: 0.82,
+    minCorridorMean: 3.05,
+    maxCorridorMean: 3.55,
+    maxCorridorP90: 7,
+    maxBranchDensity: 0.1,
+    maxDeadEndDensity: 0.24,
+    minTurnRate: 0.18,
+    antiStraightness: {
+      minCorridorLength: 7,
+      maxInterventions: 2,
+      extendChance: 0.24,
+      doglegChance: 0.18,
+      loopChance: 0.1,
+      regionBias: 'interior'
+    }
+  },
+  dense: {
+    searchWindow: 12,
+    placementStrategies: ['region-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    maxStraightness: 0.76,
+    maxCorridorMean: 3.02,
+    maxCorridorP90: 5.4,
+    minBranchDensity: 0.125,
+    maxDeadEndDensity: 0.16,
+    minTurnRate: 0.28,
+    antiStraightness: {
+      minCorridorLength: 4,
+      maxInterventions: 5,
+      extendChance: 0.46,
+      doglegChance: 0.34,
+      loopChance: 0.24,
+      regionBias: 'interior'
+    }
+  },
+  framed: {
+    searchWindow: 14,
+    placementStrategies: ['edge-biased', 'region-opposed', 'edge-biased', 'corner-opposed'],
+    maxStraightness: 0.8,
+    maxCorridorMean: 3.25,
+    maxCorridorP90: 6,
+    minBranchDensity: 0.09,
+    maxDeadEndDensity: 0.2,
+    minTurnRate: 0.2,
+    minPerimeterPathShare: 0.16,
+    antiStraightness: {
+      minCorridorLength: 5,
+      maxInterventions: 3,
+      extendChance: 0.3,
+      doglegChance: 0.3,
+      loopChance: 0.16,
+      regionBias: 'perimeter'
+    }
+  },
+  'split-flow': {
+    searchWindow: 16,
+    placementStrategies: ['region-opposed', 'corner-opposed', 'region-opposed', 'edge-biased'],
+    maxStraightness: 0.79,
+    maxCorridorMean: 3.28,
+    maxCorridorP90: 6,
+    minBranchDensity: 0.095,
+    maxDeadEndDensity: 0.21,
+    minTurnRate: 0.22,
+    minQuadrantCoverage: 4,
+    minCenterCrossings: 1,
+    maxCenterCrossings: 3,
+    antiStraightness: {
+      minCorridorLength: 5,
+      maxInterventions: 4,
+      extendChance: 0.38,
+      doglegChance: 0.3,
+      loopChance: 0.18,
+      regionBias: 'split'
+    }
+  }
 };
 
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
@@ -169,7 +296,7 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     rng
   } = options;
 
-  const attemptLimit = Math.max(1, Math.min(maxAttempts, FAMILY_SEARCH_WINDOW[family]));
+  const attemptLimit = Math.max(1, Math.min(maxAttempts, FAMILY_TOPOLOGY_TUNING[family].searchWindow));
   let fallback: { result: CoreBuildResult; score: number } | null = null;
   let acceptedFallback: { result: CoreBuildResult; score: number } | null = null;
 
@@ -461,6 +588,7 @@ export const measureMaze = (maze: MazeCore, pathIndices: ArrayLike<number>): Maz
     solutionLength: pathIndices.length,
     deadEnds,
     junctions,
+    branchDensity: junctions / Math.max(1, maze.cells.length),
     straightness: pathIndices.length <= 2 ? 1 : straightSegments / Math.max(1, pathIndices.length - 2),
     coverage: pathIndices.length / Math.max(1, maze.cells.length)
   };
@@ -946,35 +1074,75 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
   const junctionScore = result.metrics.junctions / sizeScale;
   const coverageScore = result.metrics.coverage * 5;
   const shortcutScore = result.shortcutsCreated / sizeScale;
+  const branchScore = result.metrics.branchDensity * 100;
+  const turnScore = result.topology.turnRate * 4;
   const recencyPenalty = attempt * 0.015;
 
   switch (result.maze.family) {
     case 'braided':
-      return lengthScore + (junctionScore * 1.1) - (deadEndScore * 0.8) + coverageScore + shortcutScore
-        + (result.topology.centerCrossings * 0.08) - recencyPenalty;
+      return lengthScore
+        + (junctionScore * 1.1)
+        + (turnScore * 0.8)
+        + (shortcutScore * 1.15)
+        + (branchScore * 0.12)
+        - (deadEndScore * 1.15)
+        - (result.topology.corridorMean * 0.5)
+        - (result.metrics.straightness * 1.9)
+        - recencyPenalty;
     case 'sparse':
-      return lengthScore + (result.topology.corridorMean * 1.3) + (result.topology.corridorP90 * 0.35)
-        - (junctionScore * 0.55) + (result.topology.startGoalSpan * 0.8) - recencyPenalty;
+      return lengthScore
+        + (result.topology.startGoalSpan * 0.95)
+        + rewardWindow(result.topology.corridorMean, 3.1, 3.5, 1.4)
+        + (turnScore * 0.45)
+        - (junctionScore * 0.4)
+        - penalizeAbove(result.topology.corridorP90, 6.6, 0.55)
+        - penalizeAbove(result.metrics.straightness, 0.8, 1.2)
+        - recencyPenalty;
     case 'dense':
-      return lengthScore + (junctionScore * 1.45) + (result.topology.branchingFactor * 0.7)
-        + coverageScore - (result.topology.corridorMean * 0.45) + (shortcutScore * 0.4) - recencyPenalty;
+      return lengthScore
+        + (junctionScore * 1.55)
+        + (branchScore * 0.18)
+        + (turnScore * 0.95)
+        + coverageScore
+        + (shortcutScore * 0.55)
+        - (result.topology.corridorMean * 0.68)
+        - (result.topology.corridorP90 * 0.2)
+        - (result.metrics.straightness * 2.1)
+        - recencyPenalty;
     case 'framed':
-      return lengthScore + (result.topology.perimeterPathShare * 3) + (result.topology.startGoalEdgeBias * 1.8)
-        + (result.topology.corridorP90 * 0.2) - recencyPenalty;
+      return lengthScore
+        + (result.topology.perimeterPathShare * 2.8)
+        + (result.topology.startGoalEdgeBias * 1.8)
+        + (turnScore * 0.7)
+        + rewardWindow(result.topology.corridorMean, 3.0, 3.25, 0.9)
+        - penalizeAbove(result.metrics.straightness, 0.79, 1.7)
+        - penalizeAbove(result.topology.corridorP90, 5.9, 0.45)
+        - recencyPenalty;
     case 'split-flow': {
-      const crossingBonus = 1.6 - Math.abs(result.topology.centerCrossings - 2);
-      return lengthScore + coverageScore + (result.topology.quadrantCoverage * 0.45)
-        + (result.topology.startGoalSpan * 0.9) + crossingBonus - recencyPenalty;
+      const crossingBonus = 1.8 - Math.abs(result.topology.centerCrossings - 2);
+      return lengthScore
+        + coverageScore
+        + (result.topology.quadrantCoverage * 0.6)
+        + (result.topology.startGoalSpan * 1.1)
+        + (turnScore * 0.7)
+        + crossingBonus
+        - penalizeAbove(result.metrics.straightness, 0.78, 1.8)
+        - recencyPenalty;
     }
     case 'classic':
     default:
-      return lengthScore + (result.topology.turnRate * 1.2) + (coverageScore * 0.85)
-        + (result.topology.startGoalSpan * 0.6) - recencyPenalty;
+      return lengthScore
+        + (turnScore * 0.78)
+        + (coverageScore * 0.9)
+        + (result.topology.startGoalSpan * 0.74)
+        + rewardWindow(result.topology.corridorMean, 3.0, 3.3, 0.9)
+        - penalizeAbove(result.metrics.straightness, 0.75, 1.65)
+        - recencyPenalty;
   }
 };
 
 const placeFamilyEndpoints = (maze: MazeCore, scratch: MazeScratch): PlacementResult => {
-  const strategies = FAMILY_PLACEMENT_STRATEGIES[maze.family];
+  const strategies = FAMILY_TOPOLOGY_TUNING[maze.family].placementStrategies;
   const mixed = mixPlacementSeed(maze.seed, maze.family, maze.width, maze.height);
   const strategy = strategies[mixed % strategies.length];
   const pools = collectPlacementPools(maze);
@@ -1001,7 +1169,9 @@ const resolvePlacementByStrategy = (
         maze,
         (left, right) => {
           const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          return separation + ((left.edgeBias + right.edgeBias) * 0.9) + opposedBorderBonus(left, right);
+          const branchBonus = (left.branchReach + right.branchReach) * 0.2;
+          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.3;
+          return separation + ((left.edgeBias + right.edgeBias) * 0.9) + opposedBorderBonus(left, right) + branchBonus - corridorPenalty;
         }
       );
       if (pair) {
@@ -1016,7 +1186,8 @@ const resolvePlacementByStrategy = (
         (left, right) => {
           const separation = normalizedSeparation(left, right, maze.width, maze.height);
           const diagonal = diagonalSpan(left, right, maze.width, maze.height);
-          return (separation * 1.1) + (diagonal * 1.4) + ((left.edgeBias + right.edgeBias) * 0.7);
+          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.25;
+          return (separation * 1.08) + (diagonal * 1.28) + ((left.edgeBias + right.edgeBias) * 0.65) - corridorPenalty;
         }
       );
       if (pair) {
@@ -1033,7 +1204,10 @@ const resolvePlacementByStrategy = (
           const separation = normalizedSeparation(left, right, maze.width, maze.height);
           const diagonal = diagonalSpan(left, right, maze.width, maze.height);
           const quadrantBonus = isOpposedQuadrantPair(left, right, maze.width, maze.height) ? 1.2 : 0;
-          return (separation * 1.25) + (diagonal * 0.8) + quadrantBonus;
+          const branchBonus = (left.branchReach + right.branchReach) * 0.55;
+          const interiorBonus = (left.regionDepth + right.regionDepth) * 0.2;
+          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.45;
+          return (separation * 1.22) + (diagonal * 0.72) + quadrantBonus + branchBonus + interiorBonus - corridorPenalty;
         }
       );
       if (pair) {
@@ -1048,8 +1222,9 @@ const resolvePlacementByStrategy = (
         maze,
         (left, right) => {
           const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          return separation + ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 1.6
-            + (diagonalSpan(left, right, maze.width, maze.height) * 0.5);
+          const corridorBonus = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.7;
+          const branchBonus = (left.branchReach + right.branchReach) * 0.18;
+          return separation + corridorBonus + (diagonalSpan(left, right, maze.width, maze.height) * 0.35) + branchBonus;
         }
       );
       if (pair) {
@@ -1092,7 +1267,9 @@ const collectPlacementPools = (maze: MazeCore): {
       y,
       corridorLead: degree === 1 ? measureDeadEndCorridorLead(maze, index) : 0,
       edgeBias,
-      borderMask: resolveBorderMask(x, y, maze.width, maze.height)
+      borderMask: resolveBorderMask(x, y, maze.width, maze.height),
+      branchReach: measureLocalBranchReach(maze, x, y),
+      regionDepth: 1 - edgeBias
     };
 
     all.push(candidate);
@@ -1174,15 +1351,15 @@ const downsampleCandidates = (
 const applyMazeFamilyPass = (maze: MazeCore, family: MazeFamily, rng: () => number): void => {
   switch (family) {
     case 'braided':
-      braidMaze(maze, 0.18, rng);
-      applyDenseWeavePass(maze, rng, 2);
+      braidMaze(maze, 0.24, rng);
+      applyDenseWeavePass(maze, rng, 2, 2);
       break;
     case 'sparse':
       applySparseFlowPass(maze, rng);
       break;
     case 'dense':
-      braidMaze(maze, 0.1, rng);
-      applyDenseWeavePass(maze, rng, 3);
+      braidMaze(maze, 0.14, rng);
+      applyDenseWeavePass(maze, rng, 4, 2);
       break;
     case 'framed':
       applyFramedPass(maze, rng);
@@ -1202,17 +1379,24 @@ const applySparseFlowPass = (maze: MazeCore, rng: () => number): void => {
   }
 
   const horizontal = rng() >= 0.5;
+  const row = clamp(Math.floor(maze.height * 0.34) + randomInt(5, rng) - 2, 1, maze.height - 2);
+  const column = clamp(Math.floor(maze.width * 0.66) + randomInt(5, rng) - 2, 1, maze.width - 2);
+  const primaryLength = Math.max(2, Math.floor((horizontal ? maze.width : maze.height) * 0.38));
+  const spurLength = Math.max(2, Math.floor((horizontal ? maze.height : maze.width) * 0.22));
+
   if (horizontal) {
-    const row = clamp(Math.floor(maze.height / 2) + randomInt(3, rng) - 1, 1, maze.height - 2);
-    carveLinearFeature(maze, 1, row, 1, 0, maze.width - 2);
+    carveLinearFeature(maze, 1, row, 1, 0, primaryLength);
+    carveLinearFeature(maze, clamp(primaryLength, 1, maze.width - 2), row, 0, 1, spurLength);
+    carveLinearFeature(maze, column, clamp(row + spurLength, 1, maze.height - 2), 1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
     return;
   }
 
-  const column = clamp(Math.floor(maze.width / 2) + randomInt(3, rng) - 1, 1, maze.width - 2);
-  carveLinearFeature(maze, column, 1, 0, 1, maze.height - 2);
+  carveLinearFeature(maze, column, 1, 0, 1, primaryLength);
+  carveLinearFeature(maze, column, clamp(primaryLength, 1, maze.height - 2), 1, 0, spurLength);
+  carveLinearFeature(maze, clamp(column + spurLength, 1, maze.width - 2), row, 0, 1, Math.max(2, Math.floor(maze.height * 0.24)));
 };
 
-const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: number): void => {
+const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: number, armLength: number): void => {
   if (maze.width < 6 || maze.height < 6) {
     return;
   }
@@ -1220,8 +1404,11 @@ const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: nu
   for (let cluster = 0; cluster < clusterCount; cluster += 1) {
     const centerX = clamp(2 + randomInt(Math.max(1, maze.width - 4), rng), 1, maze.width - 2);
     const centerY = clamp(2 + randomInt(Math.max(1, maze.height - 4), rng), 1, maze.height - 2);
-    carveLinearFeature(maze, clamp(centerX - 1, 1, maze.width - 2), centerY, 1, 0, 2);
-    carveLinearFeature(maze, centerX, clamp(centerY - 1, 1, maze.height - 2), 0, 1, 2);
+    carveLinearFeature(maze, clamp(centerX - 1, 1, maze.width - 2), centerY, 1, 0, armLength);
+    carveLinearFeature(maze, centerX, clamp(centerY - 1, 1, maze.height - 2), 0, 1, armLength);
+    if (rng() > 0.35) {
+      carveLinearFeature(maze, centerX, centerY, rng() > 0.5 ? 1 : -1, 0, 1);
+    }
   }
 };
 
@@ -1230,21 +1417,25 @@ const applySplitFlowPass = (maze: MazeCore, rng: () => number): void => {
     return;
   }
 
-  const midX = Math.floor(maze.width / 2);
-  const midY = Math.floor(maze.height / 2);
-  const upperRow = clamp(Math.floor(maze.height * 0.28) + randomInt(3, rng) - 1, 1, maze.height - 2);
-  const lowerRow = clamp(Math.floor(maze.height * 0.72) + randomInt(3, rng) - 1, 1, maze.height - 2);
+  const leftColumn = clamp(Math.floor(maze.width * 0.28) + randomInt(5, rng) - 2, 1, maze.width - 3);
+  const rightColumn = clamp(Math.floor(maze.width * 0.72) + randomInt(5, rng) - 2, 2, maze.width - 2);
+  const upperRow = clamp(Math.floor(maze.height * 0.28) + randomInt(5, rng) - 2, 1, maze.height - 3);
+  const lowerRow = clamp(Math.floor(maze.height * 0.72) + randomInt(5, rng) - 2, 2, maze.height - 2);
+  const bridgeRow = clamp(Math.floor(maze.height * 0.62) + randomInt(5, rng) - 2, upperRow + 1, lowerRow);
+  const midSpan = Math.max(2, Math.floor((rightColumn - leftColumn) * 0.42));
 
-  carveLinearFeature(maze, 1, upperRow, 1, 0, Math.max(2, midX - 1));
-  carveLinearFeature(maze, midX, upperRow, 0, upperRow <= midY ? 1 : -1, Math.max(1, Math.abs(midY - upperRow)));
-  carveLinearFeature(maze, midX, midY, 0, lowerRow >= midY ? 1 : -1, Math.max(1, Math.abs(lowerRow - midY)));
-  carveLinearFeature(maze, midX, lowerRow, 1, 0, Math.max(2, maze.width - midX - 2));
+  carveLinearFeature(maze, 1, upperRow, 1, 0, Math.max(2, leftColumn - 1));
+  carveLinearFeature(maze, leftColumn, upperRow, 0, 1, Math.max(2, bridgeRow - upperRow));
+  carveLinearFeature(maze, leftColumn, bridgeRow, 1, 0, midSpan);
+  carveLinearFeature(maze, maze.width - 2, lowerRow, -1, 0, Math.max(2, maze.width - rightColumn - 2));
+  carveLinearFeature(maze, rightColumn, lowerRow, 0, -1, Math.max(2, lowerRow - bridgeRow));
+  carveLinearFeature(maze, rightColumn, bridgeRow, -1, 0, midSpan);
 
-  if (rng() > 0.45) {
-    carveLinearFeature(maze, 1, lowerRow, 1, 0, Math.max(2, Math.floor(maze.width * 0.34)));
+  if (rng() > 0.3) {
+    carveLinearFeature(maze, 1, lowerRow, 1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
   }
-  if (rng() > 0.45) {
-    carveLinearFeature(maze, maze.width - 2, upperRow, -1, 0, Math.max(2, Math.floor(maze.width * 0.34)));
+  if (rng() > 0.3) {
+    carveLinearFeature(maze, maze.width - 2, upperRow, -1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
   }
 };
 
@@ -1276,15 +1467,207 @@ const applyFramedPass = (maze: MazeCore, rng: () => number): void => {
   const inset = Math.max(1, Math.min(2, Math.floor(Math.min(maze.width, maze.height) / 12)));
   const horizontalSpan = Math.max(2, maze.width - (inset * 2) - 2);
   const verticalSpan = Math.max(2, maze.height - (inset * 2) - 2);
-  const horizontalOffset = horizontalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(horizontalSpan * 0.2)), rng);
-  const verticalOffset = verticalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(verticalSpan * 0.2)), rng);
-  const horizontalLength = Math.max(2, Math.floor(horizontalSpan * 0.65));
-  const verticalLength = Math.max(2, Math.floor(verticalSpan * 0.65));
+  const horizontalOffset = horizontalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(horizontalSpan * 0.18)), rng);
+  const verticalOffset = verticalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(verticalSpan * 0.18)), rng);
+  const horizontalLength = Math.max(2, Math.floor(horizontalSpan * 0.48));
+  const verticalLength = Math.max(2, Math.floor(verticalSpan * 0.48));
+  const topX = inset + 1 + horizontalOffset;
+  const sideY = inset + 1 + verticalOffset;
+  const gatewayDepth = Math.max(2, Math.floor(Math.min(maze.width, maze.height) * 0.16));
 
-  carveLinearFeature(maze, inset + 1 + horizontalOffset, inset, 1, 0, horizontalLength);
-  carveLinearFeature(maze, inset + 1 + horizontalOffset, maze.height - inset - 1, 1, 0, horizontalLength);
-  carveLinearFeature(maze, inset, inset + 1 + verticalOffset, 0, 1, verticalLength);
-  carveLinearFeature(maze, maze.width - inset - 1, inset + 1 + verticalOffset, 0, 1, verticalLength);
+  carveLinearFeature(maze, topX, inset, 1, 0, horizontalLength);
+  carveLinearFeature(maze, topX, maze.height - inset - 1, 1, 0, horizontalLength);
+  carveLinearFeature(maze, inset, sideY, 0, 1, verticalLength);
+  carveLinearFeature(maze, maze.width - inset - 1, sideY, 0, 1, verticalLength);
+  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), inset, 0, 1, gatewayDepth);
+  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), maze.height - inset - 1, 0, -1, gatewayDepth);
+  carveLinearFeature(maze, inset, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), 1, 0, gatewayDepth);
+  carveLinearFeature(maze, maze.width - inset - 1, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), -1, 0, gatewayDepth);
+};
+
+const applyFamilyAntiStraightnessPass = (maze: MazeCore, family: MazeFamily, rng: () => number): void => {
+  const tuning = FAMILY_TOPOLOGY_TUNING[family].antiStraightness;
+  if (!tuning) {
+    return;
+  }
+
+  const graph = buildCorridorGraph(maze, { x: 0, y: 0 }, { x: maze.width - 1, y: maze.height - 1 });
+  const edges = [...graph.edges]
+    .filter((edge) => edge.cost >= tuning.minCorridorLength)
+    .sort((left, right) => right.cost - left.cost);
+
+  for (const edge of edges) {
+    const candidates: number[] = [];
+    for (let cursor = 1; cursor < edge.path.length - 1; cursor += 1) {
+      const axis = resolveEdgeAxis(maze, edge.path[cursor - 1], edge.path[cursor], edge.path[cursor + 1]);
+      if (axis === null || countOpenNeighbors(maze, edge.path[cursor]) !== 2) {
+        continue;
+      }
+      if (!passesAntiStraightnessRegionGate(maze, edge.path[cursor], tuning.regionBias)) {
+        continue;
+      }
+      candidates.push(cursor);
+    }
+
+    if (candidates.length === 0) {
+      continue;
+    }
+
+    const picks = pickSpreadInterventionPoints(candidates, Math.min(
+      tuning.maxInterventions,
+      Math.max(1, Math.floor(edge.cost / tuning.minCorridorLength))
+    ), rng);
+
+    for (const cursor of picks) {
+      const axis = resolveEdgeAxis(maze, edge.path[cursor - 1], edge.path[cursor], edge.path[cursor + 1]);
+      if (axis === null) {
+        continue;
+      }
+      applyCorridorIntervention(maze, edge.path[cursor], axis, tuning, rng);
+    }
+  }
+};
+
+const applyCorridorIntervention = (
+  maze: MazeCore,
+  cellIndex: number,
+  axis: 'horizontal' | 'vertical',
+  tuning: AntiStraightnessPassOptions,
+  rng: () => number
+): void => {
+  const perpendicularDirections = axis === 'horizontal'
+    ? [0, 2] as const
+    : [1, 3] as const;
+  const branchDirection = pickClosedDirection(maze, cellIndex, perpendicularDirections, rng);
+  if (branchDirection === null) {
+    return;
+  }
+
+  const branchCell = neighborIndexForDirection(maze, cellIndex, branchDirection);
+  if (branchCell === -1) {
+    return;
+  }
+
+  carvePassage(maze, cellIndex, branchCell);
+  let tip = branchCell;
+
+  if (rng() < tuning.extendChance) {
+    const extended = extendIntervention(maze, tip, branchDirection);
+    if (extended !== -1) {
+      tip = extended;
+    }
+  }
+
+  if (rng() < tuning.doglegChance) {
+    const doglegDirections = axis === 'horizontal'
+      ? [1, 3] as const
+      : [0, 2] as const;
+    const doglegDirection = pickClosedDirection(maze, tip, doglegDirections, rng);
+    if (doglegDirection !== null) {
+      const dogleg = neighborIndexForDirection(maze, tip, doglegDirection);
+      if (dogleg !== -1) {
+        carvePassage(maze, tip, dogleg);
+        tip = dogleg;
+      }
+    }
+  }
+
+  if (rng() < tuning.loopChance) {
+    const loopDirection = pickClosedDirection(maze, tip, [0, 1, 2, 3], rng);
+    if (loopDirection !== null) {
+      const loopTarget = neighborIndexForDirection(maze, tip, loopDirection);
+      if (loopTarget !== -1) {
+        carvePassage(maze, tip, loopTarget);
+      }
+    }
+  }
+};
+
+const extendIntervention = (maze: MazeCore, start: number, direction: number): number => {
+  const next = neighborIndexForDirection(maze, start, direction);
+  if (next === -1 || isOpenBetween(maze, start, next)) {
+    return -1;
+  }
+  carvePassage(maze, start, next);
+  return next;
+};
+
+const pickSpreadInterventionPoints = (candidates: readonly number[], maxCount: number, rng: () => number): number[] => {
+  if (candidates.length <= maxCount) {
+    return [...candidates];
+  }
+
+  const step = Math.max(1, Math.floor(candidates.length / maxCount));
+  const offset = randomInt(step, rng);
+  const picked: number[] = [];
+
+  for (let index = offset; index < candidates.length && picked.length < maxCount; index += step) {
+    picked.push(candidates[index]);
+  }
+
+  return picked.length > 0 ? picked : [candidates[Math.floor(candidates.length / 2)]];
+};
+
+const resolveEdgeAxis = (
+  maze: MazeCore,
+  previous: number,
+  current: number,
+  next: number
+): 'horizontal' | 'vertical' | null => {
+  const previousX = xFromIndex(previous, maze.width);
+  const previousY = yFromIndex(previous, maze.width);
+  const currentX = xFromIndex(current, maze.width);
+  const currentY = yFromIndex(current, maze.width);
+  const nextX = xFromIndex(next, maze.width);
+  const nextY = yFromIndex(next, maze.width);
+  if (previousY === currentY && currentY === nextY) {
+    return 'horizontal';
+  }
+  if (previousX === currentX && currentX === nextX) {
+    return 'vertical';
+  }
+  return null;
+};
+
+const passesAntiStraightnessRegionGate = (
+  maze: MazeCore,
+  index: number,
+  bias: AntiStraightnessPassOptions['regionBias']
+): boolean => {
+  const x = xFromIndex(index, maze.width);
+  const y = yFromIndex(index, maze.width);
+  const edgeDistance = Math.min(x, y, (maze.width - 1) - x, (maze.height - 1) - y);
+  const centerDistance = Math.abs(x - ((maze.width - 1) / 2)) + Math.abs(y - ((maze.height - 1) / 2));
+
+  switch (bias) {
+    case 'interior':
+      return edgeDistance >= 1;
+    case 'perimeter':
+      return edgeDistance <= Math.max(2, Math.floor(Math.min(maze.width, maze.height) * 0.16));
+    case 'split':
+      return centerDistance >= Math.max(2, Math.floor(Math.min(maze.width, maze.height) * 0.18));
+    case 'balanced':
+    default:
+      return true;
+  }
+};
+
+const pickClosedDirection = (
+  maze: MazeCore,
+  index: number,
+  directions: readonly number[],
+  rng: () => number
+): number | null => {
+  const closed = directions.filter((direction) => {
+    const neighbor = neighborIndexForDirection(maze, index, direction);
+    return neighbor !== -1 && !isOpenBetween(maze, index, neighbor);
+  });
+
+  if (closed.length === 0) {
+    return null;
+  }
+
+  return closed[randomInt(closed.length, rng)];
 };
 
 const applyArchitecturalPasses = (maze: MazeCore, rng: () => number): void => {
@@ -1391,8 +1774,10 @@ const generateWilsonMaze = (
     braidMaze(maze, braidRatio, rng);
   }
 
+  // Preserve Wilson truth first, then express family identity through structural passes.
   applyMazeFamilyPass(maze, family, rng);
   applyPresentationPreset(maze, presentationPreset, rng);
+  applyFamilyAntiStraightnessPass(maze, family, rng);
   const placement = placeFamilyEndpoints(maze, scratch);
   maze.start = placement.start;
   maze.goal = placement.goal;
@@ -1429,41 +1814,79 @@ const passesQualityGate = (
   topology: MazeTopologyStats,
   minSolutionLength: number
 ): boolean => {
+  const tuning = FAMILY_TOPOLOGY_TUNING[family];
   const baselineCoverage = metrics.coverage >= 0.14;
+  const deadEndDensity = metrics.deadEnds / Math.max(1, minSolutionLength * 1.6);
+  const branchDensityOkay = tuning.minBranchDensity === undefined || metrics.branchDensity >= tuning.minBranchDensity;
+  const sparseBranchingOkay = tuning.maxBranchDensity === undefined || metrics.branchDensity <= tuning.maxBranchDensity;
+  const deadEndDensityOkay = tuning.maxDeadEndDensity === undefined || deadEndDensity <= tuning.maxDeadEndDensity;
+  const corridorMeanOkay = (
+    (tuning.minCorridorMean === undefined || topology.corridorMean >= tuning.minCorridorMean)
+    && (tuning.maxCorridorMean === undefined || topology.corridorMean <= tuning.maxCorridorMean)
+  );
+  const corridorP90Okay = tuning.maxCorridorP90 === undefined || topology.corridorP90 <= tuning.maxCorridorP90;
+  const turnRateOkay = tuning.minTurnRate === undefined || topology.turnRate >= tuning.minTurnRate;
+  const straightnessOkay = metrics.straightness <= tuning.maxStraightness;
   switch (family) {
     case 'braided':
       return metrics.solutionLength >= Math.floor(minSolutionLength * 0.84)
         && baselineCoverage
-        && metrics.straightness <= 0.9
-        && metrics.deadEnds <= Math.floor(mazeDensityThreshold(minSolutionLength, 0.7))
-        && metrics.junctions >= Math.floor(mazeDensityThreshold(minSolutionLength, 0.12));
+        && straightnessOkay
+        && deadEndDensityOkay
+        && branchDensityOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && turnRateOkay;
     case 'sparse':
       return metrics.solutionLength >= Math.floor(minSolutionLength * 0.96)
         && metrics.coverage >= 0.12
-        && topology.corridorMean >= 3.2
-        && topology.corridorP90 >= 6
-        && topology.startGoalSpan >= 1.1;
+        && straightnessOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && sparseBranchingOkay
+        && deadEndDensityOkay
+        && topology.startGoalSpan >= 1.05
+        && turnRateOkay;
     case 'dense':
       return metrics.solutionLength >= Math.floor(minSolutionLength * 0.9)
         && metrics.coverage >= 0.18
-        && metrics.junctions >= Math.floor(mazeDensityThreshold(minSolutionLength, 0.16))
-        && topology.branchingFactor >= 3;
+        && straightnessOkay
+        && branchDensityOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && turnRateOkay
+        && topology.branchingFactor >= 3.06;
     case 'framed':
       return metrics.solutionLength >= Math.floor(minSolutionLength * 0.92)
         && metrics.coverage >= 0.15
-        && topology.perimeterPathShare >= 0.16
+        && straightnessOkay
+        && branchDensityOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && turnRateOkay
+        && topology.perimeterPathShare >= (tuning.minPerimeterPathShare ?? 0)
         && topology.startGoalEdgeBias >= 0.5;
     case 'split-flow':
       return metrics.solutionLength >= Math.floor(minSolutionLength * 0.96)
         && metrics.coverage >= 0.16
-        && topology.quadrantCoverage >= 3
-        && topology.centerCrossings >= 1
-        && topology.centerCrossings <= 4;
+        && straightnessOkay
+        && branchDensityOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && turnRateOkay
+        && topology.quadrantCoverage >= (tuning.minQuadrantCoverage ?? 0)
+        && topology.centerCrossings >= (tuning.minCenterCrossings ?? 0)
+        && topology.centerCrossings <= (tuning.maxCenterCrossings ?? Number.POSITIVE_INFINITY);
     case 'classic':
     default:
       return metrics.solutionLength >= minSolutionLength
-        && metrics.straightness <= 0.82
-        && metrics.coverage >= 0.18;
+        && straightnessOkay
+        && metrics.coverage >= 0.18
+        && branchDensityOkay
+        && corridorMeanOkay
+        && corridorP90Okay
+        && deadEndDensityOkay
+        && turnRateOkay;
   }
 };
 
@@ -1555,6 +1978,56 @@ const countOpenNeighbors = (maze: MazeCore, idx: number): number => {
   }
 
   return count;
+};
+
+const neighborIndexForDirection = (maze: MazeCore, idx: number, direction: number): number => {
+  const x = xFromIndex(idx, maze.width);
+  const y = yFromIndex(idx, maze.width);
+  const dir = DIRS[direction];
+  const nextX = x + dir.dx;
+  const nextY = y + dir.dy;
+  return inBounds(nextX, nextY, maze.width, maze.height) ? indexOf(maze.width, nextX, nextY) : -1;
+};
+
+const isOpenBetween = (maze: MazeCore, from: number, to: number): boolean => {
+  const fromX = xFromIndex(from, maze.width);
+  const fromY = yFromIndex(from, maze.width);
+  const toX = xFromIndex(to, maze.width);
+  const toY = yFromIndex(to, maze.width);
+
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if (fromX + dir.dx !== toX || fromY + dir.dy !== toY) {
+      continue;
+    }
+    return (maze.cells[from] & dir.bit) === 0;
+  }
+
+  return false;
+};
+
+const measureLocalBranchReach = (maze: MazeCore, x: number, y: number): number => {
+  let branching = 0;
+  let samples = 0;
+
+  for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+    for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
+      if (Math.abs(offsetX) + Math.abs(offsetY) > 3) {
+        continue;
+      }
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+        continue;
+      }
+      samples += 1;
+      if (countOpenNeighbors(maze, indexOf(maze.width, nextX, nextY)) >= 3) {
+        branching += 1;
+      }
+    }
+  }
+
+  return branching / Math.max(1, samples);
 };
 
 const pickRandomClosedNeighbor = (maze: MazeCore, idx: number, rng: () => number): number => {
@@ -1764,9 +2237,16 @@ const mixPlacementSeed = (seed: number, family: MazeFamily, width: number, heigh
   Math.imul((seed >>> 0) ^ (width << 8) ^ (height << 16), (family.charCodeAt(0) | 1) >>> 0) >>> 0
 );
 
-const mazeDensityThreshold = (minSolutionLength: number, factor: number): number => (
-  Math.max(1, Math.sqrt(Math.max(1, minSolutionLength)) * factor * 10)
+const penalizeAbove = (value: number, threshold: number, scale: number): number => (
+  value <= threshold ? 0 : (value - threshold) * scale
 );
+
+const rewardWindow = (value: number, min: number, max: number, reward: number): number => {
+  if (value < min || value > max) {
+    return -Math.min(Math.abs(value - min), Math.abs(value - max));
+  }
+  return reward;
+};
 
 const quantile = (values: readonly number[], q: number): number => {
   if (values.length === 0) {

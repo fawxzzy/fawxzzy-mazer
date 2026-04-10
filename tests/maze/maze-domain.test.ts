@@ -16,7 +16,7 @@ import {
   solveCorridorGraph,
   type MazeConfig
 } from '../../src/domain/maze';
-import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
+import { assertMazeInvariants, measureEpisodeTopology, serializeMaze } from './maze-test-utils';
 
 const defaultConfig: MazeConfig = {
   scale: 50,
@@ -214,30 +214,56 @@ describe('maze domain generation', () => {
 
   test('family archetypes produce materially different topology signatures', () => {
     const sampleFamilies = ['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow'] as const;
-    const samples = sampleFamilies.map((family, index) => generateMaze({
+    const seeds = [7_000, 7_037, 7_074, 7_111] as const;
+    const samples = sampleFamilies.flatMap((family) => seeds.map((seed) => generateMaze({
       ...defaultConfig,
       family,
-      seed: 7_000 + (index * 37),
+      seed,
       size: 'large'
-    }));
+    })));
 
-    const byFamily = Object.fromEntries(samples.map((episode) => [episode.family, episode])) as Record<typeof sampleFamilies[number], typeof samples[number]>;
+    const byFamily = Object.fromEntries(sampleFamilies.map((family) => {
+      const familyEpisodes = samples.filter((episode) => episode.family === family);
+      const topology = familyEpisodes.map((episode) => measureEpisodeTopology(episode));
+      const placementStrategies = new Set(familyEpisodes.map((episode) => episode.placementStrategy));
+      return [family, {
+        deadEnds: average(familyEpisodes.map((episode) => episode.metrics.deadEnds)),
+        junctions: average(familyEpisodes.map((episode) => episode.metrics.junctions)),
+        branchDensity: average(familyEpisodes.map((episode) => episode.metrics.branchDensity)),
+        straightness: average(familyEpisodes.map((episode) => episode.metrics.straightness)),
+        corridorMean: average(topology.map((item) => item.corridorMean)),
+        corridorP90: average(topology.map((item) => item.corridorP90)),
+        placementStrategies
+      }];
+    })) as Record<typeof sampleFamilies[number], {
+      deadEnds: number;
+      junctions: number;
+      branchDensity: number;
+      straightness: number;
+      corridorMean: number;
+      corridorP90: number;
+      placementStrategies: Set<string>;
+    }>;
 
-    expect(byFamily.braided.shortcutsCreated).toBeGreaterThanOrEqual(byFamily.classic.shortcutsCreated);
-    expect(byFamily.sparse.metrics.junctions).toBeLessThan(byFamily.dense.metrics.junctions);
-    expect(byFamily.sparse.metrics.straightness).toBeGreaterThanOrEqual(byFamily.classic.metrics.straightness * 0.8);
-    expect(byFamily.dense.metrics.junctions).toBeGreaterThan(byFamily.sparse.metrics.junctions);
-    expect(byFamily.framed.family).toBe('framed');
-    expect(['region-opposed', 'corridor-biased', 'edge-biased']).toContain(byFamily['split-flow'].placementStrategy);
+    expect(byFamily.braided.deadEnds).toBeLessThan(byFamily.classic.deadEnds);
+    expect(byFamily.braided.branchDensity).toBeGreaterThan(byFamily.classic.branchDensity);
+    expect(byFamily.braided.straightness).toBeLessThan(byFamily.dense.straightness);
+    expect(byFamily.sparse.corridorMean).toBeGreaterThan(byFamily.dense.corridorMean);
+    expect(byFamily.sparse.deadEnds).toBeGreaterThan(byFamily.dense.deadEnds);
+    expect(byFamily.dense.junctions).toBeGreaterThan(byFamily.classic.junctions);
+    expect(byFamily.dense.corridorMean).toBeLessThan(byFamily.classic.corridorMean);
+    expect(byFamily.dense.branchDensity).toBeGreaterThan(byFamily.classic.branchDensity);
+    expect(byFamily.framed.placementStrategies.has('edge-biased')).toBe(true);
+    expect(byFamily['split-flow'].placementStrategies.has('region-opposed')).toBe(true);
+    expect(byFamily['split-flow'].corridorP90).toBeLessThanOrEqual(6.2);
 
-    const signatures = new Set(samples.map((episode) => [
-      episode.family,
-      episode.metrics.solutionLength,
-      episode.metrics.deadEnds,
-      episode.metrics.junctions,
-      episode.placementStrategy
+    const signaturePairs = new Set(sampleFamilies.map((family) => [
+      family,
+      Math.round(byFamily[family].straightness * 1000),
+      Math.round(byFamily[family].corridorMean * 1000),
+      Math.round(byFamily[family].branchDensity * 1000)
     ].join(':')));
-    expect(signatures.size).toBe(sampleFamilies.length);
+    expect(signaturePairs.size).toBe(sampleFamilies.length);
 
     for (const episode of samples) {
       disposeMazeEpisode(episode);
@@ -340,6 +366,7 @@ describe('maze domain generation', () => {
       solutionLength: 120,
       deadEnds: 20,
       junctions: 10,
+      branchDensity: 0.035,
       straightness: 0.5,
       coverage: 0.3
     }, 50, 50, 4).difficulty).toBe('chill');
@@ -348,6 +375,7 @@ describe('maze domain generation', () => {
       solutionLength: 180,
       deadEnds: 30,
       junctions: 18,
+      branchDensity: 0.05,
       straightness: 0.45,
       coverage: 0.38
     }, 50, 50, 6).difficulty).toBe('standard');
@@ -356,6 +384,7 @@ describe('maze domain generation', () => {
       solutionLength: 500,
       deadEnds: 70,
       junctions: 50,
+      branchDensity: 0.085,
       straightness: 0.14,
       coverage: 0.76
     }, 50, 50, 20).difficulty).toBe('spicy');
@@ -364,6 +393,7 @@ describe('maze domain generation', () => {
       solutionLength: 650,
       deadEnds: 90,
       junctions: 68,
+      branchDensity: 0.12,
       straightness: 0.08,
       coverage: 0.86
     }, 50, 50, 28).difficulty).toBe('brutal');
@@ -424,3 +454,7 @@ describe('maze domain generation', () => {
     engine.destroy();
   });
 });
+
+const average = (values: readonly number[]): number => (
+  values.reduce((total, value) => total + value, 0) / Math.max(1, values.length)
+);

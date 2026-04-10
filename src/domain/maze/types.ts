@@ -66,6 +66,7 @@ export interface MazeMetrics {
   solutionLength: number;
   deadEnds: number;
   junctions: number;
+  branchDensity: number;
   straightness: number;
   coverage: number;
 }
