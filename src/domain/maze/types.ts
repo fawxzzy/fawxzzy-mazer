@@ -2,6 +2,8 @@ export type Point = { x: number; y: number };
 export type PatternEngineMode = 'demo' | 'loading' | 'idle' | 'kiosk';
 export type MazeDifficulty = 'chill' | 'standard' | 'spicy' | 'brutal';
 export type MazeSize = 'small' | 'medium' | 'large' | 'huge';
+export type MazeSolveStrategy = 'astar' | 'corridor-bidirectional';
+export type MazePresentationPreset = 'classic' | 'braided' | 'framed' | 'blueprint-rare';
 
 export interface MazeCore {
   width: number;
@@ -11,6 +13,7 @@ export interface MazeCore {
   goal: Point;
   seed: number;
   braidRatio: number;
+  presentationPreset: MazePresentationPreset;
 }
 
 export interface MazeConfig {
@@ -19,6 +22,7 @@ export interface MazeConfig {
   checkPointModifier: number;
   shortcutCountModifier: number;
   size?: MazeSize;
+  presentationPreset?: MazePresentationPreset;
   minSolutionLength?: number;
   maxAttempts?: number;
 }
@@ -29,6 +33,7 @@ export interface MazeBuildOptions {
   size?: MazeSize;
   seed?: number;
   braidRatio?: number;
+  presentationPreset?: MazePresentationPreset;
   minSolutionLength?: number;
   maxAttempts?: number;
   rng?: () => number;
@@ -42,6 +47,7 @@ export interface MazeSolveResult {
   visited: number;
   expanded: number;
   cost: number;
+  strategy: MazeSolveStrategy;
 }
 
 export interface MazeMetrics {
@@ -77,6 +83,7 @@ export interface MazeEpisode {
   accepted: boolean;
   difficulty: MazeDifficulty;
   difficultyScore: number;
+  presentationPreset: MazePresentationPreset;
 }
 
 export interface MazeGenerationState {

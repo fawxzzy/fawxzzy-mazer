@@ -27,6 +27,7 @@ let resolveBootPresentationConfig: typeof import('../../src/boot/presentation').
 let resolveBootPresentationVariant: typeof import('../../src/boot/presentation').resolveBootPresentationVariant;
 let resolveEffectivePresentationChrome: typeof import('../../src/boot/presentation').resolveEffectivePresentationChrome;
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
+let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPreset;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
@@ -50,7 +51,7 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
   ({ createBoardLayout } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
@@ -142,6 +143,7 @@ describe('demo-only build', () => {
     const seenDifficulties = new Set<string>();
     const seenMoods = new Set<string>();
     const seenSizes = new Set<string>();
+    const seenPresets = new Set<string>();
     const seenPacing = new Set<string>();
     const moods: string[] = [];
     const moodCounts = {
@@ -155,12 +157,14 @@ describe('demo-only build', () => {
       seenDifficulties.add(step.difficulty);
       seenMoods.add(step.mood);
       seenSizes.add(step.size);
+      seenPresets.add(step.presentationPreset);
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
       moodCounts[step.mood] += 1;
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
+      expect(['classic', 'braided', 'framed', 'blueprint-rare']).toContain(step.presentationPreset);
       expect(step.pacing.exploreStepMs).toBeGreaterThanOrEqual(-10);
       expect(step.pacing.exploreStepMs).toBeLessThanOrEqual(8);
       expect(step.pacing.goalHoldMs).toBeGreaterThanOrEqual(16);
@@ -174,6 +178,9 @@ describe('demo-only build', () => {
     expect(seenDifficulties.size).toBeGreaterThan(1);
     expect(seenMoods.size).toBe(3);
     expect(seenSizes.size).toBeGreaterThan(1);
+    expect(seenPresets.has('classic')).toBe(true);
+    expect(seenPresets.has('braided')).toBe(true);
+    expect(seenPresets.has('framed')).toBe(true);
     expect(seenPacing.size).toBeGreaterThan(1);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeLessThanOrEqual(6);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
@@ -203,14 +210,17 @@ describe('demo-only build', () => {
     expect(cycleA.mood).toBe('blueprint');
     expect(cycleA.size).toBe('huge');
     expect(cycleA.difficulty).toBe('brutal');
+    expect(cycleA.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 0, 'blueprint'));
     expect(cycleB.mood).toBe('blueprint');
     expect(cycleB.size).toBe('huge');
     expect(cycleB.difficulty).toBe('brutal');
+    expect(cycleB.presentationPreset).toBe(resolveMenuDemoPreset(launchConfig.seed!, 8, 'blueprint'));
 
     const first = generateMazeForDifficulty({
       scale: legacyTuning.board.scale,
       seed: launchConfig.seed!,
       size: launchConfig.size!,
+      presentationPreset: cycleA.presentationPreset,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     }, launchConfig.difficulty!);
@@ -218,6 +228,7 @@ describe('demo-only build', () => {
       scale: legacyTuning.board.scale,
       seed: launchConfig.seed!,
       size: launchConfig.size!,
+      presentationPreset: cycleA.presentationPreset,
       checkPointModifier: legacyTuning.board.checkPointModifier,
       shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
     }, launchConfig.difficulty!);
@@ -226,6 +237,8 @@ describe('demo-only build', () => {
     expect(second.episode.seed).toBe(launchConfig.seed);
     expect(first.episode.difficulty).toBe('brutal');
     expect(second.episode.difficulty).toBe('brutal');
+    expect(first.episode.presentationPreset).toBe(cycleA.presentationPreset);
+    expect(second.episode.presentationPreset).toBe(cycleA.presentationPreset);
     expect(first.episode.raster.width).toBe(second.episode.raster.width);
     expect(first.episode.raster.height).toBe(second.episode.raster.height);
     expect(Array.from(first.episode.raster.pathIndices)).toEqual(Array.from(second.episode.raster.pathIndices));

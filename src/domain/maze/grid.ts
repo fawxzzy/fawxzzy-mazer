@@ -140,6 +140,14 @@ export class MinHeap {
     this.size = 0;
   }
 
+  public hasItems(): boolean {
+    return this.size > 0;
+  }
+
+  public peekFScore(): number {
+    return this.size > 0 ? this.fScores[0] : Number.POSITIVE_INFINITY;
+  }
+
   public push(index: number, g: number, f: number): void {
     this.ensureCapacity(this.size + 1);
     let cursor = this.size;

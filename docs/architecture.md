@@ -22,8 +22,16 @@ The maze generation lane is implemented as an index-based, renderer-agnostic dom
 - `src/domain/maze/shortcuts.ts`
   - Shortcut pass opens qualifying wall bridges only when opposite path corridors exist, matching legacy corridor-bridge behavior.
   - Wall candidates intentionally remain duplicated because the Unreal `WallArray` accumulated duplicates and that weighting affects shortcut picks.
+- `src/domain/maze/core.ts`
+  - Wilson remains the generation truth.
+  - A corridor-graph solve layer collapses straight corridors into weighted edges, keeps junctions/dead ends/start/goal as nodes, and runs a bidirectional solve before expanding back to the canonical tile path for rendering.
 - `src/domain/maze/generator.ts`
-  - Orchestrates the legacy stage order in pure functions and provides a reset/regenerate loop API.
+  - Orchestrates deterministic build/raster steps and keeps only the current episode in memory.
+  - Presentation presets are lightweight post-processing, not alternate substrate generators:
+    - `classic`: baseline Wilson presentation
+    - `braided`: reduced dead ends via extra braid pass
+    - `framed`: subtle perimeter/composition bias for presentation modes
+    - `blueprint-rare`: rare architectural cross-corridor pass for blueprint mood
 
 ### Legacy parity notes
 
@@ -46,8 +54,14 @@ The maze generation lane is implemented as an index-based, renderer-agnostic dom
 - explicit `startIndex` and `endIndex`
 - `pathIndices` and `wallIndices`
 - deterministic seed + budget counters (`checkpointCount`, `shortcutsCreated`)
+- presentation preset metadata for the current episode only
 
 No Phaser scene code is used inside this lane.
+
+### Runtime patterns
+
+- Pattern: compress corridors before solving when the runtime representation is corridor-heavy.
+- Failure mode: optional presentation polish must never be able to black-screen the board/title path.
 
 ## Scene map
 

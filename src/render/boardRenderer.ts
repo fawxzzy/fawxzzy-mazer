@@ -35,6 +35,16 @@ export interface BoardCueOptions {
   emphasis?: 'player' | 'demo';
 }
 
+interface BoardRenderPresetProfile {
+  floorInsetAlphaScale: number;
+  floorGridAlphaScale: number;
+  wallAlphaScale: number;
+  pathGlowAlphaScale: number;
+  pathCoreAlphaScale: number;
+  showFrameGuide: boolean;
+  showBlueprintGuide: boolean;
+}
+
 const ACTOR_DIRECTION_OFFSETS = [
   { x: 0, y: -1 },
   { x: 0, y: 1 },
@@ -50,6 +60,44 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 ] as const;
 
 const MIN_BOARD_SIZE = 24;
+const BOARD_RENDER_PRESET_PROFILES: Record<MazeEpisode['presentationPreset'], BoardRenderPresetProfile> = {
+  classic: {
+    floorInsetAlphaScale: 1,
+    floorGridAlphaScale: 1,
+    wallAlphaScale: 1,
+    pathGlowAlphaScale: 1,
+    pathCoreAlphaScale: 1,
+    showFrameGuide: false,
+    showBlueprintGuide: false
+  },
+  braided: {
+    floorInsetAlphaScale: 0.96,
+    floorGridAlphaScale: 0.92,
+    wallAlphaScale: 0.94,
+    pathGlowAlphaScale: 1.12,
+    pathCoreAlphaScale: 1.08,
+    showFrameGuide: false,
+    showBlueprintGuide: false
+  },
+  framed: {
+    floorInsetAlphaScale: 1.04,
+    floorGridAlphaScale: 0.86,
+    wallAlphaScale: 0.92,
+    pathGlowAlphaScale: 1.06,
+    pathCoreAlphaScale: 1.04,
+    showFrameGuide: true,
+    showBlueprintGuide: false
+  },
+  'blueprint-rare': {
+    floorInsetAlphaScale: 1.08,
+    floorGridAlphaScale: 1.22,
+    wallAlphaScale: 0.9,
+    pathGlowAlphaScale: 0.94,
+    pathCoreAlphaScale: 1.12,
+    showFrameGuide: true,
+    showBlueprintGuide: true
+  }
+};
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
@@ -331,8 +379,9 @@ export class BoardRenderer {
       return;
     }
 
-    const { tileSize } = this.layout;
+    const { tileSize, boardX, boardY, boardWidth, boardHeight } = this.layout;
     const bevel = Math.max(1, Math.round(tileSize * legacyTuning.board.tile.bevelRatio));
+    const presetProfile = BOARD_RENDER_PRESET_PROFILES[this.episode.presentationPreset];
     const solutionPathAlpha = Phaser.Math.Clamp(
       options.solutionPathAlpha ?? (options.showSolutionPath === true ? 1 : 0),
       0,
@@ -351,7 +400,7 @@ export class BoardRenderer {
         this.base.fillRect(x, y, tileSize, tileSize);
 
         const floorInset = tileSize * legacyTuning.board.tile.floorInsetRatio;
-        this.base.fillStyle(palette.board.floor, legacyTuning.board.tile.floorInsetAlpha);
+        this.base.fillStyle(palette.board.floor, legacyTuning.board.tile.floorInsetAlpha * presetProfile.floorInsetAlphaScale);
         this.base.fillRect(x + floorInset, y + floorInset, tileSize - floorInset * 2, tileSize - floorInset * 2);
 
         this.base.fillStyle(palette.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha);
@@ -360,14 +409,18 @@ export class BoardRenderer {
 
         if (showSolutionPath && isTilePath(this.episode.raster.tiles, index)) {
           const hintInset = tileSize * 0.22;
-          this.base.fillStyle(palette.board.trailGlow, 0.18 * solutionPathAlpha);
+          this.base.fillStyle(palette.board.trailGlow, 0.18 * solutionPathAlpha * presetProfile.pathGlowAlphaScale);
           this.base.fillRect(
             x + hintInset,
             y + hintInset,
             tileSize - (hintInset * 2),
             tileSize - (hintInset * 2)
           );
-          this.grid.lineStyle(Math.max(1, tileSize * 0.03), palette.board.trailCore, 0.28 * solutionPathAlpha);
+          this.grid.lineStyle(
+            Math.max(1, tileSize * 0.03),
+            palette.board.trailCore,
+            0.28 * solutionPathAlpha * presetProfile.pathCoreAlphaScale
+          );
           this.grid.strokeRect(
             x + hintInset + 0.5,
             y + hintInset + 0.5,
@@ -380,13 +433,13 @@ export class BoardRenderer {
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
         this.base.fillRect(x + bevel, y + tileSize - (bevel * 2), tileSize - (bevel * 2), bevel);
 
-        this.grid.lineStyle(1, palette.board.innerStroke, legacyTuning.board.tile.floorGridAlpha);
+        this.grid.lineStyle(1, palette.board.innerStroke, legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
 
         this.base.fillStyle(palette.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha);
         this.base.fillRect(x + 1, y + 1, tileSize - 2, Math.max(1, tileSize * 0.2));
       } else {
-        this.base.fillStyle(palette.board.wall, legacyTuning.board.tile.wallAlpha);
+        this.base.fillStyle(palette.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale);
         this.base.fillRect(x, y, tileSize, tileSize);
 
         this.base.fillStyle(palette.board.shadow, legacyTuning.board.tile.wallEdgeAlpha);
@@ -395,6 +448,28 @@ export class BoardRenderer {
 
         this.grid.lineStyle(1, palette.board.shadow, legacyTuning.board.tile.wallGridAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
+      }
+    }
+
+    if (presetProfile.showFrameGuide) {
+      const inset = Math.max(2, Math.round(tileSize * 1.2));
+      this.grid.lineStyle(Math.max(1, tileSize * 0.05), palette.board.topHighlight, this.episode.presentationPreset === 'blueprint-rare' ? 0.16 : 0.1);
+      this.grid.strokeRect(
+        boardX + inset + 0.5,
+        boardY + inset + 0.5,
+        Math.max(2, boardWidth - (inset * 2) - 1),
+        Math.max(2, boardHeight - (inset * 2) - 1)
+      );
+    }
+
+    if (presetProfile.showBlueprintGuide) {
+      const step = Math.max(3, Math.round(tileSize * 4));
+      this.grid.lineStyle(1, palette.board.topHighlight, 0.1);
+      for (let x = boardX + step; x < boardX + boardWidth - step; x += step) {
+        this.grid.lineBetween(x + 0.5, boardY + 1, x + 0.5, boardY + boardHeight - 1);
+      }
+      for (let y = boardY + step; y < boardY + boardHeight - step; y += step) {
+        this.grid.lineBetween(boardX + 1, y + 0.5, boardX + boardWidth - 1, y + 0.5);
       }
     }
   }

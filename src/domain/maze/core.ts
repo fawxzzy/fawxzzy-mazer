@@ -4,6 +4,7 @@ import type {
   MazeEpisode,
   MazeCore,
   MazeMetrics,
+  MazePresentationPreset,
   MazeSolveResult,
   PatternFrame,
   PatternEngineMode,
@@ -13,6 +14,7 @@ import {
   getAStarScratch,
   getNeighborIndex,
   isTileFloor,
+  MinHeap,
   nextEpoch,
   reconstructPath,
   type AStarScratch,
@@ -40,6 +42,7 @@ interface CoreBuildOptions {
   height: number;
   seed: number;
   braidRatio: number;
+  presentationPreset: MazePresentationPreset;
   minSolutionLength: number;
   maxAttempts: number;
   rng: () => number;
@@ -64,8 +67,45 @@ interface MazeScratch {
   bfsEpoch: number;
 }
 
+interface CorridorEdge {
+  readonly id: number;
+  readonly a: number;
+  readonly b: number;
+  readonly cost: number;
+  readonly path: Uint32Array;
+}
+
+interface CorridorGraph {
+  readonly nodeIds: Uint32Array;
+  readonly nodeToGraph: Int32Array;
+  readonly edges: readonly CorridorEdge[];
+  readonly adjacency: ReadonlyArray<readonly number[]>;
+}
+
+interface BidirectionalExpansionOptions {
+  readonly maze: MazeCore;
+  readonly graph: CorridorGraph;
+  readonly heap: AStarScratch['heap'];
+  readonly closed: Uint8Array;
+  readonly ownCost: Float64Array;
+  readonly otherCost: Float64Array;
+  readonly previous: Int32Array;
+  readonly previousEdge: Int32Array;
+  readonly bestCost: number;
+  readonly meetingNode: number;
+}
+
+interface BidirectionalExpansionResult {
+  readonly visited: number;
+  readonly expanded: number;
+  readonly bestCost: number;
+  readonly meetingNode: number;
+}
+
 const mazeScratchCache = new Map<number, MazeScratch>();
 const solveScratchCache = new Map<number, AStarScratch>();
+const getHeap = (size: number): MinHeap => new MinHeap(size);
+const tieBreakPriority = (_cost: number, nodeId: number): number => nodeId;
 
 export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   const {
@@ -73,6 +113,7 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     height,
     seed,
     braidRatio,
+    presentationPreset,
     minSolutionLength,
     maxAttempts,
     rng
@@ -81,8 +122,8 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   let fallback: CoreBuildResult | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const maze = generateWilsonMaze(width, height, seed, braidRatio, rng);
-    const shortestPath = solveAStar(maze, maze.start, maze.goal);
+    const maze = generateWilsonMaze(width, height, seed, braidRatio, presentationPreset, rng);
+    const shortestPath = solveCorridorGraph(maze, maze.start, maze.goal);
     if (!shortestPath.found) {
       continue;
     }
@@ -109,8 +150,8 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     return fallback;
   }
 
-  const maze = generateWilsonMaze(width, height, seed, braidRatio, rng);
-  const solution = solveAStar(maze, maze.start, maze.goal);
+  const maze = generateWilsonMaze(width, height, seed, braidRatio, presentationPreset, rng);
+  const solution = solveCorridorGraph(maze, maze.start, maze.goal);
   return {
     maze,
     solution,
@@ -152,7 +193,8 @@ export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolve
         pathIndices: reconstructPath(scratch.cameFrom, currentIdx),
         visited,
         expanded,
-        cost: scratch.gScore[currentIdx]
+        cost: scratch.gScore[currentIdx],
+        strategy: 'astar'
       };
     }
 
@@ -197,7 +239,131 @@ export const solveAStar = (maze: MazeCore, start: Point, goal: Point): MazeSolve
     pathIndices: EMPTY_UINT32,
     visited,
     expanded,
-    cost: Number.POSITIVE_INFINITY
+    cost: Number.POSITIVE_INFINITY,
+    strategy: 'astar'
+  };
+};
+
+export const solveCorridorGraph = (maze: MazeCore, start: Point, goal: Point): MazeSolveResult => {
+  const graph = buildCorridorGraph(maze, start, goal);
+  const startNode = graph.nodeToGraph[indexOf(maze.width, start.x, start.y)];
+  const goalNode = graph.nodeToGraph[indexOf(maze.width, goal.x, goal.y)];
+
+  if (startNode < 0 || goalNode < 0) {
+    return {
+      found: false,
+      pathIndices: EMPTY_UINT32,
+      visited: 0,
+      expanded: 0,
+      cost: Number.POSITIVE_INFINITY,
+      strategy: 'corridor-bidirectional'
+    };
+  }
+
+  if (startNode === goalNode) {
+    return {
+      found: true,
+      pathIndices: new Uint32Array([graph.nodeIds[startNode]]),
+      visited: 1,
+      expanded: 0,
+      cost: 0,
+      strategy: 'corridor-bidirectional'
+    };
+  }
+
+  const nodeCount = graph.nodeIds.length;
+  const forwardCost = new Float64Array(nodeCount);
+  const backwardCost = new Float64Array(nodeCount);
+  forwardCost.fill(Number.POSITIVE_INFINITY);
+  backwardCost.fill(Number.POSITIVE_INFINITY);
+
+  const forwardPrev = new Int32Array(nodeCount);
+  const backwardPrev = new Int32Array(nodeCount);
+  const forwardEdge = new Int32Array(nodeCount);
+  const backwardEdge = new Int32Array(nodeCount);
+  forwardPrev.fill(-1);
+  backwardPrev.fill(-1);
+  forwardEdge.fill(-1);
+  backwardEdge.fill(-1);
+
+  const closedForward = new Uint8Array(nodeCount);
+  const closedBackward = new Uint8Array(nodeCount);
+  const forwardHeap = getHeap(nodeCount);
+  const backwardHeap = getHeap(nodeCount);
+
+  forwardHeap.clear();
+  backwardHeap.clear();
+  forwardCost[startNode] = 0;
+  backwardCost[goalNode] = 0;
+  forwardHeap.push(startNode, tieBreakPriority(0, graph.nodeIds[startNode]), 0);
+  backwardHeap.push(goalNode, tieBreakPriority(0, graph.nodeIds[goalNode]), 0);
+
+  let bestCost = Number.POSITIVE_INFINITY;
+  let meetingNode = -1;
+  let visited = 0;
+  let expanded = 0;
+
+  while (forwardHeap.hasItems() && backwardHeap.hasItems()) {
+    if (bestCost <= (forwardHeap.peekFScore() + backwardHeap.peekFScore())) {
+      break;
+    }
+
+    if (forwardHeap.peekFScore() <= backwardHeap.peekFScore()) {
+      const result = expandBidirectionalFrontier({
+        maze,
+        graph,
+        heap: forwardHeap,
+        closed: closedForward,
+        ownCost: forwardCost,
+        otherCost: backwardCost,
+        previous: forwardPrev,
+        previousEdge: forwardEdge,
+        bestCost,
+        meetingNode
+      });
+      visited += result.visited;
+      expanded += result.expanded;
+      bestCost = result.bestCost;
+      meetingNode = result.meetingNode;
+      continue;
+    }
+
+    const result = expandBidirectionalFrontier({
+      maze,
+      graph,
+      heap: backwardHeap,
+      closed: closedBackward,
+      ownCost: backwardCost,
+      otherCost: forwardCost,
+      previous: backwardPrev,
+      previousEdge: backwardEdge,
+      bestCost,
+      meetingNode
+    });
+    visited += result.visited;
+    expanded += result.expanded;
+    bestCost = result.bestCost;
+    meetingNode = result.meetingNode;
+  }
+
+  if (meetingNode === -1 || !Number.isFinite(bestCost)) {
+    return {
+      found: false,
+      pathIndices: EMPTY_UINT32,
+      visited,
+      expanded,
+      cost: Number.POSITIVE_INFINITY,
+      strategy: 'corridor-bidirectional'
+    };
+  }
+
+  return {
+    found: true,
+    pathIndices: expandCorridorSolution(graph, meetingNode, forwardPrev, forwardEdge, backwardPrev, backwardEdge),
+    visited,
+    expanded,
+    cost: bestCost,
+    strategy: 'corridor-bidirectional'
   };
 };
 
@@ -403,11 +569,340 @@ export const manualIdleGate = (
   };
 };
 
+const buildCorridorGraph = (maze: MazeCore, start: Point, goal: Point): CorridorGraph => {
+  const startIdx = indexOf(maze.width, start.x, start.y);
+  const goalIdx = indexOf(maze.width, goal.x, goal.y);
+  const nodeToGraph = new Int32Array(maze.cells.length);
+  nodeToGraph.fill(-1);
+  const nodeIds: number[] = [];
+
+  for (let index = 0; index < maze.cells.length; index += 1) {
+    if (!isCorridorNode(maze, index, startIdx, goalIdx)) {
+      continue;
+    }
+
+    nodeToGraph[index] = nodeIds.length;
+    nodeIds.push(index);
+  }
+
+  const adjacency = Array.from({ length: nodeIds.length }, (): number[] => []);
+  const edges: CorridorEdge[] = [];
+
+  for (let graphIndex = 0; graphIndex < nodeIds.length; graphIndex += 1) {
+    const cellIndex = nodeIds[graphIndex];
+    const cell = maze.cells[cellIndex];
+    const cellX = xFromIndex(cellIndex, maze.width);
+    const cellY = yFromIndex(cellIndex, maze.width);
+
+    for (let direction = 0; direction < DIRS.length; direction += 1) {
+      const dir = DIRS[direction];
+      if ((cell & dir.bit) !== 0) {
+        continue;
+      }
+
+      const nextX = cellX + dir.dx;
+      const nextY = cellY + dir.dy;
+      if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+        continue;
+      }
+
+      const edgePath = traceCorridorEdge(maze, cellIndex, direction, nodeToGraph);
+      if (!edgePath || edgePath.toNode <= graphIndex) {
+        continue;
+      }
+
+      const edge: CorridorEdge = {
+        id: edges.length,
+        a: graphIndex,
+        b: edgePath.toNode,
+        cost: edgePath.path.length - 1,
+        path: Uint32Array.from(edgePath.path)
+      };
+      edges.push(edge);
+      adjacency[graphIndex].push(edge.id);
+      adjacency[edgePath.toNode].push(edge.id);
+    }
+  }
+
+  return {
+    nodeIds: Uint32Array.from(nodeIds),
+    nodeToGraph,
+    edges,
+    adjacency
+  };
+};
+
+const isCorridorNode = (maze: MazeCore, index: number, startIdx: number, goalIdx: number): boolean => {
+  if (index === startIdx || index === goalIdx) {
+    return true;
+  }
+
+  const openDirections: number[] = [];
+  const cell = maze.cells[index];
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    if ((cell & DIRS[direction].bit) === 0) {
+      openDirections.push(direction);
+    }
+  }
+
+  if (openDirections.length !== 2) {
+    return true;
+  }
+
+  return DIRS[openDirections[0]].opposite !== DIRS[openDirections[1]].bit;
+};
+
+const traceCorridorEdge = (
+  maze: MazeCore,
+  startIndex: number,
+  startDirection: number,
+  nodeToGraph: Int32Array
+): { toNode: number; path: number[] } | null => {
+  const path = [startIndex];
+  let currentIndex = startIndex;
+  let direction = startDirection;
+
+  while (true) {
+    const currentX = xFromIndex(currentIndex, maze.width);
+    const currentY = yFromIndex(currentIndex, maze.width);
+    const dir = DIRS[direction];
+    const nextX = currentX + dir.dx;
+    const nextY = currentY + dir.dy;
+    if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+      return null;
+    }
+
+    const nextIndex = indexOf(maze.width, nextX, nextY);
+    path.push(nextIndex);
+    const nextNode = nodeToGraph[nextIndex];
+    if (nextNode !== -1) {
+      return {
+        toNode: nextNode,
+        path
+      };
+    }
+
+    currentIndex = nextIndex;
+    direction = resolveStraightCorridorDirection(maze, nextIndex, direction);
+  }
+};
+
+const resolveStraightCorridorDirection = (maze: MazeCore, index: number, previousDirection: number): number => {
+  const backBit = DIRS[previousDirection].opposite;
+  const cell = maze.cells[index];
+
+  for (let direction = 0; direction < DIRS.length; direction += 1) {
+    const dir = DIRS[direction];
+    if ((cell & dir.bit) !== 0 || dir.bit === backBit) {
+      continue;
+    }
+
+    return direction;
+  }
+
+  return previousDirection;
+};
+
+const expandBidirectionalFrontier = (options: BidirectionalExpansionOptions): BidirectionalExpansionResult => {
+  let visited = 0;
+  let expanded = 0;
+  let bestCost = options.bestCost;
+  let meetingNode = options.meetingNode;
+
+  while (options.heap.pop()) {
+    const current = options.heap.current;
+    if (options.closed[current] === 1) {
+      continue;
+    }
+
+    options.closed[current] = 1;
+    visited += 1;
+    const currentCost = options.ownCost[current];
+    if (Number.isFinite(options.otherCost[current])) {
+      const joinedCost = currentCost + options.otherCost[current];
+      if (joinedCost < bestCost || (joinedCost === bestCost && isPreferredMeetingNode(options.graph, current, meetingNode))) {
+        bestCost = joinedCost;
+        meetingNode = current;
+      }
+    }
+
+    expanded += 1;
+    for (const edgeId of options.graph.adjacency[current]) {
+      const edge = options.graph.edges[edgeId];
+      const next = edge.a === current ? edge.b : edge.a;
+      if (options.closed[next] === 1) {
+        continue;
+      }
+
+      const tentativeCost = currentCost + edge.cost;
+      if (tentativeCost > bestCost) {
+        continue;
+      }
+
+      if (tentativeCost < options.ownCost[next]) {
+        options.ownCost[next] = tentativeCost;
+        options.previous[next] = current;
+        options.previousEdge[next] = edgeId;
+        options.heap.push(next, options.graph.nodeIds[next], tentativeCost);
+      }
+
+      if (!Number.isFinite(options.otherCost[next])) {
+        continue;
+      }
+
+      const joinedCost = tentativeCost + options.otherCost[next];
+      if (joinedCost < bestCost || (joinedCost === bestCost && isPreferredMeetingNode(options.graph, next, meetingNode))) {
+        bestCost = joinedCost;
+        meetingNode = next;
+      }
+    }
+
+    return {
+      visited,
+      expanded,
+      bestCost,
+      meetingNode
+    };
+  }
+
+  return {
+    visited,
+    expanded,
+    bestCost,
+    meetingNode
+  };
+};
+
+const isPreferredMeetingNode = (graph: CorridorGraph, candidate: number, current: number): boolean => (
+  current === -1 || graph.nodeIds[candidate] < graph.nodeIds[current]
+);
+
+const expandCorridorSolution = (
+  graph: CorridorGraph,
+  meetingNode: number,
+  forwardPrev: Int32Array,
+  forwardEdge: Int32Array,
+  backwardPrev: Int32Array,
+  backwardEdge: Int32Array
+): Uint32Array => {
+  const forwardNodes: number[] = [];
+  for (let cursor = meetingNode; cursor !== -1; cursor = forwardPrev[cursor]) {
+    forwardNodes.push(cursor);
+  }
+  forwardNodes.reverse();
+
+  const path = [graph.nodeIds[forwardNodes[0]]];
+  for (let index = 1; index < forwardNodes.length; index += 1) {
+    appendEdgePath(path, graph.edges[forwardEdge[forwardNodes[index]]], forwardNodes[index - 1], forwardNodes[index]);
+  }
+
+  for (let cursor = meetingNode; backwardPrev[cursor] !== -1; cursor = backwardPrev[cursor]) {
+    appendEdgePath(path, graph.edges[backwardEdge[cursor]], cursor, backwardPrev[cursor]);
+  }
+
+  return Uint32Array.from(path);
+};
+
+const appendEdgePath = (target: number[], edge: CorridorEdge, fromNode: number, toNode: number): void => {
+  if (edge.a === fromNode && edge.b === toNode) {
+    for (let index = 1; index < edge.path.length; index += 1) {
+      target.push(edge.path[index]);
+    }
+    return;
+  }
+
+  for (let index = edge.path.length - 2; index >= 0; index -= 1) {
+    target.push(edge.path[index]);
+  }
+};
+
+const applyPresentationPreset = (maze: MazeCore, preset: MazePresentationPreset, rng: () => number): void => {
+  switch (preset) {
+    case 'braided':
+      braidMaze(maze, 0.2, rng);
+      break;
+    case 'framed':
+      braidMaze(maze, 0.06, rng);
+      applyFramedPass(maze, rng);
+      break;
+    case 'blueprint-rare':
+      braidMaze(maze, 0.08, rng);
+      applyFramedPass(maze, rng);
+      applyArchitecturalPasses(maze, rng);
+      break;
+    case 'classic':
+    default:
+      break;
+  }
+};
+
+const applyFramedPass = (maze: MazeCore, rng: () => number): void => {
+  if (maze.width < 6 || maze.height < 6) {
+    return;
+  }
+
+  const inset = Math.max(1, Math.min(2, Math.floor(Math.min(maze.width, maze.height) / 12)));
+  const horizontalSpan = Math.max(2, maze.width - (inset * 2) - 2);
+  const verticalSpan = Math.max(2, maze.height - (inset * 2) - 2);
+  const horizontalOffset = horizontalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(horizontalSpan * 0.2)), rng);
+  const verticalOffset = verticalSpan <= 2 ? 0 : randomInt(Math.max(1, Math.floor(verticalSpan * 0.2)), rng);
+  const horizontalLength = Math.max(2, Math.floor(horizontalSpan * 0.65));
+  const verticalLength = Math.max(2, Math.floor(verticalSpan * 0.65));
+
+  carveLinearFeature(maze, inset + 1 + horizontalOffset, inset, 1, 0, horizontalLength);
+  carveLinearFeature(maze, inset + 1 + horizontalOffset, maze.height - inset - 1, 1, 0, horizontalLength);
+  carveLinearFeature(maze, inset, inset + 1 + verticalOffset, 0, 1, verticalLength);
+  carveLinearFeature(maze, maze.width - inset - 1, inset + 1 + verticalOffset, 0, 1, verticalLength);
+};
+
+const applyArchitecturalPasses = (maze: MazeCore, rng: () => number): void => {
+  if (maze.width < 7 || maze.height < 7) {
+    return;
+  }
+
+  const centerRow = Math.round((maze.height - 1) / 2) + randomInt(3, rng) - 1;
+  const centerColumn = Math.round((maze.width - 1) / 2) + randomInt(3, rng) - 1;
+  carveLinearFeature(maze, 1, clamp(centerRow, 1, maze.height - 2), 1, 0, maze.width - 2);
+  carveLinearFeature(maze, clamp(centerColumn, 1, maze.width - 2), 1, 0, 1, maze.height - 2);
+
+  if (maze.width >= 10) {
+    carveLinearFeature(maze, 2, clamp(Math.floor(maze.height / 3), 1, maze.height - 2), 1, 0, maze.width - 4);
+  }
+  if (maze.height >= 10) {
+    carveLinearFeature(maze, clamp(Math.floor(maze.width / 3), 1, maze.width - 2), 2, 0, 1, maze.height - 4);
+  }
+};
+
+const carveLinearFeature = (
+  maze: MazeCore,
+  startX: number,
+  startY: number,
+  stepX: number,
+  stepY: number,
+  length: number
+): void => {
+  let currentX = clamp(startX, 0, maze.width - 1);
+  let currentY = clamp(startY, 0, maze.height - 1);
+
+  for (let step = 0; step < length; step += 1) {
+    const nextX = currentX + stepX;
+    const nextY = currentY + stepY;
+    if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+      break;
+    }
+
+    carvePassage(maze, indexOf(maze.width, currentX, currentY), indexOf(maze.width, nextX, nextY));
+    currentX = nextX;
+    currentY = nextY;
+  }
+};
+
 const generateWilsonMaze = (
   width: number,
   height: number,
   seed: number,
   braidRatio: number,
+  presentationPreset: MazePresentationPreset,
   rng: () => number
 ): MazeCore => {
   const cellCount = width * height;
@@ -422,7 +917,8 @@ const generateWilsonMaze = (
     start: { x: 0, y: 0 },
     goal: { x: width - 1, y: height - 1 },
     seed,
-    braidRatio
+    braidRatio,
+    presentationPreset
   };
 
   scratch.inTree.fill(0);
@@ -459,6 +955,8 @@ const generateWilsonMaze = (
   if (braidRatio > 0) {
     braidMaze(maze, braidRatio, rng);
   }
+
+  applyPresentationPreset(maze, presentationPreset, rng);
 
   const farA = farthestReachable(maze, { x: 0, y: 0 }, scratch);
   const farB = farthestReachable(maze, farA.point, scratch);

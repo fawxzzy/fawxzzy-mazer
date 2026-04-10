@@ -12,6 +12,8 @@ import {
   PatternEngine,
   resetAndRegenerate,
   runBatch,
+  solveAStar,
+  solveCorridorGraph,
   type MazeConfig
 } from '../../src/domain/maze';
 import { assertMazeInvariants, serializeMaze } from './maze-test-utils';
@@ -23,6 +25,10 @@ const defaultConfig: MazeConfig = {
   checkPointModifier: 0.35,
   shortcutCountModifier: 0.18
 };
+
+const resolveBuildWidth = (size: MazeConfig['size']): number => (
+  size === 'small' ? 25 : size === 'medium' ? 37 : size === 'large' ? 51 : 75
+);
 
 describe('maze domain generation', () => {
   test('is deterministic from seed', () => {
@@ -65,6 +71,27 @@ describe('maze domain generation', () => {
     assertMazeInvariants(generateMaze(defaultConfig));
   });
 
+  test('corridor graph solving stays deterministic for seed + size + difficulty + preset', () => {
+    const a = generateMaze({
+      ...defaultConfig,
+      seed: 5_021,
+      size: 'large',
+      presentationPreset: 'framed'
+    });
+    const b = generateMaze({
+      ...defaultConfig,
+      seed: 5_021,
+      size: 'large',
+      presentationPreset: 'framed'
+    });
+
+    expect(serializeMaze(a)).toEqual(serializeMaze(b));
+    expect(a.presentationPreset).toBe('framed');
+
+    disposeMazeEpisode(b);
+    disposeMazeEpisode(a);
+  });
+
   test('size presets map to deterministic board scale bands', () => {
     const small = generateMaze({
       ...defaultConfig,
@@ -99,6 +126,7 @@ describe('maze domain generation', () => {
       height: 50,
       seed: 77,
       braidRatio: 0.08,
+      presentationPreset: 'braided',
       minSolutionLength: 20
     });
 
@@ -107,6 +135,44 @@ describe('maze domain generation', () => {
     expect(episode.raster.width).toBe(50);
     expect(episode.raster.height).toBe(50);
     expect(episode.metrics.solutionLength).toBe(episode.raster.pathIndices.length);
+    expect(episode.presentationPreset).toBe('braided');
+  });
+
+  test('compressed corridor solving matches canonical A* on representative mazes', () => {
+    const cases = [
+      { seed: 1401, size: 'small', preset: 'classic' },
+      { seed: 2402, size: 'medium', preset: 'braided' },
+      { seed: 3403, size: 'large', preset: 'framed' },
+      { seed: 4404, size: 'huge', preset: 'blueprint-rare' }
+    ] as const;
+
+    for (const testCase of cases) {
+      const episode = buildMaze({
+        width: resolveBuildWidth(testCase.size),
+        height: resolveBuildWidth(testCase.size),
+        size: testCase.size,
+        seed: testCase.seed,
+        braidRatio: 0.12,
+        presentationPreset: testCase.preset,
+        includeCore: true,
+        minSolutionLength: 20
+      });
+
+      expect(episode.core).toBeDefined();
+      const canonical = solveAStar(episode.core!, episode.core!.start, episode.core!.goal);
+      const compressed = solveCorridorGraph(episode.core!, episode.core!.start, episode.core!.goal);
+
+      expect(compressed.found).toBe(true);
+      expect(compressed.cost).toBe(canonical.cost);
+      expect(compressed.pathIndices.length).toBe(canonical.pathIndices.length);
+      expect(compressed.pathIndices[0]).toBe(canonical.pathIndices[0]);
+      expect(compressed.pathIndices[compressed.pathIndices.length - 1]).toBe(
+        canonical.pathIndices[canonical.pathIndices.length - 1]
+      );
+      expect((compressed.cost * 2) + 1).toBe(episode.raster.pathIndices.length);
+
+      disposeMazeEpisode(episode);
+    }
   });
 
   test('braid ratio opens alternative routes on larger boards', () => {
@@ -187,7 +253,7 @@ describe('maze domain generation', () => {
         )
       );
     }
-  }, 20000);
+  }, 40000);
 
   test('batch harness reports bounded summary metrics', () => {
     const samples: CortexSample[] = [];

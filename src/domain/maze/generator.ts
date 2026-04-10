@@ -1,17 +1,13 @@
 import { createSeededRng } from '../rng/seededRng';
 import { buildMazeCore, disposeMazeEpisode } from './core';
 import {
-  getAStarScratch,
   createGrid,
   getNeighborIndex,
   indexFromCoordinates,
   isTileFloor,
-  nextEpoch,
-  reconstructPath,
   TILE_END,
   TILE_FLOOR,
   TILE_PATH,
-  type AStarScratch,
   xFromIndex,
   yFromIndex
 } from './grid';
@@ -22,6 +18,7 @@ import type {
   MazeEpisode,
   MazeGenerationState,
   MazeMetrics,
+  MazePresentationPreset,
   MazeSize,
   MazeSolveResult,
   TileBoard
@@ -44,6 +41,7 @@ interface RasterizeOptions {
   seed: number;
   size: MazeSize;
   core: NonNullable<MazeEpisode['core']>;
+  solution: MazeSolveResult;
   shortcutsCreated: number;
   footprint: MazeBuildOptions['footprint'];
   minSolutionLength: number;
@@ -77,7 +75,12 @@ export interface DifficultyResolvedMaze {
   seed: number;
 }
 
-const solveScratchCache = new Map<number, AStarScratch>();
+const PRESENTATION_PRESET_ORDER: readonly MazePresentationPreset[] = [
+  'classic',
+  'braided',
+  'framed',
+  'blueprint-rare'
+] as const;
 
 const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
   {
@@ -172,12 +175,14 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
   const minSolutionLength = options.minSolutionLength ?? Math.max(18, Math.floor((logicalSize * logicalSize) / 4));
   const maxAttempts = options.maxAttempts ?? 64;
   const size = normalizeMazeSize(options.size ?? inferMazeSizeFromScale(Math.max(options.width, options.height)));
+  const presentationPreset = normalizeMazePresentationPreset(options.presentationPreset);
 
   const built = buildMazeCore({
     width: logicalSize,
     height: logicalSize,
     seed,
     braidRatio: clamp(options.braidRatio ?? 0, 0, 0.35),
+    presentationPreset,
     minSolutionLength,
     maxAttempts,
     rng
@@ -187,6 +192,7 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
     seed,
     size,
     core: built.maze,
+    solution: built.solution,
     shortcutsCreated: built.shortcutsCreated,
     footprint: options.footprint ?? { width: options.width, height: options.height },
     minSolutionLength,
@@ -199,8 +205,10 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
   const size = config.size ? normalizeMazeSize(config.size) : inferMazeSizeFromScale(config.scale);
   const baseScale = config.size ? resolveMazeSizeScale(size, config.scale) : config.scale;
   const variety = resolveMazeVarietyPreset(config);
+  const presentationPreset = normalizeMazePresentationPreset(config.presentationPreset);
+  const presentationFootprintPadding = resolvePresentationFootprintPadding(presentationPreset);
   const targetScale = Math.max(9, baseScale + variety.scaleDelta);
-  const footprintTarget = Math.max(targetScale, baseScale + variety.footprintDelta);
+  const footprintTarget = Math.max(targetScale, baseScale + variety.footprintDelta + presentationFootprintPadding);
   const braidRatio = clamp(
     (config.shortcutCountModifier * variety.braidScale) + variety.braidOffset,
     0,
@@ -216,6 +224,7 @@ export const generateMaze = (config: MazeConfig): MazeEpisode => {
     size,
     seed: config.seed,
     braidRatio,
+    presentationPreset,
     minSolutionLength,
     footprint: {
       width: footprintTarget,
@@ -307,6 +316,7 @@ export const resetAndRegenerate = (state: MazeGenerationState, config: MazeConfi
 const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
   const {
     core,
+    solution,
     seed,
     size,
     shortcutsCreated,
@@ -346,18 +356,17 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     height: playableHeight,
     scale: Math.max(playableWidth, playableHeight),
     tiles,
-    pathIndices: EMPTY_PATH,
+    pathIndices: expandCorePathToTilePath(core, solution.pathIndices, playableWidth),
     startIndex,
     endIndex
   }, footprint);
 
-  const solved = solveTileAStar(raster.tiles, raster.width, raster.height, raster.startIndex, raster.endIndex);
-  for (let pathCursor = 0; pathCursor < solved.pathIndices.length; pathCursor += 1) {
-    raster.tiles[solved.pathIndices[pathCursor]] |= TILE_PATH;
+  for (let pathCursor = 0; pathCursor < raster.pathIndices.length; pathCursor += 1) {
+    raster.tiles[raster.pathIndices[pathCursor]] |= TILE_PATH;
   }
   raster.tiles[raster.endIndex] |= TILE_END;
 
-  const metrics = measureTileMaze(raster.tiles, raster.width, raster.height, solved.pathIndices);
+  const metrics = measureTileMaze(raster.tiles, raster.width, raster.height, raster.pathIndices);
   const rasterMinSolutionLength = Math.max(1, (minSolutionLength * 2) - 1);
   const difficultyResult = classifyMazeDifficulty(metrics, raster.width, raster.height, shortcutsCreated);
 
@@ -366,14 +375,14 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     size,
     core: includeCore ? core : undefined,
     raster: {
-      ...raster,
-      pathIndices: solved.pathIndices
+      ...raster
     },
     metrics,
     shortcutsCreated,
-    accepted: acceptedCore && solved.found && passesRasterQualityGate(metrics, rasterMinSolutionLength),
+    accepted: acceptedCore && solution.found && passesRasterQualityGate(metrics, rasterMinSolutionLength),
     difficulty: difficultyResult.difficulty,
-    difficultyScore: difficultyResult.score
+    difficultyScore: difficultyResult.score,
+    presentationPreset: core.presentationPreset
   };
 };
 
@@ -421,74 +430,34 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
   };
 };
 
-const solveTileAStar = (
-  tiles: Uint8Array,
-  width: number,
-  height: number,
-  startIndex: number,
-  goalIndex: number
-): MazeSolveResult => {
-  const scratch = getSolveScratch(tiles.length);
-  const epoch = nextEpoch(scratch, scratch.gScoreEpoch, scratch.closedEpoch);
-  const goalX = xFromIndex(goalIndex, width);
-  const goalY = yFromIndex(goalIndex, width);
+const expandCorePathToTilePath = (
+  core: RasterizeOptions['core'],
+  corePath: ArrayLike<number>,
+  rasterWidth: number
+): Uint32Array => {
+  if (corePath.length === 0) {
+    return EMPTY_PATH;
+  }
 
-  scratch.cameFrom[startIndex] = -1;
-  scratch.gScore[startIndex] = 0;
-  scratch.gScoreEpoch[startIndex] = epoch;
-  scratch.heap.clear();
-  scratch.heap.push(startIndex, 0, heuristicIndex(startIndex, goalX, goalY, width));
+  const expanded: number[] = [];
+  for (let index = 0; index < corePath.length; index += 1) {
+    const cellIndex = corePath[index];
+    const cellX = xFromIndex(cellIndex, core.width);
+    const cellY = yFromIndex(cellIndex, core.width);
+    const rasterCellIndex = indexFromCoordinates(cellX * 2, cellY * 2, rasterWidth);
 
-  let visited = 0;
-  let expanded = 0;
-
-  while (scratch.heap.pop()) {
-    const currentIndex = scratch.heap.current;
-    if (scratch.closedEpoch[currentIndex] === epoch) {
-      continue;
-    }
-
-    scratch.closedEpoch[currentIndex] = epoch;
-    visited += 1;
-
-    if (currentIndex === goalIndex) {
-      return {
-        found: true,
-        pathIndices: reconstructPath(scratch.cameFrom, currentIndex),
-        visited,
-        expanded,
-        cost: scratch.gScore[currentIndex]
-      };
-    }
-
-    expanded += 1;
-    const currentG = scratch.gScore[currentIndex];
-    for (let direction = 0; direction < 4; direction += 1) {
-      const next = getNeighborIndex(currentIndex, width, height, direction as 0 | 1 | 2 | 3);
-      if (next === -1 || !isTileFloor(tiles, next) || scratch.closedEpoch[next] === epoch) {
-        continue;
-      }
-
-      const tentativeG = currentG + 1;
-      const seenBefore = scratch.gScoreEpoch[next] === epoch;
-      if (seenBefore && tentativeG >= scratch.gScore[next]) {
-        continue;
-      }
-
-      scratch.cameFrom[next] = currentIndex;
-      scratch.gScore[next] = tentativeG;
-      scratch.gScoreEpoch[next] = epoch;
-      scratch.heap.push(next, tentativeG, tentativeG + heuristicIndex(next, goalX, goalY, width));
+    if (expanded.length === 0) {
+      expanded.push(rasterCellIndex);
+    } else {
+      const previousCell = corePath[index - 1];
+      const previousX = xFromIndex(previousCell, core.width);
+      const previousY = yFromIndex(previousCell, core.width);
+      expanded.push(indexFromCoordinates((previousX * 2) + (cellX - previousX), (previousY * 2) + (cellY - previousY), rasterWidth));
+      expanded.push(rasterCellIndex);
     }
   }
 
-  return {
-    found: false,
-    pathIndices: EMPTY_PATH,
-    visited,
-    expanded,
-    cost: Number.POSITIVE_INFINITY
-  };
+  return Uint32Array.from(expanded);
 };
 
 const measureTileMaze = (
@@ -556,19 +525,11 @@ const normalizeLogicalSize = (targetScale: number): number => Math.max(4, Math.f
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const heuristicIndex = (index: number, goalX: number, goalY: number, width: number): number => {
-  const x = xFromIndex(index, width);
-  const y = yFromIndex(index, width);
-  return Math.abs(x - goalX) + Math.abs(y - goalY);
-};
-
 const passesRasterQualityGate = (metrics: MazeMetrics, minSolutionLength: number): boolean => (
   metrics.solutionLength >= minSolutionLength
   && metrics.straightness <= 0.9
   && metrics.coverage > 0
 );
-
-const getSolveScratch = (size: number): AStarScratch => getAStarScratch(solveScratchCache, size);
 
 const resolveMazeVarietyPreset = (config: MazeConfig): MazeVarietyPreset => {
   const pool = config.shortcutCountModifier <= 0.14
@@ -599,6 +560,12 @@ export const normalizeMazeSize = (value: unknown): MazeSize => (
     : 'medium'
 );
 
+export const normalizeMazePresentationPreset = (value: unknown): MazePresentationPreset => (
+  typeof value === 'string' && PRESENTATION_PRESET_ORDER.includes(value as MazePresentationPreset)
+    ? value as MazePresentationPreset
+    : 'classic'
+);
+
 export const resolveMazeSizeScale = (size: MazeSize, fallbackScale = SIZE_PRESET_BY_KEY.medium.legacyScale): number => (
   SIZE_PRESET_BY_KEY[size]?.legacyScale ?? fallbackScale
 );
@@ -624,6 +591,10 @@ const inferMazeSizeFromScale = (scale: number): MazeSize => {
 
   return bestSize;
 };
+
+const resolvePresentationFootprintPadding = (preset: MazePresentationPreset): number => (
+  preset === 'framed' || preset === 'blueprint-rare' ? 2 : 0
+);
 
 export const classifyMazeDifficulty = (
   metrics: MazeMetrics,

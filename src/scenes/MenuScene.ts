@@ -21,6 +21,7 @@ import {
   disposeMazeEpisode,
   generateMazeForDifficulty,
   MAZE_SIZE_ORDER,
+  type MazePresentationPreset,
   PatternEngine,
   type MazeDifficulty,
   type MazeEpisode,
@@ -62,6 +63,7 @@ export interface MenuDemoCycle {
   difficulty: MazeDifficulty;
   size: MazeSize;
   mood: DemoMood;
+  presentationPreset: MazePresentationPreset;
   pacing: {
     exploreStepMs: number;
     goalHoldMs: number;
@@ -524,6 +526,7 @@ export class MenuScene extends Phaser.Scene {
           scale: legacyTuning.board.scale,
           seed: cycleSeed,
           size: cycle.size,
+          presentationPreset: cycle.presentationPreset,
           checkPointModifier: legacyTuning.board.checkPointModifier,
           shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
         }, cycle.difficulty);
@@ -1304,12 +1307,31 @@ export const resolveMenuDemoPresentation = (
 
 export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: MenuDemoCycleOverrides = {}): MenuDemoCycle => {
   const mood = overrides.mood ?? resolveCuratedMood(seed, cycle);
+  const presetCycle = overrides.mood || overrides.size || overrides.difficulty ? 0 : cycle;
   return {
     difficulty: overrides.difficulty ?? pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: overrides.size ?? pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
+    presentationPreset: resolveMenuDemoPreset(seed, presetCycle, mood),
     pacing: DEMO_PACING_PROFILES[mix(seed, cycle, 0x6d2b79f5) % DEMO_PACING_PROFILES.length]
   };
+};
+
+export const resolveMenuDemoPreset = (
+  seed: number,
+  cycle: number,
+  mood: DemoMood
+): MazePresentationPreset => {
+  const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
+  switch (mood) {
+    case 'scan':
+      return (mixed & 1) === 0 ? 'framed' : 'braided';
+    case 'blueprint':
+      return mixed % 7 === 0 ? 'blueprint-rare' : 'framed';
+    case 'solve':
+    default:
+      return mixed % 5 === 0 ? 'braided' : 'classic';
+  }
 };
 
 const resolveCuratedMood = (seed: number, cycle: number): DemoMood => {
