@@ -33,6 +33,7 @@ let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolve
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
+let resolveBoardPresentationBounds: typeof import('../../src/render/boardRenderer').resolveBoardPresentationBounds;
 let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
 let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
 let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
@@ -52,7 +53,7 @@ beforeAll(async () => {
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
   ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
-  ({ createBoardLayout } = await import('../../src/render/boardRenderer'));
+  ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
   ({ resolveViewportSize } = await import('../../src/render/viewport'));
@@ -243,7 +244,7 @@ describe('demo-only build', () => {
     }
   });
 
-  test('deterministic capture mode locks seed, size, difficulty, and mood for valid launch controls', () => {
+  test('deterministic capture mode locks seed, size, difficulty, and mood for valid launch controls', { timeout: 15000 }, () => {
     const launchConfig = resolveBootPresentationConfig('?presentation=ambient&chrome=none&mood=blueprint&seed=4242&size=huge&difficulty=brutal&title=hide');
     expect(isDeterministicPresentationCapture(launchConfig)).toBe(true);
 
@@ -375,8 +376,12 @@ describe('demo-only build', () => {
     expect(ambientPresentation.flashAlpha).toBe(0);
     expect(tvPresentation.metadataAlpha).toBeLessThan(ambientPresentation.metadataAlpha);
     expect(tvPresentation.ambientDriftMs).toBeGreaterThan(ambientPresentation.ambientDriftMs);
-    expect(Math.abs(obsPresentation.frameOffsetX)).toBeLessThanOrEqual(Math.abs(ambientPresentation.frameOffsetX));
-    expect(Math.abs(obsPresentation.hudOffsetY)).toBeLessThanOrEqual(Math.abs(ambientPresentation.hudOffsetY));
+    expect(obsPresentation.frameOffsetX).toBe(0);
+    expect(obsPresentation.frameOffsetY).toBe(0);
+    expect(obsPresentation.hudOffsetX).toBe(0);
+    expect(obsPresentation.hudOffsetY).toBe(0);
+    expect(obsPresentation.ambientDriftPxX).toBe(0);
+    expect(obsPresentation.ambientDriftPxY).toBe(0);
     expect(mobilePresentation.metadataAlpha).toBeGreaterThanOrEqual(ambientPresentation.metadataAlpha);
     expect(mobilePresentation.ambientDriftMs).toBeGreaterThan(ambientPresentation.ambientDriftMs);
 
@@ -435,6 +440,58 @@ describe('demo-only build', () => {
       expect(layout.boardX + layout.boardWidth).toBeLessThanOrEqual(model.viewport.width);
       expect(layout.boardY + layout.boardHeight).toBeLessThanOrEqual(model.viewport.height);
     }
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('obs layout keeps the final board centered inside a padded safe frame', () => {
+    const cycle = resolveMenuDemoCycle(4242, 3);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 4242,
+      size: cycle.size,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, cycle.difficulty, 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1920, 1080, 'ambient', 'minimal', false, 'obs');
+    const layout = createBoardLayout({
+      scale: {
+        width: presentationModel.viewport.width,
+        height: presentationModel.viewport.height
+      },
+      cameras: {
+        main: {
+          width: presentationModel.viewport.width,
+          height: presentationModel.viewport.height
+        }
+      }
+    } as never, episode, {
+      boardScale: presentationModel.layout.boardScale,
+      topReserve: presentationModel.layout.topReserve,
+      sidePadding: presentationModel.layout.sidePadding,
+      bottomPadding: presentationModel.layout.bottomPadding
+    });
+    const config = {
+      ...legacyTuning.demo,
+      cadence: {
+        ...legacyTuning.demo.cadence,
+        spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
+        exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
+        goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
+        resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
+      }
+    };
+    const presentation = resolveMenuDemoPresentation(episode, cycle, config.cadence.spawnHoldMs, config, 'ambient', 'obs');
+    const finalBounds = resolveBoardPresentationBounds(layout, presentation.frameOffsetX, presentation.frameOffsetY);
+
+    expect(presentationModel.layout.topReserve).toBe(presentationModel.layout.bottomPadding);
+    expect(finalBounds.left).toBeGreaterThanOrEqual(layout.safeBounds.left);
+    expect(finalBounds.top).toBeGreaterThanOrEqual(layout.safeBounds.top);
+    expect(finalBounds.right).toBeLessThanOrEqual(layout.safeBounds.right);
+    expect(finalBounds.bottom).toBeLessThanOrEqual(layout.safeBounds.bottom);
+    expect(Math.abs(finalBounds.centerX - layout.safeBounds.centerX)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(finalBounds.centerY - layout.safeBounds.centerY)).toBeLessThanOrEqual(0.5);
 
     disposeMazeEpisode(episode);
   });

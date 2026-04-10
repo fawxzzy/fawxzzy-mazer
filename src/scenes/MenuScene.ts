@@ -179,6 +179,7 @@ interface DeploymentPresentationProfile {
   portraitTopReserveBias: number;
   bottomPaddingBias: number;
   sidePaddingBias: number;
+  maxBoardScale: number;
   titlePlateWidthScale: number;
   titlePlateHeightScale: number;
   titleLineSpacingScale: number;
@@ -193,6 +194,12 @@ interface DeploymentPresentationProfile {
   driftDurationScale: number;
   metadataAlphaScale: number;
   flashAlphaScale: number;
+  boardAuraBiasScale: number;
+  boardHaloBiasScale: number;
+  boardShadeBiasScale: number;
+  boardVeilBiasScale: number;
+  boardAuraMotionScale: number;
+  boardHaloMotionScale: number;
 }
 
 type MoodPattern = readonly [DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood];
@@ -410,6 +417,7 @@ const DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE: DeploymentPresentationProfile = {
   portraitTopReserveBias: 0,
   bottomPaddingBias: 0,
   sidePaddingBias: 0,
+  maxBoardScale: 0.996,
   titlePlateWidthScale: 1,
   titlePlateHeightScale: 1,
   titleLineSpacingScale: 1,
@@ -423,7 +431,13 @@ const DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE: DeploymentPresentationProfile = {
   driftScale: 1,
   driftDurationScale: 1,
   metadataAlphaScale: 1,
-  flashAlphaScale: 1
+  flashAlphaScale: 1,
+  boardAuraBiasScale: 1,
+  boardHaloBiasScale: 1,
+  boardShadeBiasScale: 1,
+  boardVeilBiasScale: 1,
+  boardAuraMotionScale: 1,
+  boardHaloMotionScale: 1
 };
 
 const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, DeploymentPresentationProfile> = {
@@ -434,6 +448,7 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     portraitTopReserveBias: 6,
     bottomPaddingBias: -4,
     sidePaddingBias: -4,
+    maxBoardScale: 0.996,
     titlePlateWidthScale: 0.92,
     titlePlateHeightScale: 0.96,
     titleLineSpacingScale: 1,
@@ -447,7 +462,13 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     driftScale: 0.72,
     driftDurationScale: 1.34,
     metadataAlphaScale: 0.72,
-    flashAlphaScale: 0.6
+    flashAlphaScale: 0.6,
+    boardAuraBiasScale: 1,
+    boardHaloBiasScale: 1,
+    boardShadeBiasScale: 1,
+    boardVeilBiasScale: 1,
+    boardAuraMotionScale: 1,
+    boardHaloMotionScale: 1
   },
   obs: {
     boardScaleBias: 0.01,
@@ -456,6 +477,7 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     portraitTopReserveBias: 8,
     bottomPaddingBias: 6,
     sidePaddingBias: 10,
+    maxBoardScale: 0.968,
     titlePlateWidthScale: 0.9,
     titlePlateHeightScale: 0.94,
     titleLineSpacingScale: 1,
@@ -465,11 +487,17 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     passiveAlphaScale: 1,
     plateAlphaScale: 1,
     panelAlphaScale: 1,
-    offsetScale: 0.34,
-    driftScale: 0.82,
-    driftDurationScale: 1.14,
+    offsetScale: 0,
+    driftScale: 0,
+    driftDurationScale: 1,
     metadataAlphaScale: 0.82,
-    flashAlphaScale: 0.72
+    flashAlphaScale: 0.72,
+    boardAuraBiasScale: 0,
+    boardHaloBiasScale: 0,
+    boardShadeBiasScale: 0.4,
+    boardVeilBiasScale: 0.6,
+    boardAuraMotionScale: 0.25,
+    boardHaloMotionScale: 0.25
   },
   mobile: {
     boardScaleBias: -0.024,
@@ -478,6 +506,7 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     portraitTopReserveBias: 18,
     bottomPaddingBias: 12,
     sidePaddingBias: 8,
+    maxBoardScale: 0.996,
     titlePlateWidthScale: 1.02,
     titlePlateHeightScale: 1.2,
     titleLineSpacingScale: 1.12,
@@ -491,7 +520,13 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     driftScale: 0.9,
     driftDurationScale: 1.08,
     metadataAlphaScale: 1.08,
-    flashAlphaScale: 1
+    flashAlphaScale: 1,
+    boardAuraBiasScale: 1,
+    boardHaloBiasScale: 1,
+    boardShadeBiasScale: 1,
+    boardVeilBiasScale: 1,
+    boardAuraMotionScale: 1,
+    boardHaloMotionScale: 1
   }
 };
 
@@ -1269,7 +1304,51 @@ export function resolveSceneLayoutProfile(
       - (isTiny ? 0.026 : 0)
       - (isShort ? 0.012 : 0),
     isTiny ? 0.82 : 0.92,
-    safeChrome === 'none' ? 0.998 : 0.996
+    Math.min(safeChrome === 'none' ? 0.998 : 0.996, deploymentProfile.maxBoardScale)
+  );
+  const topReserve = Math.max(
+    Math.max(
+      12,
+      profile.topReserveMinPx
+        + chromeProfile.topReserveBias
+        + deploymentProfile.topReserveBias
+        + (isPortrait ? 12 + deploymentProfile.portraitTopReserveBias : 0)
+        - (safeVariant === 'ambient' ? 6 : 0)
+        - (isTiny ? 28 : 0)
+        - (!titleVisible ? 12 : 0)
+    ),
+    Math.round(
+      safeHeight
+        * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0))
+    ) + chromeProfile.topReserveBias + deploymentProfile.topReserveBias
+  );
+  const bottomPadding = Math.max(
+    6,
+    profile.bottomPaddingPx
+      + chromeProfile.bottomPaddingBias
+      + deploymentProfile.bottomPaddingBias
+      + (isPortrait ? 4 : 0)
+      + (safeVariant === 'loading' ? 4 : 0)
+      - (isTiny ? 12 : 0)
+  );
+  const sidePadding = Math.max(
+    2,
+    profile.sidePaddingPx
+      + chromeProfile.sidePaddingBias
+      + deploymentProfile.sidePaddingBias
+      + (isPortrait ? 2 : 0)
+      + (isNarrow ? -2 : 0)
+      - (isTiny ? 4 : 0)
+  );
+  const obsSafeVerticalPadding = Math.max(
+    topReserve,
+    bottomPadding,
+    Math.round(safeHeight * 0.05)
+  );
+  const obsSafeSidePadding = Math.max(
+    sidePadding,
+    Math.round(safeWidth * 0.015),
+    12
   );
 
   return {
@@ -1278,40 +1357,9 @@ export function resolveSceneLayoutProfile(
     isShort,
     isTiny,
     boardScale,
-    topReserve: Math.max(
-      Math.max(
-        12,
-        profile.topReserveMinPx
-          + chromeProfile.topReserveBias
-          + deploymentProfile.topReserveBias
-          + (isPortrait ? 12 + deploymentProfile.portraitTopReserveBias : 0)
-          - (safeVariant === 'ambient' ? 6 : 0)
-          - (isTiny ? 28 : 0)
-          - (!titleVisible ? 12 : 0)
-      ),
-      Math.round(
-        safeHeight
-          * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0))
-      ) + chromeProfile.topReserveBias + deploymentProfile.topReserveBias
-    ),
-    bottomPadding: Math.max(
-      6,
-      profile.bottomPaddingPx
-        + chromeProfile.bottomPaddingBias
-        + deploymentProfile.bottomPaddingBias
-        + (isPortrait ? 4 : 0)
-        + (safeVariant === 'loading' ? 4 : 0)
-        - (isTiny ? 12 : 0)
-    ),
-    sidePadding: Math.max(
-      2,
-      profile.sidePaddingPx
-        + chromeProfile.sidePaddingBias
-        + deploymentProfile.sidePaddingBias
-        + (isPortrait ? 2 : 0)
-        + (isNarrow ? -2 : 0)
-        - (isTiny ? 4 : 0)
-    )
+    topReserve: deploymentProfileId === 'obs' ? obsSafeVerticalPadding : topReserve,
+    bottomPadding: deploymentProfileId === 'obs' ? obsSafeVerticalPadding : bottomPadding,
+    sidePadding: deploymentProfileId === 'obs' ? obsSafeSidePadding : sidePadding
   };
 }
 
@@ -1461,9 +1509,11 @@ export const resolveMenuDemoPresentation = (
         ? 0.28
         : sequenceState.sequence === 'reveal'
           ? 0.24
-          : 0.18
+      : 0.18
     );
   }
+  const boardAuraScaleDelta = (boardAuraScale - 1) * deploymentProfile.boardAuraMotionScale;
+  const boardHaloScaleDelta = (boardHaloScale - 1) * deploymentProfile.boardHaloMotionScale;
 
   return {
     variant: safeVariant,
@@ -1472,19 +1522,19 @@ export const resolveMenuDemoPresentation = (
     phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
     solutionPathAlpha: clamp(moodProfile.solutionPathAlpha * variantProfile.solutionPathScale, 0.14, 1),
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
-    ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale,
-    ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale,
+    ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
+    ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
     ambientDriftMs: Math.round(moodProfile.ambientDriftMs * deploymentProfile.driftDurationScale),
-    frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale),
-    frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale),
-    hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale),
-    hudOffsetY: Math.round(offsets.hudOffsetY * deploymentProfile.offsetScale),
-    boardVeilAlpha: clamp(boardVeilAlpha + variantProfile.boardVeilBias, 0, 0.24),
-    boardAuraAlpha: clamp(boardAuraAlpha + variantProfile.boardAuraBias, 0.06, 0.22),
-    boardHaloAlpha: clamp(boardHaloAlpha + variantProfile.boardHaloBias, 0.018, 0.16),
-    boardShadeAlpha: clamp(boardShadeAlpha + variantProfile.boardShadeBias, 0.012, 0.18),
-    boardAuraScale: clamp(boardAuraScale + (wave * variantProfile.boardAuraBias * 0.1), 1, 1.05),
-    boardHaloScale: clamp(boardHaloScale + (wave * variantProfile.boardHaloBias * 0.1), 1, 1.03),
+    frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale) || 0,
+    frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale) || 0,
+    hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale) || 0,
+    hudOffsetY: Math.round(offsets.hudOffsetY * deploymentProfile.offsetScale) || 0,
+    boardVeilAlpha: clamp(boardVeilAlpha + (variantProfile.boardVeilBias * deploymentProfile.boardVeilBiasScale), 0, 0.24),
+    boardAuraAlpha: clamp(boardAuraAlpha + (variantProfile.boardAuraBias * deploymentProfile.boardAuraBiasScale), 0.06, 0.22),
+    boardHaloAlpha: clamp(boardHaloAlpha + (variantProfile.boardHaloBias * deploymentProfile.boardHaloBiasScale), 0.018, 0.16),
+    boardShadeAlpha: clamp(boardShadeAlpha + (variantProfile.boardShadeBias * deploymentProfile.boardShadeBiasScale), 0.012, 0.18),
+    boardAuraScale: clamp(1 + boardAuraScaleDelta + (wave * variantProfile.boardAuraBias * 0.1 * deploymentProfile.boardAuraBiasScale), 1, 1.05),
+    boardHaloScale: clamp(1 + boardHaloScaleDelta + (wave * variantProfile.boardHaloBias * 0.1 * deploymentProfile.boardHaloBiasScale), 1, 1.03),
     actorPulseBoost: moodProfile.actorPulseBoost + variantProfile.actorPulseBias,
     metadataAlpha: clamp(metadataAlpha * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
     flashAlpha: clamp(flashAlpha * variantProfile.flashAlphaScale * deploymentProfile.flashAlphaScale, 0, 0.84)

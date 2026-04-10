@@ -41,12 +41,15 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 ## Testing surfaces
 - TV / kiosk: run `?profile=tv` for the ambient loop, or `?profile=tv&title=show` when explicit branding is needed. Validate distance legibility, brightness, reload behavior, and long-loop calmness.
 - OBS: start with `?profile=obs&chrome=none` in a Browser Source sized to the scene. Check for clean edges, no odd padding, and stable refresh behavior.
+- OBS-safe profile centers the board, preserves full board visibility, and minimizes chrome for overlays.
 - Mobile: use `?profile=mobile`, then try `?profile=mobile&chrome=none` for a board-first shell check. Test portrait and landscape, resize, reload, and tab away/back.
 
 ## Freeze notes
 - Rule: freeze product behavior before adding more polish once deployment profiles are validated.
 - Pattern: use URL-level launch profiles for deployment surfaces instead of branching app logic.
+- Pattern: deployment profiles may constrain motion and framing more aggressively than the default presentation when a surface needs compositional stability.
 - Failure Mode: tiny packaging issues like icons, manifest wiring, or audio-init warnings can make a polished ambient build feel unfinished even when the core loop is stable.
+- Failure Mode: aesthetically nice drift can make capture surfaces feel misaligned or zoomed even when the layout math is technically valid.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.

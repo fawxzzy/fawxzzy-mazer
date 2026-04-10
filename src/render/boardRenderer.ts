@@ -13,6 +13,19 @@ export interface BoardLayout {
   boardHeight: number;
   boardSize: number;
   tileSize: number;
+  boardBounds: BoardBounds;
+  safeBounds: BoardBounds;
+}
+
+export interface BoardBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
 }
 
 interface BoardLayoutOptions {
@@ -106,6 +119,16 @@ const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number
 const sanitizeRange = (value: unknown, fallback: number, min: number, max: number): number => (
   Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, min, max)
 );
+const createBounds = (left: number, top: number, width: number, height: number): BoardBounds => ({
+  left,
+  top,
+  right: left + width,
+  bottom: top + height,
+  width,
+  height,
+  centerX: left + (width / 2),
+  centerY: top + (height / 2)
+});
 export const isRenderableLayout = (layout: BoardLayout): boolean => (
   isFiniteNumber(layout.boardX)
   && isFiniteNumber(layout.boardY)
@@ -151,6 +174,8 @@ export const createBoardLayout = (
     topReserve,
     Math.max(topReserve, height - bottomPadding - boardHeight)
   );
+  const safeBounds = createBounds(sidePadding, topReserve, availableWidth, availableHeight);
+  const boardBounds = createBounds(boardX, boardY, boardWidth, boardHeight);
 
   return {
     boardX,
@@ -158,9 +183,22 @@ export const createBoardLayout = (
     boardSize,
     boardWidth,
     boardHeight,
-    tileSize
+    tileSize,
+    boardBounds,
+    safeBounds
   };
 };
+
+export const resolveBoardPresentationBounds = (
+  layout: BoardLayout,
+  offsetX = 0,
+  offsetY = 0
+): BoardBounds => createBounds(
+  layout.boardX + (isFiniteNumber(offsetX) ? offsetX : 0),
+  layout.boardY + (isFiniteNumber(offsetY) ? offsetY : 0),
+  layout.boardWidth,
+  layout.boardHeight
+);
 
 export class BoardRenderer {
   private episode: MazeEpisode;
