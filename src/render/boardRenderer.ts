@@ -4,6 +4,7 @@ import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { isTileFloor, isTilePath, xFromIndex, yFromIndex } from '../domain/maze';
 import { palette } from './palette';
+import { resolveSceneViewport } from './viewport';
 
 export interface BoardLayout {
   boardX: number;
@@ -48,9 +49,7 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
   { x: 0, y: 1 }
 ] as const;
 
-const DEFAULT_VIEWPORT_WIDTH = 1280;
-const DEFAULT_VIEWPORT_HEIGHT = 720;
-const MIN_BOARD_SIZE = 64;
+const MIN_BOARD_SIZE = 24;
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
@@ -59,18 +58,7 @@ const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number
 const sanitizeRange = (value: unknown, fallback: number, min: number, max: number): number => (
   Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, min, max)
 );
-const resolveSceneDimension = (primary: unknown, secondary: unknown, fallback: number): number => {
-  if (isFiniteNumber(primary) && primary > 0) {
-    return primary;
-  }
-
-  if (isFiniteNumber(secondary) && secondary > 0) {
-    return secondary;
-  }
-
-  return fallback;
-};
-const isRenderableLayout = (layout: BoardLayout): boolean => (
+export const isRenderableLayout = (layout: BoardLayout): boolean => (
   isFiniteNumber(layout.boardX)
   && isFiniteNumber(layout.boardY)
   && isFiniteNumber(layout.boardWidth)
@@ -94,8 +82,9 @@ export const createBoardLayout = (
   const topReserve = sanitizePositive(normalizedOptions.topReserve, 64, 0);
   const sidePadding = sanitizePositive(normalizedOptions.sidePadding, 16, 0);
   const bottomPadding = sanitizePositive(normalizedOptions.bottomPadding, sidePadding, 0);
-  const width = resolveSceneDimension(scene.scale.width, scene.cameras.main?.width, DEFAULT_VIEWPORT_WIDTH);
-  const height = resolveSceneDimension(scene.scale.height, scene.cameras.main?.height, DEFAULT_VIEWPORT_HEIGHT);
+  const viewport = resolveSceneViewport(scene);
+  const width = viewport.width;
+  const height = viewport.height;
   const rasterWidth = sanitizePositive(episode?.raster?.width, 1, 1);
   const rasterHeight = sanitizePositive(episode?.raster?.height, 1, 1);
   const availableWidth = Math.max(MIN_BOARD_SIZE, width - (sidePadding * 2));

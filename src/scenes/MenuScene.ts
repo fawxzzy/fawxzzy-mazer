@@ -16,6 +16,13 @@ import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { createBoardLayout, BoardRenderer } from '../render/boardRenderer';
 import { createDemoStatusHud } from '../render/hudRenderer';
 import { palette } from '../render/palette';
+import {
+  DEFAULT_VIEWPORT_HEIGHT,
+  DEFAULT_VIEWPORT_WIDTH,
+  resolveSceneViewport,
+  resolveViewportSize,
+  type ViewportSize
+} from '../render/viewport';
 
 const PASSIVE_TAGLINES: Record<AmbientPresentationVariant, string> = {
   title: 'pattern engine',
@@ -110,10 +117,11 @@ interface VariantProfile {
   actorPulseBias: number;
 }
 
-interface SceneLayoutProfile {
+export interface SceneLayoutProfile {
   isNarrow: boolean;
   isPortrait: boolean;
   isShort: boolean;
+  isTiny: boolean;
   boardScale: number;
   topReserve: number;
   bottomPadding: number;
@@ -129,18 +137,11 @@ interface PresentationOffsets {
   driftY: number;
 }
 
-const DEFAULT_VIEWPORT_WIDTH = 1280;
-const DEFAULT_VIEWPORT_HEIGHT = 720;
-
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
   isFiniteNumber(value) && value >= minimum ? value : fallback
 );
 const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
-const resolveSceneViewport = (scene: Phaser.Scene): { width: number; height: number } => ({
-  width: sanitizePositive(scene.scale.width, sanitizePositive(scene.cameras.main?.width, DEFAULT_VIEWPORT_WIDTH), 1),
-  height: sanitizePositive(scene.scale.height, sanitizePositive(scene.cameras.main?.height, DEFAULT_VIEWPORT_HEIGHT), 1)
-});
 
 const DEMO_PACING_PROFILES: readonly MenuDemoCycle['pacing'][] = [
   { exploreStepMs: -10, goalHoldMs: 60, resetHoldMs: 36, spawnHoldMs: 34 },
@@ -303,6 +304,24 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
   }
 };
 
+export interface MenuPresentationModel {
+  viewport: ViewportSize;
+  layout: SceneLayoutProfile;
+}
+
+export function resolveMenuPresentationModel(
+  width: number,
+  height: number,
+  variant: AmbientPresentationVariant
+): MenuPresentationModel {
+  const viewport = resolveViewportSize(width, height, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT);
+
+  return {
+    viewport,
+    layout: resolveSceneLayoutProfile(viewport.width, viewport.height, variant)
+  };
+}
+
 export class MenuScene extends Phaser.Scene {
   private titlePulseTween?: Phaser.Tweens.Tween;
   private titleDriftTween?: Phaser.Tweens.Tween;
@@ -318,37 +337,82 @@ export class MenuScene extends Phaser.Scene {
   }
 
   public create(): void {
-    const { width, height } = resolveSceneViewport(this);
+    const presentationModel = resolveMenuPresentationModel(this.scale.width, this.scale.height, this.presentationVariant);
+    const { width, height } = presentationModel.viewport;
     const reducedMotion = prefersReducedMotion();
     const variant = sanitizePresentationVariant(this.presentationVariant);
     const variantProfile = VARIANT_PROFILES[variant];
-    const sceneLayout = resolveSceneLayoutProfile(width, height, variant);
+    const sceneLayout = presentationModel.layout;
     let recoveryActivated = false;
+    let recoveryEpisode: MazeEpisode | undefined;
     let patternEngine: PatternEngine | undefined;
+    let patternFrame: PatternFrame | undefined;
     let boardRenderer: BoardRenderer | undefined;
     let demoStatusHud: ReturnType<typeof createDemoStatusHud> | undefined;
     let resizeRestart: Phaser.Time.TimerEvent | undefined;
+    let handleVisibilityChange: (() => void) | undefined;
+    let handleResize: ((gameSize?: { width?: number; height?: number }) => void) | undefined;
+    let updateDemo: ((time: number, delta: number) => void) | undefined;
 
+    const runOptional = (label: string, render: () => void): void => {
+      try {
+        render();
+      } catch (error) {
+        console.error(`MenuScene optional ${label} skipped.`, error);
+      }
+    };
+    const removeRuntimeListeners = (options: { keepResize?: boolean } = {}): void => {
+      if (typeof document !== 'undefined' && handleVisibilityChange) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      if (!options.keepResize && handleResize) {
+        this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);
+      }
+      if (updateDemo) {
+        this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
+      }
+      handleVisibilityChange = undefined;
+      if (!options.keepResize) {
+        handleResize = undefined;
+      }
+      updateDemo = undefined;
+    };
+    const destroyPresentation = (destroyEngine: boolean): void => {
+      resizeRestart?.remove(false);
+      resizeRestart = undefined;
+      this.titlePulseTween?.remove();
+      this.titlePulseTween = undefined;
+      this.titleDriftTween?.remove();
+      this.titleDriftTween = undefined;
+      this.starDriftTween?.remove();
+      this.starDriftTween = undefined;
+      demoStatusHud?.destroy();
+      demoStatusHud = undefined;
+      boardRenderer?.destroy();
+      boardRenderer = undefined;
+      if (destroyEngine) {
+        patternEngine?.destroy();
+        patternEngine = undefined;
+      }
+      this.time.removeAllEvents();
+      this.tweens.killAll();
+      this.children.removeAll(true);
+    };
+    const renderVisibleRecovery = (): void => {
+      const viewport = resolveSceneViewport(this);
+      destroyPresentation(false);
+      this.renderRecoveryShell(viewport.width, viewport.height, recoveryEpisode);
+    };
     const failOpen = (error: unknown): void => {
       if (recoveryActivated) {
         return;
       }
 
       recoveryActivated = true;
+      recoveryEpisode = patternFrame?.episode;
       console.error('MenuScene failed open to recovery shell.', error);
-      resizeRestart?.remove(false);
-      this.titlePulseTween?.remove();
-      this.titleDriftTween?.remove();
-      this.starDriftTween?.remove();
-      patternEngine?.destroy();
-      demoStatusHud?.destroy();
-      boardRenderer?.destroy();
-      this.scale.removeAllListeners(Phaser.Scale.Events.RESIZE);
-      this.events.removeAllListeners(Phaser.Scenes.Events.UPDATE);
-      this.time.removeAllEvents();
-      this.tweens.killAll();
-      this.children.removeAll(true);
-      this.renderRecoveryShell(width, height);
+      removeRuntimeListeners({ keepResize: true });
+      renderVisibleRecovery();
     };
 
     try {
@@ -372,7 +436,8 @@ export class MenuScene extends Phaser.Scene {
       demoCycle += 1;
       return resolved.episode;
       }, resolvePatternEngineMode(variant));
-      let patternFrame = patternEngine.next(0);
+      patternFrame = patternEngine.next(0);
+      recoveryEpisode = patternFrame.episode;
       let demoCyclePlan = pendingCyclePlan ?? resolveMenuDemoCycle(patternFrame.episode.seed, 0);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
 
@@ -421,14 +486,15 @@ export class MenuScene extends Phaser.Scene {
         0
       ).setOrigin(0.5).setDepth(7.2);
 
+      const titlePlateMaxWidth = Math.max(96, width - Math.max(24, sceneLayout.sidePadding * 4));
       const titlePlateWidth = Phaser.Math.Clamp(
         Math.round(layout.boardSize * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio) * variantProfile.titleScale),
-        variantProfile.titleAnchor === 'left' ? 200 : 216,
-        sceneLayout.isPortrait ? 356 : 404
+        Math.min(variantProfile.titleAnchor === 'left' ? 200 : 216, titlePlateMaxWidth),
+        Math.max(Math.min(sceneLayout.isPortrait ? 356 : 404, titlePlateMaxWidth), 96)
       );
       const titlePlateHeight = Phaser.Math.Clamp(
         Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale)),
-        38,
+        sceneLayout.isTiny ? 28 : 38,
         legacyTuning.menu.title.plateHeightMaxPx
       );
       const titleY = Math.max(
@@ -457,12 +523,12 @@ export class MenuScene extends Phaser.Scene {
       const signature = this.add.text(0, Math.round(titlePlateHeight * 0.23), '\u00b0 by fawxzzy', {
         color: '#a5d7af',
         fontFamily: '"Courier New", monospace',
-        fontSize: `${sceneLayout.isNarrow ? 9 : 10}px`
+        fontSize: `${sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10}px`
       }).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha).setLetterSpacing(1);
       const passiveTag = this.add.text(0, Math.round(titlePlateHeight * 0.42), PASSIVE_TAGLINES[variant], {
         color: '#d7deef',
         fontFamily: '"Courier New", monospace',
-        fontSize: `${sceneLayout.isNarrow ? 10 : 11}px`
+        fontSize: `${sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11}px`
       }).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
       titleContainer.add([title, signature, passiveTag]);
       if (reducedMotion) {
@@ -471,34 +537,36 @@ export class MenuScene extends Phaser.Scene {
         titleContainer.setAlpha(0);
         titleContainer.y -= 12;
         titleContainer.setScale(0.985);
-        this.tweens.add({
-          targets: titleContainer,
-          alpha: 1,
-          y: titleY,
-          scaleX: 1,
-          scaleY: 1,
-          duration: 760,
-          ease: 'Cubic.easeOut'
-        });
-        this.titlePulseTween = this.tweens.add({
-          targets: title,
-          alpha: {
-            from: Math.max(0.28, variantProfile.titleAlpha - 0.08),
-            to: Math.min(0.92, variantProfile.titleAlpha + 0.06)
-          },
-          duration: legacyTuning.menu.title.pulseDurationMs,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut'
-        });
-        this.titleDriftTween = this.tweens.add({
-          targets: titleContainer,
-          x: titleX + variantProfile.titleDriftX,
-          y: titleY + variantProfile.titleDriftY,
-          duration: variantProfile.titleDriftMs,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut'
+        runOptional('title motion', () => {
+          this.tweens.add({
+            targets: titleContainer,
+            alpha: 1,
+            y: titleY,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 760,
+            ease: 'Cubic.easeOut'
+          });
+          this.titlePulseTween = this.tweens.add({
+            targets: title,
+            alpha: {
+              from: Math.max(0.28, variantProfile.titleAlpha - 0.08),
+              to: Math.min(0.92, variantProfile.titleAlpha + 0.06)
+            },
+            duration: legacyTuning.menu.title.pulseDurationMs,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
+          this.titleDriftTween = this.tweens.add({
+            targets: titleContainer,
+            x: titleX + variantProfile.titleDriftX,
+            y: titleY + variantProfile.titleDriftY,
+            duration: variantProfile.titleDriftMs,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
         });
       }
 
@@ -517,12 +585,28 @@ export class MenuScene extends Phaser.Scene {
         const offsetX = sanitizeOffset(presentation.frameOffsetX);
         const offsetY = sanitizeOffset(presentation.frameOffsetY);
         boardRenderer?.setPresentationOffset(offsetX, offsetY);
-        boardAura.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
-        boardHalo.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
-        boardShade.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
-        boardVeil.setPosition(boardCenterX + offsetX, boardCenterY + offsetY);
+      };
+      const applyOptionalChrome = (presentation: MenuDemoPresentation): void => {
+        runOptional('board chrome', () => {
+          const offsetX = sanitizeOffset(presentation.frameOffsetX);
+          const offsetY = sanitizeOffset(presentation.frameOffsetY);
+          boardAura.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+            .setAlpha(presentation.boardAuraAlpha)
+            .setScale(presentation.boardAuraScale);
+          boardHalo.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+            .setAlpha(presentation.boardHaloAlpha)
+            .setScale(presentation.boardHaloScale);
+          boardShade.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+            .setAlpha(presentation.boardShadeAlpha);
+          boardVeil.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+            .setAlpha(presentation.boardVeilAlpha);
+        });
       };
       const applyEpisodePresentation = (): void => {
+        if (!patternFrame) {
+          return;
+        }
+
         demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
         demoPresentation = resolveMenuDemoPresentation(
           patternFrame.episode,
@@ -532,10 +616,12 @@ export class MenuScene extends Phaser.Scene {
           variant
         );
         boardRenderer?.setEpisode(patternFrame.episode);
+        recoveryEpisode = patternFrame.episode;
         applyPresentationOffsets(demoPresentation);
         boardRenderer?.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
         boardRenderer?.drawStart('spawn');
         boardRenderer?.drawGoal();
+        applyOptionalChrome(demoPresentation);
         if (!reducedMotion) {
           boardRenderer?.startAmbientMotion(
             demoPresentation.ambientDriftPxX,
@@ -580,26 +666,28 @@ export class MenuScene extends Phaser.Scene {
         }
       };
       const renderDemo = (): void => {
+        if (!patternFrame) {
+          return;
+        }
+
+        const episode = patternFrame.episode;
         demoPresentation = resolveMenuDemoPresentation(
-          patternFrame.episode,
+          episode,
           demoCyclePlan,
           patternFrame.t * 1000,
           demoConfig,
           variant
         );
         const view = resolveDemoWalkerViewFrame(
-          patternFrame.episode,
+          episode,
           patternFrame.t * 1000,
           demoConfig,
           demoPresentation.trailWindow
         );
-        const path = patternFrame.episode.raster.pathIndices;
+        const path = episode.raster.pathIndices;
 
         applyPresentationOffsets(demoPresentation);
-        boardAura.setAlpha(demoPresentation.boardAuraAlpha).setScale(demoPresentation.boardAuraScale);
-        boardHalo.setAlpha(demoPresentation.boardHaloAlpha).setScale(demoPresentation.boardHaloScale);
-        boardShade.setAlpha(demoPresentation.boardShadeAlpha);
-        boardVeil.setAlpha(demoPresentation.boardVeilAlpha);
+        applyOptionalChrome(demoPresentation);
 
         boardRenderer?.drawStart(view.cue);
         boardRenderer?.drawGoal(view.cue);
@@ -623,26 +711,37 @@ export class MenuScene extends Phaser.Scene {
           );
         }
 
-        demoStatusHud?.setState(
-          patternFrame.episode,
-          demoPresentation.mood,
-          demoPresentation.sequence,
-          demoPresentation.variant,
-          demoPresentation.metadataAlpha,
-          demoPresentation.flashAlpha,
-          demoPresentation.phaseLabel,
-          demoPresentation.hudOffsetX,
-          demoPresentation.hudOffsetY
-        );
+        runOptional('hud metadata', () => {
+          demoStatusHud?.setState(
+            episode,
+            demoPresentation.mood,
+            demoPresentation.sequence,
+            demoPresentation.variant,
+            demoPresentation.metadataAlpha,
+            demoPresentation.flashAlpha,
+            demoPresentation.phaseLabel,
+            demoPresentation.hudOffsetX,
+            demoPresentation.hudOffsetY
+          );
+        });
         if (view.cue !== lastCue) {
-          accentCueBeat(view.cue);
+          runOptional('cue accent', () => {
+            accentCueBeat(view.cue);
+          });
           lastCue = view.cue;
         }
       };
       const applyPatternFrame = (nextFrame: PatternFrame): void => {
+        if (!patternFrame) {
+          patternFrame = nextFrame;
+          recoveryEpisode = nextFrame.episode;
+          return;
+        }
+
         const previousEpisode = patternFrame.episode;
         try {
           patternFrame = nextFrame;
+          recoveryEpisode = nextFrame.episode;
           demoCyclePlan = pendingCyclePlan ?? demoCyclePlan;
           applyEpisodePresentation();
           renderDemo();
@@ -652,7 +751,7 @@ export class MenuScene extends Phaser.Scene {
           disposeMazeEpisode(previousEpisode);
         }
       };
-      const handleVisibilityChange = (): void => {
+      handleVisibilityChange = (): void => {
         if (typeof document === 'undefined' || recoveryActivated) {
           return;
         }
@@ -678,15 +777,29 @@ export class MenuScene extends Phaser.Scene {
         }
       };
 
-      const handleResize = (): void => {
-        if (recoveryActivated) {
+      const refreshAfterResize = (nextViewport: ViewportSize): void => {
+        if (!nextViewport.measured) {
           return;
         }
 
         resizeRestart?.remove(false);
         resizeRestart = this.time.delayedCall(80, () => {
+          if (recoveryActivated) {
+            renderVisibleRecovery();
+            return;
+          }
+
           this.scene.restart({ presentation: variant });
         });
+      };
+      handleResize = (gameSize): void => {
+        const fallbackViewport = resolveSceneViewport(this);
+        refreshAfterResize(resolveViewportSize(
+          gameSize?.width,
+          gameSize?.height,
+          fallbackViewport.width,
+          fallbackViewport.height
+        ));
       };
 
       renderDemo();
@@ -694,13 +807,20 @@ export class MenuScene extends Phaser.Scene {
         document.addEventListener('visibilitychange', handleVisibilityChange);
       }
       this.scale.on(Phaser.Scale.Events.RESIZE, handleResize);
-      const updateDemo = (_time: number, delta: number): void => {
+      updateDemo = (_time: number, delta: number): void => {
         if (sceneHidden || recoveryActivated || !patternEngine) {
           return;
         }
 
         try {
           const nextFrame = patternEngine.next(delta / 1000);
+          if (!patternFrame) {
+            patternFrame = nextFrame;
+            recoveryEpisode = nextFrame.episode;
+            renderDemo();
+            return;
+          }
+
           if (nextFrame.episode !== patternFrame.episode) {
             applyPatternFrame(nextFrame);
             return;
@@ -714,21 +834,8 @@ export class MenuScene extends Phaser.Scene {
       };
       this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-        resizeRestart?.remove(false);
-        this.titlePulseTween?.remove();
-        this.titleDriftTween?.remove();
-        this.starDriftTween?.remove();
-        if (typeof document !== 'undefined') {
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
-        }
-        this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);
-        this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
-        demoStatusHud?.destroy();
-        patternEngine?.destroy();
-        boardRenderer?.destroy();
-        this.time.removeAllEvents();
-        this.tweens.killAll();
-        this.children.removeAll(true);
+        removeRuntimeListeners();
+        destroyPresentation(true);
       });
     } catch (error) {
       failOpen(error);
@@ -791,14 +898,18 @@ export class MenuScene extends Phaser.Scene {
       nearStars.fillCircle(x, y, r);
     }
 
-    this.starDriftTween = this.tweens.add({
-      targets: nearStars,
-      y: legacyTuning.menu.starfield.starsDriftRangePx,
-      duration: legacyTuning.menu.starfield.starsDriftDurationMs,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
+    try {
+      this.starDriftTween = this.tweens.add({
+        targets: nearStars,
+        y: legacyTuning.menu.starfield.starsDriftRangePx,
+        duration: legacyTuning.menu.starfield.starsDriftDurationMs,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    } catch (error) {
+      console.error('MenuScene optional star drift skipped.', error);
+    }
 
     const vignette = this.add.graphics();
     vignette.fillStyle(palette.background.vignette, legacyTuning.menu.starfield.vignetteAlpha);
@@ -809,6 +920,7 @@ export class MenuScene extends Phaser.Scene {
   private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
+    const layoutModel = resolveMenuPresentationModel(safeWidth, safeHeight, this.presentationVariant);
 
     this.drawStarfield(safeWidth, safeHeight);
     this.add.text(safeWidth / 2, Math.max(56, safeHeight * 0.18), legacyTuning.menu.title.text, {
@@ -828,21 +940,18 @@ export class MenuScene extends Phaser.Scene {
       fontSize: '12px'
     }).setOrigin(0.5).setDepth(20);
 
+    if (!episode) {
+      return;
+    }
+
     try {
-      const recoveryEpisode = episode ?? generateMazeForDifficulty({
-        scale: legacyTuning.board.scale,
-        seed: legacyTuning.demo.seed,
-        size: 'medium',
-        checkPointModifier: legacyTuning.board.checkPointModifier,
-        shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
-      }, 'standard').episode;
-      const layout = createBoardLayout(this, recoveryEpisode, {
-        boardScale: 0.72,
-        topReserve: Math.max(160, Math.round(safeHeight * 0.34)),
-        sidePadding: 24,
-        bottomPadding: 32
+      const layout = createBoardLayout(this, episode, {
+        boardScale: Math.min(0.72, layoutModel.layout.boardScale),
+        topReserve: Math.max(140, Math.round(safeHeight * 0.34)),
+        sidePadding: Math.max(12, layoutModel.layout.sidePadding + 8),
+        bottomPadding: Math.max(20, layoutModel.layout.bottomPadding)
       });
-      const recoveryBoard = new BoardRenderer(this, recoveryEpisode, layout);
+      const recoveryBoard = new BoardRenderer(this, episode, layout);
       recoveryBoard.drawBoardChrome();
       recoveryBoard.drawBase({ solutionPathAlpha: 0.2 });
       recoveryBoard.drawStart('spawn');
@@ -853,11 +962,11 @@ export class MenuScene extends Phaser.Scene {
   }
 }
 
-const resolveSceneLayoutProfile = (
+export function resolveSceneLayoutProfile(
   width: number,
   height: number,
   variant: AmbientPresentationVariant
-): SceneLayoutProfile => {
+): SceneLayoutProfile {
   const safeVariant = sanitizePresentationVariant(variant);
   const profile = VARIANT_PROFILES[safeVariant];
   const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
@@ -865,11 +974,13 @@ const resolveSceneLayoutProfile = (
   const isNarrow = safeWidth <= legacyTuning.menu.layout.narrowBreakpoint;
   const isPortrait = safeHeight > (safeWidth * 1.12);
   const isShort = safeHeight < 720;
+  const isTiny = safeWidth < 420 || safeHeight < 260;
   const boardScale = Phaser.Math.Clamp(
     (isNarrow ? profile.boardScaleNarrow : profile.boardScaleWide)
       + (isPortrait ? 0.008 : 0)
+      - (isTiny ? 0.026 : 0)
       - (isShort ? 0.012 : 0),
-    0.92,
+    isTiny ? 0.82 : 0.92,
     0.996
   );
 
@@ -877,15 +988,16 @@ const resolveSceneLayoutProfile = (
     isNarrow,
     isPortrait,
     isShort,
+    isTiny,
     boardScale,
     topReserve: Math.max(
-      profile.topReserveMinPx + (isPortrait ? 12 : 0) - (safeVariant === 'ambient' ? 6 : 0),
-      Math.round(safeHeight * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0)))
+      Math.max(26, profile.topReserveMinPx + (isPortrait ? 12 : 0) - (safeVariant === 'ambient' ? 6 : 0) - (isTiny ? 28 : 0)),
+      Math.round(safeHeight * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0)))
     ),
-    bottomPadding: profile.bottomPaddingPx + (isPortrait ? 4 : 0) + (safeVariant === 'loading' ? 4 : 0),
-    sidePadding: profile.sidePaddingPx + (isPortrait ? 2 : 0) + (isNarrow ? -2 : 0)
+    bottomPadding: Math.max(10, profile.bottomPaddingPx + (isPortrait ? 4 : 0) + (safeVariant === 'loading' ? 4 : 0) - (isTiny ? 12 : 0)),
+    sidePadding: Math.max(4, profile.sidePaddingPx + (isPortrait ? 2 : 0) + (isNarrow ? -2 : 0) - (isTiny ? 4 : 0))
   };
-};
+}
 
 const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): DemoWalkerConfig => ({
   ...legacyTuning.demo,

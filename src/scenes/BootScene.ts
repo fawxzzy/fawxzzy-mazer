@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } from '../boot/presentation';
+import { resolveSceneViewport } from '../render/viewport';
 
 export class BootScene extends Phaser.Scene {
   public constructor() {
@@ -14,7 +15,7 @@ export class BootScene extends Phaser.Scene {
     let presentation = DEFAULT_PRESENTATION_VARIANT;
 
     try {
-      presentation = resolveBootPresentationVariant();
+      presentation = resolveBootPresentationVariant(resolveWindowSearch());
     } catch (error) {
       console.error('BootScene presentation resolution failed; falling back to title.', error);
     }
@@ -30,8 +31,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   private renderRecoveryShell(): void {
-    const width = resolveSceneDimension(this.scale.width, this.cameras.main?.width, 1280);
-    const height = resolveSceneDimension(this.scale.height, this.cameras.main?.height, 720);
+    const { width, height } = resolveSceneViewport(this);
 
     this.cameras.main.setBackgroundColor('#101018');
     this.add.rectangle(width / 2, height / 2, width, height, 0x101018, 1).setOrigin(0.5);
@@ -54,12 +54,14 @@ export class BootScene extends Phaser.Scene {
   }
 }
 
-const resolveSceneDimension = (primary: number | undefined, secondary: number | undefined, fallback: number): number => {
-  const candidate = typeof primary === 'number' && Number.isFinite(primary) && primary > 0
-    ? primary
-    : secondary;
+const resolveWindowSearch = (): string => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
 
-  return typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0
-    ? candidate
-    : fallback;
+  try {
+    return typeof window.location?.search === 'string' ? window.location.search : '';
+  } catch {
+    return '';
+  }
 };

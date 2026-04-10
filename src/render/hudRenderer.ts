@@ -5,6 +5,7 @@ import { getMazeSizeLabel } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import type { BoardLayout } from './boardRenderer';
 import { palette } from './palette';
+import { resolveSceneViewport } from './viewport';
 
 type DemoMood = 'solve' | 'scan' | 'blueprint';
 type DemoSequence = 'intro' | 'reveal' | 'arrival' | 'fade';
@@ -86,10 +87,7 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, HudVariantProfile> = 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizeAlpha = (value: unknown, fallback: number): number => Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, 0, 1);
 const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
-const resolveCompactWidth = (scene: Phaser.Scene): number => {
-  const width = scene.scale.width;
-  return isFiniteNumber(width) && width > 0 ? width : 1280;
-};
+const resolveCompactWidth = (scene: Phaser.Scene): number => resolveSceneViewport(scene).width;
 
 const resolveModeLabel = (
   mood: DemoMood,

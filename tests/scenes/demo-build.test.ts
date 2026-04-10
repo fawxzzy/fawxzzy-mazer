@@ -5,6 +5,10 @@ import { beforeAll, describe, expect, test, vi } from 'vitest';
 vi.mock('phaser', () => ({
   default: {
     AUTO: 'AUTO',
+    Math: {
+      Clamp: (value: number, min: number, max: number) => Math.max(min, Math.min(max, value)),
+      Linear: (from: number, to: number, t: number) => from + ((to - from) * t)
+    },
     Scale: {
       RESIZE: 'RESIZE',
       CENTER_BOTH: 'CENTER_BOTH'
@@ -21,18 +25,23 @@ let presentationModule: typeof import('../../src/boot/presentation');
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
+let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
 let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
 let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
 let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
+let resolveViewportSize: typeof import('../../src/render/viewport').resolveViewportSize;
 
 beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
   presentationModule = await import('../../src/boot/presentation');
   ({ DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel } = await import('../../src/scenes/MenuScene'));
+  ({ createBoardLayout } = await import('../../src/render/boardRenderer'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
+  ({ resolveViewportSize } = await import('../../src/render/viewport'));
 });
 
 describe('demo-only build', () => {
@@ -54,6 +63,20 @@ describe('demo-only build', () => {
     expect(resolveBootPresentationVariant('?presentation=loading')).toBe('loading');
     expect(resolveBootPresentationVariant('?presentation=unknown')).toBe('title');
     expect(resolveBootPresentationVariant({} as unknown as string)).toBe('title');
+  });
+
+  test('invalid viewport input sanitizes to a safe presentation model', () => {
+    expect(resolveViewportSize(0, Number.NaN)).toEqual({
+      width: 1280,
+      height: 720,
+      measured: false
+    });
+
+    const model = resolveMenuPresentationModel(0, 0, 'ambient');
+    expect(model.viewport.width).toBe(1280);
+    expect(model.viewport.height).toBe(720);
+    expect(model.layout.boardScale).toBeGreaterThan(0);
+    expect(model.layout.topReserve).toBeGreaterThan(0);
   });
 
   test('BootScene falls back to title when presentation resolution throws', () => {
@@ -179,6 +202,54 @@ describe('demo-only build', () => {
       expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
+    }
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('board relayout stays visible across tiny, wide, and tall viewports', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 1337,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const viewports = [
+      { width: 160, height: 120, variant: 'title' as const },
+      { width: 320, height: 180, variant: 'title' as const },
+      { width: 1920, height: 280, variant: 'ambient' as const },
+      { width: 280, height: 1200, variant: 'loading' as const }
+    ];
+
+    for (const viewport of viewports) {
+      const model = resolveMenuPresentationModel(viewport.width, viewport.height, viewport.variant);
+      const layout = createBoardLayout({
+        scale: {
+          width: model.viewport.width,
+          height: model.viewport.height
+        },
+        cameras: {
+          main: {
+            width: model.viewport.width,
+            height: model.viewport.height
+          }
+        }
+      } as never, episode, {
+        boardScale: model.layout.boardScale,
+        topReserve: model.layout.topReserve,
+        sidePadding: model.layout.sidePadding,
+        bottomPadding: model.layout.bottomPadding
+      });
+
+      expect(layout.boardWidth).toBeGreaterThan(0);
+      expect(layout.boardHeight).toBeGreaterThan(0);
+      expect(layout.tileSize).toBeGreaterThan(0);
+      expect(layout.boardX).toBeGreaterThanOrEqual(0);
+      expect(layout.boardY).toBeGreaterThanOrEqual(0);
+      expect(layout.boardX + layout.boardWidth).toBeLessThanOrEqual(model.viewport.width);
+      expect(layout.boardY + layout.boardHeight).toBeLessThanOrEqual(model.viewport.height);
     }
 
     disposeMazeEpisode(episode);
