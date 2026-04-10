@@ -32,24 +32,33 @@ describe('maze domain generation', () => {
     expect(serializeMaze(a)).toEqual(serializeMaze(b));
   });
 
-  test('same-seed replay stays deterministic after difficulty-targeted resolution', () => {
-    const resolved = generateMazeForDifficulty({
-      ...defaultConfig,
-      size: 'large',
-      seed: 13_001
-    }, 'spicy');
-    const replay = generateMazeForDifficulty({
-      ...defaultConfig,
-      size: 'large',
-      seed: resolved.seed
-    }, 'spicy', 0, 1);
+  test('same-seed replay stays deterministic for size + difficulty + seed', () => {
+    const cases = [
+      { difficulty: 'chill', seed: 9_001, size: 'small' },
+      { difficulty: 'standard', seed: 11_001, size: 'medium' },
+      { difficulty: 'spicy', seed: 13_001, size: 'large' },
+      { difficulty: 'brutal', seed: 15_001, size: 'huge' }
+    ] as const;
 
-    expect(resolved.episode.difficulty).toBe('spicy');
-    expect(resolved.episode.size).toBe('large');
-    expect(serializeMaze(resolved.episode)).toEqual(serializeMaze(replay.episode));
+    for (const testCase of cases) {
+      const resolved = generateMazeForDifficulty({
+        ...defaultConfig,
+        size: testCase.size,
+        seed: testCase.seed
+      }, testCase.difficulty);
+      const replay = generateMazeForDifficulty({
+        ...defaultConfig,
+        size: testCase.size,
+        seed: resolved.seed
+      }, testCase.difficulty, 0, 1);
 
-    disposeMazeEpisode(replay.episode);
-    disposeMazeEpisode(resolved.episode);
+      expect(resolved.episode.difficulty).toBe(testCase.difficulty);
+      expect(resolved.episode.size).toBe(testCase.size);
+      expect(serializeMaze(resolved.episode)).toEqual(serializeMaze(replay.episode));
+
+      disposeMazeEpisode(replay.episode);
+      disposeMazeEpisode(resolved.episode);
+    }
   });
 
   test('preserves solver-backed maze invariants', () => {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { playSfx, type SfxEvent } from '../audio/proceduralSfx';
 import { palette } from '../render/palette';
+import { mazerStorage } from '../storage/mazerStorage';
 
 export interface MenuButtonHandle extends Phaser.GameObjects.Container {
   setDisabled(disabled: boolean): MenuButtonHandle;
@@ -96,15 +97,19 @@ export const createMenuButton = (scene: Phaser.Scene, config: MenuButtonConfig):
   let disabled = false;
 
   const tweenToState = (over: boolean, pressed: boolean): void => {
-    const targetScale = pressed ? 0.975 : over ? 1.015 : 1;
     scene.tweens.killTweensOf(container);
-    scene.tweens.add({
-      targets: container,
-      scaleX: targetScale,
-      scaleY: targetScale,
-      duration: pressed ? 45 : 100,
-      ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
-    });
+    if (mazerStorage.getSettings().reducedMotion) {
+      container.setScale(pressed ? 0.99 : 1);
+    } else {
+      const targetScale = pressed ? 0.975 : over ? 1.015 : 1;
+      scene.tweens.add({
+        targets: container,
+        scaleX: targetScale,
+        scaleY: targetScale,
+        duration: pressed ? 45 : 100,
+        ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
+      });
+    }
 
     if (disabled) {
       rect.setFillStyle(colors.fill, colors.disabledFillAlpha);

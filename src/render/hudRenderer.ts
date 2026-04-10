@@ -18,6 +18,10 @@ interface DemoStatusHandle {
   destroy(): void;
 }
 
+interface HudRenderOptions {
+  reducedMotion?: boolean;
+}
+
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
 
 const formatDifficultyLabel = (episode: MazeEpisode, compact = false): string => {
@@ -54,7 +58,12 @@ const demoCueColors: Record<DemoWalkerCue, number> = {
   reset: palette.hud.hintText
 };
 
-export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): HudHandle => {
+export const createHudRenderer = (
+  scene: Phaser.Scene,
+  episode: MazeEpisode,
+  options: HudRenderOptions = {}
+): HudHandle => {
+  const reducedMotion = options.reducedMotion === true;
   const isTouchPrimary = window.matchMedia('(pointer: coarse)').matches;
   const ultraCompact = scene.scale.width <= legacyTuning.hud.ultraCompactBreakpoint;
   const compact = scene.scale.width <= legacyTuning.hud.compactBreakpoint;
@@ -113,8 +122,8 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
   const metaTextY = Math.round(panelHeight * 0.46);
   const hintTextY = panelHeight - (ultraCompact ? 15 : compact ? 17 : 18);
   const normalHintText = isTouchPrimary
-    ? (ultraCompact ? 'Red core / Swipe / First move starts / Tap pause' : compact ? 'Red core / Swipe / First move starts / Tap pause' : 'Reach the red core / Swipe to move / First move starts timer / Tap to pause')
-    : (ultraCompact ? 'Red core / Arrows / First move starts / Esc' : compact ? 'Red core / Arrow+WASD / First move starts / Esc' : 'Reach the red core / Arrow or WASD / First move starts timer / Esc pause');
+    ? (ultraCompact ? 'Reach red core / Swipe / First move starts' : compact ? 'Reach red core / Swipe / First move starts / Tap pause' : 'Reach the red core / Swipe to move / First move starts timer / Tap to pause')
+    : (ultraCompact ? 'Reach red core / Arrows+WASD / First move starts' : compact ? 'Reach red core / Arrow+WASD / First move starts / Esc pause' : 'Reach the red core / Arrow or WASD / First move starts timer / Esc pause');
   const completeHintText = isTouchPrimary
     ? 'Core secured / Choose next maze'
     : (ultraCompact ? 'Core secured / Enter replay / N next' : 'Core secured / Enter replay / N next / Esc menu');
@@ -238,31 +247,46 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
 
   const hudElements = [timerText, difficultyText, arrowText, movesText, seedText, hintText];
   const introTweens: Phaser.Tweens.Tween[] = [];
-  hudElements.forEach((element, index) => {
-    const targetAlpha = element.alpha;
-    element.setAlpha(0);
-    element.y -= 3;
+  if (reducedMotion) {
+    hintText.setAlpha(ultraCompact ? 0.68 : 0.78);
+  } else {
+    hudElements.forEach((element, index) => {
+      const targetAlpha = element.alpha;
+      element.setAlpha(0);
+      element.y -= 3;
+      introTweens.push(scene.tweens.add({
+        targets: element,
+        alpha: targetAlpha,
+        y: element.y + 3,
+        duration: 170,
+        delay: 60 + (index * 30),
+        ease: 'Quad.easeOut'
+      }));
+    });
     introTweens.push(scene.tweens.add({
-      targets: element,
-      alpha: targetAlpha,
-      y: element.y + 3,
-      duration: 170,
-      delay: 60 + (index * 30),
-      ease: 'Quad.easeOut'
+      targets: hintText,
+      alpha: { from: hintText.alpha, to: Math.min(1, hintText.alpha + 0.16) },
+      duration: 620,
+      delay: 220,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut'
     }));
-  });
+  }
 
-  const arrowPulseTween = scene.tweens.add({
-    targets: arrowText,
-    alpha: {
-      from: legacyTuning.hud.arrowPulseMaxAlpha,
-      to: legacyTuning.hud.arrowPulseMinAlpha
-    },
-    duration: legacyTuning.hud.arrowPulseDurationMs,
-    yoyo: true,
-    repeat: -1,
-    ease: 'Sine.easeInOut'
-  });
+  const arrowPulseTween = reducedMotion
+    ? undefined
+    : scene.tweens.add({
+      targets: arrowText,
+      alpha: {
+        from: legacyTuning.hud.arrowPulseMaxAlpha,
+        to: legacyTuning.hud.arrowPulseMinAlpha
+      },
+      duration: legacyTuning.hud.arrowPulseDurationMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
   return {
     setElapsedMs(elapsedMs: number): void {
@@ -308,7 +332,7 @@ export const createHudRenderer = (scene: Phaser.Scene, episode: MazeEpisode): Hu
       for (const tween of introTweens) {
         tween.remove();
       }
-      arrowPulseTween.remove();
+      arrowPulseTween?.remove();
       timerText.destroy();
       difficultyText.destroy();
       arrowText.destroy();
@@ -323,8 +347,10 @@ export const createDemoStatusHud = (
   scene: Phaser.Scene,
   x: number,
   y: number,
-  maxWidth: number
+  maxWidth: number,
+  options: HudRenderOptions = {}
 ): DemoStatusHandle => {
+  const reducedMotion = options.reducedMotion === true;
   const compact = scene.scale.width <= legacyTuning.menu.layout.narrowBreakpoint;
   const width = Phaser.Math.Clamp(
     maxWidth * legacyTuning.menu.status.maxWidthRatio,
@@ -365,14 +391,16 @@ export const createDemoStatusHud = (
     .setDepth(11)
     .setAlpha(0.74);
 
-  const pulseTween = scene.tweens.add({
-    targets: [plate, text, meta],
-    alpha: { from: 0.78, to: 1 },
-    duration: legacyTuning.menu.status.pulseDurationMs,
-    yoyo: true,
-    repeat: -1,
-    ease: 'Sine.easeInOut'
-  });
+  const pulseTween = reducedMotion
+    ? undefined
+    : scene.tweens.add({
+      targets: [plate, text, meta],
+      alpha: { from: 0.78, to: 1 },
+      duration: legacyTuning.menu.status.pulseDurationMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
   return {
     setState(cue: DemoWalkerCue, episode: MazeEpisode): void {
@@ -391,7 +419,7 @@ export const createDemoStatusHud = (
       }
     },
     destroy(): void {
-      pulseTween.remove();
+      pulseTween?.remove();
       shadow.destroy();
       plate.destroy();
       text.destroy();

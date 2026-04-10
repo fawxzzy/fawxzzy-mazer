@@ -14,6 +14,12 @@ import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 import { mazerStorage } from '../storage/mazerStorage';
 import { buildWinSummaryData, resolveElapsedMs, type GameSceneStartData, type ReplaySnapshot } from './gameSceneSummary';
+import {
+  pollMoveRepeatDirection,
+  resetMoveRepeatState,
+  type MoveDirection,
+  type MoveRepeatState
+} from './gameInput';
 
 interface PauseActionData {
   action: 'resume' | 'menu' | 'reset';
@@ -62,6 +68,11 @@ export class GameScene extends Phaser.Scene {
   private readonly moveCooldownMs = legacyTuning.game.playerMovement.cooldownMs;
   private readonly directionSwitchBypassMs = legacyTuning.game.playerMovement.directionSwitchBypassMs;
   private readonly blockedFeedbackCooldownMs = Math.max(110, legacyTuning.game.playerMovement.cooldownMs + 24);
+  private readonly holdRepeatInitialDelayMs = Math.max(155, legacyTuning.game.playerMovement.cooldownMs * 2);
+  private readonly holdRepeatRateMs = legacyTuning.game.playerMovement.cooldownMs;
+  private readonly actorMoveEaseMs = Math.max(54, legacyTuning.game.playerMovement.cooldownMs - 12);
+  private readonly actorMovePulseMs = 120;
+  private readonly actorBumpMs = 92;
   private readonly pauseOverlayDelayMs = 72;
   private readonly winOverlayDelayMs = 320;
   private lastMoveAtMs = 0;
@@ -71,6 +82,18 @@ export class GameScene extends Phaser.Scene {
   private trailIndices: number[] = [];
   private queuedTouchDirection: 0 | 1 | 2 | 3 | null = null;
   private pointerDownAt: Phaser.Math.Vector2 | null = null;
+  private moveRepeatState: MoveRepeatState = {
+    heldDirection: null,
+    nextRepeatAtMs: 0
+  };
+  private reducedMotion = false;
+  private actorMotionFromIndex = 0;
+  private actorMotionToIndex = 0;
+  private actorMotionStartedAtMs = Number.NEGATIVE_INFINITY;
+  private actorMotionDirection: MoveDirection | null = null;
+  private actorPulseStartedAtMs = Number.NEGATIVE_INFINITY;
+  private actorBumpDirection: MoveDirection | null = null;
+  private actorBumpStartedAtMs = Number.NEGATIVE_INFINITY;
   private readonly minSwipeDistancePx = legacyTuning.game.playerMovement.minSwipeDistancePx;
   private readonly touchControlsEnabled = window.matchMedia('(pointer: coarse)').matches;
   private hud?: ReturnType<typeof createHudRenderer>;
@@ -91,6 +114,7 @@ export class GameScene extends Phaser.Scene {
 
   public create(data?: GameSceneStartData): void {
     attachSfxInputUnlock(this);
+    this.reducedMotion = mazerStorage.getSettings().reducedMotion;
     this.bootstrapRun(data);
 
     this.events.on('pause-action', this.handlePauseAction, this);
@@ -127,7 +151,7 @@ export class GameScene extends Phaser.Scene {
         : 'explore';
     this.boardRenderer.drawStart(presentationCue);
     this.boardRenderer.drawGoal(presentationCue);
-    this.boardRenderer.drawActor(this.playerIndex, this.lastMoveDirection, presentationCue);
+    this.renderActor(time, presentationCue);
 
     if (!this.paused && this.overlayKey !== 'WinScene') {
       this.hud?.setElapsedMs(resolveElapsedMs(this.timerStarted, this.timerStartMs, time));
@@ -147,6 +171,7 @@ export class GameScene extends Phaser.Scene {
 
   private bootstrapRun(startData?: GameSceneStartData): void {
     this.disposeRunState();
+    this.reducedMotion = mazerStorage.getSettings().reducedMotion;
     this.overlayKey = null;
     this.paused = false;
     this.completionPending = false;
@@ -158,6 +183,12 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
     this.bufferedDirection = null;
     this.moveCount = 0;
+    resetMoveRepeatState(this.moveRepeatState);
+    this.actorMotionStartedAtMs = Number.NEGATIVE_INFINITY;
+    this.actorMotionDirection = null;
+    this.actorPulseStartedAtMs = Number.NEGATIVE_INFINITY;
+    this.actorBumpDirection = null;
+    this.actorBumpStartedAtMs = Number.NEGATIVE_INFINITY;
 
     const resolvedRun = this.resolveRun(startData);
     this.runDifficulty = resolvedRun.difficulty;
@@ -192,14 +223,20 @@ export class GameScene extends Phaser.Scene {
     this.boardRenderer.drawBase();
     this.boardRenderer.drawStart('spawn');
     this.boardRenderer.drawGoal();
-    this.boardRenderer.startAmbientMotion(1.25, 2800);
+    if (!this.reducedMotion) {
+      this.boardRenderer.startAmbientMotion(1.25, 2800);
+    }
 
     this.playerIndex = resolvedRun.maze.raster.startIndex;
+    this.actorMotionFromIndex = this.playerIndex;
+    this.actorMotionToIndex = this.playerIndex;
     this.trailIndices = [this.playerIndex];
     this.boardRenderer.drawTrail(this.trailIndices);
     this.boardRenderer.drawActor(this.playerIndex, null, 'spawn');
 
-    this.hud = createHudRenderer(this, resolvedRun.maze);
+    this.hud = createHudRenderer(this, resolvedRun.maze, {
+      reducedMotion: this.reducedMotion
+    });
     this.hud.setElapsedMs(0);
     this.hud.setMoveCount(0);
     this.hud.setGoalArrow(this.playerIndex);
@@ -287,9 +324,10 @@ export class GameScene extends Phaser.Scene {
     this.queuedTouchDirection = null;
     this.pointerDownAt = null;
     this.completionPending = false;
+    resetMoveRepeatState(this.moveRepeatState);
   }
 
-  private readDirection(): 0 | 1 | 2 | 3 | null {
+  private readDirection(): MoveDirection | null {
     if (this.wasd?.r && Phaser.Input.Keyboard.JustDown(this.wasd.r)) {
       playSfx('confirm');
       this.scene.restart(this.currentRunData);
@@ -312,6 +350,12 @@ export class GameScene extends Phaser.Scene {
       return null;
     }
 
+    if (this.bufferedDirection !== null) {
+      const direction = this.bufferedDirection;
+      this.bufferedDirection = null;
+      return direction;
+    }
+
     const upPressed = this.cursors?.up.isDown || this.wasd?.w.isDown;
     const downPressed = this.cursors?.down.isDown || this.wasd?.s.isDown;
     const leftPressed = this.cursors?.left.isDown || this.wasd?.a.isDown;
@@ -327,21 +371,26 @@ export class GameScene extends Phaser.Scene {
     const aTap = this.wasd?.a ? Phaser.Input.Keyboard.JustDown(this.wasd.a) : false;
     const dTap = this.wasd?.d ? Phaser.Input.Keyboard.JustDown(this.wasd.d) : false;
 
-    if (upTap || wTap) this.bufferedDirection = 0;
-    else if (downTap || sTap) this.bufferedDirection = 1;
-    else if (leftTap || aTap) this.bufferedDirection = 2;
-    else if (rightTap || dTap) this.bufferedDirection = 3;
+    let tappedDirection: MoveDirection | null = null;
+    if (upTap || wTap) tappedDirection = 0;
+    else if (downTap || sTap) tappedDirection = 1;
+    else if (leftTap || aTap) tappedDirection = 2;
+    else if (rightTap || dTap) tappedDirection = 3;
 
-    if (this.bufferedDirection !== null) {
-      const direction = this.bufferedDirection;
-      this.bufferedDirection = null;
-      return direction;
+    const keyboardDirection = pollMoveRepeatDirection(
+      this.moveRepeatState,
+      this.time.now,
+      tappedDirection,
+      Boolean(upPressed),
+      Boolean(downPressed),
+      Boolean(leftPressed),
+      Boolean(rightPressed),
+      this.holdRepeatInitialDelayMs,
+      this.holdRepeatRateMs
+    );
+    if (keyboardDirection !== null) {
+      return keyboardDirection;
     }
-
-    if (upPressed) return 0;
-    if (downPressed) return 1;
-    if (leftPressed) return 2;
-    if (rightPressed) return 3;
 
     return this.consumeTouchDirection();
   }
@@ -384,13 +433,13 @@ export class GameScene extends Phaser.Scene {
     this.queuedTouchDirection = deltaY > 0 ? 1 : 0;
   }
 
-  private consumeTouchDirection(): 0 | 1 | 2 | 3 | null {
+  private consumeTouchDirection(): MoveDirection | null {
     const direction = this.queuedTouchDirection;
     this.queuedTouchDirection = null;
     return direction;
   }
 
-  private tryMove(direction: 0 | 1 | 2 | 3): void {
+  private tryMove(direction: MoveDirection): void {
     const maze = this.maze;
     const boardRenderer = this.boardRenderer;
     if (!maze || !boardRenderer) {
@@ -409,6 +458,7 @@ export class GameScene extends Phaser.Scene {
     const nextIndex = getNeighborIndex(this.playerIndex, maze.raster.width, maze.raster.height, direction);
     if (nextIndex === -1 || !isTileFloor(maze.raster.tiles, nextIndex)) {
       this.lastMoveDirection = direction;
+      this.triggerBlockedFeedback(direction);
       if (this.time.now - this.lastBlockedAtMs >= this.blockedFeedbackCooldownMs) {
         this.lastBlockedAtMs = this.time.now;
         playSfx('blocked');
@@ -421,16 +471,25 @@ export class GameScene extends Phaser.Scene {
       this.timerStartMs = this.time.now;
     }
 
+    const previousIndex = this.playerIndex;
     this.playerIndex = nextIndex;
     this.lastMoveAtMs = this.time.now;
     this.lastMoveDirection = direction;
     this.moveCount += 1;
+    this.actorMotionFromIndex = previousIndex;
+    this.actorMotionToIndex = nextIndex;
+    this.actorMotionDirection = direction;
+    this.actorMotionStartedAtMs = this.time.now;
+    this.actorPulseStartedAtMs = this.time.now;
+    this.actorBumpDirection = null;
     this.trailIndices.push(this.playerIndex);
     if (this.trailIndices.length > legacyTuning.board.trail.maxLength) {
       this.trailIndices.shift();
     }
     boardRenderer.drawTrail(this.trailIndices);
-    boardRenderer.drawActor(this.playerIndex, direction);
+    if (this.reducedMotion) {
+      boardRenderer.drawActor(this.playerIndex, direction, this.playerIndex === maze.raster.endIndex ? 'goal' : 'explore', 0.08);
+    }
     this.hud?.setMoveCount(this.moveCount);
     this.hud?.setGoalArrow(this.playerIndex);
     playSfx('move');
@@ -451,14 +510,17 @@ export class GameScene extends Phaser.Scene {
       this.setReplaySnapshot(true);
       this.hud?.setComplete(true);
       boardRenderer.drawTrail(this.trailIndices, { cue: 'goal' });
-      this.cameras.main.flash(180, 196, 255, 212, false);
-      this.tweens.add({
-        targets: this.cameras.main,
-        zoom: { from: 1, to: 1.02 },
-        duration: 120,
-        yoyo: true,
-        ease: 'Sine.easeOut'
-      });
+      this.actorPulseStartedAtMs = this.time.now - 26;
+      if (!this.reducedMotion) {
+        this.cameras.main.flash(180, 196, 255, 212, false);
+        this.tweens.add({
+          targets: this.cameras.main,
+          zoom: { from: 1, to: 1.024 },
+          duration: 108,
+          yoyo: true,
+          ease: 'Sine.easeOut'
+        });
+      }
       const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount, progressUpdate);
       this.pendingOverlayLaunch?.remove(false);
       this.pendingOverlayLaunch = this.time.delayedCall(this.winOverlayDelayMs, () => {
@@ -469,6 +531,76 @@ export class GameScene extends Phaser.Scene {
         }
       });
     }
+  }
+
+  private renderActor(time: number, cue: 'spawn' | 'explore' | 'goal'): void {
+    const boardRenderer = this.boardRenderer;
+    if (!boardRenderer) {
+      return;
+    }
+
+    const pulseBoost = this.resolveActorPulseBoost(time);
+    if (this.reducedMotion) {
+      boardRenderer.drawActor(this.playerIndex, this.lastMoveDirection, cue, pulseBoost);
+      return;
+    }
+
+    if (
+      this.actorMotionDirection !== null
+      && time - this.actorMotionStartedAtMs < this.actorMoveEaseMs
+      && this.actorMotionFromIndex !== this.actorMotionToIndex
+    ) {
+      boardRenderer.drawActorMotion(
+        this.actorMotionFromIndex,
+        this.actorMotionToIndex,
+        (time - this.actorMotionStartedAtMs) / this.actorMoveEaseMs,
+        this.actorMotionDirection,
+        cue,
+        pulseBoost
+      );
+      return;
+    }
+
+    if (this.actorBumpDirection !== null && time - this.actorBumpStartedAtMs < this.actorBumpMs) {
+      const directionOffset = this.resolveBumpOffsetPx(time);
+      const offsetX = this.actorBumpDirection === 2 ? -directionOffset : this.actorBumpDirection === 3 ? directionOffset : 0;
+      const offsetY = this.actorBumpDirection === 0 ? -directionOffset : this.actorBumpDirection === 1 ? directionOffset : 0;
+      boardRenderer.drawActorOffset(this.playerIndex, offsetX, offsetY, this.actorBumpDirection, 'dead-end', pulseBoost);
+      return;
+    }
+
+    boardRenderer.drawActor(this.playerIndex, this.lastMoveDirection, cue, pulseBoost);
+  }
+
+  private resolveActorPulseBoost(time: number): number {
+    const elapsed = time - this.actorPulseStartedAtMs;
+    if (elapsed < 0 || elapsed >= this.actorMovePulseMs) {
+      return 0;
+    }
+
+    const progress = 1 - (elapsed / this.actorMovePulseMs);
+    return 0.1 * progress * progress;
+  }
+
+  private resolveBumpOffsetPx(time: number): number {
+    const boardRenderer = this.boardRenderer;
+    if (!boardRenderer) {
+      return 0;
+    }
+
+    const progress = Phaser.Math.Clamp((time - this.actorBumpStartedAtMs) / this.actorBumpMs, 0, 1);
+    const push = Math.sin(progress * Math.PI) * boardRenderer.getTileSize() * 0.12;
+    return push;
+  }
+
+  private triggerBlockedFeedback(direction: MoveDirection): void {
+    if (this.reducedMotion) {
+      return;
+    }
+
+    this.actorBumpDirection = direction;
+    this.actorBumpStartedAtMs = this.time.now;
+    this.actorPulseStartedAtMs = this.time.now;
   }
 
   private openPause(): void {
@@ -483,6 +615,8 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveDirection = null;
     this.bufferedDirection = null;
     this.queuedTouchDirection = null;
+    this.actorBumpDirection = null;
+    resetMoveRepeatState(this.moveRepeatState);
     this.pendingOverlayLaunch?.remove(false);
     this.pendingOverlayLaunch = this.time.delayedCall(this.pauseOverlayDelayMs, () => {
       this.pendingOverlayLaunch = undefined;
@@ -505,6 +639,8 @@ export class GameScene extends Phaser.Scene {
       this.overlayKey = null;
       this.lastMoveAtMs = this.time.now - this.moveCooldownMs;
       this.lastMoveDirection = null;
+      this.actorBumpDirection = null;
+      resetMoveRepeatState(this.moveRepeatState);
       this.scene.stop('PauseScene');
       return;
     }

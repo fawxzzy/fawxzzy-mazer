@@ -1,9 +1,28 @@
 import { describe, expect, test } from 'vitest';
 
 import { generateMaze } from '../../src/domain/maze';
+import { pollMoveRepeatDirection, type MoveRepeatState } from '../../src/scenes/gameInput';
 import { buildWinSummaryData, resolveElapsedMs } from '../../src/scenes/gameSceneSummary';
 
 describe('game scene completion loop', () => {
+  test('hold-to-move repeat stays bounded with a short delay and stable cadence', () => {
+    const state: MoveRepeatState = {
+      heldDirection: null,
+      nextRepeatAtMs: 0
+    };
+
+    expect(pollMoveRepeatDirection(state, 0, 3, false, false, false, true, 160, 76)).toBe(3);
+    expect(state.heldDirection).toBe(3);
+    expect(pollMoveRepeatDirection(state, 120, null, false, false, false, true, 160, 76)).toBeNull();
+    expect(pollMoveRepeatDirection(state, 160, null, false, false, false, true, 160, 76)).toBe(3);
+    expect(pollMoveRepeatDirection(state, 200, null, false, false, false, true, 160, 76)).toBeNull();
+    expect(pollMoveRepeatDirection(state, 236, null, false, false, false, true, 160, 76)).toBe(3);
+    expect(pollMoveRepeatDirection(state, 240, 0, true, false, false, true, 160, 76)).toBe(0);
+    expect(pollMoveRepeatDirection(state, 260, null, true, false, false, false, 160, 76)).toBeNull();
+    expect(pollMoveRepeatDirection(state, 420, null, false, false, false, false, 160, 76)).toBeNull();
+    expect(state.heldDirection).toBeNull();
+  });
+
   test('keeps elapsed time at zero until the first legal move starts the run timer', () => {
     expect(resolveElapsedMs(false, 0, 5_000)).toBe(0);
     expect(resolveElapsedMs(true, 1_250, 5_000)).toBe(3_750);

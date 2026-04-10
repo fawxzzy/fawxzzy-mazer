@@ -124,6 +124,10 @@ export class BoardRenderer {
     this.episode = episode;
   }
 
+  public getTileSize(): number {
+    return this.layout.tileSize;
+  }
+
   private tileX(index: number): number {
     return this.layout.boardX + (xFromIndex(index, this.episode.raster.width) * this.layout.tileSize);
   }
@@ -718,14 +722,19 @@ export class BoardRenderer {
     }
   }
 
-  public drawActor(index: number, direction: 0 | 1 | 2 | 3 | null = null, cue: DemoWalkerCue = 'explore'): void {
+  public drawActor(
+    index: number,
+    direction: 0 | 1 | 2 | 3 | null = null,
+    cue: DemoWalkerCue = 'explore',
+    pulseBoost = 0
+  ): void {
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
     const tileX = this.tileX(index);
     const tileY = this.tileY(index);
     const centerX = tileX + tileSize / 2;
     const centerY = tileY + tileSize / 2;
-    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now);
+    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now, pulseBoost);
   }
 
   public drawActorMotion(
@@ -733,7 +742,8 @@ export class BoardRenderer {
     toIndex: number,
     progress: number,
     direction: 0 | 1 | 2 | 3 | null = null,
-    cue: DemoWalkerCue = 'explore'
+    cue: DemoWalkerCue = 'explore',
+    pulseBoost = 0
   ): void {
     const { tileSize } = this.layout;
     const now = this.scene.time.now;
@@ -747,7 +757,24 @@ export class BoardRenderer {
     const centerY = Phaser.Math.Linear(fromTileY + (tileSize / 2), toTileY + (tileSize / 2), easedProgress);
     const tileX = Phaser.Math.Linear(fromTileX, toTileX, easedProgress);
     const tileY = Phaser.Math.Linear(fromTileY, toTileY, easedProgress);
-    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now);
+    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now, pulseBoost);
+  }
+
+  public drawActorOffset(
+    index: number,
+    offsetX: number,
+    offsetY: number,
+    direction: 0 | 1 | 2 | 3 | null = null,
+    cue: DemoWalkerCue = 'dead-end',
+    pulseBoost = 0
+  ): void {
+    const { tileSize } = this.layout;
+    const now = this.scene.time.now;
+    const tileX = this.tileX(index);
+    const tileY = this.tileY(index);
+    const centerX = tileX + (tileSize / 2) + offsetX;
+    const centerY = tileY + (tileSize / 2) + offsetY;
+    this.drawActorAt(centerX, centerY, tileX + offsetX, tileY + offsetY, tileSize, direction, cue, now, pulseBoost);
   }
 
   private drawActorAt(
@@ -758,7 +785,8 @@ export class BoardRenderer {
     tileSize: number,
     direction: 0 | 1 | 2 | 3 | null,
     cue: DemoWalkerCue,
-    now: number
+    now: number,
+    pulseBoost: number
   ): void {
     const actorTuning = legacyTuning.board.actor;
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
@@ -772,13 +800,13 @@ export class BoardRenderer {
     const nudgeScale = facingVector === null ? 0 : (0.62 + (Math.sin(now * 0.012) * 0.38));
     const bodyCenterX = centerX + ((facingVector?.x ?? 0) * tileSize * nudgeRatio * nudgeScale);
     const bodyCenterY = centerY + ((facingVector?.y ?? 0) * tileSize * nudgeRatio * nudgeScale);
-    const actorPulse = cue === 'goal'
+    const actorPulse = (cue === 'goal'
       ? cuePulse * 1.06
       : cue === 'anticipate'
         ? cuePulse * 1.14
-      : cue === 'reacquire'
+        : cue === 'reacquire'
         ? cuePulse * 1.12
-        : cuePulse;
+          : cuePulse) + pulseBoost;
     const haloAlpha = cue === 'goal'
       ? actorTuning.goalHaloAlpha
       : cue === 'anticipate'

@@ -35,6 +35,7 @@ const SILENT_LEVEL = 0.0001;
 class ProceduralSfx {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  private muted = false;
 
   public attach(scene: Phaser.Scene): void {
     if (typeof window === 'undefined' || !window.AudioContext) {
@@ -60,7 +61,7 @@ class ProceduralSfx {
 
   public play(event: SfxEvent): void {
     const context = this.ensureContext();
-    if (!context || context.state !== 'running') {
+    if (!context || context.state !== 'running' || this.muted) {
       return;
     }
 
@@ -261,6 +262,13 @@ class ProceduralSfx {
     }
   }
 
+  public setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.master && this.context) {
+      this.master.gain.setValueAtTime(muted ? 0 : 0.48, this.context.currentTime);
+    }
+  }
+
   private ensureContext(): AudioContext | null {
     if (typeof window === 'undefined' || !window.AudioContext) {
       return null;
@@ -379,4 +387,8 @@ export const attachSfxInputUnlock = (scene: Phaser.Scene): void => {
 
 export const playSfx = (event: SfxEvent): void => {
   proceduralSfx.play(event);
+};
+
+export const setSfxMuted = (muted: boolean): void => {
+  proceduralSfx.setMuted(muted);
 };

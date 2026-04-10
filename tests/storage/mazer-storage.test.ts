@@ -210,6 +210,30 @@ describe('mazer storage', () => {
     expect(persisted.clearsCount).toBe(999_999);
   });
 
+  test('sanitizes stored settings into bounded mute and reduced-motion flags', async () => {
+    const { environment, localStorage } = createEnvironment({
+      localStorage: {
+        [KNOWN_STORAGE_KEYS.settings]: JSON.stringify({
+          muted: 'loud',
+          reducedMotion: true,
+          junk: ['ignore me']
+        })
+      }
+    });
+
+    const storage = new MazerStorage(environment);
+    await storage.bootstrap();
+
+    expect(storage.getSettings()).toEqual({
+      muted: false,
+      reducedMotion: true
+    });
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBe(JSON.stringify({
+      muted: false,
+      reducedMotion: true
+    }));
+  });
+
   test('records personal bests by difficulty and persists the last played size and difficulty', async () => {
     const { environment } = createEnvironment();
     const storage = new MazerStorage(environment);
@@ -320,5 +344,31 @@ describe('mazer storage', () => {
     expect(persisted.clearsCount).toBe(6);
     expect(persisted.lastDifficulty).toBe('brutal');
     expect(persisted.lastSize).toBe('huge');
+  });
+
+  test('persists mute and reduced-motion settings with throttled tiny writes', async () => {
+    vi.useFakeTimers();
+    const { environment, localStorage } = createEnvironment();
+    const storage = new MazerStorage(environment);
+    await storage.bootstrap();
+    const baselineWrites = localStorage.setItemCalls;
+
+    expect(storage.setSettings({ muted: true })).toEqual({
+      muted: true,
+      reducedMotion: false
+    });
+    expect(storage.setSettings({ reducedMotion: true })).toEqual({
+      muted: true,
+      reducedMotion: true
+    });
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBeNull();
+
+    vi.advanceTimersByTime(WRITE_THROTTLE_MS);
+
+    expect(localStorage.setItemCalls).toBe(baselineWrites + 1);
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBe(JSON.stringify({
+      muted: true,
+      reducedMotion: true
+    }));
   });
 });

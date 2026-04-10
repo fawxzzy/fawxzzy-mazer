@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { playSfx } from '../audio/proceduralSfx';
+import { playSfx, setSfxMuted } from '../audio/proceduralSfx';
 import { formatElapsedMs, mazerStorage } from '../storage/mazerStorage';
 import { palette } from '../render/palette';
 import { createMenuButton } from '../ui/menuButton';
@@ -63,9 +63,10 @@ export class OptionsScene extends Phaser.Scene {
     const dangerButtonWidth = compact ? 188 : 202;
 
     const generalTop = contentY - 8;
-    const generalHeight = compact ? 164 : 126;
+    let settings = mazerStorage.getSettings();
+    const generalHeight = compact ? 196 : 164;
     const generalBottom = generalTop + generalHeight;
-    const qaDividerY = generalTop + (compact ? 88 : 68);
+    const qaDividerY = generalTop + (compact ? 120 : 100);
     const dataHeaderY = generalBottom + (compact ? 22 : 20);
     const dataTop = dataHeaderY + 18;
     const dataCollapsedHeight = compact ? 92 : 82;
@@ -116,10 +117,10 @@ export class OptionsScene extends Phaser.Scene {
     this.add
       .text(
         sectionX,
-        generalTop + (compact ? 62 : 50),
+        generalTop + (compact ? 50 : 46),
         compact
-          ? 'Close: Esc, Close, Cancel, or a deliberate backdrop tap.'
-          : 'Close paths: Esc, header Close, footer Cancel, or a deliberate backdrop tap.',
+          ? 'Move to the core. Close with Esc, Close, Cancel, or a deliberate backdrop tap.'
+          : 'Move to the core. Close paths: Esc, header Close, footer Cancel, or a deliberate backdrop tap.',
         {
           color: '#96a0c1',
           fontFamily: 'monospace',
@@ -131,6 +132,50 @@ export class OptionsScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setAlpha(0.8)
       .setDepth(12);
+
+    this.add
+      .text(sectionLeft + 12, generalTop + (compact ? 82 : 74), 'PLAY FEEL', {
+        color: '#86ecad',
+        fontFamily: 'monospace',
+        fontSize: compact ? '10px' : '11px',
+        fontStyle: 'bold'
+      })
+      .setOrigin(0, 0)
+      .setDepth(12)
+      .setAlpha(0.86);
+
+    const motionButton = createMenuButton(this, {
+      x: compact ? sectionX - 72 : sectionX - 84,
+      y: generalTop + (compact ? 106 : 98),
+      label: '',
+      width: compact ? 132 : 148,
+      height: 30,
+      fontSize: 12,
+      tone: 'subtle',
+      onClick: () => {
+        settings = mazerStorage.setSettings({
+          reducedMotion: !settings.reducedMotion
+        });
+        refreshOptionsCopy();
+      }
+    }).setDepth(12);
+
+    const audioButton = createMenuButton(this, {
+      x: compact ? sectionX + 72 : sectionX + 84,
+      y: generalTop + (compact ? 106 : 98),
+      label: '',
+      width: compact ? 132 : 148,
+      height: 30,
+      fontSize: 12,
+      tone: 'subtle',
+      onClick: () => {
+        settings = mazerStorage.setSettings({
+          muted: !settings.muted
+        });
+        setSfxMuted(settings.muted);
+        refreshOptionsCopy();
+      }
+    }).setDepth(12);
 
     this.add
       .rectangle(sectionX, qaDividerY, sectionWidth - 24, 1, palette.board.innerStroke, 0.2)
@@ -327,6 +372,8 @@ export class OptionsScene extends Phaser.Scene {
           .then(() => {
             this.clearBusy = false;
             this.clearConfirmationArmed = false;
+            settings = mazerStorage.getSettings();
+            setSfxMuted(settings.muted);
             feedbackMessage = 'Local Mazer data cleared. Defaults are active again.';
             feedbackColor = '#d7deef';
             refreshOptionsCopy();
@@ -427,6 +474,14 @@ export class OptionsScene extends Phaser.Scene {
         .setDisabled(this.clearBusy)
         .setLabel(this.clearConfirmationArmed ? 'Keep Data' : 'Cancel');
       manualPlayButton.setDisabled(this.clearBusy);
+      motionButton
+        .setDisabled(this.clearBusy)
+        .setLabel(settings.reducedMotion ? 'Motion: Reduced' : 'Motion: Full')
+        .setTone(settings.reducedMotion ? 'default' : 'subtle');
+      audioButton
+        .setDisabled(this.clearBusy)
+        .setLabel(settings.muted ? 'Audio: Muted' : 'Audio: On')
+        .setTone(settings.muted ? 'danger' : 'subtle');
       dataToggleButton
         .setDisabled(this.clearBusy || this.clearConfirmationArmed)
         .setLabel(dataExpanded ? 'Hide' : 'Review');

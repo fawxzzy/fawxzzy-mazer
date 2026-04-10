@@ -23,7 +23,10 @@ export interface RunRecordUpdate {
   progress: MazerProgress;
 }
 
-export interface MazerSettings {}
+export interface MazerSettings {
+  muted: boolean;
+  reducedMotion: boolean;
+}
 
 interface MazerMeta {
   namespace: string;
@@ -90,7 +93,10 @@ const KNOWN_STORAGE_KEYS = {
 const CURRENT_STORAGE_KEYS = new Set<string>(Object.values(KNOWN_STORAGE_KEYS));
 const OWNED_STORAGE_PREFIXES = ['mazer:', 'mazer-', 'mazer_', 'mazer.'] as const;
 const WRITE_THROTTLE_MS = 120;
-const DEFAULT_SETTINGS: MazerSettings = {};
+const DEFAULT_SETTINGS: MazerSettings = {
+  muted: false,
+  reducedMotion: false
+};
 const DEFAULT_META: MazerMeta = {
   namespace: APP_NAMESPACE,
   schemaVersion: STORAGE_VERSION
@@ -148,6 +154,10 @@ const cloneProgress = (progress: MazerProgress): MazerProgress => ({
 
 const cloneSettings = (settings: MazerSettings): MazerSettings => ({ ...settings });
 
+const sanitizeBoolean = (value: unknown, fallback: boolean): boolean => (
+  typeof value === 'boolean' ? value : fallback
+);
+
 const sanitizeMetric = (value: unknown): number | null => {
   if (typeof value !== 'number') {
     return null;
@@ -198,10 +208,17 @@ const safeJsonParse = (value: string | null): unknown => {
 
 const sanitizeSettings = (value: unknown): MazerSettings | null => {
   if (value === undefined) {
-    return DEFAULT_SETTINGS;
+    return cloneSettings(DEFAULT_SETTINGS);
   }
 
-  return isPlainObject(value) ? {} : null;
+  if (!isPlainObject(value)) {
+    return null;
+  }
+
+  return {
+    muted: sanitizeBoolean(value.muted, DEFAULT_SETTINGS.muted),
+    reducedMotion: sanitizeBoolean(value.reducedMotion, DEFAULT_SETTINGS.reducedMotion)
+  };
 };
 
 const sanitizeMeta = (value: unknown): MazerMeta => {
@@ -270,7 +287,7 @@ export class MazerStorage {
   private pendingAsyncCleanup?: Promise<void>;
   private readonly pendingWrites = new Map<string, ReturnType<typeof globalThis.setTimeout>>();
   private progress: MazerProgress = cloneProgress(DEFAULT_PROGRESS);
-  private settings: MazerSettings = DEFAULT_SETTINGS;
+  private settings: MazerSettings = cloneSettings(DEFAULT_SETTINGS);
 
   public constructor(private readonly env: MazerStorageEnvironment = resolveEnvironment()) {}
 
@@ -291,7 +308,7 @@ export class MazerStorage {
       }
     }
 
-    this.settings = DEFAULT_SETTINGS;
+    this.settings = cloneSettings(DEFAULT_SETTINGS);
     this.progress = cloneProgress(DEFAULT_PROGRESS);
     this.meta = DEFAULT_META;
 
@@ -310,6 +327,22 @@ export class MazerStorage {
   public getSettings(): MazerSettings {
     this.ensureInitialized();
     return cloneSettings(this.settings);
+  }
+
+  public setSettings(nextSettings: Partial<MazerSettings>): MazerSettings {
+    this.ensureInitialized();
+
+    const sanitized: MazerSettings = {
+      muted: sanitizeBoolean(nextSettings.muted, this.settings.muted),
+      reducedMotion: sanitizeBoolean(nextSettings.reducedMotion, this.settings.reducedMotion)
+    };
+
+    if (serialize(sanitized) !== serialize(this.settings)) {
+      this.settings = sanitized;
+      this.scheduleWrite(KNOWN_STORAGE_KEYS.settings, this.settings);
+    }
+
+    return this.getSettings();
   }
 
   public recordRunResult(result: {
@@ -411,6 +444,10 @@ export class MazerStorage {
         }
 
         this.settings = settings;
+        const serialized = serialize(settings);
+        if (storage.getItem(key) !== serialized) {
+          storage.setItem(key, serialized);
+        }
         continue;
       }
 

@@ -42,11 +42,12 @@ export class MenuScene extends Phaser.Scene {
   public create(): void {
     const { width, height } = this.scale;
     const isNarrow = width <= legacyTuning.menu.layout.narrowBreakpoint;
+    const reducedMotion = mazerStorage.getSettings().reducedMotion;
     attachSfxInputUnlock(this);
     this.transitionLocked = false;
     this.overlayManager = new OverlayManager(this, ['OptionsScene']);
 
-    this.cameras.main.fadeIn(280, 0, 0, 0);
+    this.cameras.main.fadeIn(reducedMotion ? 0 : 280, 0, 0, 0);
     this.drawStarfield(width, height);
 
     let demoSeed: number = legacyTuning.demo.seed;
@@ -85,7 +86,9 @@ export class MenuScene extends Phaser.Scene {
       boardRenderer.drawBase({ showSolutionPath: true });
       boardRenderer.drawStart('spawn');
       boardRenderer.drawGoal();
-      boardRenderer.startAmbientMotion(2.6, 3000);
+      if (!reducedMotion) {
+        boardRenderer.startAmbientMotion(2.6, 3000);
+      }
 
     const boardAura = this.add
       .ellipse(
@@ -207,50 +210,51 @@ export class MenuScene extends Phaser.Scene {
       .setAlpha(0.68)
       .setDepth(10);
 
-    this.titlePulseTween = this.tweens.add({
-      targets: title,
-      alpha: {
-        from: legacyTuning.menu.title.pulseMinAlpha,
-        to: legacyTuning.menu.title.pulseMaxAlpha
-      },
-      duration: legacyTuning.menu.title.pulseDurationMs,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    this.tweens.add({
-      targets: boardAura,
-      alpha: {
-        from: 0.08,
-        to: 0.12
-      },
-      duration: 3600,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    this.tweens.add({
-      targets: boardHalo,
-      alpha: {
-        from: 0.024,
-        to: 0.04
-      },
-      duration: 3200,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    this.tweens.add({
-      targets: boardShade,
-      alpha: {
-        from: legacyTuning.menu.title.pulseMinAlpha * 0.03,
-        to: legacyTuning.menu.title.pulseMaxAlpha * 0.05
-      },
-      duration: legacyTuning.menu.title.pulseDurationMs,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
+    if (!reducedMotion) {
+      this.titlePulseTween = this.tweens.add({
+        targets: title,
+        alpha: {
+          from: legacyTuning.menu.title.pulseMinAlpha,
+          to: legacyTuning.menu.title.pulseMaxAlpha
+        },
+        duration: legacyTuning.menu.title.pulseDurationMs,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      this.tweens.add({
+        targets: boardAura,
+        alpha: {
+          from: 0.08,
+          to: 0.12
+        },
+        duration: 3600,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      this.tweens.add({
+        targets: boardHalo,
+        alpha: {
+          from: 0.024,
+          to: 0.04
+        },
+        duration: 3200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      this.tweens.add({
+        targets: boardShade,
+        alpha: {
+          from: legacyTuning.menu.title.pulseMinAlpha * 0.03,
+          to: legacyTuning.menu.title.pulseMaxAlpha * 0.05
+        },
+        duration: legacyTuning.menu.title.pulseDurationMs,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
       this.tweens.add({
         targets: title,
         y: '+=2',
@@ -259,12 +263,14 @@ export class MenuScene extends Phaser.Scene {
         repeat: -1,
         ease: 'Sine.easeInOut'
       });
+    }
 
       const demoStatusHud = createDemoStatusHud(
         this,
         width / 2,
         Math.max(titleY + (titlePlateHeight / 2) + 26, layout.boardY - 22),
-        layout.boardWidth * 0.9
+        layout.boardWidth * 0.9,
+        { reducedMotion }
       );
 
       let lastCue: DemoWalkerCue = 'spawn';
@@ -390,12 +396,37 @@ export class MenuScene extends Phaser.Scene {
     let selectedSize: MazeSize = normalizeMazeSize(progress.lastSize);
     const lastRun = this.registry.get(LAST_RUN_REGISTRY_KEY) as ReplaySnapshot | undefined;
 
-    const queueTransition = (action: () => void, delayMs = 78): void => {
+      let startTray: Phaser.GameObjects.Container | undefined;
+      let optionsGear: Phaser.GameObjects.Container | undefined;
+      const queueTransition = (action: () => void, delayMs = 78): void => {
       if (this.transitionLocked) {
         return;
       }
 
       this.transitionLocked = true;
+      if (!reducedMotion) {
+        if (startTray) {
+          this.tweens.add({
+            targets: startTray,
+            alpha: 0,
+            scaleX: 0.985,
+            scaleY: 0.985,
+            y: startTray.y + 6,
+            duration: Math.max(90, delayMs + 40),
+            ease: 'Quad.easeIn'
+          });
+        }
+        if (optionsGear) {
+          this.tweens.add({
+            targets: optionsGear,
+            alpha: 0,
+            scaleX: 0.94,
+            scaleY: 0.94,
+            duration: Math.max(80, delayMs),
+            ease: 'Quad.easeIn'
+          });
+        }
+      }
       this.time.delayedCall(delayMs, () => {
         if (this.scene.isActive()) {
           action();
@@ -434,7 +465,7 @@ export class MenuScene extends Phaser.Scene {
         layout.boardY + layout.boardHeight + Math.max(34, isNarrow ? 28 : 34),
         height - (startTrayHeight / 2) - 14
       );
-      const startTray = this.add.container(width / 2, startTrayY).setDepth(12);
+      startTray = this.add.container(width / 2, startTrayY).setDepth(12);
       const trayPlate = this.add
         .rectangle(0, 0, startTrayWidth, startTrayHeight, palette.ui.buttonFill, 0.64)
         .setStrokeStyle(1, palette.board.innerStroke, 0.38);
@@ -442,7 +473,7 @@ export class MenuScene extends Phaser.Scene {
         .rectangle(0, 0, startTrayWidth - 12, startTrayHeight - 12, palette.board.panel, 0.2)
         .setStrokeStyle(1, palette.board.topHighlight, 0.08);
       const trayTitle = this.add
-        .text(0, -startTrayHeight / 2 + 18, 'Pick a Route', {
+        .text(0, -startTrayHeight / 2 + 18, 'Reach the Core', {
           color: '#d7ffde',
           fontFamily: '"Courier New", monospace',
           fontSize: `${isNarrow ? 14 : 15}px`,
@@ -450,7 +481,7 @@ export class MenuScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0.5);
       const trayMeta = this.add
-        .text(0, trayTitle.y + 18, `Reach the red core  /  ${touchPrimary ? 'Swipe or tap' : 'Arrow / WASD'}  /  First move starts timer`, {
+        .text(0, trayTitle.y + 18, `Pick size + difficulty  /  ${touchPrimary ? 'Swipe / tap pause' : 'Arrow / WASD / Esc'}  /  First move starts timer`, {
           color: '#aeb6d9',
           fontFamily: '"Courier New", monospace',
           fontSize: `${isNarrow ? 9 : 10}px`,
@@ -640,17 +671,22 @@ export class MenuScene extends Phaser.Scene {
 
       startTray.setAlpha(0);
       startTray.y += 5;
-      this.tweens.add({
-        targets: startTray,
-        alpha: 1,
-        y: startTray.y - 5,
-        duration: 220,
-        delay: 120,
-        ease: 'Quad.easeOut'
-      });
+      if (reducedMotion) {
+        startTray.setAlpha(1);
+        startTray.y -= 5;
+      } else {
+        this.tweens.add({
+          targets: startTray,
+          alpha: 1,
+          y: startTray.y - 5,
+          duration: 220,
+          delay: 120,
+          ease: 'Quad.easeOut'
+        });
+      }
 
     // CSS shell padding already honors safe-area insets, so the scene only needs a small internal offset.
-    const optionsGear = this.createOptionsGearButton(
+    optionsGear = this.createOptionsGearButton(
       width - legacyTuning.menu.utilityButton.insetSidePx - (legacyTuning.menu.utilityButton.hitSizePx / 2),
       legacyTuning.menu.utilityButton.insetTopPx + (legacyTuning.menu.utilityButton.hitSizePx / 2),
       () => {
@@ -660,16 +696,20 @@ export class MenuScene extends Phaser.Scene {
         this.events.emit(OVERLAY_EVENTS.open, 'OptionsScene');
       }
     );
-    optionsGear.setAlpha(0);
-    optionsGear.y += legacyTuning.menu.utilityButton.introRisePx;
-    this.tweens.add({
-      targets: optionsGear,
-      alpha: legacyTuning.menu.utilityButton.alpha,
-      y: optionsGear.y - legacyTuning.menu.utilityButton.introRisePx,
-      duration: legacyTuning.menu.utilityButton.introDurationMs,
-      ease: 'Quad.easeOut',
-      delay: legacyTuning.menu.utilityButton.introDelayMs
-    });
+    if (reducedMotion) {
+      optionsGear.setAlpha(legacyTuning.menu.utilityButton.alpha);
+    } else {
+      optionsGear.setAlpha(0);
+      optionsGear.y += legacyTuning.menu.utilityButton.introRisePx;
+      this.tweens.add({
+        targets: optionsGear,
+        alpha: legacyTuning.menu.utilityButton.alpha,
+        y: optionsGear.y - legacyTuning.menu.utilityButton.introRisePx,
+        duration: legacyTuning.menu.utilityButton.introDurationMs,
+        ease: 'Quad.easeOut',
+        delay: legacyTuning.menu.utilityButton.introDelayMs
+      });
+    }
 
     this.events.on(OVERLAY_EVENTS.open, (key: string) => this.overlayManager.open(key));
     this.events.on(OVERLAY_EVENTS.close, () => this.overlayManager.closeActive());
@@ -743,6 +783,7 @@ export class MenuScene extends Phaser.Scene {
     y: number,
     onClick: () => void
   ): Phaser.GameObjects.Container {
+    const reducedMotion = mazerStorage.getSettings().reducedMotion;
     const size = legacyTuning.menu.utilityButton.sizePx;
     const hitSize = legacyTuning.menu.utilityButton.hitSizePx;
     const plate = this.add.graphics();
@@ -806,13 +847,17 @@ export class MenuScene extends Phaser.Scene {
 
     const tweenToState = (pressed: boolean): void => {
       this.tweens.killTweensOf(button);
-      this.tweens.add({
-        targets: button,
-        scaleX: pressed ? 0.97 : hovered ? 1.04 : 1,
-        scaleY: pressed ? 0.97 : hovered ? 1.04 : 1,
-        duration: pressed ? 45 : 90,
-        ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
-      });
+      if (reducedMotion) {
+        button.setScale(pressed ? 0.99 : 1);
+      } else {
+        this.tweens.add({
+          targets: button,
+          scaleX: pressed ? 0.97 : hovered ? 1.04 : 1,
+          scaleY: pressed ? 0.97 : hovered ? 1.04 : 1,
+          duration: pressed ? 45 : 90,
+          ease: pressed ? 'Quad.easeOut' : 'Sine.easeOut'
+        });
+      }
       draw(pressed);
     };
 
