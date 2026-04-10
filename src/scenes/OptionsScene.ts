@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { playSfx, setSfxMuted } from '../audio/proceduralSfx';
+import { getMazeSizeLabel } from '../domain/maze';
 import { formatElapsedMs, mazerStorage } from '../storage/mazerStorage';
 import { palette } from '../render/palette';
 import { createMenuButton } from '../ui/menuButton';
@@ -433,19 +434,20 @@ export class OptionsScene extends Phaser.Scene {
 
     const refreshOptionsCopy = (): void => {
       const progress = mazerStorage.getProgress();
-      const fastest = (['chill', 'standard', 'spicy', 'brutal'] as const)
-        .map((difficulty) => ({
-          bestMoves: progress.bestByDifficulty[difficulty].bestMoves,
-          bestTimeMs: progress.bestByDifficulty[difficulty].bestTimeMs,
-          difficulty
-        }))
+      const fastest = (['small', 'medium', 'large', 'huge'] as const)
+        .flatMap((size) => (['chill', 'standard', 'spicy', 'brutal'] as const).map((difficulty) => ({
+          bestMoves: progress.bestByBucket[size][difficulty].bestMoves,
+          bestTimeMs: progress.bestByBucket[size][difficulty].bestTimeMs,
+          difficulty,
+          size
+        })))
         .filter((entry) => entry.bestTimeMs !== null)
         .sort((left, right) => (left.bestTimeMs ?? Number.POSITIVE_INFINITY) - (right.bestTimeMs ?? Number.POSITIVE_INFINITY))[0];
       const dataExpanded = this.dataSectionExpanded || this.clearConfirmationArmed || this.clearBusy;
 
       bestTimeText.setText(
         fastest
-          ? `Best local clear: ${formatElapsedMs(fastest.bestTimeMs ?? 0)} in ${fastest.difficulty.toUpperCase()}${fastest.bestMoves ? ` / ${fastest.bestMoves} moves` : ''}.`
+          ? `Best local clear: ${formatElapsedMs(fastest.bestTimeMs ?? 0)} in ${getMazeSizeLabel(fastest.size).toUpperCase()} / ${fastest.difficulty.toUpperCase()}${fastest.bestMoves ? ` / ${fastest.bestMoves} moves` : ''}.`
           : 'No local run data is stored in this browser yet.'
       );
 

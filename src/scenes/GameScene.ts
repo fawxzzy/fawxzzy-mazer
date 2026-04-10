@@ -13,7 +13,13 @@ import { createHudRenderer } from '../render/hudRenderer';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 import { mazerStorage } from '../storage/mazerStorage';
-import { buildWinSummaryData, resolveElapsedMs, type GameSceneStartData, type ReplaySnapshot } from './gameSceneSummary';
+import {
+  buildRunPerformanceData,
+  buildWinSummaryData,
+  resolveElapsedMs,
+  type GameSceneStartData,
+  type ReplaySnapshot
+} from './gameSceneSummary';
 import {
   pollMoveRepeatDirection,
   resetMoveRepeatState,
@@ -496,10 +502,15 @@ export class GameScene extends Phaser.Scene {
 
     if (this.playerIndex === maze.raster.endIndex) {
       const elapsedMs = resolveElapsedMs(this.timerStarted, this.timerStartMs, this.time.now);
+      const performance = buildRunPerformanceData(maze, elapsedMs, this.moveCount);
       const progressUpdate = mazerStorage.recordRunResult({
         difficulty: this.runDifficulty,
         elapsedMs,
-        moveCount: this.moveCount
+        efficiencyPercent: performance.efficiencyPercent,
+        moveCount: this.moveCount,
+        rank: performance.rank,
+        score: performance.score,
+        size: this.runSize
       });
       playSfx('win');
       this.completionPending = true;
@@ -521,7 +532,7 @@ export class GameScene extends Phaser.Scene {
           ease: 'Sine.easeOut'
         });
       }
-      const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount, progressUpdate);
+      const winSummary = buildWinSummaryData(maze, elapsedMs, this.moveCount, performance, progressUpdate);
       this.pendingOverlayLaunch?.remove(false);
       this.pendingOverlayLaunch = this.time.delayedCall(this.winOverlayDelayMs, () => {
         this.pendingOverlayLaunch = undefined;

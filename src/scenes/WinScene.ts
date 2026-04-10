@@ -21,8 +21,8 @@ export class WinScene extends Phaser.Scene {
       data?.title ?? 'Maze Complete',
       data?.subtitle ?? 'CORE SECURED',
       {
-        heightRatio: 0.76,
-        maxSheetHeight: 470
+        heightRatio: 0.8,
+        maxSheetHeight: 500
       }
     );
     this.actionLocked = false;

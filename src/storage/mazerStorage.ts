@@ -1,24 +1,40 @@
 import type { MazeDifficulty, MazeSize } from '../domain/maze';
 import { normalizeMazeSize } from '../domain/maze';
 
-export interface DifficultyProgress {
+export type RunRank = 'S' | 'A' | 'B' | 'C' | 'D';
+
+export interface MasteryRecord {
+  bestEfficiencyPct: number | null;
   bestMoves: number | null;
+  bestRank: RunRank | null;
+  bestScore: number | null;
   bestTimeMs: number | null;
 }
 
+export type MasteryBucketMap = Record<MazeSize, Record<MazeDifficulty, MasteryRecord>>;
+
 export interface MazerProgress {
-  bestByDifficulty: Record<MazeDifficulty, DifficultyProgress>;
+  bestByBucket: MasteryBucketMap;
   clearsCount: number;
   lastDifficulty: MazeDifficulty;
   lastSize: MazeSize;
 }
 
 export interface RunRecordUpdate {
+  bestEfficiencyPct: number | null;
   bestMoves: number | null;
+  bestRank: RunRank | null;
+  bestScore: number | null;
   bestTimeMs: number | null;
+  isNewBestEfficiency: boolean;
   isNewBestMoves: boolean;
+  isNewBestRank: boolean;
+  isNewBestScore: boolean;
   isNewBestTime: boolean;
+  previousBestEfficiencyPct: number | null;
   previousBestMoves: number | null;
+  previousBestRank: RunRank | null;
+  previousBestScore: number | null;
   previousBestTimeMs: number | null;
   progress: MazerProgress;
 }
@@ -72,6 +88,7 @@ const STORAGE_VERSION = 2;
 const APP_NAMESPACE = `mazer:v${STORAGE_VERSION}`;
 const APP_CACHE_PREFIX = `mazer-v${STORAGE_VERSION}`;
 const DIFFICULTY_ORDER = ['chill', 'standard', 'spicy', 'brutal'] as const satisfies readonly MazeDifficulty[];
+const RANK_ORDER = ['S', 'A', 'B', 'C', 'D'] as const satisfies readonly RunRank[];
 const SIZE_ORDER = ['small', 'medium', 'large', 'huge'] as const satisfies readonly MazeSize[];
 const resolveBaseUrl = (): string => {
   if (typeof document === 'undefined') {
@@ -101,13 +118,41 @@ const DEFAULT_META: MazerMeta = {
   namespace: APP_NAMESPACE,
   schemaVersion: STORAGE_VERSION
 };
-const DEFAULT_PROGRESS: MazerProgress = {
-  bestByDifficulty: {
-    chill: { bestMoves: null, bestTimeMs: null },
-    standard: { bestMoves: null, bestTimeMs: null },
-    spicy: { bestMoves: null, bestTimeMs: null },
-    brutal: { bestMoves: null, bestTimeMs: null }
+const createEmptyMasteryRecord = (): MasteryRecord => ({
+  bestEfficiencyPct: null,
+  bestMoves: null,
+  bestRank: null,
+  bestScore: null,
+  bestTimeMs: null
+});
+const createEmptyBestByBucket = (): MasteryBucketMap => ({
+  small: {
+    chill: createEmptyMasteryRecord(),
+    standard: createEmptyMasteryRecord(),
+    spicy: createEmptyMasteryRecord(),
+    brutal: createEmptyMasteryRecord()
   },
+  medium: {
+    chill: createEmptyMasteryRecord(),
+    standard: createEmptyMasteryRecord(),
+    spicy: createEmptyMasteryRecord(),
+    brutal: createEmptyMasteryRecord()
+  },
+  large: {
+    chill: createEmptyMasteryRecord(),
+    standard: createEmptyMasteryRecord(),
+    spicy: createEmptyMasteryRecord(),
+    brutal: createEmptyMasteryRecord()
+  },
+  huge: {
+    chill: createEmptyMasteryRecord(),
+    standard: createEmptyMasteryRecord(),
+    spicy: createEmptyMasteryRecord(),
+    brutal: createEmptyMasteryRecord()
+  }
+});
+const DEFAULT_PROGRESS: MazerProgress = {
+  bestByBucket: createEmptyBestByBucket(),
   clearsCount: 0,
   lastDifficulty: 'standard',
   lastSize: 'medium'
@@ -140,12 +185,34 @@ const isCurrentCacheName = (cacheName: string): boolean => cacheName.startsWith(
 
 const isOwnedDatabaseName = (name: string): boolean => name.startsWith('mazer:') || name.startsWith('mazer-');
 
+const cloneMasteryRecord = (record: MasteryRecord): MasteryRecord => ({ ...record });
+
 const cloneProgress = (progress: MazerProgress): MazerProgress => ({
-  bestByDifficulty: {
-    chill: { ...progress.bestByDifficulty.chill },
-    standard: { ...progress.bestByDifficulty.standard },
-    spicy: { ...progress.bestByDifficulty.spicy },
-    brutal: { ...progress.bestByDifficulty.brutal }
+  bestByBucket: {
+    small: {
+      chill: cloneMasteryRecord(progress.bestByBucket.small.chill),
+      standard: cloneMasteryRecord(progress.bestByBucket.small.standard),
+      spicy: cloneMasteryRecord(progress.bestByBucket.small.spicy),
+      brutal: cloneMasteryRecord(progress.bestByBucket.small.brutal)
+    },
+    medium: {
+      chill: cloneMasteryRecord(progress.bestByBucket.medium.chill),
+      standard: cloneMasteryRecord(progress.bestByBucket.medium.standard),
+      spicy: cloneMasteryRecord(progress.bestByBucket.medium.spicy),
+      brutal: cloneMasteryRecord(progress.bestByBucket.medium.brutal)
+    },
+    large: {
+      chill: cloneMasteryRecord(progress.bestByBucket.large.chill),
+      standard: cloneMasteryRecord(progress.bestByBucket.large.standard),
+      spicy: cloneMasteryRecord(progress.bestByBucket.large.spicy),
+      brutal: cloneMasteryRecord(progress.bestByBucket.large.brutal)
+    },
+    huge: {
+      chill: cloneMasteryRecord(progress.bestByBucket.huge.chill),
+      standard: cloneMasteryRecord(progress.bestByBucket.huge.standard),
+      spicy: cloneMasteryRecord(progress.bestByBucket.huge.spicy),
+      brutal: cloneMasteryRecord(progress.bestByBucket.huge.brutal)
+    }
   },
   clearsCount: progress.clearsCount,
   lastDifficulty: progress.lastDifficulty,
@@ -167,13 +234,31 @@ const sanitizeMetric = (value: unknown): number | null => {
   return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
 };
 
-const sanitizeDifficultyProgress = (value: unknown): DifficultyProgress => {
+const sanitizePercentage = (value: unknown): number | null => {
+  if (typeof value !== 'number') {
+    return null;
+  }
+
+  const normalized = Math.round(value);
+  return Number.isFinite(normalized) && normalized >= 0 && normalized <= 100 ? normalized : null;
+};
+
+const sanitizeRank = (value: unknown): RunRank | null => (
+  typeof value === 'string' && RANK_ORDER.includes(value as RunRank)
+    ? value as RunRank
+    : null
+);
+
+const sanitizeMasteryRecord = (value: unknown): MasteryRecord => {
   if (!isPlainObject(value)) {
-    return { bestMoves: null, bestTimeMs: null };
+    return createEmptyMasteryRecord();
   }
 
   return {
+    bestEfficiencyPct: sanitizePercentage(value.bestEfficiencyPct),
     bestMoves: sanitizeMetric(value.bestMoves),
+    bestRank: sanitizeRank(value.bestRank),
+    bestScore: sanitizeMetric(value.bestScore),
     bestTimeMs: sanitizeMetric(value.bestTimeMs)
   };
 };
@@ -241,7 +326,6 @@ const sanitizeProgress = (value: unknown): MazerProgress | null => {
     return null;
   }
 
-  const bestByDifficulty = isPlainObject(value.bestByDifficulty) ? value.bestByDifficulty : {};
   const lastDifficulty = typeof value.lastDifficulty === 'string' && DIFFICULTY_ORDER.includes(value.lastDifficulty as MazeDifficulty)
     ? value.lastDifficulty as MazeDifficulty
     : DEFAULT_PROGRESS.lastDifficulty;
@@ -251,13 +335,34 @@ const sanitizeProgress = (value: unknown): MazerProgress | null => {
   const clearsCount = typeof value.clearsCount === 'number' && Number.isFinite(value.clearsCount) && value.clearsCount >= 0
     ? Math.min(999_999, Math.round(value.clearsCount))
     : 0;
+  const bestByBucket = isPlainObject(value.bestByBucket) ? value.bestByBucket : {};
 
   return {
-    bestByDifficulty: {
-      chill: sanitizeDifficultyProgress(bestByDifficulty.chill),
-      standard: sanitizeDifficultyProgress(bestByDifficulty.standard),
-      spicy: sanitizeDifficultyProgress(bestByDifficulty.spicy),
-      brutal: sanitizeDifficultyProgress(bestByDifficulty.brutal)
+    bestByBucket: {
+      small: {
+        chill: sanitizeMasteryRecord(isPlainObject(bestByBucket.small) ? bestByBucket.small.chill : undefined),
+        standard: sanitizeMasteryRecord(isPlainObject(bestByBucket.small) ? bestByBucket.small.standard : undefined),
+        spicy: sanitizeMasteryRecord(isPlainObject(bestByBucket.small) ? bestByBucket.small.spicy : undefined),
+        brutal: sanitizeMasteryRecord(isPlainObject(bestByBucket.small) ? bestByBucket.small.brutal : undefined)
+      },
+      medium: {
+        chill: sanitizeMasteryRecord(isPlainObject(bestByBucket.medium) ? bestByBucket.medium.chill : undefined),
+        standard: sanitizeMasteryRecord(isPlainObject(bestByBucket.medium) ? bestByBucket.medium.standard : undefined),
+        spicy: sanitizeMasteryRecord(isPlainObject(bestByBucket.medium) ? bestByBucket.medium.spicy : undefined),
+        brutal: sanitizeMasteryRecord(isPlainObject(bestByBucket.medium) ? bestByBucket.medium.brutal : undefined)
+      },
+      large: {
+        chill: sanitizeMasteryRecord(isPlainObject(bestByBucket.large) ? bestByBucket.large.chill : undefined),
+        standard: sanitizeMasteryRecord(isPlainObject(bestByBucket.large) ? bestByBucket.large.standard : undefined),
+        spicy: sanitizeMasteryRecord(isPlainObject(bestByBucket.large) ? bestByBucket.large.spicy : undefined),
+        brutal: sanitizeMasteryRecord(isPlainObject(bestByBucket.large) ? bestByBucket.large.brutal : undefined)
+      },
+      huge: {
+        chill: sanitizeMasteryRecord(isPlainObject(bestByBucket.huge) ? bestByBucket.huge.chill : undefined),
+        standard: sanitizeMasteryRecord(isPlainObject(bestByBucket.huge) ? bestByBucket.huge.standard : undefined),
+        spicy: sanitizeMasteryRecord(isPlainObject(bestByBucket.huge) ? bestByBucket.huge.spicy : undefined),
+        brutal: sanitizeMasteryRecord(isPlainObject(bestByBucket.huge) ? bestByBucket.huge.brutal : undefined)
+      }
     },
     clearsCount,
     lastDifficulty,
@@ -348,37 +453,63 @@ export class MazerStorage {
   public recordRunResult(result: {
     difficulty: MazeDifficulty;
     elapsedMs: number;
+    efficiencyPercent: number;
     moveCount: number;
+    rank: RunRank;
+    score: number;
+    size: MazeSize;
   }): RunRecordUpdate {
     this.ensureInitialized();
 
     const elapsedMs = sanitizeMetric(result.elapsedMs);
+    const efficiencyPercent = sanitizePercentage(result.efficiencyPercent);
     const moveCount = sanitizeMetric(result.moveCount);
+    const rank = sanitizeRank(result.rank);
+    const score = sanitizeMetric(result.score);
     if (!elapsedMs || !moveCount) {
       const snapshot = this.getProgress();
-      const bucket = snapshot.bestByDifficulty[result.difficulty];
+      const bucket = snapshot.bestByBucket[result.size][result.difficulty];
       return {
+        bestEfficiencyPct: bucket.bestEfficiencyPct,
         bestMoves: bucket.bestMoves,
+        bestRank: bucket.bestRank,
+        bestScore: bucket.bestScore,
         bestTimeMs: bucket.bestTimeMs,
+        isNewBestEfficiency: false,
         isNewBestMoves: false,
+        isNewBestRank: false,
+        isNewBestScore: false,
         isNewBestTime: false,
+        previousBestEfficiencyPct: bucket.bestEfficiencyPct,
         previousBestMoves: bucket.bestMoves,
+        previousBestRank: bucket.bestRank,
+        previousBestScore: bucket.bestScore,
         previousBestTimeMs: bucket.bestTimeMs,
         progress: snapshot
       };
     }
 
     const nextProgress = cloneProgress(this.progress);
-    const bucket = nextProgress.bestByDifficulty[result.difficulty];
+    const bucket = nextProgress.bestByBucket[result.size][result.difficulty];
+    const previousBestEfficiencyPct = bucket.bestEfficiencyPct;
     const previousBestTimeMs = bucket.bestTimeMs;
     const previousBestMoves = bucket.bestMoves;
+    const previousBestRank = bucket.bestRank;
+    const previousBestScore = bucket.bestScore;
+    const isNewBestEfficiency = efficiencyPercent !== null && (previousBestEfficiencyPct === null || efficiencyPercent > previousBestEfficiencyPct);
     const isNewBestTime = previousBestTimeMs === null || elapsedMs < previousBestTimeMs;
     const isNewBestMoves = previousBestMoves === null || moveCount < previousBestMoves;
+    const isNewBestRank = rank !== null && (previousBestRank === null || RANK_ORDER.indexOf(rank) < RANK_ORDER.indexOf(previousBestRank));
+    const isNewBestScore = score !== null && (previousBestScore === null || score > previousBestScore);
 
+    bucket.bestEfficiencyPct = isNewBestEfficiency ? efficiencyPercent : previousBestEfficiencyPct;
     bucket.bestTimeMs = isNewBestTime ? elapsedMs : previousBestTimeMs;
     bucket.bestMoves = isNewBestMoves ? moveCount : previousBestMoves;
+    bucket.bestRank = isNewBestRank ? rank : previousBestRank;
+    bucket.bestScore = isNewBestScore ? score : previousBestScore;
     nextProgress.clearsCount += 1;
     nextProgress.lastDifficulty = result.difficulty;
+    nextProgress.lastSize = normalizeMazeSize(result.size);
 
     if (serialize(nextProgress) !== serialize(this.progress)) {
       this.progress = nextProgress;
@@ -386,11 +517,20 @@ export class MazerStorage {
     }
 
     return {
+      bestEfficiencyPct: bucket.bestEfficiencyPct,
       bestMoves: bucket.bestMoves,
+      bestRank: bucket.bestRank,
+      bestScore: bucket.bestScore,
       bestTimeMs: bucket.bestTimeMs,
+      isNewBestEfficiency,
       isNewBestMoves,
+      isNewBestRank,
+      isNewBestScore,
       isNewBestTime,
+      previousBestEfficiencyPct,
       previousBestMoves,
+      previousBestRank,
+      previousBestScore,
       previousBestTimeMs,
       progress: this.getProgress()
     };

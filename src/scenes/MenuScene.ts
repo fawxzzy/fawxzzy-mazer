@@ -18,7 +18,7 @@ import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
 import { OverlayManager } from '../ui/overlayManager';
 import { attachSfxInputUnlock, playSfx } from '../audio/proceduralSfx';
 import { createMenuButton, type MenuButtonHandle } from '../ui/menuButton';
-import { mazerStorage } from '../storage/mazerStorage';
+import { formatElapsedMs, mazerStorage, type MasteryRecord } from '../storage/mazerStorage';
 import type { GameSceneStartData, ReplaySnapshot } from './gameSceneSummary';
 
 const OVERLAY_EVENTS = {
@@ -459,8 +459,8 @@ export class MenuScene extends Phaser.Scene {
       const touchPrimary = window.matchMedia('(pointer: coarse)').matches;
       const startTrayWidth = Math.min(layout.boardWidth * 0.94, width - 28);
       const startTrayHeight = isNarrow
-        ? (lastRun ? 338 : 280)
-        : (lastRun ? 298 : 248);
+        ? (lastRun ? 354 : 296)
+        : (lastRun ? 314 : 264);
       const startTrayY = Math.min(
         layout.boardY + layout.boardHeight + Math.max(34, isNarrow ? 28 : 34),
         height - (startTrayHeight / 2) - 14
@@ -503,6 +503,20 @@ export class MenuScene extends Phaser.Scene {
         )
         .setOrigin(0.5, 0.5)
         .setAlpha(0.82);
+      const trayMastery = this.add
+        .text(
+          0,
+          trayProgress.y + 18,
+          '',
+          {
+            color: '#c8ffd0',
+            fontFamily: '"Courier New", monospace',
+            fontSize: `${isNarrow ? 8 : 9}px`,
+            align: 'center'
+          }
+        )
+        .setOrigin(0.5, 0.5)
+        .setAlpha(0.74);
 
       const difficultyButtons: MenuButtonHandle[] = [];
       const difficultySpecs: Array<{ difficulty: MazeDifficulty; label: string }> = [
@@ -521,7 +535,7 @@ export class MenuScene extends Phaser.Scene {
       const buttonWidth = isNarrow ? 112 : 118;
       const buttonHeight = 34;
       const difficultySpacingX = isNarrow ? 120 : 126;
-      const difficultyTopY = trayProgress.y + 32;
+      const difficultyTopY = trayMastery.y + 28;
       difficultySpecs.forEach((spec, index) => {
         const col = index % 2;
         const row = Math.floor(index / 2);
@@ -606,10 +620,12 @@ export class MenuScene extends Phaser.Scene {
 
       const refreshSelectionUi = (): void => {
         const surprise = resolveSurpriseSelection(progress.clearsCount + 1);
+        const mastery = progress.bestByBucket[selectedSize][selectedDifficulty];
         trayProgress.setText(
           `Selected ${selectedDifficulty.toUpperCase()} / ${getMazeSizeLabel(selectedSize).toUpperCase()}`
           + `  /  Clears ${progress.clearsCount}`
         );
+        trayMastery.setText(formatMenuMasteryHint(mastery));
         difficultyButtons.forEach((button, index) => {
           button.setTone(difficultySpecs[index].difficulty === selectedDifficulty ? 'default' : 'subtle');
         });
@@ -628,6 +644,7 @@ export class MenuScene extends Phaser.Scene {
         trayTitle,
         trayMeta,
         trayProgress,
+        trayMastery,
         ...difficultyButtons,
         sizeLabel,
         ...sizeButtons,
@@ -1026,4 +1043,14 @@ export const resolveSurpriseSelection = (index: number): { difficulty: MazeDiffi
     difficulty: cycle.difficulty,
     size: cycle.size
   };
+};
+
+const formatMenuMasteryHint = (mastery: MasteryRecord): string => {
+  if (mastery.bestScore === null || mastery.bestTimeMs === null || mastery.bestMoves === null) {
+    return 'PB pending / first clear sets score, efficiency, and rank';
+  }
+
+  const rank = mastery.bestRank ?? 'D';
+  const efficiency = mastery.bestEfficiencyPct === null ? '--' : `${mastery.bestEfficiencyPct}%`;
+  return `PB ${rank} / ${mastery.bestScore} / ${efficiency} / ${formatElapsedMs(mastery.bestTimeMs)} / ${mastery.bestMoves} MV`;
 };

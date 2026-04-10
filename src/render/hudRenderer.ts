@@ -121,6 +121,7 @@ export const createHudRenderer = (
   const panelRight = panelLeft + panelWidth;
   const metaTextY = Math.round(panelHeight * 0.46);
   const hintTextY = panelHeight - (ultraCompact ? 15 : compact ? 17 : 18);
+  const optimalPathLength = Math.max(1, episode.raster.pathIndices.length - 1);
   const normalHintText = isTouchPrimary
     ? (ultraCompact ? 'Reach red core / Swipe / First move starts' : compact ? 'Reach red core / Swipe / First move starts / Tap pause' : 'Reach the red core / Swipe to move / First move starts timer / Tap to pause')
     : (ultraCompact ? 'Reach red core / Arrows+WASD / First move starts' : compact ? 'Reach red core / Arrow+WASD / First move starts / Esc pause' : 'Reach the red core / Arrow or WASD / First move starts timer / Esc pause');
@@ -228,6 +229,23 @@ export const createHudRenderer = (
     .setScrollFactor(0)
     .setDepth(1000);
 
+  const targetText = scene.add
+    .text(
+      scene.scale.width / 2,
+      metaTextY,
+      compact ? `OPT ${optimalPathLength}` : `OPTIMAL ${optimalPathLength}`,
+      {
+        color: toCssColor(palette.hud.hintText),
+        fontFamily: '"Courier New", monospace',
+        fontSize: `${metaFontPx}px`,
+        fontStyle: 'bold'
+      }
+    )
+    .setOrigin(0.5, 0)
+    .setScrollFactor(0)
+    .setDepth(1000)
+    .setAlpha(0.82);
+
   const hintText = scene.add
     .text(
       scene.scale.width / 2,
@@ -245,7 +263,7 @@ export const createHudRenderer = (
     .setScrollFactor(0)
     .setDepth(1000);
 
-  const hudElements = [timerText, difficultyText, arrowText, movesText, seedText, hintText];
+  const hudElements = [timerText, difficultyText, arrowText, movesText, seedText, targetText, hintText];
   const introTweens: Phaser.Tweens.Tween[] = [];
   if (reducedMotion) {
     hintText.setAlpha(ultraCompact ? 0.68 : 0.78);
@@ -327,6 +345,7 @@ export const createHudRenderer = (
       hintText.setText(completed ? completeHintText : normalHintText);
       hintText.setColor(toCssColor(completed ? palette.hud.timerText : palette.hud.hintText));
       difficultyText.setColor(toCssColor(completed ? palette.hud.timerText : palette.hud.accent));
+      targetText.setColor(toCssColor(completed ? palette.hud.timerText : palette.hud.hintText));
     },
     destroy(): void {
       for (const tween of introTweens) {
@@ -338,6 +357,7 @@ export const createHudRenderer = (
       arrowText.destroy();
       movesText.destroy();
       seedText.destroy();
+      targetText.destroy();
       hintText.destroy();
     }
   };

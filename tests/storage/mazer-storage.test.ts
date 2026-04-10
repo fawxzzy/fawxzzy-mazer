@@ -122,6 +122,40 @@ const createEnvironment = (options: TestEnvironmentOptions = {}) => {
   };
 };
 
+const createEmptyBestByBucket = () => ({
+  small: {
+    chill: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    standard: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    spicy: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+  },
+  medium: {
+    chill: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    standard: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    spicy: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+  },
+  large: {
+    chill: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    standard: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    spicy: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+  },
+  huge: {
+    chill: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    standard: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    spicy: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+    brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+  }
+});
+
+const createDefaultProgress = () => ({
+  bestByBucket: createEmptyBestByBucket(),
+  clearsCount: 0,
+  lastDifficulty: 'standard',
+  lastSize: 'medium'
+});
+
 describe('mazer storage', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -151,17 +185,7 @@ describe('mazer storage', () => {
     expect(localStorage.getItem('other:key')).toBe('keep');
     expect(localStorage.getItem('mazer:v1:progress')).toBeNull();
     expect(localStorage.getItem('mazer:debug')).toBeNull();
-    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.progress)).toBe(JSON.stringify({
-      bestByDifficulty: {
-        chill: { bestMoves: null, bestTimeMs: null },
-        standard: { bestMoves: null, bestTimeMs: null },
-        spicy: { bestMoves: null, bestTimeMs: null },
-        brutal: { bestMoves: null, bestTimeMs: null }
-      },
-      clearsCount: 0,
-      lastDifficulty: 'standard',
-      lastSize: 'medium'
-    }));
+    expect(localStorage.getItem(KNOWN_STORAGE_KEYS.progress)).toBe(JSON.stringify(createDefaultProgress()));
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.settings)).toBeNull();
     expect(localStorage.getItem(KNOWN_STORAGE_KEYS.meta)).toBe(JSON.stringify({
       namespace: APP_NAMESPACE,
@@ -177,11 +201,13 @@ describe('mazer storage', () => {
     const { environment, localStorage } = createEnvironment({
       localStorage: {
         [KNOWN_STORAGE_KEYS.progress]: JSON.stringify({
-          bestByDifficulty: {
-            chill: { bestMoves: -1, bestTimeMs: 0 },
-            standard: { bestMoves: 112.4, bestTimeMs: 38_200.6 },
-            spicy: { bestMoves: 221, bestTimeMs: 66_000 },
-            brutal: { bestMoves: 'bad', bestTimeMs: [] }
+          bestByBucket: {
+            small: {
+              chill: { bestEfficiencyPct: -4, bestMoves: -1, bestRank: 'SS', bestScore: -3, bestTimeMs: 0 },
+              standard: { bestEfficiencyPct: 95.6, bestMoves: 77.2, bestRank: 'A', bestScore: 6_420.4, bestTimeMs: 28_500.6 },
+              spicy: { bestEfficiencyPct: 88, bestMoves: 91, bestRank: 'B', bestScore: 7_330, bestTimeMs: 49_200 },
+              brutal: { bestEfficiencyPct: 'bad', bestMoves: [], bestRank: null, bestScore: {}, bestTimeMs: 'bad' }
+            }
           },
           clearsCount: 1_500_000,
           lastDifficulty: 'unknown',
@@ -194,11 +220,14 @@ describe('mazer storage', () => {
     await storage.bootstrap();
 
     expect(storage.getProgress()).toEqual({
-      bestByDifficulty: {
-        chill: { bestMoves: null, bestTimeMs: null },
-        standard: { bestMoves: 112, bestTimeMs: 38_201 },
-        spicy: { bestMoves: 221, bestTimeMs: 66_000 },
-        brutal: { bestMoves: null, bestTimeMs: null }
+      bestByBucket: {
+        ...createEmptyBestByBucket(),
+        small: {
+          chill: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+          standard: { bestEfficiencyPct: 96, bestMoves: 77, bestRank: 'A', bestScore: 6_420, bestTimeMs: 28_501 },
+          spicy: { bestEfficiencyPct: 88, bestMoves: 91, bestRank: 'B', bestScore: 7_330, bestTimeMs: 49_200 },
+          brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+        }
       },
       clearsCount: 999_999,
       lastDifficulty: 'standard',
@@ -243,23 +272,37 @@ describe('mazer storage', () => {
     const first = storage.recordRunResult({
       difficulty: 'spicy',
       elapsedMs: 45_000,
-      moveCount: 132
+      efficiencyPercent: 92,
+      moveCount: 132,
+      rank: 'A',
+      score: 8_240,
+      size: 'large'
     });
     const second = storage.recordRunResult({
       difficulty: 'spicy',
       elapsedMs: 47_000,
-      moveCount: 128
+      efficiencyPercent: 95,
+      moveCount: 128,
+      rank: 'S',
+      score: 8_660,
+      size: 'large'
     });
 
     expect(first.isNewBestTime).toBe(true);
     expect(first.isNewBestMoves).toBe(true);
+    expect(first.isNewBestScore).toBe(true);
     expect(second.isNewBestTime).toBe(false);
     expect(second.isNewBestMoves).toBe(true);
+    expect(second.isNewBestEfficiency).toBe(true);
+    expect(second.isNewBestRank).toBe(true);
     expect(second.progress.lastDifficulty).toBe('spicy');
     expect(second.progress.lastSize).toBe('large');
     expect(second.progress.clearsCount).toBe(2);
-    expect(second.progress.bestByDifficulty.spicy).toEqual({
+    expect(second.progress.bestByBucket.large.spicy).toEqual({
+      bestEfficiencyPct: 95,
       bestMoves: 128,
+      bestRank: 'S',
+      bestScore: 8_660,
       bestTimeMs: 45_000
     });
   });
@@ -270,11 +313,14 @@ describe('mazer storage', () => {
       databaseNames: ['mazer:v2:data', 'other-db'],
       localStorage: {
         [KNOWN_STORAGE_KEYS.progress]: JSON.stringify({
-          bestByDifficulty: {
-            chill: { bestMoves: 88, bestTimeMs: 24_000 },
-            standard: { bestMoves: null, bestTimeMs: null },
-            spicy: { bestMoves: null, bestTimeMs: null },
-            brutal: { bestMoves: null, bestTimeMs: null }
+          bestByBucket: {
+            ...createEmptyBestByBucket(),
+            small: {
+              chill: { bestEfficiencyPct: 97, bestMoves: 88, bestRank: 'S', bestScore: 8_900, bestTimeMs: 24_000 },
+              standard: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+              spicy: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null },
+              brutal: { bestEfficiencyPct: null, bestMoves: null, bestRank: null, bestScore: null, bestTimeMs: null }
+            }
           },
           clearsCount: 4,
           lastDifficulty: 'chill',
@@ -316,7 +362,11 @@ describe('mazer storage', () => {
       storage.recordRunResult({
         difficulty: 'brutal',
         elapsedMs: 90_000 - (index * 1000),
-        moveCount: 220 - index
+        efficiencyPercent: 72 + index,
+        moveCount: 220 - index,
+        rank: index >= 4 ? 'B' : 'C',
+        score: 6_000 + (index * 180),
+        size: 'huge'
       });
     }
 
@@ -330,15 +380,18 @@ describe('mazer storage', () => {
 
     expect(localStorage.setItemCalls).toBe(baselineWrites + 1);
     const persisted = JSON.parse(localStorage.getItem(KNOWN_STORAGE_KEYS.progress) ?? '{}') as {
-      bestByDifficulty: { brutal: { bestMoves: number; bestTimeMs: number } };
+      bestByBucket: { huge: { brutal: { bestEfficiencyPct: number; bestMoves: number; bestRank: string; bestScore: number; bestTimeMs: number } } };
       clearsCount: number;
       lastDifficulty: string;
       lastSize: string;
     };
     expect(Array.isArray(persisted)).toBe(false);
-    expect(Object.keys(persisted.bestByDifficulty)).toHaveLength(4);
-    expect(persisted.bestByDifficulty.brutal).toEqual({
+    expect(Object.keys(persisted.bestByBucket)).toHaveLength(4);
+    expect(persisted.bestByBucket.huge.brutal).toEqual({
+      bestEfficiencyPct: 77,
       bestMoves: 215,
+      bestRank: 'B',
+      bestScore: 6_900,
       bestTimeMs: 85_000
     });
     expect(persisted.clearsCount).toBe(6);
