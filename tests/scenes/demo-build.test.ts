@@ -515,7 +515,7 @@ describe('demo-only build', () => {
     expect(mobileModel.layout.boardScale).toBeLessThan(portraitBaseModel.layout.boardScale);
   });
 
-  test('play, options, and win scene files are removed and no gameplay CTA remains in the menu scene', () => {
+  test('play, options, and win scene files are removed and the menu stays ambient-first', () => {
     const removedPaths = [
       'src/scenes/GameScene.ts',
       'src/scenes/OptionsScene.ts',
@@ -535,9 +535,11 @@ describe('demo-only build', () => {
     expect(menuSceneSource).not.toContain('GameScene');
     expect(menuSceneSource).not.toContain('OptionsScene');
     expect(menuSceneSource).not.toContain('Start Run');
+    expect(menuSceneSource).toContain('Install Mazer');
     expect(menuSceneSource).not.toContain('Play Again');
     expect(menuSceneSource).not.toContain('Same Seed');
     expect(menuSceneSource).not.toContain('Next Maze');
     expect(menuSceneSource).not.toContain('PauseScene');
+    expect(menuSceneSource).not.toContain('SettingsScene');
   });
 });

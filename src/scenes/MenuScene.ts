@@ -17,6 +17,12 @@ import {
   sanitizePresentationVariant,
   shouldShowPresentationTitle
 } from '../boot/presentation';
+import {
+  getInstallSurfaceState,
+  promptInstallSurface,
+  subscribeInstallSurface,
+  type InstallSurfaceState
+} from '../boot/installSurface';
 import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue } from '../domain/ai';
 import {
   disposeMazeEpisode,
@@ -611,6 +617,7 @@ export class MenuScene extends Phaser.Scene {
     let resizeRestart: Phaser.Time.TimerEvent | undefined;
     let handleVisibilityChange: (() => void) | undefined;
     let handleResize: ((gameSize?: { width?: number; height?: number }) => void) | undefined;
+    let removeInstallSurfaceListener: (() => void) | undefined;
     let updateDemo: ((time: number, delta: number) => void) | undefined;
 
     const runOptional = (label: string, render: () => void): void => {
@@ -630,10 +637,12 @@ export class MenuScene extends Phaser.Scene {
       if (updateDemo) {
         this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
       }
+      removeInstallSurfaceListener?.();
       handleVisibilityChange = undefined;
       if (!options.keepResize) {
         handleResize = undefined;
       }
+      removeInstallSurfaceListener = undefined;
       updateDemo = undefined;
     };
     const destroyPresentation = (destroyEngine: boolean): void => {
@@ -828,17 +837,110 @@ export class MenuScene extends Phaser.Scene {
             fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
           }
         ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(1);
-        const passiveTag = this.add.text(
-          0,
-          Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale),
-          PASSIVE_TAGLINES[variant],
-          {
-          color: '#d7deef',
-          fontFamily: '"Courier New", monospace',
-            fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`
+        const supportSlot = this.add.container(0, Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale));
+        let installPromptPending = false;
+        const renderSupportSlot = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
+          supportSlot.removeAll(true);
+
+          if (state.mode === 'available') {
+            const label = this.add.text(0, 0, installPromptPending ? 'Install Mazer...' : 'Install Mazer', {
+              color: installPromptPending ? '#d7deef' : '#75f78f',
+              fontFamily: '"Courier New", monospace',
+              fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
+              fontStyle: 'bold'
+            }).setOrigin(0.5).setLetterSpacing(1);
+            const buttonWidth = Phaser.Math.Clamp(
+              Math.ceil(label.width + (sceneLayout.isNarrow ? 22 : 28)),
+              138,
+              Math.max(138, titlePlateWidth - 18)
+            );
+            const buttonHeight = sceneLayout.isTiny ? 20 : 22;
+            const shadow = this.add.rectangle(0, 2, buttonWidth + 4, buttonHeight + 4, palette.board.shadow, 0.2);
+            const button = this.add.rectangle(
+              0,
+              0,
+              buttonWidth,
+              buttonHeight,
+              palette.board.panel,
+              installPromptPending ? 0.3 : Math.min(0.86, panelAlpha + 0.16)
+            ).setStrokeStyle(1, palette.board.topHighlight, installPromptPending ? 0.12 : 0.28);
+            const highlightAlpha = Math.min(0.18, 0.08 + (titleAlpha * 0.12));
+            const setButtonState = (hovered: boolean): void => {
+              button.setFillStyle(
+                palette.board.panel,
+                installPromptPending
+                  ? 0.3
+                  : hovered
+                    ? Math.min(0.94, panelAlpha + 0.26)
+                    : Math.min(0.86, panelAlpha + 0.16)
+              );
+              button.setStrokeStyle(1, palette.board.topHighlight, hovered && !installPromptPending ? 0.36 : 0.28);
+              label.setAlpha(hovered && !installPromptPending ? 1 : 0.96);
+            };
+
+            if (!installPromptPending) {
+              button.setInteractive({ useHandCursor: true });
+              button.on('pointerover', () => {
+                setButtonState(true);
+              });
+              button.on('pointerout', () => {
+                setButtonState(false);
+              });
+              button.on('pointerup', () => {
+                if (installPromptPending) {
+                  return;
+                }
+
+                installPromptPending = true;
+                renderSupportSlot();
+                void promptInstallSurface()
+                  .catch((error) => {
+                    console.error('MenuScene install prompt failed open.', error);
+                  })
+                  .finally(() => {
+                    installPromptPending = false;
+                    renderSupportSlot();
+                  });
+              });
+            }
+
+            setButtonState(false);
+            supportSlot.add([
+              shadow,
+              button,
+              this.add.rectangle(0, -(buttonHeight / 2) + 3, buttonWidth - 10, 2, palette.board.topHighlight, highlightAlpha),
+              label
+            ]);
+            return;
           }
-        ).setOrigin(0.5).setAlpha(passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
-        titleContainer.add([title, signature, passiveTag]);
+
+          const supportText = this.add.text(
+            0,
+            0,
+            state.mode === 'manual' && state.instruction ? state.instruction : PASSIVE_TAGLINES[variant],
+            {
+              color: '#d7deef',
+              fontFamily: '"Courier New", monospace',
+              fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
+              wordWrap: {
+                width: Math.max(118, titlePlateWidth - 28),
+                useAdvancedWrap: true
+              }
+            }
+          ).setOrigin(0.5).setAlpha(state.mode === 'manual' ? Math.min(0.84, passiveAlpha + 0.16) : passiveAlpha)
+            .setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+          supportSlot.add(supportText);
+        };
+
+        titleContainer.add([title, signature, supportSlot]);
+        renderSupportSlot();
+        removeInstallSurfaceListener = subscribeInstallSurface((state) => {
+          try {
+            renderSupportSlot(state);
+          } catch (error) {
+            console.error('MenuScene optional install surface skipped.', error);
+          }
+        });
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
         } else {

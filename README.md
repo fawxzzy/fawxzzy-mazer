@@ -2,10 +2,12 @@
 
 This repository is a clean rebuild of Mazer using **Vite + TypeScript + Phaser**.
 
-## Wave 1 scope
+Mazer remains ambient-only: no gameplay loop, no options shell, and no persisted install state.
+
+## Current scope
 - Fresh app bootstrap and Phaser wiring.
-- Initial scenes (`BootScene`, `MenuScene`, `GameScene`).
-- Domain/render/ui/test folders scaffolded for later lanes.
+- Ambient-only scenes (`BootScene`, `MenuScene`).
+- Profile-driven presentation surfaces for TV, OBS, and mobile.
 - Dev-safe PWA setup that avoids stale local service worker state.
 
 ## Local development
@@ -38,18 +40,33 @@ Use the production preview for freeze validation:
 
 Defaults stay unchanged. Launch profiles tune packaging and presentation for deployment surfaces without changing app logic.
 
+## Install Mazer
+- The only install surface is a single `Install Mazer` action inside the title plate when the browser actually exposes `beforeinstallprompt`.
+- Installed or standalone launches hide the action cleanly and keep the ambient presentation running unchanged.
+- Unsupported/manual-install surfaces fail open. On iOS-style browsers the title plate swaps to `Use Share > Add to Home Screen`.
+- Install UX is optional by rule: if install APIs are unavailable or throw, the title/demo shell still renders normally.
+
 ## Testing surfaces
 - TV / kiosk: run `?profile=tv` for the ambient loop, or `?profile=tv&title=show` when explicit branding is needed. Validate distance legibility, brightness, reload behavior, and long-loop calmness.
 - OBS: start with `?profile=obs&chrome=none` in a Browser Source sized to the scene. Check for clean edges, no odd padding, and stable refresh behavior.
 - OBS-safe profile centers the board, preserves full board visibility, and minimizes chrome for overlays.
 - Mobile: use `?profile=mobile`, then try `?profile=mobile&chrome=none` for a board-first shell check. Test portrait and landscape, resize, reload, and tab away/back.
 
+## Windows launcher
+- `scripts/windows/Launch-Mazer.cmd` opens the current preview URL in an Edge app-style window by default and falls back to the browser when Edge is unavailable.
+- `scripts/windows/Launch-Mazer.ps1 -Profile obs -Chrome none` is the direct profile-aware entrypoint if you want OBS-safe framing from the launcher.
+- `scripts/windows/Prepare-MazerShortcut.cmd` creates a desktop shortcut that targets the repo-owned launcher instead of stale build artifacts.
+- After creating the shortcut, launch it once and pin the resulting Edge app window or the shortcut itself to the taskbar.
+
 ## Freeze notes
 - Rule: freeze product behavior before adding more polish once deployment profiles are validated.
 - Pattern: use URL-level launch profiles for deployment surfaces instead of branching app logic.
 - Pattern: deployment profiles may constrain motion and framing more aggressively than the default presentation when a surface needs compositional stability.
+- Rule: install UX must be optional and fail-open; ambient presentation must remain usable even when install APIs are unavailable.
+- Pattern: use one intentional install action instead of rebuilding a full settings/options system.
 - Failure Mode: tiny packaging issues like icons, manifest wiring, or audio-init warnings can make a polished ambient build feel unfinished even when the core loop is stable.
 - Failure Mode: aesthetically nice drift can make capture surfaces feel misaligned or zoomed even when the layout math is technically valid.
+- Failure Mode: platform-specific install assumptions can create broken or confusing UI if unsupported surfaces are not handled cleanly.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.
@@ -59,6 +76,7 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Wilson remains the maze generation truth.
 - Solving now runs on a compressed corridor graph, then expands back to tile indices only for rendering.
 - Ambient presentation can route mazes through deterministic `classic`, `braided`, `framed`, and rare `blueprint-rare` presets without adding storage or gameplay state.
+- Install behavior is intentionally ephemeral and runtime-only; no install preference or launcher state is written into app storage.
 - Deployment profiles tune presentation defaults only:
   - TV ambient loop: `?profile=tv`
   - TV with explicit title: `?profile=tv&title=show`

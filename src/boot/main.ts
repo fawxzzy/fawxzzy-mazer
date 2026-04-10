@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import '../styles/base.css';
+import { initializeInstallSurface } from './installSurface';
 import { phaserConfig } from './phaserConfig';
 
 const isLocalhost =
@@ -16,4 +17,5 @@ if ('serviceWorker' in navigator && isLocalhost) {
     });
 }
 
+initializeInstallSurface();
 new Phaser.Game(phaserConfig);

@@ -32,6 +32,11 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/icons/mazer-emblem.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }
