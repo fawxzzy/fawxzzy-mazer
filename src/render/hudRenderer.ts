@@ -289,12 +289,20 @@ export const createDemoStatusHud = (
   let lastVariant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT;
 
   const root = scene.add.container(0, 0).setDepth(10);
+  const railBack = scene.add.rectangle(
+    boardX + (boardWidth / 2),
+    baselineY - (compact ? 10 : 11),
+    Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
+    compact ? 8 : 10,
+    colors.board.panel,
+    0.08
+  ).setOrigin(0.5);
   const rail = scene.add.rectangle(
     boardX + (boardWidth / 2),
     baselineY - (compact ? 10 : 11),
     Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
-    1,
-    colors.hud.panelStroke,
+    2,
+    colors.board.innerStroke,
     0.2
   ).setOrigin(0.5);
   const modeText = scene.add.text(leftX, baselineY, '', {
@@ -314,11 +322,11 @@ export const createDemoStatusHud = (
     fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.flashFontScale)}px`,
     fontStyle: 'bold'
   }).setOrigin(1, 0).setLetterSpacing(1);
-  root.add([rail, modeText, metaText, flashText]);
+  root.add([railBack, rail, modeText, metaText, flashText]);
 
   const pulseTween = reducedMotion ? undefined : scene.tweens.add({
-    targets: rail,
-    alpha: { from: 0.12, to: 0.24 },
+    targets: [railBack, rail],
+    alpha: { from: 0.1, to: 0.24 },
     duration: 2600,
     yoyo: true,
     repeat: -1,
@@ -354,6 +362,7 @@ export const createDemoStatusHud = (
       const metaAlphaScale = sanitizeAlpha(theme.metaAlphaScale, 1);
       const flashThemeAlphaScale = sanitizeAlpha(theme.flashAlphaScale, 1);
       root.setPosition(sanitizeOffset(offsetX), sanitizeOffset(offsetY));
+      railBack.setAlpha(alpha * profile.railAlphaScale * chromeProfile.railAlphaScale * railAlphaScale * 0.4);
       rail.setAlpha(alpha * profile.railAlphaScale * chromeProfile.railAlphaScale * railAlphaScale);
       modeText.setAlpha(chromeProfile.showMode ? alpha * chromeProfile.modeAlphaScale * modeAlphaScale : 0);
       metaText.setAlpha(chromeProfile.showMeta ? alpha * chromeProfile.metaAlphaScale * metaAlphaScale : 0);

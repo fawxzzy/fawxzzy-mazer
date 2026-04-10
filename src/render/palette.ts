@@ -202,21 +202,21 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
       outerStroke: ensureMinContrast(input.board.outerStroke, input.board.outer, 2.2, prefer),
       innerStroke: ensureMinContrast(input.board.innerStroke, panel, 2.1, prefer),
       topHighlight: ensureMinContrast(input.board.topHighlight, wall, 2.6, prefer),
-      path: ensureMinContrast(input.board.path, floor, 1.45, prefer),
-      trail: ensureMinContrast(input.board.trail, floor, 2.35, prefer),
+      path: ensureMinContrast(input.board.path, floor, 1.6, prefer),
+      trail: ensureMinContrast(input.board.trail, floor, 2.5, prefer),
       trailCore: ensureMinContrast(input.board.trailCore, floor, 2.9, prefer === 'dark' ? 'light' : 'dark'),
-      trailGlow: ensureMinContrast(input.board.trailGlow, floor, 2.8, prefer),
-      goal: ensureMinContrast(input.board.goal, floor, 3.2, prefer),
+      trailGlow: ensureMinContrast(input.board.trailGlow, floor, 3, prefer),
+      goal: ensureMinContrast(input.board.goal, floor, 3.25, prefer),
       goalCore: ensureMinContrast(input.board.goalCore, input.board.goal, 1.25, prefer === 'dark' ? 'light' : 'dark'),
-      player: ensureMinContrast(input.board.player, floor, 3.3, prefer),
+      player: ensureMinContrast(input.board.player, floor, 3.4, prefer),
       playerCore: ensureMinContrast(input.board.playerCore, input.board.player, 1.25, prefer === 'dark' ? 'light' : 'dark'),
-      playerHalo: ensureMinContrast(input.board.playerHalo, floor, 2.7, prefer),
+      playerHalo: ensureMinContrast(input.board.playerHalo, floor, 2.8, prefer),
     },
     hud: {
       ...input.hud,
       panelStroke: ensureMinContrast(input.hud.panelStroke, panel, 2.8, prefer),
       accent: ensureMinContrast(input.hud.accent, panel, 4.2, prefer),
-      hintText: ensureMinContrast(input.hud.hintText, panel, 3.6, prefer),
+      hintText: ensureMinContrast(input.hud.hintText, panel, 3.8, prefer),
     }
   };
 };

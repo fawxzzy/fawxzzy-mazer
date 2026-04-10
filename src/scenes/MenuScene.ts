@@ -1499,32 +1499,32 @@ export class MenuScene extends Phaser.Scene {
         const boardAura = this.add.ellipse(
           boardCenterX,
           boardCenterY,
-          Math.max(24, layout.boardWidth * 1.14),
-          Math.max(24, layout.boardHeight * 1.08),
+          Math.max(24, layout.boardWidth * 1.18),
+          Math.max(24, layout.boardHeight * 1.12),
           themeProfile.shell.auraColor,
-          0.1
+          0.08
         ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardHalo = this.add.ellipse(
           boardCenterX,
           boardCenterY,
-          Math.max(20, layout.boardWidth * 1.05),
-          Math.max(20, layout.boardHeight * 1.03),
+          Math.max(20, layout.boardWidth * 1.08),
+          Math.max(20, layout.boardHeight * 1.06),
           themeProfile.shell.haloColor,
-          0.032
+          0.026
         ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardShade = this.add.rectangle(
           boardCenterX,
           boardCenterY,
-          Math.max(16, layout.boardWidth),
-          Math.max(16, layout.boardHeight),
+          Math.max(18, layout.boardWidth + Math.round(layout.tileSize * 0.8)),
+          Math.max(18, layout.boardHeight + Math.round(layout.tileSize * 0.8)),
           themeProfile.shell.shadeColor,
-          0.02
-        ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
+          0.028
+        ).setOrigin(0.5).setDepth(7);
         const boardVeil = this.add.rectangle(
           boardCenterX,
           boardCenterY,
-          Math.max(16, layout.boardWidth),
-          Math.max(16, layout.boardHeight),
+          Math.max(18, layout.boardWidth + Math.round(layout.tileSize * 0.6)),
+          Math.max(18, layout.boardHeight + Math.round(layout.tileSize * 0.6)),
           themeProfile.shell.veilColor,
           0
         ).setOrigin(0.5).setDepth(7.2);
@@ -1563,6 +1563,129 @@ export class MenuScene extends Phaser.Scene {
       };
       episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
       const layout = episodePresentationShell.layout;
+      let installPromptPending = false;
+      const installChrome = this.add.container(0, 0).setDepth(11);
+      const renderInstallChrome = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
+        installChrome.removeAll(true);
+
+        if (state.mode === 'hidden') {
+          installChrome.setVisible(false);
+          return;
+        }
+
+        const compactInstall = sceneLayout.isTiny || sceneLayout.isNarrow;
+        const labelText = state.mode === 'manual'
+          ? (state.instruction ?? 'Add to Home Screen')
+          : installPromptPending
+            ? (compactInstall ? 'Install...' : 'Install Mazer...')
+            : (compactInstall ? 'Install' : 'Install Mazer');
+        const label = this.add.text(0, 0, labelText, {
+          color: state.mode === 'available'
+            ? (installPromptPending ? sceneThemeProfile.title.pendingColor : sceneThemeProfile.title.installColor)
+            : sceneThemeProfile.title.supportColor,
+          fontFamily: sceneThemeProfile.title.supportFontFamily,
+          fontSize: `${compactInstall ? 8 : 10}px`,
+          fontStyle: state.mode === 'available' ? 'bold' : 'normal',
+          wordWrap: state.mode === 'manual'
+            ? {
+              width: Math.max(136, Math.min(220, width * 0.34)),
+              useAdvancedWrap: true
+            }
+            : undefined
+        }).setOrigin(0.5).setLetterSpacing(compactInstall ? 1 : 2);
+        const chipWidth = Phaser.Math.Clamp(
+          Math.ceil(label.width + (compactInstall ? 22 : 28)),
+          state.mode === 'manual' ? 148 : (compactInstall ? 86 : 118),
+          Math.max(state.mode === 'manual' ? 148 : (compactInstall ? 86 : 118), Math.round(width * (compactInstall ? 0.24 : 0.34)))
+        );
+        const chipHeight = Math.max(compactInstall ? 22 : 24, Math.ceil(label.height + (compactInstall ? 12 : 14)));
+        const rightInset = Math.max(compactInstall ? 24 : 12, sceneLayout.sidePadding + (compactInstall ? 10 : 6));
+        const topInset = Math.max(12, sceneLayout.sidePadding + (sceneLayout.isPortrait ? 12 : 4));
+
+        installChrome.setVisible(true);
+        installChrome.setPosition(
+          width - rightInset - (chipWidth / 2) - (compactInstall ? 32 : 0),
+          topInset + (chipHeight / 2)
+        );
+
+        const shadow = this.add.rectangle(0, 3, chipWidth + 6, chipHeight + 6, sceneThemeProfile.title.plateShadowColor, 0.18);
+        const chip = this.add.rectangle(
+          0,
+          0,
+          chipWidth,
+          chipHeight,
+          sceneThemeProfile.title.buttonFillColor,
+          state.mode === 'manual'
+            ? 0.22
+            : installPromptPending
+              ? 0.24
+              : 0.32
+        ).setStrokeStyle(
+          1,
+          sceneThemeProfile.title.buttonStrokeColor,
+          state.mode === 'manual'
+            ? 0.18
+            : installPromptPending
+              ? 0.16
+              : 0.32
+        );
+        const accent = this.add.rectangle(
+          0,
+          -(chipHeight / 2) + 3,
+          Math.max(18, chipWidth - 14),
+          2,
+          sceneThemeProfile.title.buttonStrokeColor,
+          state.mode === 'manual' ? 0.1 : 0.16
+        );
+
+        if (state.mode === 'available' && !installPromptPending) {
+          const setChipState = (hovered: boolean): void => {
+            chip.setFillStyle(
+              sceneThemeProfile.title.buttonFillColor,
+              hovered ? 0.42 : 0.32
+            );
+            chip.setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, hovered ? 0.42 : 0.32);
+            label.setAlpha(hovered ? 1 : 0.96);
+          };
+
+          chip.setInteractive({ useHandCursor: true });
+          chip.on('pointerover', () => {
+            setChipState(true);
+          });
+          chip.on('pointerout', () => {
+            setChipState(false);
+          });
+          chip.on('pointerup', () => {
+            if (installPromptPending) {
+              return;
+            }
+
+            installPromptPending = true;
+            renderInstallChrome();
+            void promptInstallSurface()
+              .catch((error) => {
+                console.error('MenuScene install prompt failed open.', error);
+              })
+              .finally(() => {
+                installPromptPending = false;
+                renderInstallChrome();
+              });
+          });
+          setChipState(false);
+        } else {
+          label.setAlpha(state.mode === 'manual' ? 0.9 : 0.8);
+        }
+
+        installChrome.add([shadow, chip, accent, label]);
+      };
+      renderInstallChrome();
+      removeInstallSurfaceListener = subscribeInstallSurface((state) => {
+        try {
+          renderInstallChrome(state);
+        } catch (error) {
+          console.error('MenuScene optional install surface skipped.', error);
+        }
+      });
 
       if (titleVisible) {
         const titlePlateMaxWidth = Math.max(96, width - Math.max(24, sceneLayout.sidePadding * 4));
@@ -1645,93 +1768,12 @@ export class MenuScene extends Phaser.Scene {
           }
         ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(1);
         const supportSlot = this.add.container(0, Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale));
-        let installPromptPending = false;
-        const renderSupportSlot = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
+        const renderSupportSlot = (): void => {
           supportSlot.removeAll(true);
-
-          if (state.mode === 'available') {
-            const label = this.add.text(0, 0, installPromptPending ? 'Install Mazer...' : 'Install Mazer', {
-              color: installPromptPending ? sceneThemeProfile.title.pendingColor : sceneThemeProfile.title.installColor,
-              fontFamily: sceneThemeProfile.title.supportFontFamily,
-              fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`,
-              fontStyle: 'bold'
-            }).setOrigin(0.5).setLetterSpacing(1);
-            const buttonWidth = Phaser.Math.Clamp(
-              Math.ceil(label.width + (sceneLayout.isNarrow ? 22 : 28)),
-              138,
-              Math.max(138, titlePlateWidth - 18)
-            );
-            const buttonHeight = sceneLayout.isTiny ? 20 : 22;
-            const shadow = this.add.rectangle(0, 2, buttonWidth + 4, buttonHeight + 4, sceneThemeProfile.title.plateShadowColor, 0.2);
-            const button = this.add.rectangle(
-              0,
-              0,
-              buttonWidth,
-              buttonHeight,
-              sceneThemeProfile.title.buttonFillColor,
-              installPromptPending ? 0.3 : Math.min(0.86, panelAlpha + 0.16)
-            ).setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, installPromptPending ? 0.12 : 0.28);
-            const highlightAlpha = Math.min(0.18, 0.08 + (titleAlpha * 0.12));
-            const setButtonState = (hovered: boolean): void => {
-              button.setFillStyle(
-                sceneThemeProfile.title.buttonFillColor,
-                installPromptPending
-                  ? 0.3
-                  : hovered
-                    ? Math.min(0.94, panelAlpha + 0.26)
-                    : Math.min(0.86, panelAlpha + 0.16)
-              );
-              button.setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, hovered && !installPromptPending ? 0.36 : 0.28);
-              label.setAlpha(hovered && !installPromptPending ? 1 : 0.96);
-            };
-
-            if (!installPromptPending) {
-              button.setInteractive({ useHandCursor: true });
-              button.on('pointerover', () => {
-                setButtonState(true);
-              });
-              button.on('pointerout', () => {
-                setButtonState(false);
-              });
-              button.on('pointerup', () => {
-                if (installPromptPending) {
-                  return;
-                }
-
-                installPromptPending = true;
-                renderSupportSlot();
-                void promptInstallSurface()
-                  .catch((error) => {
-                    console.error('MenuScene install prompt failed open.', error);
-                  })
-                  .finally(() => {
-                    installPromptPending = false;
-                    renderSupportSlot();
-                  });
-              });
-            }
-
-            setButtonState(false);
-            supportSlot.add([
-              shadow,
-              button,
-              this.add.rectangle(
-                0,
-                -(buttonHeight / 2) + 3,
-                buttonWidth - 10,
-                2,
-                sceneThemeProfile.title.buttonStrokeColor,
-                highlightAlpha
-              ),
-              label
-            ]);
-            return;
-          }
-
           const supportText = this.add.text(
             0,
             0,
-            state.mode === 'manual' && state.instruction ? state.instruction : PASSIVE_TAGLINES[variant],
+            PASSIVE_TAGLINES[variant],
             {
               color: sceneThemeProfile.title.supportColor,
               fontFamily: sceneThemeProfile.title.supportFontFamily,
@@ -1741,20 +1783,13 @@ export class MenuScene extends Phaser.Scene {
                 useAdvancedWrap: true
               }
             }
-          ).setOrigin(0.5).setAlpha(state.mode === 'manual' ? Math.min(0.84, passiveAlpha + 0.16) : passiveAlpha)
+          ).setOrigin(0.5).setAlpha(passiveAlpha)
             .setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
           supportSlot.add(supportText);
         };
 
         titleContainer.add([title, signature, supportSlot]);
         renderSupportSlot();
-        removeInstallSurfaceListener = subscribeInstallSurface((state) => {
-          try {
-            renderSupportSlot(state);
-          } catch (error) {
-            console.error('MenuScene optional install surface skipped.', error);
-          }
-        });
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
         } else {
@@ -1940,7 +1975,14 @@ export class MenuScene extends Phaser.Scene {
           emphasis: 'demo',
           persistentTrail: demoPresentation.persistentTrail,
           persistentFadeFloor: demoPresentation.persistentFadeFloor,
-          pulseBoost: demoPresentation.trailPulseBoost
+          pulseBoost: demoPresentation.trailPulseBoost,
+          activeMotion: view.currentIndex === view.nextIndex
+            ? undefined
+            : {
+              fromIndex: view.currentIndex,
+              toIndex: view.nextIndex,
+              progress: view.progress
+            }
         });
 
         if (view.currentIndex === view.nextIndex || view.progress <= 0) {
@@ -2107,6 +2149,12 @@ export class MenuScene extends Phaser.Scene {
       1
     );
     bg.fillRect(0, 0, safeWidth, safeHeight);
+    bg.fillStyle(themeProfile.palette.background.nebulaCore, 0.18);
+    bg.fillCircle(safeWidth * 0.5, safeHeight * 0.46, Math.max(safeWidth, safeHeight) * 0.24);
+    bg.fillStyle(themeProfile.palette.background.nebula, 0.12);
+    bg.fillCircle(safeWidth * 0.5, safeHeight * 0.56, Math.max(safeWidth, safeHeight) * 0.34);
+    bg.fillStyle(themeProfile.palette.background.deepSpace, 0.14);
+    bg.fillRect(0, safeHeight * 0.78, safeWidth, safeHeight * 0.22);
 
     const clouds = this.add.graphics();
     clouds.setBlendMode(Phaser.BlendModes.SCREEN);
@@ -2173,6 +2221,8 @@ export class MenuScene extends Phaser.Scene {
     );
     vignette.fillRect(0, 0, safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
     vignette.fillRect(0, safeHeight * (1 - legacyTuning.menu.starfield.vignetteBandRatio), safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
+    vignette.fillStyle(themeProfile.palette.background.vignette, 0.12);
+    vignette.fillCircle(safeWidth * 0.5, safeHeight * 0.5, Math.max(safeWidth, safeHeight) * 0.58);
   }
 
   private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
@@ -2391,6 +2441,9 @@ export const resolveMenuDemoPresentation = (
   const oscillationTimeMs = normalizeAnimationTime(elapsedMs);
   const wave = 0.5 + (Math.sin((oscillationTimeMs + (episode.seed * 17)) * 0.0022) * 0.5);
   const offsets = resolvePresentationOffsets(episode.seed, safeVariant);
+  const atmosphereSeed = mix(episode.seed ^ 0x2f8f1d3b, cycle.theme.charCodeAt(0), cycle.mood.charCodeAt(0));
+  const atmosphereBias = (((atmosphereSeed & 0xff) / 255) - 0.5) * 2;
+  const trailBias = ((((atmosphereSeed >>> 8) & 0xff) / 255) - 0.5) * 2;
   let boardVeilAlpha = 0.03;
   let boardAuraAlpha = moodProfile.auraAlpha;
   let boardHaloAlpha = moodProfile.haloAlpha;
@@ -2475,12 +2528,16 @@ export const resolveMenuDemoPresentation = (
   const persistentFadeFloor = clamp(
     moodProfile.persistentFadeFloor
       + (wave * 0.06)
+      + (atmosphereBias * 0.025)
       + (sequenceState.sequence === 'arrival' ? 0.08 : sequenceState.sequence === 'fade' ? 0.04 : 0),
     0.22,
     0.72
   );
   const trailPulseBoost = clamp(
-    moodProfile.trailPulseBoost + (themeProfile.presentation.actorPulseBias * 0.6) + ((wave - 0.5) * 0.04),
+    moodProfile.trailPulseBoost
+      + (themeProfile.presentation.actorPulseBias * 0.6)
+      + ((wave - 0.5) * 0.04)
+      + (trailBias * 0.012),
     0,
     0.08
   );
@@ -2533,6 +2590,7 @@ export const resolveMenuDemoPresentation = (
     boardVeilAlpha: clamp(
       boardVeilAlpha
         + (variantProfile.boardVeilBias * deploymentProfile.boardVeilBiasScale)
+        + (atmosphereBias * 0.012)
         + themeProfile.shell.veilAlphaBias,
       0,
       0.24
@@ -2540,6 +2598,7 @@ export const resolveMenuDemoPresentation = (
     boardAuraAlpha: clamp(
       boardAuraAlpha
         + (variantProfile.boardAuraBias * deploymentProfile.boardAuraBiasScale)
+        + (atmosphereBias * 0.012)
         + themeProfile.shell.auraAlphaBias,
       0.06,
       0.22
@@ -2547,6 +2606,7 @@ export const resolveMenuDemoPresentation = (
     boardHaloAlpha: clamp(
       boardHaloAlpha
         + (variantProfile.boardHaloBias * deploymentProfile.boardHaloBiasScale)
+        + (trailBias * 0.01)
         + themeProfile.shell.haloAlphaBias,
       0.018,
       0.16
@@ -2554,6 +2614,7 @@ export const resolveMenuDemoPresentation = (
     boardShadeAlpha: clamp(
       boardShadeAlpha
         + (variantProfile.boardShadeBias * deploymentProfile.boardShadeBiasScale)
+        + (trailBias * 0.01)
         + themeProfile.shell.shadeAlphaBias,
       0.012,
       0.18
@@ -2562,6 +2623,7 @@ export const resolveMenuDemoPresentation = (
       1
         + boardAuraScaleDelta
         + (wave * variantProfile.boardAuraBias * 0.1 * deploymentProfile.boardAuraBiasScale)
+        + (atmosphereBias * 0.006)
         + themeProfile.shell.auraScaleBias,
       1,
       1.05
@@ -2570,6 +2632,7 @@ export const resolveMenuDemoPresentation = (
       1
         + boardHaloScaleDelta
         + (wave * variantProfile.boardHaloBias * 0.1 * deploymentProfile.boardHaloBiasScale)
+        + (trailBias * 0.004)
         + themeProfile.shell.haloScaleBias,
       1,
       1.03
@@ -2580,7 +2643,12 @@ export const resolveMenuDemoPresentation = (
     persistentTrail: true,
     persistentFadeFloor,
     trailPulseBoost,
-    metadataAlpha: clamp((metadataAlpha + themeProfile.presentation.metadataAlphaBias) * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
+    metadataAlpha: clamp(
+      (metadataAlpha + themeProfile.presentation.metadataAlphaBias + (atmosphereBias * 0.025))
+        * deploymentProfile.metadataAlphaScale,
+      0.18,
+      0.82
+    ),
     flashAlpha: clamp(
       (flashAlpha + themeProfile.presentation.flashAlphaBias)
         * variantProfile.flashAlphaScale
@@ -2835,15 +2903,13 @@ const drawThemeMotifs = (
       secondary.fillRect(edge, Math.round(height * 0.24), width - (edge * 2), Math.max(4, Math.round(height * 0.08)));
       break;
     case 'vellum':
-      primary.lineStyle(1, themeProfile.palette.board.topHighlight, 0.12);
-      for (let x = inset; x < width - inset; x += Math.max(8, Math.round(layout.tileSize * 3))) {
-        primary.lineBetween(x + 0.5, inset, x + 0.5, height - inset);
-      }
-      for (let y = inset; y < height - inset; y += Math.max(8, Math.round(layout.tileSize * 3))) {
-        primary.lineBetween(inset, y + 0.5, width - inset, y + 0.5);
-      }
-      secondary.lineStyle(1, themeProfile.palette.board.shadow, 0.12);
-      secondary.strokeRect(edge + 0.5, edge + 0.5, width - (edge * 2) - 1, height - (edge * 2) - 1);
+      primary.lineStyle(1, themeProfile.palette.board.topHighlight, 0.08);
+      primary.lineBetween(inset, height * 0.22, width - inset, height * 0.28);
+      primary.lineBetween(inset, height * 0.52, width - inset, height * 0.48);
+      primary.lineBetween(inset, height * 0.76, width - inset, height * 0.7);
+      secondary.fillStyle(themeProfile.palette.board.playerHalo, 0.05);
+      secondary.fillRect(edge, Math.round(height * 0.18), width - (edge * 2), Math.max(4, Math.round(height * 0.06)));
+      secondary.fillRect(edge, Math.round(height * 0.72), width - (edge * 2), Math.max(4, Math.round(height * 0.05)));
       break;
     case 'monolith':
     default:

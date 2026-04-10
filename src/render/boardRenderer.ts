@@ -64,6 +64,11 @@ export interface BoardCueOptions {
   persistentTrail?: boolean;
   persistentFadeFloor?: number;
   pulseBoost?: number;
+  activeMotion?: {
+    fromIndex: number;
+    toIndex: number;
+    progress: number;
+  };
 }
 
 interface BoardRenderPresetProfile {
@@ -307,6 +312,13 @@ export class BoardRenderer {
     return this.layout.boardY + (yFromIndex(index, rasterWidth) * this.layout.tileSize);
   }
 
+  private tileCenter(index: number): { x: number; y: number } {
+    return {
+      x: this.tileX(index) + (this.layout.tileSize / 2),
+      y: this.tileY(index) + (this.layout.tileSize / 2)
+    };
+  }
+
   private drawTileBrackets(
     graphics: Phaser.GameObjects.Graphics,
     tileX: number,
@@ -370,11 +382,18 @@ export class BoardRenderer {
       topHighlightHeightPx,
       topHighlightAlpha
     } = legacyTuning.board.frame;
+    const outerAlphaGlass = Math.min(0.66, outerAlpha * 0.52);
+    const panelAlphaGlass = Math.min(0.56, panelAlpha * 0.62);
+    const wellAlphaGlass = Math.min(0.34, (wellAlpha * 1.1) + 0.05);
+    const shadowAlphaGlass = Math.min(0.44, shadowAlpha * 0.84);
+    const glowAlphaGlass = Math.min(0.22, glowAlpha * 0.82);
+    const edgeShadeAlphaGlass = edgeShadeAlpha * 0.42;
+    const topHighlightAlphaGlass = topHighlightAlpha * 0.52;
 
     this.chromeBack.clear();
     this.chromeFront.clear();
 
-    this.chromeBack.fillStyle(colors.board.shadow, shadowAlpha);
+    this.chromeBack.fillStyle(colors.board.shadow, shadowAlphaGlass);
     this.chromeBack.fillRect(
       centerX - (boardWidth + scaleMetric(shadowExpandPx)) / 2,
       centerY - (boardHeight + scaleMetric(shadowExpandPx)) / 2 + scaleMetric(shadowOffsetY),
@@ -382,7 +401,7 @@ export class BoardRenderer {
       boardHeight + scaleMetric(shadowExpandPx)
     );
 
-    this.chromeBack.fillStyle(colors.board.glow, glowAlpha);
+    this.chromeBack.fillStyle(colors.board.glow, glowAlphaGlass);
     this.chromeBack.fillRect(
       centerX - (boardWidth + scaleMetric(glowExpandPx)) / 2,
       centerY - (boardHeight + scaleMetric(glowExpandPx)) / 2,
@@ -390,14 +409,14 @@ export class BoardRenderer {
       boardHeight + scaleMetric(glowExpandPx)
     );
 
-    this.chromeBack.fillStyle(colors.board.outer, outerAlpha);
+    this.chromeBack.fillStyle(colors.board.outer, outerAlphaGlass);
     this.chromeBack.fillRect(
       centerX - (boardWidth + scaleMetric(outerExpandPx)) / 2,
       centerY - (boardHeight + scaleMetric(outerExpandPx)) / 2,
       boardWidth + scaleMetric(outerExpandPx),
       boardHeight + scaleMetric(outerExpandPx)
     );
-    this.chromeBack.lineStyle(scaleMetric(outerStrokeWidth), colors.board.outerStroke, 0.95);
+    this.chromeBack.lineStyle(scaleMetric(outerStrokeWidth), colors.board.outerStroke, 0.9);
     this.chromeBack.strokeRect(
       centerX - (boardWidth + scaleMetric(outerExpandPx)) / 2,
       centerY - (boardHeight + scaleMetric(outerExpandPx)) / 2,
@@ -405,19 +424,19 @@ export class BoardRenderer {
       boardHeight + scaleMetric(outerExpandPx)
     );
 
-    this.chromeBack.fillStyle(colors.board.panel, panelAlpha);
+    this.chromeBack.fillStyle(colors.board.panel, panelAlphaGlass);
     this.chromeBack.fillRect(boardX, boardY, boardWidth, boardHeight);
-    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.74);
+    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.5);
     this.chromeBack.strokeRect(
       boardX + scaleMetric(4),
       boardY + scaleMetric(4),
       boardWidth - scaleMetric(8),
       boardHeight - scaleMetric(8)
     );
-    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.66);
+    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.54);
     this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardWidth - 2, boardHeight - 2);
 
-    this.chromeBack.fillStyle(colors.board.well, wellAlpha);
+    this.chromeBack.fillStyle(colors.board.well, wellAlphaGlass);
     this.chromeBack.fillRect(
       boardX + scaleMetric(wellInsetPx),
       boardY + scaleMetric(wellInsetPx),
@@ -425,7 +444,23 @@ export class BoardRenderer {
       boardHeight - (scaleMetric(wellInsetPx) * 2)
     );
 
-    this.chromeBack.fillStyle(colors.board.shadow, edgeShadeAlpha);
+    const sheenInset = scaleMetric(Math.max(wellInsetPx + 4, 10));
+    const sheenWidth = Math.max(12, boardWidth - (sheenInset * 2));
+    const upperSheenHeight = Math.max(2, scaleMetric(16));
+    const lowerShadeHeight = Math.max(2, scaleMetric(12));
+    this.chromeBack.fillStyle(colors.board.topHighlight, 0.075);
+    this.chromeBack.fillRect(boardX + sheenInset, boardY + sheenInset, sheenWidth, upperSheenHeight);
+    this.chromeBack.fillStyle(colors.board.topHighlight, 0.032);
+    this.chromeBack.fillRect(boardX + sheenInset, boardY + sheenInset + upperSheenHeight + 2, sheenWidth, Math.max(2, scaleMetric(6)));
+    this.chromeBack.fillStyle(colors.board.shadow, 0.09);
+    this.chromeBack.fillRect(
+      boardX + sheenInset,
+      boardY + boardHeight - sheenInset - lowerShadeHeight,
+      sheenWidth,
+      lowerShadeHeight
+    );
+
+    this.chromeBack.fillStyle(colors.board.shadow, edgeShadeAlphaGlass);
     this.chromeBack.fillRect(boardX, boardY, scaleMetric(edgeShadeWidthPx), boardHeight);
     this.chromeBack.fillRect(
       boardX,
@@ -440,7 +475,7 @@ export class BoardRenderer {
       boardHeight
     );
 
-    this.chromeBack.fillStyle(colors.board.topHighlight, topHighlightAlpha);
+    this.chromeBack.fillStyle(colors.board.topHighlight, topHighlightAlphaGlass);
     this.chromeBack.fillRect(
       boardX + scaleMetric(topHighlightInsetPx),
       boardY + scaleMetric(topHighlightInsetPx),
@@ -482,6 +517,9 @@ export class BoardRenderer {
     const showSolutionPath = solutionPathAlpha > 0;
     this.base.clear();
     this.grid.clear();
+
+    this.base.fillStyle(colors.board.panel, 0.06);
+    this.base.fillRect(boardX, boardY, boardWidth, boardHeight);
 
     for (let index = 0; index < this.episode.raster.tiles.length; index += 1) {
       const x = this.tileX(index);
@@ -528,7 +566,8 @@ export class BoardRenderer {
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
         this.base.fillRect(x + bevel, y + tileSize - (bevel * 2), tileSize - (bevel * 2), bevel);
 
-        this.grid.lineStyle(1, colors.board.innerStroke, legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale);
+        const floorGridAlpha = legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale;
+        this.grid.lineStyle(1, colors.board.innerStroke, floorGridAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
 
         this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha);
@@ -536,15 +575,18 @@ export class BoardRenderer {
       } else {
         this.base.fillStyle(colors.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale);
         this.base.fillRect(x, y, tileSize, tileSize);
-
-        this.base.fillStyle(colors.board.shadow, legacyTuning.board.tile.wallEdgeAlpha);
-        this.base.fillRect(x + tileSize - bevel, y, bevel, tileSize);
-        this.base.fillRect(x, y + tileSize - bevel, tileSize, bevel);
-
-        this.grid.lineStyle(1, colors.board.shadow, legacyTuning.board.tile.wallGridAlpha);
-        this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
       }
     }
+
+    this.base.fillStyle(colors.board.topHighlight, 0.04);
+    this.base.fillRect(boardX + 1, boardY + 1, Math.max(2, boardWidth - 2), Math.max(2, Math.round(tileSize * 0.55)));
+    this.base.fillStyle(colors.board.shadow, 0.08);
+    this.base.fillRect(
+      boardX + 1,
+      boardY + boardHeight - Math.max(2, Math.round(tileSize * 0.46)) - 1,
+      Math.max(2, boardWidth - 2),
+      Math.max(2, Math.round(tileSize * 0.46))
+    );
 
     if (presetProfile.showFrameGuide) {
       const inset = Math.max(2, Math.round(tileSize * 1.2));
@@ -746,6 +788,17 @@ export class BoardRenderer {
     const persistentTrail = options.persistentTrail === true || demoEmphasis;
     const persistentFadeFloor = Phaser.Math.Clamp(options.persistentFadeFloor ?? 0.22, 0, 0.92);
     const pulseBoost = Phaser.Math.Clamp(options.pulseBoost ?? 0, -0.08, 0.18);
+    const activeMotion = options.activeMotion;
+    const hasActiveMotion = activeMotion !== undefined
+      && activeMotion.fromIndex !== activeMotion.toIndex
+      && cue !== 'goal'
+      && cue !== 'reset';
+    const motionProgress = hasActiveMotion
+      ? Phaser.Math.Clamp(activeMotion?.progress ?? 0, 0, 1)
+      : 0;
+    const easedMotionProgress = motionProgress * motionProgress * (3 - (2 * motionProgress));
+    const motionFromCenter = hasActiveMotion ? this.tileCenter(activeMotion.fromIndex) : undefined;
+    const motionToCenter = hasActiveMotion ? this.tileCenter(activeMotion.toIndex) : undefined;
     this.trail.clear();
     this.signal.clear();
     if (trailLength === 0 || trailStart >= trailLength) {
@@ -768,7 +821,7 @@ export class BoardRenderer {
     const visibleLength = Math.max(1, trailLength - trailStart);
     const insetScale = demoEmphasis ? 0.9 : 1;
     const alphaBoost = demoEmphasis ? 0.08 : 0;
-    const glowBoost = demoEmphasis ? 0.12 : 0;
+    const glowBoost = demoEmphasis ? 0.06 : 0;
 
     for (let i = trailStart; i < trailLength; i += 1) {
       const step = trail[i];
@@ -813,6 +866,20 @@ export class BoardRenderer {
               : legacyTuning.board.trail.nodeRadiusRatio
         )
       );
+      const renderCenterX = isHead && hasActiveMotion
+        ? Phaser.Math.Linear(
+          motionFromCenter?.x ?? centerX,
+          motionToCenter?.x ?? centerX,
+          easedMotionProgress
+        )
+        : centerX;
+      const renderCenterY = isHead && hasActiveMotion
+        ? Phaser.Math.Linear(
+          motionFromCenter?.y ?? centerY,
+          motionToCenter?.y ?? centerY,
+          easedMotionProgress
+        )
+        : centerY;
       const segmentCoreColor = isGoalStep
         ? colors.board.goalCore
         : isBacktrack
@@ -825,8 +892,8 @@ export class BoardRenderer {
           : colors.board.trailGlow;
       const segmentFillColor = isGoalStep ? colors.board.goal : colors.board.trail;
       if (isHead) {
-        headCenterX = centerX;
-        headCenterY = centerY;
+        headCenterX = renderCenterX;
+        headCenterY = renderCenterY;
       }
 
       if (isBacktrack) {
@@ -849,62 +916,66 @@ export class BoardRenderer {
           tileSize - cellInset * 2
         );
         this.trail.lineStyle(Math.max(1, tileSize * 0.03), segmentCoreColor, alpha * 0.84 * trailCoreScale);
-        this.trail.lineBetween(centerX - nodeRadius, centerY - nodeRadius, centerX + nodeRadius, centerY + nodeRadius);
+        this.trail.lineBetween(renderCenterX - nodeRadius, renderCenterY - nodeRadius, renderCenterX + nodeRadius, renderCenterY + nodeRadius);
       } else {
-        this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.92 : 0.76) * trailFillScale);
-        this.trail.fillRect(
-          tileX + cellInset,
-          tileY + cellInset,
-          tileSize - cellInset * 2,
-          tileSize - cellInset * 2
-        );
+        if (!isHead || !hasActiveMotion || isGoalStep) {
+          this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.92 : 0.58) * trailFillScale);
+          this.trail.fillRect(
+            tileX + cellInset,
+            tileY + cellInset,
+            tileSize - cellInset * 2,
+            tileSize - cellInset * 2
+          );
+        }
       }
 
       if (isBacktrack) {
         const glowSize = nodeRadius * 2.5;
         const coreSize = nodeRadius * 1.75;
         this.trail.fillStyle(segmentGlowColor, glowAlpha * 0.8 * trailGlowScale);
-        this.trail.fillRect(centerX - glowSize / 2, centerY - glowSize / 2, glowSize, glowSize);
+        this.trail.fillRect(renderCenterX - glowSize / 2, renderCenterY - glowSize / 2, glowSize, glowSize);
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + 0.22) * trailCoreScale);
-        this.trail.fillRect(centerX - coreSize / 2, centerY - coreSize / 2, coreSize, coreSize);
-      } else {
-        this.trail.fillStyle(segmentGlowColor, glowAlpha * 0.92 * trailGlowScale);
-        this.trail.fillCircle(centerX, centerY, nodeRadius * 1.55);
-        this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + (isGoalStep ? 0.34 : 0.24)) * trailCoreScale);
-        this.trail.fillCircle(centerX, centerY, nodeRadius);
+        this.trail.fillRect(renderCenterX - coreSize / 2, renderCenterY - coreSize / 2, coreSize, coreSize);
+      } else if (isHead || isGoalStep) {
+        this.trail.fillStyle(segmentGlowColor, glowAlpha * (isHead ? 0.78 : 0.52) * trailGlowScale);
+        this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 1.42 : 1.18));
+        this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + (isGoalStep ? 0.28 : 0.2)) * trailCoreScale);
+        this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 0.92 : 0.78));
       }
 
       if (i === trailStart) {
-        previousCenterX = centerX;
-        previousCenterY = centerY;
+        previousCenterX = renderCenterX;
+        previousCenterY = renderCenterY;
         continue;
       }
 
-      this.trail.lineStyle(
-        Math.max(
-          isBacktrack ? 2 : 3,
-          tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackGlowLineWidthRatio : legacyTuning.board.trail.glowLineWidthRatio)
-        ),
-        segmentGlowColor,
-        glowAlpha * (isHead ? 1 : isBacktrack ? 0.62 : 0.9) * trailGlowScale
+      const bodyGlowWidth = Math.max(
+        isBacktrack ? 2 : 2,
+        tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackGlowLineWidthRatio : legacyTuning.board.trail.glowLineWidthRatio)
       );
-      this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
+      const bodyCoreWidth = Math.max(
+        isBacktrack ? 1 : 1,
+        tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackLineWidthRatio : legacyTuning.board.trail.lineWidthRatio)
+      );
       this.trail.lineStyle(
-        Math.max(
-          isBacktrack ? 1 : 2,
-          tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackLineWidthRatio : legacyTuning.board.trail.lineWidthRatio)
-        ),
+        bodyGlowWidth,
+        segmentGlowColor,
+        glowAlpha * (isHead ? 0.88 : isBacktrack ? 0.58 : 0.48) * trailGlowScale
+      );
+      this.trail.lineBetween(previousCenterX, previousCenterY, renderCenterX, renderCenterY);
+      this.trail.lineStyle(
+        bodyCoreWidth,
         segmentCoreColor,
         Phaser.Math.Clamp(
           Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
-            + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.5 : 0),
+            + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.36 : 0),
           0,
           1
         ) * (isBacktrack ? legacyTuning.board.trail.backtrackLineAlphaScale : 1) * trailCoreScale
       );
-      this.trail.lineBetween(previousCenterX, previousCenterY, centerX, centerY);
-      previousCenterX = centerX;
-      previousCenterY = centerY;
+      this.trail.lineBetween(previousCenterX, previousCenterY, renderCenterX, renderCenterY);
+      previousCenterX = renderCenterX;
+      previousCenterY = renderCenterY;
     }
 
     if (options.targetIndex !== null

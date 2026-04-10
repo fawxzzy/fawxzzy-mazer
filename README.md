@@ -48,9 +48,9 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 `theme=auto` uses curated family rotation. Explicit theme values lock the presentation family without adding storage or a settings UI.
 
 ## Install Mazer
-- The only install surface is a single `Install Mazer` action inside the title plate when the browser actually exposes `beforeinstallprompt`.
+- The install surface is a single top-right shell action when the browser actually exposes `beforeinstallprompt`.
 - Installed or standalone launches hide the action cleanly and keep the ambient presentation running unchanged.
-- Unsupported/manual-install surfaces fail open. On iOS-style browsers the title plate swaps to `Use Share > Add to Home Screen`.
+- Unsupported/manual-install surfaces fail open. On iOS-style browsers the top-right shell chip swaps to `Use Share > Add to Home Screen`.
 - Install UX is optional by rule: if install APIs are unavailable or throw, the title/demo shell still renders normally.
 
 ## Testing surfaces
@@ -73,10 +73,13 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Pattern: decouple theme scheduling from mood scheduling so the same topology can read differently without feeling repetitive.
 - Rule: install UX must be optional and fail-open; ambient presentation must remain usable even when install APIs are unavailable.
 - Pattern: use one intentional install action instead of rebuilding a full settings/options system.
+- Rule: readability and compositional clarity beat decorative tile detail in every ambient theme.
+- Pattern: render the board as a coherent surface first, then layer route/trail/theme accents on top.
 - Failure Mode: adding too many loosely defined visual variants creates noise, weakens identity, and can reintroduce long-run drift or framing regressions.
 - Failure Mode: tiny packaging issues like icons, manifest wiring, or audio-init warnings can make a polished ambient build feel unfinished even when the core loop is stable.
 - Failure Mode: aesthetically nice drift can make capture surfaces feel misaligned or zoomed even when the layout math is technically valid.
 - Failure Mode: platform-specific install assumptions can create broken or confusing UI if unsupported surfaces are not handled cleanly.
+- Failure Mode: per-tile edge styling and overactive trail effects can make a crisp ambient maze feel laggy, noisy, and less premium than the underlying system actually is.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.
