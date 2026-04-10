@@ -923,6 +923,45 @@ const CURATED_THEME_BAG: readonly PresentationThemeFamily[] = [
   'monolith'
 ] as const;
 
+interface FamilyThemeGuidance {
+  readonly best: readonly PresentationThemeFamily[];
+  readonly support: readonly PresentationThemeFamily[];
+  readonly blueprintAccent: readonly PresentationThemeFamily[];
+}
+
+const FAMILY_THEME_GUIDANCE: Record<MazeFamily, FamilyThemeGuidance> = {
+  classic: {
+    best: ['noir', 'vellum'],
+    support: ['ember', 'monolith'],
+    blueprintAccent: []
+  },
+  braided: {
+    best: ['aurora', 'ember'],
+    support: ['monolith'],
+    blueprintAccent: []
+  },
+  sparse: {
+    best: ['vellum', 'monolith'],
+    support: ['noir'],
+    blueprintAccent: []
+  },
+  dense: {
+    best: ['monolith', 'noir'],
+    support: ['aurora'],
+    blueprintAccent: ['monolith', 'aurora']
+  },
+  framed: {
+    best: ['vellum', 'noir'],
+    support: ['ember'],
+    blueprintAccent: []
+  },
+  'split-flow': {
+    best: ['aurora', 'vellum'],
+    support: ['noir'],
+    blueprintAccent: ['aurora']
+  }
+};
+
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
   isFiniteNumber(value) && value >= minimum ? value : fallback
@@ -2931,19 +2970,39 @@ export const resolveMenuDemoPreset = (
   const safeTheme = theme ?? PRESENTATION_THEME_FAMILIES[mix(seed, cycle, 0x34c2ab51) % PRESENTATION_THEME_FAMILIES.length];
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ safeTheme.charCodeAt(0));
   if (family === 'framed') {
-    return mixed % 5 === 0 ? 'classic' : 'framed';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    const onBestTheme = guidance.best.includes(safeTheme);
+    return onBestTheme
+      ? mixed % 6 === 0 ? 'classic' : 'framed'
+      : mixed % 4 === 0 ? 'classic' : 'framed';
   }
   if (family === 'braided') {
-    return mixed % 6 === 0 ? 'classic' : 'braided';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.best.includes(safeTheme) && mixed % 8 !== 0
+      ? 'braided'
+      : mixed % 5 === 0 ? 'classic' : 'braided';
   }
   if (family === 'sparse') {
-    return mixed % 6 === 0 ? 'braided' : 'classic';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.best.includes(safeTheme) || guidance.support.includes(safeTheme)
+      ? 'classic'
+      : mixed % 5 === 0 ? 'braided' : 'classic';
   }
   if (family === 'dense') {
-    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'braided';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    const blueprintAllowed = guidance.blueprintAccent.includes(safeTheme);
+    return blueprintAllowed && mixed % 7 === 0
+      ? 'blueprint-rare'
+      : mixed % 4 === 0 ? 'classic' : 'braided';
   }
   if (family === 'split-flow') {
-    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'braided' : 'classic';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    const blueprintAllowed = mood === 'blueprint' && guidance.blueprintAccent.includes(safeTheme);
+    return blueprintAllowed && mixed % 9 === 0
+      ? 'blueprint-rare'
+      : guidance.best.includes(safeTheme) && mixed % 5 !== 0
+        ? 'classic'
+        : mixed % 3 === 0 ? 'braided' : 'classic';
   }
   switch (mood) {
     case 'scan':

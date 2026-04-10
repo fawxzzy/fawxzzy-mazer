@@ -47,6 +47,8 @@ let resolveBoardPresentationBounds: typeof import('../../src/render/boardRendere
 let getPaletteReadabilityReport: typeof import('../../src/render/palette').getPaletteReadabilityReport;
 let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
 let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
+let CURATED_FAMILY_ROTATION_BLOCK_LENGTH: typeof import('../../src/domain/maze').CURATED_FAMILY_ROTATION_BLOCK_LENGTH;
+let MAZE_FAMILY_EXPOSURE_POLICY: typeof import('../../src/domain/maze').MAZE_FAMILY_EXPOSURE_POLICY;
 let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
 let resolveViewportSize: typeof import('../../src/render/viewport').resolveViewportSize;
 
@@ -67,7 +69,7 @@ beforeAll(async () => {
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ getPaletteReadabilityReport } = await import('../../src/render/palette'));
-  ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
+  ({ generateMazeForDifficulty, disposeMazeEpisode, CURATED_FAMILY_ROTATION_BLOCK_LENGTH, MAZE_FAMILY_EXPOSURE_POLICY } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
   ({ resolveViewportSize } = await import('../../src/render/viewport'));
 });
@@ -372,7 +374,7 @@ describe('demo-only build', () => {
       blueprint: 0
     };
 
-    for (let cycle = 0; cycle < 32; cycle += 1) {
+    for (let cycle = 0; cycle < 42; cycle += 1) {
       const step = resolveMenuDemoCycle(9001, cycle);
       seenDifficulties.add(step.difficulty);
       seenMoods.add(step.mood);
@@ -419,12 +421,27 @@ describe('demo-only build', () => {
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
     expect(moodCounts.solve).toBeGreaterThan(moodCounts.scan);
     expect(moodCounts.scan).toBeGreaterThan(moodCounts.blueprint);
-    for (let blockStart = 0; blockStart < 18; blockStart += 6) {
-      expect(new Set(families.slice(blockStart, blockStart + 6)).size).toBe(6);
+    for (let blockStart = 0; blockStart < CURATED_FAMILY_ROTATION_BLOCK_LENGTH * 2; blockStart += CURATED_FAMILY_ROTATION_BLOCK_LENGTH) {
+      const blockFamilies = families.slice(blockStart, blockStart + CURATED_FAMILY_ROTATION_BLOCK_LENGTH);
+      const counts = Object.fromEntries(
+        Object.keys(MAZE_FAMILY_EXPOSURE_POLICY).map((family) => [
+          family,
+          blockFamilies.filter((entry) => entry === family).length
+        ])
+      );
+      expect(counts.braided).toBe(MAZE_FAMILY_EXPOSURE_POLICY.braided.blockCount);
+      expect(counts.dense).toBe(MAZE_FAMILY_EXPOSURE_POLICY.dense.blockCount);
+      expect(counts['split-flow']).toBe(MAZE_FAMILY_EXPOSURE_POLICY['split-flow'].blockCount);
+      expect(counts.classic).toBe(MAZE_FAMILY_EXPOSURE_POLICY.classic.blockCount);
+      expect(counts.framed).toBe(MAZE_FAMILY_EXPOSURE_POLICY.framed.blockCount);
+      expect(counts.sparse).toBe(MAZE_FAMILY_EXPOSURE_POLICY.sparse.blockCount);
     }
     for (let index = 1; index < families.length; index += 1) {
       expect(families[index]).not.toBe(families[index - 1]);
     }
+    expect(families.filter((family) => family === 'braided').length).toBeGreaterThan(families.filter((family) => family === 'classic').length);
+    expect(families.filter((family) => family === 'dense').length).toBeGreaterThan(families.filter((family) => family === 'framed').length);
+    expect(families.filter((family) => family === 'split-flow').length).toBeGreaterThan(families.filter((family) => family === 'sparse').length);
 
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);
@@ -638,9 +655,10 @@ describe('demo-only build', () => {
   });
 
   test('theme-aware preset pairing keeps ambient chrome coherent', () => {
-    expect(['classic', 'framed']).toContain(resolveMenuDemoPreset(42, 0, 'scan', 'vellum'));
-    expect(['blueprint-rare', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'blueprint', 'aurora'));
-    expect(['framed', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'solve', 'ember'));
+    expect(['classic', 'framed']).toContain(resolveMenuDemoPreset(42, 0, 'scan', 'vellum', 'framed'));
+    expect(['classic', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'solve', 'aurora', 'braided'));
+    expect(['classic', 'braided', 'blueprint-rare']).toContain(resolveMenuDemoPreset(42, 0, 'blueprint', 'aurora', 'split-flow'));
+    expect(['classic', 'braided', 'blueprint-rare']).toContain(resolveMenuDemoPreset(42, 0, 'blueprint', 'monolith', 'dense'));
   });
 
   test('presentation artifact cleanup removes stale screenshot and capture outputs', () => {

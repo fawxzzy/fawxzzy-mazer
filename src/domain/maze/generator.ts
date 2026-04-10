@@ -82,7 +82,14 @@ interface MazeFamilyTuningProfile {
   readonly maxAttemptsBias: number;
 }
 
-type FamilyRotationBand = 'busy' | 'balanced' | 'composed';
+export type MazeFamilyExposureTier = 'hero' | 'supporting' | 'rare';
+
+export interface MazeFamilyExposureProfile {
+  readonly key: MazeFamily;
+  readonly tier: MazeFamilyExposureTier;
+  readonly blockCount: number;
+  readonly rotationRank: number;
+}
 
 export interface DifficultyResolvedMaze {
   episode: MazeEpisode;
@@ -105,19 +112,63 @@ export const MAZE_FAMILY_ORDER: readonly MazeFamily[] = [
   'split-flow'
 ] as const;
 
-const FAMILY_ROTATION_PATTERN_OPTIONS: readonly (readonly FamilyRotationBand[])[] = [
-  ['busy', 'balanced', 'composed', 'balanced', 'busy', 'composed'],
-  ['balanced', 'busy', 'composed', 'busy', 'balanced', 'composed']
+export const MAZE_FAMILY_EXPOSURE_POLICY: Record<MazeFamily, MazeFamilyExposureProfile> = {
+  braided: {
+    key: 'braided',
+    tier: 'hero',
+    blockCount: 3,
+    rotationRank: 1
+  },
+  dense: {
+    key: 'dense',
+    tier: 'hero',
+    blockCount: 3,
+    rotationRank: 2
+  },
+  'split-flow': {
+    key: 'split-flow',
+    tier: 'hero',
+    blockCount: 3,
+    rotationRank: 3
+  },
+  classic: {
+    key: 'classic',
+    tier: 'supporting',
+    blockCount: 2,
+    rotationRank: 4
+  },
+  framed: {
+    key: 'framed',
+    tier: 'supporting',
+    blockCount: 2,
+    rotationRank: 5
+  },
+  sparse: {
+    key: 'sparse',
+    tier: 'rare',
+    blockCount: 1,
+    rotationRank: 6
+  }
+};
+
+const FAMILY_ROTATION_TIER_PATTERN: readonly MazeFamilyExposureTier[] = [
+  'hero',
+  'supporting',
+  'hero',
+  'hero',
+  'supporting',
+  'hero',
+  'rare',
+  'hero',
+  'supporting',
+  'hero',
+  'hero',
+  'supporting',
+  'hero',
+  'hero'
 ] as const;
 
-const FAMILY_ROTATION_BANDS: Record<MazeFamily, FamilyRotationBand> = {
-  classic: 'balanced',
-  braided: 'busy',
-  sparse: 'composed',
-  dense: 'busy',
-  framed: 'composed',
-  'split-flow': 'balanced'
-};
+export const CURATED_FAMILY_ROTATION_BLOCK_LENGTH = FAMILY_ROTATION_TIER_PATTERN.length;
 
 const MAZE_VARIETY_PRESETS: readonly MazeVarietyPreset[] = [
   {
@@ -262,32 +313,20 @@ const FAMILY_TUNING: Record<MazeFamily, MazeFamilyTuningProfile> = {
 };
 
 export const buildCuratedFamilyRotationBlock = (seed: number, block: number): readonly MazeFamily[] => {
-  const remaining = [...MAZE_FAMILY_ORDER];
   const ordered: MazeFamily[] = [];
   let previous = block > 0
-    ? buildCuratedFamilyRotationBlock(seed, block - 1)[MAZE_FAMILY_ORDER.length - 1]
+    ? buildCuratedFamilyRotationBlock(seed, block - 1)[CURATED_FAMILY_ROTATION_BLOCK_LENGTH - 1]
     : undefined;
+  const remainingCounts = Object.fromEntries(
+    MAZE_FAMILY_ORDER.map((family) => [family, MAZE_FAMILY_EXPOSURE_POLICY[family].blockCount])
+  ) as Record<MazeFamily, number>;
   let state = mixFamilyRotationSeed(seed, block);
-  const pattern = FAMILY_ROTATION_PATTERN_OPTIONS[state % FAMILY_ROTATION_PATTERN_OPTIONS.length];
 
-  for (let slot = 0; slot < pattern.length; slot += 1) {
+  for (const tier of FAMILY_ROTATION_TIER_PATTERN) {
     state = lcg(state);
-    const desiredBand = pattern[slot];
-    const preferred = remaining.filter((family) => (
-      FAMILY_ROTATION_BANDS[family] === desiredBand && family !== previous
-    ));
-    const sameBand = remaining.filter((family) => FAMILY_ROTATION_BANDS[family] === desiredBand);
-    const fallback = remaining.filter((family) => family !== previous);
-    const pool = preferred.length > 0
-      ? preferred
-      : sameBand.length > 0
-        ? sameBand
-        : fallback.length > 0
-          ? fallback
-          : remaining;
-    const nextFamily = pool[state % pool.length];
+    const nextFamily = pickFamilyForTier(tier, remainingCounts, previous, state);
     ordered.push(nextFamily);
-    remaining.splice(remaining.indexOf(nextFamily), 1);
+    remainingCounts[nextFamily] -= 1;
     previous = nextFamily;
   }
 
@@ -295,8 +334,8 @@ export const buildCuratedFamilyRotationBlock = (seed: number, block: number): re
 };
 
 export const resolveCuratedFamilyRotation = (seed: number, cycle: number): MazeFamily => {
-  const block = Math.floor(cycle / MAZE_FAMILY_ORDER.length);
-  const slot = cycle % MAZE_FAMILY_ORDER.length;
+  const block = Math.floor(cycle / CURATED_FAMILY_ROTATION_BLOCK_LENGTH);
+  const slot = cycle % CURATED_FAMILY_ROTATION_BLOCK_LENGTH;
   return buildCuratedFamilyRotationBlock(seed, block)[slot] ?? MAZE_FAMILY_ORDER[0];
 };
 
@@ -801,6 +840,22 @@ const resolveMazeFamily = (
 const resolvePresentationFootprintPadding = (preset: MazePresentationPreset): number => (
   preset === 'framed' || preset === 'blueprint-rare' ? 2 : 0
 );
+
+const pickFamilyForTier = (
+  tier: MazeFamilyExposureTier,
+  remainingCounts: Record<MazeFamily, number>,
+  previous: MazeFamily | undefined,
+  state: number
+): MazeFamily => {
+  const tierFamilies = MAZE_FAMILY_ORDER.filter((family) => (
+    MAZE_FAMILY_EXPOSURE_POLICY[family].tier === tier && remainingCounts[family] > 0
+  ));
+  const pool = tierFamilies.filter((family) => family !== previous);
+  const viablePool = pool.length > 0 ? pool : tierFamilies;
+  const highestRemaining = Math.max(...viablePool.map((family) => remainingCounts[family]));
+  const strongestPool = viablePool.filter((family) => remainingCounts[family] === highestRemaining);
+  return strongestPool[state % strongestPool.length] ?? MAZE_FAMILY_ORDER[0];
+};
 
 const mixFamilyRotationSeed = (seed: number, block: number): number => (
   Math.imul((seed >>> 0) ^ ((block & 0xffff) << 11), 0x45d9f3b) >>> 0

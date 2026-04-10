@@ -75,8 +75,10 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Pattern: deployment profiles may constrain motion and framing more aggressively than the default presentation when a surface needs compositional stability.
 - Rule: visual variety should come from clearly different presentation families before touching generator truth.
 - Rule: true ambient variety should come from materially different maze-family behavior before adding more decorative theme noise.
+- Rule: a smaller set of strongly differentiated families is better than a larger set with metric overlap.
 - Pattern: decouple theme scheduling from mood scheduling so the same topology can read differently without feeling repetitive.
 - Pattern: preserve Wilson truth, then tune complexity through family-level straightness penalties, endpoint strategies, braid pressure, and region structure.
+- Pattern: use analysis to prove distinctness, then use exposure policy to make distinctness visible in ambient viewing.
 - Rule: install UX must be optional and fail-open; ambient presentation must remain usable even when install APIs are unavailable.
 - Pattern: use one intentional install action instead of rebuilding a full settings/options system.
 - Rule: readability and compositional clarity beat decorative tile detail in every ambient theme.
@@ -87,6 +89,7 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Failure Mode: platform-specific install assumptions can create broken or confusing UI if unsupported surfaces are not handled cleanly.
 - Failure Mode: per-tile edge styling and overactive trail effects can make a crisp ambient maze feel laggy, noisy, and less premium than the underlying system actually is.
 - Failure Mode: if family output is visually different but topologically similar, long ambient watching still feels repetitive.
+- Failure Mode: evenly rotating too many medium-difference families can still feel repetitive because no memorable archetype dominates the loop.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.
@@ -97,6 +100,7 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Solving now runs on a compressed corridor graph, then expands back to tile indices only for rendering.
 - Ambient presentation can route mazes through deterministic `classic`, `braided`, `framed`, and rare `blueprint-rare` presets without adding storage or gameplay state.
 - Ambient topology can also route mazes through deterministic `classic`, `braided`, `sparse`, `dense`, `framed`, and `split-flow` families while keeping Wilson as the base generator truth and shifting variety into topology and endpoint behavior before theme noise.
+- Auto family exposure is curated on purpose: hero families (`braided`, `dense`, `split-flow`) carry the loop, `classic` and `framed` support, and `sparse` stays rare so its contrast remains noticeable.
 - Ambient themes (`noir`, `ember`, `aurora`, `vellum`, `monolith`) are presentation families layered above the same maze substrate; they are not generator forks.
 - `theme=auto` rotates those families on a curated schedule that is independent from mood scheduling, while explicit `theme=` values lock capture output to one family.
 - Install behavior is intentionally ephemeral and runtime-only; no install preference or launcher state is written into app storage.

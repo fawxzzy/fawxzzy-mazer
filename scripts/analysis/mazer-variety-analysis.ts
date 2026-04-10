@@ -1,10 +1,14 @@
 import { legacyTuning } from '../../src/config/tuning';
+import { type PresentationThemeFamily } from '../../src/boot/presentation';
 import {
+  CURATED_FAMILY_ROTATION_BLOCK_LENGTH,
   disposeMazeEpisode,
   generateMaze,
   generateMazeForDifficulty,
+  MAZE_FAMILY_EXPOSURE_POLICY,
   MAZE_FAMILY_ORDER,
   MAZE_SIZE_ORDER,
+  type MazeFamilyExposureTier,
   resolveCuratedFamilyRotation,
   type MazeDifficulty,
   type MazeEpisode,
@@ -30,6 +34,7 @@ type EpisodeSample = {
   size: MazeSize;
   difficulty: MazeDifficulty;
   mood: DemoMood;
+  theme: PresentationThemeFamily;
   family: MazeFamily;
   placementStrategy: MazePlacementStrategy;
   preset: MazePresentationPreset;
@@ -82,6 +87,7 @@ type VarietyReport = {
     familyCounts: Record<string, number>;
     placementStrategyCounts: Record<string, number>;
     moodCounts: Record<string, number>;
+    themeCounts: Record<string, number>;
     sizeCounts: Record<string, number>;
     difficultyCounts: Record<string, number>;
     familyDistributionEntropy: number;
@@ -124,6 +130,57 @@ type VarietyReport = {
       corridorP90: number;
     }>;
   };
+  familyReview: {
+    ranking: FamilyReviewEntry[];
+    overlapFindings: FamilyOverlapFinding[];
+    exposurePolicy: FamilyExposurePolicyReport;
+    themePairings: Record<string, FamilyThemeGuidance>;
+  };
+};
+
+type FamilyDisposition = 'keep' | 'retune' | 'demote-rare';
+
+type FamilyReviewEntry = {
+  family: MazeFamily;
+  rank: number;
+  exposureTier: MazeFamilyExposureTier;
+  disposition: FamilyDisposition;
+  metricDistinctness: number;
+  visualDistinctness: number;
+  overlapRisk: number;
+  autoRotationValue: number;
+  nearestNeighbor: MazeFamily;
+  note: string;
+};
+
+type FamilyOverlapFinding = {
+  families: [MazeFamily, MazeFamily];
+  distance: number;
+  risk: 'low' | 'medium' | 'high';
+  similarOn: string[];
+  distinctOn: string[];
+  recommendation: string;
+};
+
+type FamilyExposurePolicyReport = {
+  hero: MazeFamily[];
+  supporting: MazeFamily[];
+  rare: MazeFamily[];
+  blockLength: number;
+  blockCounts: Record<string, number>;
+  adjacentRepeatsAvoided: boolean;
+};
+
+type FamilyThemeGuidance = {
+  best: PresentationThemeFamily[];
+  support: PresentationThemeFamily[];
+  blueprintAccent: PresentationThemeFamily[];
+};
+
+type MetricAxis = {
+  label: string;
+  weight: number;
+  get: (summary: BucketSummary) => number;
 };
 
 const ROTATING_DIFFICULTIES: readonly MazeDifficulty[] = ['chill', 'standard', 'spicy', 'brutal'];
@@ -135,7 +192,107 @@ const CURATED_MOOD_PATTERNS: readonly DemoMood[][] = [
   ['solve', 'scan', 'solve', 'solve', 'blueprint', 'solve', 'solve', 'scan'],
   ['solve', 'solve', 'scan', 'solve', 'solve', 'blueprint', 'scan', 'solve']
 ];
+const CURATED_THEME_BAG: readonly PresentationThemeFamily[] = [
+  'noir',
+  'ember',
+  'aurora',
+  'vellum',
+  'monolith',
+  'noir',
+  'ember',
+  'aurora',
+  'vellum',
+  'monolith'
+] as const;
 const PRESENTATION_PRESETS: readonly MazePresentationPreset[] = ['classic', 'braided', 'framed', 'blueprint-rare'];
+const FAMILY_THEME_GUIDANCE: Record<MazeFamily, FamilyThemeGuidance> = {
+  classic: {
+    best: ['noir', 'vellum'],
+    support: ['ember', 'monolith'],
+    blueprintAccent: []
+  },
+  braided: {
+    best: ['aurora', 'ember'],
+    support: ['monolith'],
+    blueprintAccent: []
+  },
+  sparse: {
+    best: ['vellum', 'monolith'],
+    support: ['noir'],
+    blueprintAccent: []
+  },
+  dense: {
+    best: ['monolith', 'noir'],
+    support: ['aurora'],
+    blueprintAccent: ['monolith', 'aurora']
+  },
+  framed: {
+    best: ['vellum', 'noir'],
+    support: ['ember'],
+    blueprintAccent: []
+  },
+  'split-flow': {
+    best: ['aurora', 'vellum'],
+    support: ['noir'],
+    blueprintAccent: ['aurora']
+  }
+};
+const FAMILY_CURATION_DECISIONS: Record<MazeFamily, {
+  rank: number;
+  disposition: FamilyDisposition;
+  note: string;
+}> = {
+  braided: {
+    rank: 1,
+    disposition: 'keep',
+    note: 'Most immediately different hero family; keep exposed often.'
+  },
+  dense: {
+    rank: 2,
+    disposition: 'keep',
+    note: 'Primary local-pressure family; keep exposed often.'
+  },
+  'split-flow': {
+    rank: 3,
+    disposition: 'keep',
+    note: 'Strongest regional-structure family; keep exposed often.'
+  },
+  classic: {
+    rank: 4,
+    disposition: 'retune',
+    note: 'Useful baseline/supporting family; keep visible but not dominant.'
+  },
+  framed: {
+    rank: 5,
+    disposition: 'retune',
+    note: 'Supporting architectural family; rely on pairings instead of heavy blueprint reads.'
+  },
+  sparse: {
+    rank: 6,
+    disposition: 'demote-rare',
+    note: 'Keep as contrast spice, but demote to rare exposure because it overlaps too easily with calmer classics.'
+  }
+};
+const FAMILY_METRIC_AXES: readonly MetricAxis[] = [
+  { label: 'solutionLength', weight: 0.8, get: (summary) => summary.solutionLength.mean },
+  { label: 'deadEnds', weight: 0.8, get: (summary) => summary.deadEnds.mean },
+  { label: 'junctions', weight: 1, get: (summary) => summary.junctions.mean },
+  { label: 'branchDensity', weight: 1.25, get: (summary) => summary.branchDensity.mean },
+  { label: 'straightness', weight: 1.2, get: (summary) => summary.straightness.mean },
+  { label: 'coverage', weight: 0.7, get: (summary) => summary.coverage.mean },
+  { label: 'meanBranchingFactor', weight: 0.7, get: (summary) => summary.meanBranchingFactor.mean },
+  { label: 'corridorMean', weight: 1.1, get: (summary) => summary.corridorMean.mean },
+  { label: 'corridorP90', weight: 0.9, get: (summary) => summary.corridorP90.mean },
+  { label: 'placementStrategyDiversity', weight: 0.75, get: (summary) => summary.placementStrategyDiversity }
+] as const;
+const FAMILY_VISUAL_AXES: readonly MetricAxis[] = [
+  { label: 'branchDensity', weight: 1.35, get: (summary) => summary.branchDensity.mean },
+  { label: 'straightness', weight: 1.35, get: (summary) => summary.straightness.mean },
+  { label: 'coverage', weight: 0.7, get: (summary) => summary.coverage.mean },
+  { label: 'corridorMean', weight: 1.2, get: (summary) => summary.corridorMean.mean },
+  { label: 'corridorP90', weight: 1, get: (summary) => summary.corridorP90.mean },
+  { label: 'placementStrategyDiversity', weight: 0.9, get: (summary) => summary.placementStrategyDiversity }
+] as const;
 const DIRECTION_STEPS = [
   { dx: 0, dy: -1 },
   { dx: 1, dy: 0 },
@@ -183,37 +340,94 @@ const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
   return resolveCuratedFamilyRotation(seed, cycle);
 };
 
+const resolveCuratedTheme = (seed: number, cycle: number): PresentationThemeFamily => {
+  const block = Math.floor(cycle / CURATED_THEME_BAG.length);
+  const slot = cycle % CURATED_THEME_BAG.length;
+  return buildCuratedThemeBlock(seed, block)[slot] ?? CURATED_THEME_BAG[0];
+};
+
+const buildCuratedThemeBlock = (seed: number, block: number): readonly PresentationThemeFamily[] => {
+  const remaining = [...CURATED_THEME_BAG];
+  const ordered: PresentationThemeFamily[] = [];
+  let state = mix(seed ^ 0x4d9f47c3, block, 0x4d9f47c3) || 1;
+  let previous = block > 0
+    ? buildCuratedThemeBlock(seed, block - 1)[CURATED_THEME_BAG.length - 1]
+    : undefined;
+
+  while (remaining.length > 0) {
+    state = lcg(state);
+    let pickIndex = state % remaining.length;
+
+    if (remaining[pickIndex] === previous) {
+      const alternateIndex = remaining.findIndex((theme) => theme !== previous);
+      if (alternateIndex >= 0) {
+        pickIndex = alternateIndex;
+      }
+    }
+
+    const [nextTheme] = remaining.splice(pickIndex, 1);
+    ordered.push(nextTheme);
+    previous = nextTheme;
+  }
+
+  return ordered;
+};
+
 const resolveMenuDemoPreset = (
   seed: number,
   cycle: number,
   mood: DemoMood,
+  theme: PresentationThemeFamily,
   family?: MazeFamily
 ): MazePresentationPreset => {
-  const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0));
+  const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ theme.charCodeAt(0));
   if (family === 'framed') {
-    return mixed % 5 === 0 ? 'classic' : 'framed';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.best.includes(theme)
+      ? mixed % 6 === 0 ? 'classic' : 'framed'
+      : mixed % 4 === 0 ? 'classic' : 'framed';
   }
   if (family === 'braided') {
-    return mixed % 6 === 0 ? 'classic' : 'braided';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.best.includes(theme) && mixed % 8 !== 0
+      ? 'braided'
+      : mixed % 5 === 0 ? 'classic' : 'braided';
   }
   if (family === 'sparse') {
-    return mixed % 6 === 0 ? 'braided' : 'classic';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.best.includes(theme) || guidance.support.includes(theme)
+      ? 'classic'
+      : mixed % 5 === 0 ? 'braided' : 'classic';
   }
   if (family === 'dense') {
-    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'braided';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return guidance.blueprintAccent.includes(theme) && mixed % 7 === 0
+      ? 'blueprint-rare'
+      : mixed % 4 === 0 ? 'classic' : 'braided';
   }
   if (family === 'split-flow') {
-    return mixed % 5 === 0 ? 'blueprint-rare' : mixed % 3 === 0 ? 'braided' : 'classic';
+    const guidance = FAMILY_THEME_GUIDANCE[family];
+    return mood === 'blueprint' && guidance.blueprintAccent.includes(theme) && mixed % 9 === 0
+      ? 'blueprint-rare'
+      : guidance.best.includes(theme) && mixed % 5 !== 0
+        ? 'classic'
+        : mixed % 3 === 0 ? 'braided' : 'classic';
   }
 
   switch (mood) {
     case 'scan':
-      return (mixed & 1) === 0 ? 'framed' : 'braided';
+      return theme === 'noir' || theme === 'vellum'
+        ? mixed % 3 === 0 ? 'classic' : 'framed'
+        : mixed % 7 === 0 ? 'classic' : mixed % 3 === 0 ? 'framed' : 'braided';
     case 'blueprint':
-      return mixed % 7 === 0 ? 'blueprint-rare' : 'framed';
+      return theme === 'aurora'
+        ? mixed % 2 === 0 ? 'blueprint-rare' : 'braided'
+        : mixed % 5 <= 1 ? 'blueprint-rare' : mixed % 3 === 0 ? 'classic' : 'framed';
     case 'solve':
     default:
-      return mixed % 5 === 0 ? 'braided' : 'classic';
+      return theme === 'ember'
+        ? mixed % 3 === 0 ? 'framed' : 'braided'
+        : mixed % 8 === 0 ? 'blueprint-rare' : mixed % 5 === 0 ? 'framed' : mixed % 3 === 0 ? 'braided' : 'classic';
   }
 };
 
@@ -221,17 +435,20 @@ const resolveAmbientCycle = (seed: number, cycle: number): {
   size: MazeSize;
   difficulty: MazeDifficulty;
   mood: DemoMood;
+  theme: PresentationThemeFamily;
   family: MazeFamily;
   presentationPreset: MazePresentationPreset;
 } => {
   const mood = resolveCuratedMood(seed, cycle);
   const family = resolveCuratedFamily(seed >>> 0, cycle);
+  const theme = resolveCuratedTheme(seed, cycle);
   return {
     difficulty: pickCuratedCycleValue(ROTATING_DIFFICULTIES, seed ^ 0x517cc1b7, cycle + 1, 0x517cc1b7),
     size: pickCuratedCycleValue(ROTATING_SIZES, seed, cycle, 0x2d2816fe),
     mood,
+    theme,
     family,
-    presentationPreset: resolveMenuDemoPreset(seed, cycle, mood, family)
+    presentationPreset: resolveMenuDemoPreset(seed, cycle, mood, theme, family)
   };
 };
 
@@ -259,7 +476,7 @@ const main = (): void => {
     }, plan.difficulty);
 
     try {
-      ambientSamples.push(toEpisodeSample(resolved.episode, cycle, plan.mood, resolved.seed));
+      ambientSamples.push(toEpisodeSample(resolved.episode, cycle, plan.mood, plan.theme, resolved.seed));
     } finally {
       disposeMazeEpisode(resolved.episode);
     }
@@ -274,13 +491,13 @@ const main = (): void => {
           seed,
           size,
           family,
-          presentationPreset: resolveMenuDemoPreset(seed, seedOffset, 'solve', family),
+          presentationPreset: resolveMenuDemoPreset(seed, seedOffset, 'solve', resolveCuratedTheme(seed, seedOffset), family),
           checkPointModifier: legacyTuning.board.checkPointModifier,
           shortcutCountModifier: legacyTuning.board.shortcutCountModifier.menu
         });
 
         try {
-          familySamples.get(family)!.push(toEpisodeSample(episode, seedOffset, 'solve', seed));
+          familySamples.get(family)!.push(toEpisodeSample(episode, seedOffset, 'solve', resolveCuratedTheme(seed, seedOffset), seed));
         } finally {
           disposeMazeEpisode(episode);
         }
@@ -296,7 +513,7 @@ const main = (): void => {
         });
 
         try {
-          presetSamples.get(preset)!.push(toEpisodeSample(episode, seedOffset, 'solve', seed));
+          presetSamples.get(preset)!.push(toEpisodeSample(episode, seedOffset, 'solve', resolveCuratedTheme(seed, seedOffset), seed));
         } finally {
           disposeMazeEpisode(episode);
         }
@@ -322,6 +539,7 @@ const main = (): void => {
       familyCounts: countBy(ambientSamples, (sample) => sample.family),
       placementStrategyCounts: countBy(ambientSamples, (sample) => sample.placementStrategy),
       moodCounts: countBy(ambientSamples, (sample) => sample.mood),
+      themeCounts: countBy(ambientSamples, (sample) => sample.theme),
       sizeCounts: countBy(ambientSamples, (sample) => sample.size),
       difficultyCounts: countBy(ambientSamples, (sample) => sample.difficulty),
       familyDistributionEntropy: normalizedEntropy(ambientSamples.map((sample) => sample.family)),
@@ -353,6 +571,14 @@ const main = (): void => {
           summarizeDelta(classicBaseline, presetSummary[preset])
         ])
       )
+    },
+    familyReview: {
+      ranking: buildFamilyRanking(familySummary),
+      overlapFindings: buildFamilyOverlapFindings(familySummary),
+      exposurePolicy: buildFamilyExposurePolicyReport(),
+      themePairings: Object.fromEntries(
+        ROTATING_FAMILIES.map((family) => [family, FAMILY_THEME_GUIDANCE[family]])
+      )
     }
   };
 
@@ -363,6 +589,7 @@ const toEpisodeSample = (
   episode: MazeEpisode,
   cycle: number,
   mood: DemoMood,
+  theme: PresentationThemeFamily,
   actualSeed: number
 ): EpisodeSample => {
   const topology = analyzeRasterTopology(episode);
@@ -373,6 +600,7 @@ const toEpisodeSample = (
     size: episode.size,
     difficulty: episode.difficulty,
     mood,
+    theme,
     family: episode.family,
     placementStrategy: episode.placementStrategy,
     preset: episode.presentationPreset,
@@ -713,6 +941,181 @@ const normalizedEntropy = (values: readonly string[]): number => {
 
   return counts.length <= 1 ? 0 : entropy / Math.log2(counts.length);
 };
+
+const buildFamilyRanking = (summaries: Record<string, BucketSummary>): FamilyReviewEntry[] => {
+  return ROTATING_FAMILIES
+    .map((family) => {
+      const summary = summaries[family];
+      const metricDistinctness = scoreFamilyDistinctness(family, summaries, FAMILY_METRIC_AXES);
+      const visualDistinctness = scoreFamilyDistinctness(family, summaries, FAMILY_VISUAL_AXES);
+      const nearestNeighbor = findNearestFamily(family, summaries, FAMILY_METRIC_AXES);
+      const overlapRisk = roundMetric((1 - nearestNeighbor.distance) * 100);
+      const tier = MAZE_FAMILY_EXPOSURE_POLICY[family].tier;
+      const tierBonus = tier === 'hero' ? 14 : tier === 'supporting' ? 6 : -4;
+      const autoRotationValue = roundMetric(
+        (metricDistinctness * 0.4)
+        + (visualDistinctness * 0.35)
+        + (summary.placementStrategyDiversity * 100 * 0.1)
+        + tierBonus
+        - (overlapRisk * 0.1)
+      );
+      const decision = FAMILY_CURATION_DECISIONS[family];
+
+      return {
+        family,
+        rank: decision.rank,
+        exposureTier: tier,
+        disposition: decision.disposition,
+        metricDistinctness,
+        visualDistinctness,
+        overlapRisk,
+        autoRotationValue,
+        nearestNeighbor: nearestNeighbor.family,
+        note: decision.note
+      };
+    })
+    .sort((left, right) => left.rank - right.rank);
+};
+
+const buildFamilyOverlapFindings = (summaries: Record<string, BucketSummary>): FamilyOverlapFinding[] => {
+  const pairs: FamilyOverlapFinding[] = [];
+
+  for (let leftIndex = 0; leftIndex < ROTATING_FAMILIES.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < ROTATING_FAMILIES.length; rightIndex += 1) {
+      const left = ROTATING_FAMILIES[leftIndex];
+      const right = ROTATING_FAMILIES[rightIndex];
+      const distance = computeSummaryDistance(summaries[left], summaries[right], FAMILY_METRIC_AXES, summaries);
+      const axisSpread = describeAxisSpread(summaries[left], summaries[right], FAMILY_METRIC_AXES, summaries);
+
+      pairs.push({
+        families: [left, right],
+        distance: roundMetric(distance * 100),
+        risk: distance < 0.18 ? 'high' : distance < 0.26 ? 'medium' : 'low',
+        similarOn: axisSpread.similarOn,
+        distinctOn: axisSpread.distinctOn,
+        recommendation: buildOverlapRecommendation(left, right, distance)
+      });
+    }
+  }
+
+  return pairs.sort((left, right) => left.distance - right.distance).slice(0, 6);
+};
+
+const buildFamilyExposurePolicyReport = (): FamilyExposurePolicyReport => ({
+  hero: ROTATING_FAMILIES.filter((family) => MAZE_FAMILY_EXPOSURE_POLICY[family].tier === 'hero'),
+  supporting: ROTATING_FAMILIES.filter((family) => MAZE_FAMILY_EXPOSURE_POLICY[family].tier === 'supporting'),
+  rare: ROTATING_FAMILIES.filter((family) => MAZE_FAMILY_EXPOSURE_POLICY[family].tier === 'rare'),
+  blockLength: CURATED_FAMILY_ROTATION_BLOCK_LENGTH,
+  blockCounts: Object.fromEntries(
+    ROTATING_FAMILIES.map((family) => [family, MAZE_FAMILY_EXPOSURE_POLICY[family].blockCount])
+  ),
+  adjacentRepeatsAvoided: true
+});
+
+const scoreFamilyDistinctness = (
+  family: MazeFamily,
+  summaries: Record<string, BucketSummary>,
+  axes: readonly MetricAxis[]
+): number => {
+  const otherFamilies = ROTATING_FAMILIES.filter((candidate) => candidate !== family);
+  const distances = otherFamilies.map((candidate) => (
+    computeSummaryDistance(summaries[family], summaries[candidate], axes, summaries)
+  ));
+  return roundMetric(mean(distances) * 100);
+};
+
+const findNearestFamily = (
+  family: MazeFamily,
+  summaries: Record<string, BucketSummary>,
+  axes: readonly MetricAxis[]
+): { family: MazeFamily; distance: number } => {
+  let nearestFamily = ROTATING_FAMILIES.find((candidate) => candidate !== family) ?? family;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const candidate of ROTATING_FAMILIES) {
+    if (candidate === family) {
+      continue;
+    }
+
+    const distance = computeSummaryDistance(summaries[family], summaries[candidate], axes, summaries);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestFamily = candidate;
+    }
+  }
+
+  return {
+    family: nearestFamily,
+    distance: nearestDistance
+  };
+};
+
+const computeSummaryDistance = (
+  left: BucketSummary,
+  right: BucketSummary,
+  axes: readonly MetricAxis[],
+  summaries: Record<string, BucketSummary>
+): number => {
+  let weightedDistance = 0;
+  let totalWeight = 0;
+
+  for (const axis of axes) {
+    const values = ROTATING_FAMILIES.map((family) => axis.get(summaries[family]));
+    const range = Math.max(...values) - Math.min(...values);
+    const normalized = range <= 0 ? 0 : Math.abs(axis.get(left) - axis.get(right)) / range;
+    weightedDistance += normalized * axis.weight;
+    totalWeight += axis.weight;
+  }
+
+  return totalWeight <= 0 ? 0 : weightedDistance / totalWeight;
+};
+
+const describeAxisSpread = (
+  left: BucketSummary,
+  right: BucketSummary,
+  axes: readonly MetricAxis[],
+  summaries: Record<string, BucketSummary>
+): { similarOn: string[]; distinctOn: string[] } => {
+  const axisScores = axes.map((axis) => {
+    const values = ROTATING_FAMILIES.map((family) => axis.get(summaries[family]));
+    const range = Math.max(...values) - Math.min(...values);
+    return {
+      label: axis.label,
+      delta: range <= 0 ? 0 : Math.abs(axis.get(left) - axis.get(right)) / range
+    };
+  }).sort((first, second) => first.delta - second.delta);
+
+  return {
+    similarOn: axisScores.slice(0, 2).map((axis) => axis.label),
+    distinctOn: axisScores.slice(-2).reverse().map((axis) => axis.label)
+  };
+};
+
+const buildOverlapRecommendation = (
+  left: MazeFamily,
+  right: MazeFamily,
+  distance: number
+): string => {
+  const pairKey = [left, right].sort().join('|');
+  if (pairKey === 'classic|sparse') {
+    return 'Keep classic as the baseline and demote sparse to rare exposure so the overlap reads intentional instead of repetitive.';
+  }
+  if (pairKey === 'classic|framed') {
+    return 'Keep both, but let framed lean on architectural pairings while classic stays the baseline reset family.';
+  }
+  if (pairKey === 'braided|dense') {
+    return 'Keep both in hero rotation because the overlap is metric-adjacent but the viewing role is different: weave versus pressure.';
+  }
+  if (pairKey === 'framed|split-flow') {
+    return 'Preserve both, but avoid blueprint-heavy preset usage so split-flow reads structural and framed reads architectural.';
+  }
+
+  return distance < 0.18
+    ? 'Reduce exposure overlap; one of these families should carry the heavier rotation load.'
+    : 'Overlap is manageable if exposure tiers stay separated.';
+};
+
+const roundMetric = (value: number): number => Math.round(value * 100) / 100;
 
 const mix = (seed: number, cycle: number, salt: number): number => (
   Math.imul((seed >>> 0) ^ Math.imul((cycle + 1) >>> 0, 0x9e3779b1), (salt | 1) >>> 0) >>> 0
