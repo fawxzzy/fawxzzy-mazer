@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { resolveBootPresentationVariant } from '../boot/presentation';
 
 export class BootScene extends Phaser.Scene {
   public constructor() {
@@ -11,7 +12,9 @@ export class BootScene extends Phaser.Scene {
 
   public create(): void {
     if (this.scene.isActive()) {
-      this.scene.start('MenuScene');
+      this.scene.start('MenuScene', {
+        presentation: resolveBootPresentationVariant()
+      });
     }
   }
 }

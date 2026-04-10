@@ -15,6 +15,8 @@ vi.mock('phaser', () => ({
 
 let BootScene: typeof import('../../src/scenes/BootScene').BootScene;
 let phaserConfig: typeof import('../../src/boot/phaserConfig').phaserConfig;
+let DEFAULT_PRESENTATION_VARIANT: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_VARIANT;
+let resolveBootPresentationVariant: typeof import('../../src/boot/presentation').resolveBootPresentationVariant;
 let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMenuDemoCycle;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
@@ -25,6 +27,7 @@ let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
 beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
+  ({ DEFAULT_PRESENTATION_VARIANT, resolveBootPresentationVariant } = await import('../../src/boot/presentation'));
   ({ resolveMenuDemoCycle, resolveMenuDemoPresentation, resolveMenuDemoSequence } = await import('../../src/scenes/MenuScene'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
@@ -40,7 +43,14 @@ describe('demo-only build', () => {
       }
     });
 
-    expect(start).toHaveBeenCalledWith('MenuScene');
+    expect(start).toHaveBeenCalledWith('MenuScene', { presentation: DEFAULT_PRESENTATION_VARIANT });
+  });
+
+  test('presentation selection defaults to title and accepts clean alternates', () => {
+    expect(resolveBootPresentationVariant('')).toBe('title');
+    expect(resolveBootPresentationVariant('?presentation=ambient')).toBe('ambient');
+    expect(resolveBootPresentationVariant('?presentation=loading')).toBe('loading');
+    expect(resolveBootPresentationVariant('?presentation=unknown')).toBe('title');
   });
 
   test('scene wiring only includes boot and menu scenes', () => {
@@ -53,6 +63,7 @@ describe('demo-only build', () => {
     const seenMoods = new Set<string>();
     const seenSizes = new Set<string>();
     const seenPacing = new Set<string>();
+    const moods: string[] = [];
 
     for (let cycle = 0; cycle < 32; cycle += 1) {
       const step = resolveMenuDemoCycle(9001, cycle);
@@ -60,6 +71,7 @@ describe('demo-only build', () => {
       seenMoods.add(step.mood);
       seenSizes.add(step.size);
       seenPacing.add(JSON.stringify(step.pacing));
+      moods.push(step.mood);
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
@@ -77,6 +89,12 @@ describe('demo-only build', () => {
     expect(seenMoods.size).toBe(3);
     expect(seenSizes.size).toBeGreaterThan(1);
     expect(seenPacing.size).toBeGreaterThan(1);
+    expect(moods.filter((mood) => mood === 'blueprint').length).toBeLessThanOrEqual(6);
+    expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
+
+    for (let index = 1; index < moods.length; index += 1) {
+      expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);
+    }
   });
 
   test('demo presentation sequence stays bounded across intro, reveal, arrival, and fade', () => {
@@ -109,15 +127,21 @@ describe('demo-only build', () => {
 
     for (const checkpoint of checkpoints) {
       const sequenceState = resolveMenuDemoSequence(episode, checkpoint.elapsedMs, config);
-      const presentation = resolveMenuDemoPresentation(episode, cycle, checkpoint.elapsedMs, config);
+      const presentation = resolveMenuDemoPresentation(episode, cycle, checkpoint.elapsedMs, config, 'loading');
 
       expect(sequenceState.sequence).toBe(checkpoint.sequence);
       expect(presentation.sequence).toBe(checkpoint.sequence);
+      expect(presentation.variant).toBe('loading');
       expect(['solve', 'scan', 'blueprint']).toContain(presentation.mood);
+      expect(['generating', 'solving', 'pattern sync', 'routing', 'live system']).toContain(presentation.phaseLabel);
       expect(presentation.solutionPathAlpha).toBeGreaterThanOrEqual(0.14);
       expect(presentation.solutionPathAlpha).toBeLessThanOrEqual(1);
       expect(presentation.trailWindow).toBeGreaterThanOrEqual(4);
       expect(presentation.trailWindow).toBeLessThanOrEqual(38);
+      expect(Math.abs(presentation.frameOffsetX)).toBeLessThanOrEqual(8);
+      expect(Math.abs(presentation.frameOffsetY)).toBeLessThanOrEqual(5);
+      expect(Math.abs(presentation.hudOffsetX)).toBeLessThanOrEqual(10);
+      expect(Math.abs(presentation.hudOffsetY)).toBeLessThanOrEqual(4);
       expect(presentation.boardVeilAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.boardVeilAlpha).toBeLessThanOrEqual(0.24);
       expect(presentation.boardAuraAlpha).toBeGreaterThanOrEqual(0.06);

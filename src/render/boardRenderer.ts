@@ -95,6 +95,8 @@ export class BoardRenderer {
   private readonly chromeFront: Phaser.GameObjects.Graphics;
   private readonly ambientContainer: Phaser.GameObjects.Container;
   private ambientTween?: Phaser.Tweens.Tween;
+  private baseOffsetX = 0;
+  private baseOffsetY = 0;
 
   public constructor(private readonly scene: Phaser.Scene, episode: MazeEpisode, private readonly layout: BoardLayout) {
     this.episode = episode;
@@ -127,6 +129,12 @@ export class BoardRenderer {
 
   public getTileSize(): number {
     return this.layout.tileSize;
+  }
+
+  public setPresentationOffset(x: number, y: number): void {
+    this.baseOffsetX = x;
+    this.baseOffsetY = y;
+    this.ambientContainer.setPosition(x, y);
   }
 
   private tileX(index: number): number {
@@ -903,11 +911,13 @@ export class BoardRenderer {
     }
   }
 
-  public startAmbientMotion(distancePx: number, durationMs: number): void {
+  public startAmbientMotion(distanceX: number, distanceY: number, durationMs: number): void {
     this.ambientTween?.remove();
+    this.ambientContainer.setPosition(this.baseOffsetX, this.baseOffsetY);
     this.ambientTween = this.scene.tweens.add({
       targets: this.ambientContainer,
-      y: distancePx,
+      x: this.baseOffsetX + distanceX,
+      y: this.baseOffsetY + distanceY,
       duration: durationMs,
       yoyo: true,
       repeat: -1,
