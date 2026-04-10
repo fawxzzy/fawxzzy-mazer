@@ -1,18 +1,17 @@
 import Phaser from 'phaser';
 import { BootScene } from '../scenes/BootScene';
-import { GameScene } from '../scenes/GameScene';
 import { MenuScene } from '../scenes/MenuScene';
-import { OptionsScene } from '../scenes/OptionsScene';
-import { PauseScene } from '../scenes/PauseScene';
-import { WinScene } from '../scenes/WinScene';
+
+const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
+const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
 
 export const phaserConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',
-  width: window.innerWidth,
-  height: window.innerHeight,
+  width: viewportWidth,
+  height: viewportHeight,
   backgroundColor: '#101018',
-  scene: [BootScene, MenuScene, GameScene, OptionsScene, PauseScene, WinScene],
+  scene: [BootScene, MenuScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH
