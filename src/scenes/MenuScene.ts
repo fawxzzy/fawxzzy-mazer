@@ -183,6 +183,11 @@ interface DeploymentPresentationProfile {
   titlePlateHeightScale: number;
   titleLineSpacingScale: number;
   titleYOffsetBias: number;
+  titleAlphaScale: number;
+  signatureAlphaScale: number;
+  passiveAlphaScale: number;
+  plateAlphaScale: number;
+  panelAlphaScale: number;
   offsetScale: number;
   driftScale: number;
   driftDurationScale: number;
@@ -409,6 +414,11 @@ const DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE: DeploymentPresentationProfile = {
   titlePlateHeightScale: 1,
   titleLineSpacingScale: 1,
   titleYOffsetBias: 0,
+  titleAlphaScale: 1,
+  signatureAlphaScale: 1,
+  passiveAlphaScale: 1,
+  plateAlphaScale: 1,
+  panelAlphaScale: 1,
   offsetScale: 1,
   driftScale: 1,
   driftDurationScale: 1,
@@ -428,6 +438,11 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     titlePlateHeightScale: 0.96,
     titleLineSpacingScale: 1,
     titleYOffsetBias: -4,
+    titleAlphaScale: 2.55,
+    signatureAlphaScale: 2.1,
+    passiveAlphaScale: 1.8,
+    plateAlphaScale: 3,
+    panelAlphaScale: 2.2,
     offsetScale: 0.56,
     driftScale: 0.72,
     driftDurationScale: 1.34,
@@ -445,6 +460,11 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     titlePlateHeightScale: 0.94,
     titleLineSpacingScale: 1,
     titleYOffsetBias: -2,
+    titleAlphaScale: 1,
+    signatureAlphaScale: 1,
+    passiveAlphaScale: 1,
+    plateAlphaScale: 1,
+    panelAlphaScale: 1,
     offsetScale: 0.34,
     driftScale: 0.82,
     driftDurationScale: 1.14,
@@ -462,6 +482,11 @@ const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, De
     titlePlateHeightScale: 1.2,
     titleLineSpacingScale: 1.12,
     titleYOffsetBias: 10,
+    titleAlphaScale: 1,
+    signatureAlphaScale: 1,
+    passiveAlphaScale: 1,
+    plateAlphaScale: 1,
+    panelAlphaScale: 1,
     offsetScale: 0.76,
     driftScale: 0.9,
     driftDurationScale: 1.08,
@@ -737,13 +762,18 @@ export class MenuScene extends Phaser.Scene {
           ? layout.boardX + Math.round(titlePlateWidth * 0.54)
           : width / 2;
         const titleContainer = this.add.container(titleX, titleY).setDepth(9);
+        const titleAlpha = variantProfile.titleAlpha * chromeProfile.titleAlpha * deploymentProfile.titleAlphaScale;
+        const signatureAlpha = variantProfile.signatureAlpha * chromeProfile.signatureAlpha * deploymentProfile.signatureAlphaScale;
+        const passiveAlpha = variantProfile.passiveAlpha * chromeProfile.passiveAlpha * deploymentProfile.passiveAlphaScale;
+        const plateAlpha = variantProfile.plateAlpha * chromeProfile.plateAlpha * deploymentProfile.plateAlphaScale;
+        const panelAlpha = variantProfile.panelAlpha * chromeProfile.panelAlpha * deploymentProfile.panelAlphaScale;
         titleContainer.add([
-          this.add.rectangle(0, 6, titlePlateWidth + 8, titlePlateHeight + 10, palette.board.shadow, 0.26 * variantProfile.plateAlpha * chromeProfile.plateAlpha),
-          this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, palette.board.well, variantProfile.plateAlpha * chromeProfile.plateAlpha)
-            .setStrokeStyle(1, palette.board.innerStroke, 0.18 * variantProfile.titleAlpha * chromeProfile.titleAlpha),
-          this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, palette.board.panel, variantProfile.panelAlpha * chromeProfile.panelAlpha)
-            .setStrokeStyle(1, palette.board.topHighlight, 0.08 * variantProfile.titleAlpha * chromeProfile.titleAlpha),
-          this.add.rectangle(0, -(titlePlateHeight / 2) + 7, titlePlateWidth - 18, 2, palette.board.topHighlight, 0.12 * variantProfile.titleAlpha * chromeProfile.titleAlpha)
+          this.add.rectangle(0, 6, titlePlateWidth + 8, titlePlateHeight + 10, palette.board.shadow, 0.26 * plateAlpha),
+          this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, palette.board.well, plateAlpha)
+            .setStrokeStyle(1, palette.board.innerStroke, 0.18 * titleAlpha),
+          this.add.rectangle(0, 0, titlePlateWidth - 14, titlePlateHeight - 12, palette.board.panel, panelAlpha)
+            .setStrokeStyle(1, palette.board.topHighlight, 0.08 * titleAlpha),
+          this.add.rectangle(0, -(titlePlateHeight / 2) + 7, titlePlateWidth - 18, 2, palette.board.topHighlight, 0.12 * titleAlpha)
         ]);
         const title = this.add.text(0, -7, legacyTuning.menu.title.text, {
           color: '#75f78f',
@@ -751,7 +781,7 @@ export class MenuScene extends Phaser.Scene {
           fontSize: `${Phaser.Math.Clamp(Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale), 24, 84)}px`,
           fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
         }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide)
-          .setAlpha(variantProfile.titleAlpha * chromeProfile.titleAlpha)
+          .setAlpha(titleAlpha)
           .setStroke('#17381f', legacyTuning.menu.title.strokePx).setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true);
         const signature = this.add.text(
           0,
@@ -762,7 +792,7 @@ export class MenuScene extends Phaser.Scene {
           fontFamily: '"Courier New", monospace',
             fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
           }
-        ).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha * chromeProfile.signatureAlpha).setLetterSpacing(1);
+        ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(1);
         const passiveTag = this.add.text(
           0,
           Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale),
@@ -772,7 +802,7 @@ export class MenuScene extends Phaser.Scene {
           fontFamily: '"Courier New", monospace',
             fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`
           }
-        ).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha * chromeProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+        ).setOrigin(0.5).setAlpha(passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
         titleContainer.add([title, signature, passiveTag]);
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
@@ -793,8 +823,8 @@ export class MenuScene extends Phaser.Scene {
             this.titlePulseTween = this.tweens.add({
               targets: title,
               alpha: {
-                from: Math.max(0.18, (variantProfile.titleAlpha * chromeProfile.titleAlpha) - 0.08),
-                to: Math.min(0.92, (variantProfile.titleAlpha * chromeProfile.titleAlpha) + 0.06)
+                from: Math.max(0.18, titleAlpha - 0.08),
+                to: Math.min(0.92, titleAlpha + 0.06)
               },
               duration: legacyTuning.menu.title.pulseDurationMs,
               yoyo: true,
