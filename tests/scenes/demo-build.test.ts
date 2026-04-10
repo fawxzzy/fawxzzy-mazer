@@ -26,6 +26,7 @@ let BootScene: typeof import('../../src/scenes/BootScene').BootScene;
 let phaserConfig: typeof import('../../src/boot/phaserConfig').phaserConfig;
 let DEFAULT_PRESENTATION_LAUNCH_CONFIG: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_LAUNCH_CONFIG;
 let DEFAULT_PRESENTATION_VARIANT: typeof import('../../src/boot/presentation').DEFAULT_PRESENTATION_VARIANT;
+let AMBIENT_FAMILY_THEME_PAIRING_POLICY: typeof import('../../src/boot/presentation').AMBIENT_FAMILY_THEME_PAIRING_POLICY;
 let isDeterministicPresentationCapture: typeof import('../../src/boot/presentation').isDeterministicPresentationCapture;
 let presentationModule: typeof import('../../src/boot/presentation');
 let resolveBootPresentationConfig: typeof import('../../src/boot/presentation').resolveBootPresentationConfig;
@@ -57,6 +58,7 @@ beforeAll(async () => {
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
   presentationModule = await import('../../src/boot/presentation');
   ({
+    AMBIENT_FAMILY_THEME_PAIRING_POLICY,
     DEFAULT_PRESENTATION_LAUNCH_CONFIG,
     DEFAULT_PRESENTATION_VARIANT,
     isDeterministicPresentationCapture,
@@ -368,6 +370,9 @@ describe('demo-only build', () => {
     const moods: string[] = [];
     const themes: string[] = [];
     const families: string[] = [];
+    const familyThemeCounts = Object.fromEntries(
+      Object.keys(MAZE_FAMILY_EXPOSURE_POLICY).map((family) => [family, {} as Record<string, number>])
+    ) as Record<string, Record<string, number>>;
     const moodCounts = {
       solve: 0,
       scan: 0,
@@ -386,6 +391,7 @@ describe('demo-only build', () => {
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
       themes.push(step.theme);
+      familyThemeCounts[step.family][step.theme] = (familyThemeCounts[step.family][step.theme] ?? 0) + 1;
       moodCounts[step.mood] += 1;
       expect(step.entropy.checkPointModifier).toBeGreaterThanOrEqual(0.16);
       expect(step.entropy.checkPointModifier).toBeLessThanOrEqual(0.56);
@@ -442,6 +448,16 @@ describe('demo-only build', () => {
     expect(families.filter((family) => family === 'braided').length).toBeGreaterThan(families.filter((family) => family === 'classic').length);
     expect(families.filter((family) => family === 'dense').length).toBeGreaterThan(families.filter((family) => family === 'framed').length);
     expect(families.filter((family) => family === 'split-flow').length).toBeGreaterThan(families.filter((family) => family === 'sparse').length);
+    for (const family of Object.keys(familyThemeCounts)) {
+      const pairingPolicy = AMBIENT_FAMILY_THEME_PAIRING_POLICY[family as keyof typeof AMBIENT_FAMILY_THEME_PAIRING_POLICY];
+      const allowedThemes = new Set([...pairingPolicy.defaults, ...pairingPolicy.accents]);
+      const seenFamilyThemes = Object.keys(familyThemeCounts[family]);
+      const defaultCount = pairingPolicy.defaults.reduce((total, theme) => total + (familyThemeCounts[family][theme] ?? 0), 0);
+      const accentCount = pairingPolicy.accents.reduce((total, theme) => total + (familyThemeCounts[family][theme] ?? 0), 0);
+
+      expect(seenFamilyThemes.every((theme) => allowedThemes.has(theme as typeof pairingPolicy.defaults[number]))).toBe(true);
+      expect(defaultCount).toBeGreaterThan(accentCount);
+    }
 
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);

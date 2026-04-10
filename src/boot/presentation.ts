@@ -1,4 +1,13 @@
-import type { MazeDifficulty, MazeFamilyMode, MazeSize, PatternEngineMode } from '../domain/maze';
+import {
+  buildCuratedFamilyRotationBlock,
+  CURATED_FAMILY_ROTATION_BLOCK_LENGTH,
+  MAZE_FAMILY_EXPOSURE_POLICY,
+  type MazeDifficulty,
+  type MazeFamily,
+  type MazeFamilyMode,
+  type MazeSize,
+  type PatternEngineMode
+} from '../domain/maze';
 
 export type AmbientPresentationVariant = 'title' | 'ambient' | 'loading';
 export type PresentationChrome = 'full' | 'minimal' | 'none';
@@ -33,6 +42,179 @@ export const PRESENTATION_THEME_FAMILIES: readonly PresentationThemeFamily[] = [
   'vellum',
   'monolith'
 ] as const;
+
+export interface AmbientFamilyThemePairingPolicy {
+  readonly defaults: readonly [PresentationThemeFamily, PresentationThemeFamily];
+  readonly accents: readonly PresentationThemeFamily[];
+  readonly blueprintAccent: readonly PresentationThemeFamily[];
+}
+
+export const AMBIENT_FAMILY_THEME_PAIRING_POLICY: Record<MazeFamily, AmbientFamilyThemePairingPolicy> = {
+  classic: {
+    defaults: ['noir', 'vellum'],
+    accents: ['ember', 'monolith'],
+    blueprintAccent: []
+  },
+  braided: {
+    defaults: ['aurora', 'ember'],
+    accents: ['monolith'],
+    blueprintAccent: []
+  },
+  sparse: {
+    defaults: ['vellum', 'monolith'],
+    accents: ['noir'],
+    blueprintAccent: []
+  },
+  dense: {
+    defaults: ['monolith', 'noir'],
+    accents: ['aurora'],
+    blueprintAccent: ['monolith', 'aurora']
+  },
+  framed: {
+    defaults: ['vellum', 'noir'],
+    accents: ['ember'],
+    blueprintAccent: []
+  },
+  'split-flow': {
+    defaults: ['aurora', 'vellum'],
+    accents: ['noir'],
+    blueprintAccent: ['aurora']
+  }
+} as const;
+
+const THREE_OCCURRENCE_THEME_PRIORITY_PATTERNS = [
+  [[0, 1, 2], [1, 0, 2], [0, 1, 2]],
+  [[1, 0, 2], [0, 1, 2], [2, 1, 0]],
+  [[0, 1, 2], [1, 0, 2], [2, 0, 1]],
+  [[1, 0, 2], [0, 1, 2], [1, 0, 2]]
+] as const;
+
+const TWO_OCCURRENCE_THEME_PRIORITY_PATTERNS = [
+  [[0, 1, 2, 3], [1, 0, 2, 3]],
+  [[1, 0, 2, 3], [0, 1, 2, 3]],
+  [[0, 1, 2, 3], [2, 1, 0, 3]],
+  [[1, 0, 2, 3], [3, 0, 1, 2]]
+] as const;
+
+const ONE_OCCURRENCE_THEME_PRIORITY_PATTERNS = [
+  [[0, 1, 2, 3]],
+  [[1, 0, 2, 3]],
+  [[2, 0, 1, 3]],
+  [[0, 2, 1, 3]]
+] as const;
+
+const resolveAmbientThemePriorityPatterns = (occurrenceCount: number) => {
+  switch (occurrenceCount) {
+    case 1:
+      return ONE_OCCURRENCE_THEME_PRIORITY_PATTERNS;
+    case 2:
+      return TWO_OCCURRENCE_THEME_PRIORITY_PATTERNS;
+    case 3:
+    default:
+      return THREE_OCCURRENCE_THEME_PRIORITY_PATTERNS;
+  }
+};
+
+const dedupeThemes = (themes: readonly PresentationThemeFamily[]): PresentationThemeFamily[] => {
+  const ordered: PresentationThemeFamily[] = [];
+  for (const theme of themes) {
+    if (!ordered.includes(theme)) {
+      ordered.push(theme);
+    }
+  }
+
+  return ordered;
+};
+
+const mixAmbientThemeSeed = (seed: number, cycle: number, salt: number): number => (
+  Math.imul((seed >>> 0) ^ Math.imul((cycle + 1) >>> 0, 0x9e3779b1), (salt | 1) >>> 0) >>> 0
+);
+
+const resolveAmbientThemePatternVariant = (seed: number, block: number, family: MazeFamily): number => (
+  mixAmbientThemeSeed(seed ^ family.charCodeAt(0) ^ family.charCodeAt(family.length - 1), block, 0x4d9f47c3) % 4
+);
+
+const buildAmbientFamilyThemePreferenceOrder = (
+  family: MazeFamily,
+  appearanceIndex: number,
+  patternVariant: number
+): PresentationThemeFamily[] => {
+  const policy = AMBIENT_FAMILY_THEME_PAIRING_POLICY[family];
+  const candidates = dedupeThemes([...policy.defaults, ...policy.accents]);
+  const patterns = resolveAmbientThemePriorityPatterns(MAZE_FAMILY_EXPOSURE_POLICY[family].blockCount);
+  const priority = patterns[patternVariant % patterns.length][appearanceIndex] ?? patterns[0][0];
+  const ordered: PresentationThemeFamily[] = [];
+
+  for (const candidateIndex of priority) {
+    const candidate = candidates[candidateIndex];
+    if (candidate && !ordered.includes(candidate)) {
+      ordered.push(candidate);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!ordered.includes(candidate)) {
+      ordered.push(candidate);
+    }
+  }
+
+  return ordered;
+};
+
+export const buildAmbientFamilyThemeBlock = (seed: number, block: number): readonly PresentationThemeFamily[] => {
+  const familyBlock = buildCuratedFamilyRotationBlock(seed >>> 0, block);
+  const ordered: PresentationThemeFamily[] = [];
+  const appearanceCounts = Object.fromEntries(
+    Object.keys(MAZE_FAMILY_EXPOSURE_POLICY).map((family) => [family, 0])
+  ) as Record<MazeFamily, number>;
+  let previous = block > 0
+    ? buildAmbientFamilyThemeBlock(seed, block - 1)[CURATED_FAMILY_ROTATION_BLOCK_LENGTH - 1]
+    : undefined;
+
+  for (const family of familyBlock) {
+    const appearanceIndex = appearanceCounts[family];
+    appearanceCounts[family] += 1;
+    const preferences = buildAmbientFamilyThemePreferenceOrder(
+      family,
+      appearanceIndex,
+      resolveAmbientThemePatternVariant(seed, block, family)
+    );
+    const nextTheme = preferences.find((theme) => theme !== previous) ?? preferences[0] ?? PRESENTATION_THEME_FAMILIES[0];
+    ordered.push(nextTheme);
+    previous = nextTheme;
+  }
+
+  return ordered;
+};
+
+const resolvePinnedAmbientFamilyTheme = (seed: number, cycle: number, family: MazeFamily): PresentationThemeFamily => {
+  const blockSize = MAZE_FAMILY_EXPOSURE_POLICY[family].blockCount;
+  const block = Math.floor(cycle / blockSize);
+  const appearanceIndex = cycle % blockSize;
+  const preferences = buildAmbientFamilyThemePreferenceOrder(
+    family,
+    appearanceIndex,
+    resolveAmbientThemePatternVariant(seed ^ 0x6f23ad5b, block, family)
+  );
+
+  return preferences[0] ?? PRESENTATION_THEME_FAMILIES[0];
+};
+
+export const resolveAmbientFamilyTheme = (
+  seed: number,
+  cycle: number,
+  family?: MazeFamily
+): PresentationThemeFamily => {
+  const block = Math.floor(cycle / CURATED_FAMILY_ROTATION_BLOCK_LENGTH);
+  const slot = cycle % CURATED_FAMILY_ROTATION_BLOCK_LENGTH;
+  const autoFamily = buildCuratedFamilyRotationBlock(seed >>> 0, block)[slot];
+
+  if (family && family !== autoFamily) {
+    return resolvePinnedAmbientFamilyTheme(seed, cycle, family);
+  }
+
+  return buildAmbientFamilyThemeBlock(seed, block)[slot] ?? PRESENTATION_THEME_FAMILIES[0];
+};
 
 export const DEFAULT_PRESENTATION_LAUNCH_CONFIG: PresentationLaunchConfig = {
   presentation: DEFAULT_PRESENTATION_VARIANT,

@@ -1,5 +1,10 @@
 import { legacyTuning } from '../../src/config/tuning';
-import { type PresentationThemeFamily } from '../../src/boot/presentation';
+import {
+  AMBIENT_FAMILY_THEME_PAIRING_POLICY,
+  resolveAmbientFamilyTheme,
+  type AmbientFamilyThemePairingPolicy,
+  type PresentationThemeFamily
+} from '../../src/boot/presentation';
 import {
   CURATED_FAMILY_ROTATION_BLOCK_LENGTH,
   disposeMazeEpisode,
@@ -88,15 +93,26 @@ type VarietyReport = {
     placementStrategyCounts: Record<string, number>;
     moodCounts: Record<string, number>;
     themeCounts: Record<string, number>;
+    familyThemeCounts: Record<string, number>;
+    familyThemeDistribution: Record<string, Record<string, number>>;
     sizeCounts: Record<string, number>;
     difficultyCounts: Record<string, number>;
     familyDistributionEntropy: number;
+    familyThemeDistributionEntropy: number;
     endpointStrategyDiversity: number;
     byFamily: Record<string, BucketSummary>;
     byPreset: Record<string, BucketSummary>;
     byMood: Record<string, BucketSummary>;
     bySize: Record<string, BucketSummary>;
     byDifficulty: Record<string, BucketSummary>;
+    topPairings: Array<{
+      pairing: string;
+      family: MazeFamily;
+      theme: PresentationThemeFamily;
+      count: number;
+      share: number;
+      tier: 'default' | 'accent';
+    }>;
     topShapeSignatures: Array<{ signature: string; count: number; share: number }>;
     uniqueShapeSignatureRate: number;
   };
@@ -134,7 +150,7 @@ type VarietyReport = {
     ranking: FamilyReviewEntry[];
     overlapFindings: FamilyOverlapFinding[];
     exposurePolicy: FamilyExposurePolicyReport;
-    themePairings: Record<string, FamilyThemeGuidance>;
+    themePairings: Record<string, AmbientFamilyThemePairingPolicy>;
   };
 };
 
@@ -171,12 +187,6 @@ type FamilyExposurePolicyReport = {
   adjacentRepeatsAvoided: boolean;
 };
 
-type FamilyThemeGuidance = {
-  best: PresentationThemeFamily[];
-  support: PresentationThemeFamily[];
-  blueprintAccent: PresentationThemeFamily[];
-};
-
 type MetricAxis = {
   label: string;
   weight: number;
@@ -192,51 +202,7 @@ const CURATED_MOOD_PATTERNS: readonly DemoMood[][] = [
   ['solve', 'scan', 'solve', 'solve', 'blueprint', 'solve', 'solve', 'scan'],
   ['solve', 'solve', 'scan', 'solve', 'solve', 'blueprint', 'scan', 'solve']
 ];
-const CURATED_THEME_BAG: readonly PresentationThemeFamily[] = [
-  'noir',
-  'ember',
-  'aurora',
-  'vellum',
-  'monolith',
-  'noir',
-  'ember',
-  'aurora',
-  'vellum',
-  'monolith'
-] as const;
 const PRESENTATION_PRESETS: readonly MazePresentationPreset[] = ['classic', 'braided', 'framed', 'blueprint-rare'];
-const FAMILY_THEME_GUIDANCE: Record<MazeFamily, FamilyThemeGuidance> = {
-  classic: {
-    best: ['noir', 'vellum'],
-    support: ['ember', 'monolith'],
-    blueprintAccent: []
-  },
-  braided: {
-    best: ['aurora', 'ember'],
-    support: ['monolith'],
-    blueprintAccent: []
-  },
-  sparse: {
-    best: ['vellum', 'monolith'],
-    support: ['noir'],
-    blueprintAccent: []
-  },
-  dense: {
-    best: ['monolith', 'noir'],
-    support: ['aurora'],
-    blueprintAccent: ['monolith', 'aurora']
-  },
-  framed: {
-    best: ['vellum', 'noir'],
-    support: ['ember'],
-    blueprintAccent: []
-  },
-  'split-flow': {
-    best: ['aurora', 'vellum'],
-    support: ['noir'],
-    blueprintAccent: ['aurora']
-  }
-};
 const FAMILY_CURATION_DECISIONS: Record<MazeFamily, {
   rank: number;
   disposition: FamilyDisposition;
@@ -341,36 +307,8 @@ const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
 };
 
 const resolveCuratedTheme = (seed: number, cycle: number): PresentationThemeFamily => {
-  const block = Math.floor(cycle / CURATED_THEME_BAG.length);
-  const slot = cycle % CURATED_THEME_BAG.length;
-  return buildCuratedThemeBlock(seed, block)[slot] ?? CURATED_THEME_BAG[0];
-};
-
-const buildCuratedThemeBlock = (seed: number, block: number): readonly PresentationThemeFamily[] => {
-  const remaining = [...CURATED_THEME_BAG];
-  const ordered: PresentationThemeFamily[] = [];
-  let state = mix(seed ^ 0x4d9f47c3, block, 0x4d9f47c3) || 1;
-  let previous = block > 0
-    ? buildCuratedThemeBlock(seed, block - 1)[CURATED_THEME_BAG.length - 1]
-    : undefined;
-
-  while (remaining.length > 0) {
-    state = lcg(state);
-    let pickIndex = state % remaining.length;
-
-    if (remaining[pickIndex] === previous) {
-      const alternateIndex = remaining.findIndex((theme) => theme !== previous);
-      if (alternateIndex >= 0) {
-        pickIndex = alternateIndex;
-      }
-    }
-
-    const [nextTheme] = remaining.splice(pickIndex, 1);
-    ordered.push(nextTheme);
-    previous = nextTheme;
-  }
-
-  return ordered;
+  const family = resolveCuratedFamily(seed >>> 0, cycle);
+  return resolveAmbientFamilyTheme(seed, cycle, family);
 };
 
 const resolveMenuDemoPreset = (
@@ -381,35 +319,42 @@ const resolveMenuDemoPreset = (
   family?: MazeFamily
 ): MazePresentationPreset => {
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ theme.charCodeAt(0));
+  const resolvePairingPolicy = (targetFamily: MazeFamily): AmbientFamilyThemePairingPolicy => (
+    AMBIENT_FAMILY_THEME_PAIRING_POLICY[targetFamily]
+  );
+  const isDefaultTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).defaults.includes(theme)
+  );
+  const isAccentTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).accents.includes(theme)
+  );
+  const isBlueprintAccentTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).blueprintAccent.includes(theme)
+  );
   if (family === 'framed') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.best.includes(theme)
+    return isDefaultTheme(family)
       ? mixed % 6 === 0 ? 'classic' : 'framed'
       : mixed % 4 === 0 ? 'classic' : 'framed';
   }
   if (family === 'braided') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.best.includes(theme) && mixed % 8 !== 0
+    return isDefaultTheme(family) && mixed % 8 !== 0
       ? 'braided'
       : mixed % 5 === 0 ? 'classic' : 'braided';
   }
   if (family === 'sparse') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.best.includes(theme) || guidance.support.includes(theme)
+    return isDefaultTheme(family) || isAccentTheme(family)
       ? 'classic'
       : mixed % 5 === 0 ? 'braided' : 'classic';
   }
   if (family === 'dense') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.blueprintAccent.includes(theme) && mixed % 7 === 0
+    return isBlueprintAccentTheme(family) && mixed % 7 === 0
       ? 'blueprint-rare'
       : mixed % 4 === 0 ? 'classic' : 'braided';
   }
   if (family === 'split-flow') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return mood === 'blueprint' && guidance.blueprintAccent.includes(theme) && mixed % 9 === 0
+    return mood === 'blueprint' && isBlueprintAccentTheme(family) && mixed % 9 === 0
       ? 'blueprint-rare'
-      : guidance.best.includes(theme) && mixed % 5 !== 0
+      : isDefaultTheme(family) && mixed % 5 !== 0
         ? 'classic'
         : mixed % 3 === 0 ? 'braided' : 'classic';
   }
@@ -540,15 +485,19 @@ const main = (): void => {
       placementStrategyCounts: countBy(ambientSamples, (sample) => sample.placementStrategy),
       moodCounts: countBy(ambientSamples, (sample) => sample.mood),
       themeCounts: countBy(ambientSamples, (sample) => sample.theme),
+      familyThemeCounts: countBy(ambientSamples, (sample) => `${sample.family}:${sample.theme}`),
+      familyThemeDistribution: summarizeFamilyThemeDistribution(ambientSamples),
       sizeCounts: countBy(ambientSamples, (sample) => sample.size),
       difficultyCounts: countBy(ambientSamples, (sample) => sample.difficulty),
       familyDistributionEntropy: normalizedEntropy(ambientSamples.map((sample) => sample.family)),
+      familyThemeDistributionEntropy: normalizedEntropy(ambientSamples.map((sample) => `${sample.family}:${sample.theme}`)),
       endpointStrategyDiversity: normalizedEntropy(ambientSamples.map((sample) => sample.placementStrategy)),
       byFamily: summarizeBuckets(ambientSamples, (sample) => sample.family),
       byPreset: summarizeBuckets(ambientSamples, (sample) => sample.preset),
       byMood: summarizeBuckets(ambientSamples, (sample) => sample.mood),
       bySize: summarizeBuckets(ambientSamples, (sample) => sample.size),
       byDifficulty: summarizeBuckets(ambientSamples, (sample) => sample.difficulty),
+      topPairings: topPairings(ambientSamples),
       topShapeSignatures: topSignatures(ambientSamples),
       uniqueShapeSignatureRate: uniqueRate(ambientSamples.map((sample) => sample.shapeSignature))
     },
@@ -577,7 +526,7 @@ const main = (): void => {
       overlapFindings: buildFamilyOverlapFindings(familySummary),
       exposurePolicy: buildFamilyExposurePolicyReport(),
       themePairings: Object.fromEntries(
-        ROTATING_FAMILIES.map((family) => [family, FAMILY_THEME_GUIDANCE[family]])
+        ROTATING_FAMILIES.map((family) => [family, AMBIENT_FAMILY_THEME_PAIRING_POLICY[family]])
       )
     }
   };
@@ -875,6 +824,46 @@ const countBy = <T>(items: readonly T[], keySelector: (item: T) => string): Reco
   }
 
   return Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right)));
+};
+
+const summarizeFamilyThemeDistribution = (
+  samples: readonly EpisodeSample[]
+): Record<string, Record<string, number>> => Object.fromEntries(
+  ROTATING_FAMILIES.map((family) => [
+    family,
+    countBy(
+      samples.filter((sample) => sample.family === family),
+      (sample) => sample.theme
+    )
+  ])
+);
+
+const topPairings = (
+  samples: readonly EpisodeSample[]
+): Array<{
+  pairing: string;
+  family: MazeFamily;
+  theme: PresentationThemeFamily;
+  count: number;
+  share: number;
+  tier: 'default' | 'accent';
+}> => {
+  const counts = countBy(samples, (sample) => `${sample.family}:${sample.theme}`);
+  return Object.entries(counts)
+    .map(([pairing, count]) => {
+      const [family, theme] = pairing.split(':') as [MazeFamily, PresentationThemeFamily];
+      const policy = AMBIENT_FAMILY_THEME_PAIRING_POLICY[family];
+      return {
+        pairing,
+        family,
+        theme,
+        count,
+        share: count / Math.max(1, samples.length),
+        tier: policy.defaults.includes(theme) ? 'default' : 'accent'
+      };
+    })
+    .sort((left, right) => right.count - left.count || left.pairing.localeCompare(right.pairing))
+    .slice(0, 12);
 };
 
 const topSignatures = (samples: readonly EpisodeSample[]): Array<{ signature: string; count: number; share: number }> => {

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type {
   AmbientPresentationVariant,
+  AmbientFamilyThemePairingPolicy,
   PresentationChrome,
   PresentationDeploymentProfile,
   PresentationLaunchConfig,
@@ -8,11 +9,13 @@ import type {
   PresentationThemeFamily
 } from '../boot/presentation';
 import {
+  AMBIENT_FAMILY_THEME_PAIRING_POLICY,
   DEFAULT_PRESENTATION_CHROME,
   DEFAULT_PRESENTATION_LAUNCH_CONFIG,
   PRESENTATION_THEME_FAMILIES,
   DEFAULT_PRESENTATION_VARIANT,
   isDeterministicPresentationCapture,
+  resolveAmbientFamilyTheme,
   resolveEffectivePresentationChrome,
   resolvePatternEngineMode,
   sanitizePresentationLaunchConfig,
@@ -249,8 +252,6 @@ interface DeploymentPresentationProfile {
 }
 
 type MoodPattern = readonly [DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood];
-type ThemePattern = readonly PresentationThemeFamily[];
-
 interface ThemePaletteOverrides {
   background?: Partial<typeof palette.background>;
   board?: Partial<typeof palette.board>;
@@ -907,58 +908,6 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       buttonFillColor: 0x111317,
       buttonStrokeColor: 0xbfc4cb
     }
-  }
-};
-
-const CURATED_THEME_BAG: readonly PresentationThemeFamily[] = [
-  'noir',
-  'ember',
-  'aurora',
-  'vellum',
-  'monolith',
-  'noir',
-  'ember',
-  'aurora',
-  'vellum',
-  'monolith'
-] as const;
-
-interface FamilyThemeGuidance {
-  readonly best: readonly PresentationThemeFamily[];
-  readonly support: readonly PresentationThemeFamily[];
-  readonly blueprintAccent: readonly PresentationThemeFamily[];
-}
-
-const FAMILY_THEME_GUIDANCE: Record<MazeFamily, FamilyThemeGuidance> = {
-  classic: {
-    best: ['noir', 'vellum'],
-    support: ['ember', 'monolith'],
-    blueprintAccent: []
-  },
-  braided: {
-    best: ['aurora', 'ember'],
-    support: ['monolith'],
-    blueprintAccent: []
-  },
-  sparse: {
-    best: ['vellum', 'monolith'],
-    support: ['noir'],
-    blueprintAccent: []
-  },
-  dense: {
-    best: ['monolith', 'noir'],
-    support: ['aurora'],
-    blueprintAccent: ['monolith', 'aurora']
-  },
-  framed: {
-    best: ['vellum', 'noir'],
-    support: ['ember'],
-    blueprintAccent: []
-  },
-  'split-flow': {
-    best: ['aurora', 'vellum'],
-    support: ['noir'],
-    blueprintAccent: ['aurora']
   }
 };
 
@@ -2942,10 +2891,10 @@ export const resolveMenuDemoPresentation = (
 
 export const resolveMenuDemoCycle = (seed: number, cycle: number, overrides: MenuDemoCycleOverrides = {}): MenuDemoCycle => {
   const mood = overrides.mood ?? resolveCuratedMood(seed, cycle);
-  const theme = overrides.theme ?? resolveCuratedTheme(seed, cycle);
   const familyCycle = overrides.family || overrides.mood || overrides.size || overrides.difficulty ? 0 : cycle;
   const familySeed = seed >>> 0;
   const family = overrides.family ?? resolveCuratedFamily(familySeed, familyCycle);
+  const theme = overrides.theme ?? resolveAmbientFamilyTheme(seed, cycle, family);
   const presetCycle = familyCycle;
   const entropy = resolveAmbientCycleEntropy(seed, cycle, mood, theme, family);
   return {
@@ -2969,38 +2918,44 @@ export const resolveMenuDemoPreset = (
 ): MazePresentationPreset => {
   const safeTheme = theme ?? PRESENTATION_THEME_FAMILIES[mix(seed, cycle, 0x34c2ab51) % PRESENTATION_THEME_FAMILIES.length];
   const mixed = mix(seed, cycle, 0x31b7c3d1 ^ mood.charCodeAt(0) ^ safeTheme.charCodeAt(0));
+  const resolvePairingPolicy = (targetFamily: MazeFamily): AmbientFamilyThemePairingPolicy => (
+    AMBIENT_FAMILY_THEME_PAIRING_POLICY[targetFamily]
+  );
+  const isDefaultTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).defaults.includes(safeTheme)
+  );
+  const isAccentTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).accents.includes(safeTheme)
+  );
+  const isBlueprintAccentTheme = (targetFamily: MazeFamily): boolean => (
+    resolvePairingPolicy(targetFamily).blueprintAccent.includes(safeTheme)
+  );
   if (family === 'framed') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    const onBestTheme = guidance.best.includes(safeTheme);
-    return onBestTheme
+    return isDefaultTheme(family)
       ? mixed % 6 === 0 ? 'classic' : 'framed'
       : mixed % 4 === 0 ? 'classic' : 'framed';
   }
   if (family === 'braided') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.best.includes(safeTheme) && mixed % 8 !== 0
+    return isDefaultTheme(family) && mixed % 8 !== 0
       ? 'braided'
       : mixed % 5 === 0 ? 'classic' : 'braided';
   }
   if (family === 'sparse') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    return guidance.best.includes(safeTheme) || guidance.support.includes(safeTheme)
+    return isDefaultTheme(family) || isAccentTheme(family)
       ? 'classic'
       : mixed % 5 === 0 ? 'braided' : 'classic';
   }
   if (family === 'dense') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    const blueprintAllowed = guidance.blueprintAccent.includes(safeTheme);
+    const blueprintAllowed = isBlueprintAccentTheme(family);
     return blueprintAllowed && mixed % 7 === 0
       ? 'blueprint-rare'
       : mixed % 4 === 0 ? 'classic' : 'braided';
   }
   if (family === 'split-flow') {
-    const guidance = FAMILY_THEME_GUIDANCE[family];
-    const blueprintAllowed = mood === 'blueprint' && guidance.blueprintAccent.includes(safeTheme);
+    const blueprintAllowed = mood === 'blueprint' && isBlueprintAccentTheme(family);
     return blueprintAllowed && mixed % 9 === 0
       ? 'blueprint-rare'
-      : guidance.best.includes(safeTheme) && mixed % 5 !== 0
+      : isDefaultTheme(family) && mixed % 5 !== 0
         ? 'classic'
         : mixed % 3 === 0 ? 'braided' : 'classic';
   }
@@ -3079,41 +3034,8 @@ const resolveCuratedMood = (seed: number, cycle: number): DemoMood => {
   return pattern[slot];
 };
 
-const resolveCuratedTheme = (seed: number, cycle: number): PresentationThemeFamily => {
-  const block = Math.floor(cycle / CURATED_THEME_BAG.length);
-  const slot = cycle % CURATED_THEME_BAG.length;
-  return buildCuratedThemeBlock(seed, block)[slot] ?? PRESENTATION_THEME_FAMILIES[0];
-};
-
 const resolveCuratedFamily = (seed: number, cycle: number): MazeFamily => {
   return resolveCuratedFamilyRotation(seed, cycle);
-};
-
-const buildCuratedThemeBlock = (seed: number, block: number): ThemePattern => {
-  const remaining = [...CURATED_THEME_BAG];
-  const ordered: PresentationThemeFamily[] = [];
-  let state = mix(seed ^ 0x4d9f47c3, block, 0x4d9f47c3) || 1;
-  let previous = block > 0
-    ? buildCuratedThemeBlock(seed, block - 1)[CURATED_THEME_BAG.length - 1]
-    : undefined;
-
-  while (remaining.length > 0) {
-    state = lcg(state);
-    let pickIndex = state % remaining.length;
-
-    if (remaining[pickIndex] === previous) {
-      const alternateIndex = remaining.findIndex((theme) => theme !== previous);
-      if (alternateIndex >= 0) {
-        pickIndex = alternateIndex;
-      }
-    }
-
-    const [nextTheme] = remaining.splice(pickIndex, 1);
-    ordered.push(nextTheme);
-    previous = nextTheme;
-  }
-
-  return ordered;
 };
 
 const resolveForcedDemoMood = (mood: PresentationMood): DemoMood | undefined => (
