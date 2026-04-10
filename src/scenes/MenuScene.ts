@@ -137,6 +137,8 @@ interface PresentationOffsets {
   driftY: number;
 }
 
+type MoodPattern = readonly [DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood];
+
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number => (
   isFiniteNumber(value) && value >= minimum ? value : fallback
@@ -163,146 +165,153 @@ const DEMO_MOOD_PROFILES: Record<DemoMood, {
 }> = {
   solve: {
     solutionPathAlpha: 1,
-    trailWindowOffset: 8,
-    trailWindowScale: 1,
-    ambientDriftPx: 2.4,
-    ambientDriftMs: 3400,
-    actorPulseBoost: 0.02,
-    metadataAlpha: 0.56,
-    auraAlpha: 0.1,
-    haloAlpha: 0.034,
-    shadeAlpha: 0.028
+    trailWindowOffset: 10,
+    trailWindowScale: 1.04,
+    ambientDriftPx: 2,
+    ambientDriftMs: 3600,
+    actorPulseBoost: 0.04,
+    metadataAlpha: 0.54,
+    auraAlpha: 0.094,
+    haloAlpha: 0.036,
+    shadeAlpha: 0.024
   },
   scan: {
-    solutionPathAlpha: 0.14,
-    trailWindowOffset: -10,
-    trailWindowScale: 0.42,
-    ambientDriftPx: 3.1,
-    ambientDriftMs: 3000,
-    actorPulseBoost: 0.08,
-    metadataAlpha: 0.48,
-    auraAlpha: 0.12,
-    haloAlpha: 0.04,
-    shadeAlpha: 0.044
+    solutionPathAlpha: 0.16,
+    trailWindowOffset: -12,
+    trailWindowScale: 0.36,
+    ambientDriftPx: 2.5,
+    ambientDriftMs: 4200,
+    actorPulseBoost: 0.018,
+    metadataAlpha: 0.44,
+    auraAlpha: 0.106,
+    haloAlpha: 0.038,
+    shadeAlpha: 0.038
   },
   blueprint: {
-    solutionPathAlpha: 0.46,
-    trailWindowOffset: -4,
-    trailWindowScale: 0.72,
-    ambientDriftPx: 1.9,
-    ambientDriftMs: 3800,
-    actorPulseBoost: 0.03,
-    metadataAlpha: 0.6,
-    auraAlpha: 0.086,
-    haloAlpha: 0.028,
-    shadeAlpha: 0.02
+    solutionPathAlpha: 0.42,
+    trailWindowOffset: -2,
+    trailWindowScale: 0.62,
+    ambientDriftPx: 1.6,
+    ambientDriftMs: 4400,
+    actorPulseBoost: 0.026,
+    metadataAlpha: 0.62,
+    auraAlpha: 0.088,
+    haloAlpha: 0.03,
+    shadeAlpha: 0.024
   }
 };
 
 const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
   title: {
-    boardScaleWide: 0.985,
-    boardScaleNarrow: 0.966,
+    boardScaleWide: 0.982,
+    boardScaleNarrow: 0.962,
     topReserveRatio: 0.102,
     topReserveMinPx: 88,
     bottomPaddingPx: 26,
     sidePaddingPx: 12,
-    titleScale: 1,
-    titleAlpha: legacyTuning.menu.title.alpha,
-    signatureAlpha: 0.68,
-    passiveAlpha: 0.48,
-    plateAlpha: 0.15,
-    panelAlpha: 0.22,
-    titleYOffsetRatio: 0.16,
+    titleScale: 1.05,
+    titleAlpha: Math.min(0.94, legacyTuning.menu.title.alpha + 0.08),
+    signatureAlpha: 0.78,
+    passiveAlpha: 0.42,
+    plateAlpha: 0.18,
+    panelAlpha: 0.26,
+    titleYOffsetRatio: 0.18,
     titleAnchor: 'center',
-    titleDriftX: 3,
-    titleDriftY: 2,
-    titleDriftMs: 3600,
-    titleLetterSpacingWide: 4,
-    titleLetterSpacingNarrow: 2,
-    solutionPathScale: 1,
-    metadataAlphaScale: 1,
-    flashAlphaScale: 1,
-    boardAuraBias: 0,
-    boardHaloBias: 0,
-    boardShadeBias: 0,
-    boardVeilBias: 0,
+    titleDriftX: 2,
+    titleDriftY: 1,
+    titleDriftMs: 4000,
+    titleLetterSpacingWide: 5,
+    titleLetterSpacingNarrow: 3,
+    solutionPathScale: 1.04,
+    metadataAlphaScale: 0.84,
+    flashAlphaScale: 0.92,
+    boardAuraBias: -0.004,
+    boardHaloBias: 0.006,
+    boardShadeBias: -0.004,
+    boardVeilBias: 0.01,
     boardOffsetRangeX: 6,
     boardOffsetRangeY: 4,
     hudOffsetRangeX: 8,
     hudOffsetRangeY: 4,
-    driftScale: 1,
-    actorPulseBias: 0
+    driftScale: 0.88,
+    actorPulseBias: 0.012
   },
   ambient: {
-    boardScaleWide: 0.992,
-    boardScaleNarrow: 0.976,
+    boardScaleWide: 0.994,
+    boardScaleNarrow: 0.978,
     topReserveRatio: 0.086,
     topReserveMinPx: 72,
     bottomPaddingPx: 24,
     sidePaddingPx: 10,
-    titleScale: 0.8,
-    titleAlpha: 0.46,
-    signatureAlpha: 0.5,
-    passiveAlpha: 0.34,
-    plateAlpha: 0.08,
-    panelAlpha: 0.14,
-    titleYOffsetRatio: 0.12,
+    titleScale: 0.72,
+    titleAlpha: 0.34,
+    signatureAlpha: 0.42,
+    passiveAlpha: 0.28,
+    plateAlpha: 0.05,
+    panelAlpha: 0.1,
+    titleYOffsetRatio: 0.11,
     titleAnchor: 'center',
-    titleDriftX: 4,
+    titleDriftX: 3,
     titleDriftY: 1,
-    titleDriftMs: 4200,
-    titleLetterSpacingWide: 5,
-    titleLetterSpacingNarrow: 3,
-    solutionPathScale: 0.82,
-    metadataAlphaScale: 0.72,
+    titleDriftMs: 4600,
+    titleLetterSpacingWide: 4,
+    titleLetterSpacingNarrow: 2,
+    solutionPathScale: 0.78,
+    metadataAlphaScale: 0.62,
     flashAlphaScale: 0,
-    boardAuraBias: 0.018,
-    boardHaloBias: 0.01,
-    boardShadeBias: -0.004,
-    boardVeilBias: -0.008,
-    boardOffsetRangeX: 10,
-    boardOffsetRangeY: 6,
-    hudOffsetRangeX: 12,
+    boardAuraBias: 0.022,
+    boardHaloBias: 0.014,
+    boardShadeBias: -0.006,
+    boardVeilBias: -0.012,
+    boardOffsetRangeX: 9,
+    boardOffsetRangeY: 5,
+    hudOffsetRangeX: 10,
     hudOffsetRangeY: 6,
-    driftScale: 1.15,
-    actorPulseBias: 0.012
+    driftScale: 1.06,
+    actorPulseBias: 0.004
   },
   loading: {
-    boardScaleWide: 0.988,
-    boardScaleNarrow: 0.972,
+    boardScaleWide: 0.986,
+    boardScaleNarrow: 0.968,
     topReserveRatio: 0.092,
     topReserveMinPx: 76,
     bottomPaddingPx: 34,
     sidePaddingPx: 12,
-    titleScale: 0.88,
-    titleAlpha: 0.58,
-    signatureAlpha: 0.54,
-    passiveAlpha: 0.42,
-    plateAlpha: 0.11,
-    panelAlpha: 0.18,
+    titleScale: 0.84,
+    titleAlpha: 0.62,
+    signatureAlpha: 0.58,
+    passiveAlpha: 0.48,
+    plateAlpha: 0.12,
+    panelAlpha: 0.2,
     titleYOffsetRatio: 0.13,
     titleAnchor: 'left',
     titleDriftX: 2,
     titleDriftY: 2,
-    titleDriftMs: 3000,
+    titleDriftMs: 3200,
     titleLetterSpacingWide: 3,
     titleLetterSpacingNarrow: 2,
-    solutionPathScale: 0.9,
-    metadataAlphaScale: 1.08,
-    flashAlphaScale: 1.12,
-    boardAuraBias: 0.028,
-    boardHaloBias: 0.014,
-    boardShadeBias: 0.01,
-    boardVeilBias: 0.012,
+    solutionPathScale: 0.92,
+    metadataAlphaScale: 1.16,
+    flashAlphaScale: 1.08,
+    boardAuraBias: 0.022,
+    boardHaloBias: 0.018,
+    boardShadeBias: 0.014,
+    boardVeilBias: 0.02,
     boardOffsetRangeX: 8,
     boardOffsetRangeY: 5,
     hudOffsetRangeX: 10,
     hudOffsetRangeY: 4,
-    driftScale: 0.9,
-    actorPulseBias: 0.016
+    driftScale: 0.86,
+    actorPulseBias: 0.01
   }
 };
+
+const CURATED_MOOD_PATTERNS: readonly MoodPattern[] = [
+  ['solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve', 'solve'],
+  ['solve', 'solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve'],
+  ['solve', 'scan', 'solve', 'solve', 'blueprint', 'solve', 'solve', 'scan'],
+  ['solve', 'solve', 'scan', 'solve', 'solve', 'blueprint', 'scan', 'solve']
+] as const;
 
 export interface MenuPresentationModel {
   viewport: ViewportSize;
@@ -485,6 +494,10 @@ export class MenuScene extends Phaser.Scene {
         palette.background.deepSpace,
         0
       ).setOrigin(0.5).setDepth(7.2);
+      const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
+      runOptional('blueprint accent setup', () => {
+        drawBlueprintAccent(blueprintAccent, layout);
+      });
 
       const titlePlateMaxWidth = Math.max(96, width - Math.max(24, sceneLayout.sidePadding * 4));
       const titlePlateWidth = Phaser.Math.Clamp(
@@ -581,15 +594,11 @@ export class MenuScene extends Phaser.Scene {
         demoConfig,
         variant
       );
-      const applyPresentationOffsets = (presentation: MenuDemoPresentation): void => {
+      const applyPresentationLayer = (presentation: MenuDemoPresentation): void => {
         const offsetX = sanitizeOffset(presentation.frameOffsetX);
         const offsetY = sanitizeOffset(presentation.frameOffsetY);
         boardRenderer?.setPresentationOffset(offsetX, offsetY);
-      };
-      const applyOptionalChrome = (presentation: MenuDemoPresentation): void => {
         runOptional('board chrome', () => {
-          const offsetX = sanitizeOffset(presentation.frameOffsetX);
-          const offsetY = sanitizeOffset(presentation.frameOffsetY);
           boardAura.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
             .setAlpha(presentation.boardAuraAlpha)
             .setScale(presentation.boardAuraScale);
@@ -600,6 +609,8 @@ export class MenuScene extends Phaser.Scene {
             .setAlpha(presentation.boardShadeAlpha);
           boardVeil.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
             .setAlpha(presentation.boardVeilAlpha);
+          blueprintAccent.setPosition(layout.boardX + offsetX, layout.boardY + offsetY)
+            .setAlpha(resolveBlueprintAccentAlpha(presentation));
         });
       };
       const applyEpisodePresentation = (): void => {
@@ -617,11 +628,10 @@ export class MenuScene extends Phaser.Scene {
         );
         boardRenderer?.setEpisode(patternFrame.episode);
         recoveryEpisode = patternFrame.episode;
-        applyPresentationOffsets(demoPresentation);
+        applyPresentationLayer(demoPresentation);
         boardRenderer?.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
         boardRenderer?.drawStart('spawn');
         boardRenderer?.drawGoal();
-        applyOptionalChrome(demoPresentation);
         if (!reducedMotion) {
           boardRenderer?.startAmbientMotion(
             demoPresentation.ambientDriftPxX,
@@ -686,8 +696,7 @@ export class MenuScene extends Phaser.Scene {
         );
         const path = episode.raster.pathIndices;
 
-        applyPresentationOffsets(demoPresentation);
-        applyOptionalChrome(demoPresentation);
+        applyPresentationLayer(demoPresentation);
 
         boardRenderer?.drawStart(view.cue);
         boardRenderer?.drawGoal(view.cue);
@@ -1119,6 +1128,34 @@ export const resolveMenuDemoPresentation = (
       break;
   }
 
+  if (safeVariant === 'title') {
+    boardVeilAlpha += sequenceState.sequence === 'intro' ? 0.02 : 0.01;
+    boardAuraAlpha -= 0.006;
+    boardHaloAlpha += 0.004;
+    metadataAlpha -= 0.04;
+  } else if (safeVariant === 'ambient') {
+    boardVeilAlpha -= 0.012;
+    boardAuraAlpha += 0.012;
+    boardHaloAlpha += 0.01;
+    boardAuraScale += 0.008;
+    boardHaloScale += 0.006;
+    metadataAlpha -= 0.02;
+  } else {
+    boardVeilAlpha += 0.02;
+    boardAuraAlpha += 0.008;
+    boardHaloAlpha += 0.01;
+    boardShadeAlpha += 0.014;
+    metadataAlpha += 0.04;
+    flashAlpha = Math.max(
+      flashAlpha,
+      sequenceState.sequence === 'intro'
+        ? 0.28
+        : sequenceState.sequence === 'reveal'
+          ? 0.24
+          : 0.18
+    );
+  }
+
   return {
     variant: safeVariant,
     mood: cycle.mood,
@@ -1156,16 +1193,10 @@ export const resolveMenuDemoCycle = (seed: number, cycle: number): MenuDemoCycle
 };
 
 const resolveCuratedMood = (seed: number, cycle: number): DemoMood => {
-  const block = Math.floor(cycle / 6);
-  const slot = cycle % 6;
-  const blueprintSlot = 1 + (mix(seed, block, 0x7f4a7c15) % 4);
-
-  if (slot === blueprintSlot) {
-    return 'blueprint';
-  }
-
-  const alternatingSlot = slot > blueprintSlot ? slot - 1 : slot;
-  return ((alternatingSlot + (mix(seed, block, 0x1c69b3f1) & 1)) & 1) === 0 ? 'solve' : 'scan';
+  const block = Math.floor(cycle / CURATED_MOOD_PATTERNS[0].length);
+  const slot = cycle % CURATED_MOOD_PATTERNS[0].length;
+  const pattern = CURATED_MOOD_PATTERNS[mix(seed, block, 0x7f4a7c15) % CURATED_MOOD_PATTERNS.length];
+  return pattern[slot];
 };
 
 const pickCuratedCycleValue = <T>(items: readonly T[], seed: number, cycle: number, salt: number): T => {
@@ -1212,6 +1243,45 @@ const resolvePhaseLabel = (
 
   const labels = LOADING_PHASE_LABELS[sequence];
   return labels[mix(seed, mood.charCodeAt(0), sequence.charCodeAt(0)) % labels.length];
+};
+
+const resolveBlueprintAccentAlpha = (presentation: MenuDemoPresentation): number => {
+  if (presentation.mood !== 'blueprint') {
+    return 0;
+  }
+
+  const variantBase = presentation.variant === 'loading'
+    ? 0.42
+    : presentation.variant === 'ambient'
+      ? 0.36
+      : 0.3;
+  const sequenceScale = presentation.sequence === 'reveal'
+    ? 1
+    : presentation.sequence === 'arrival'
+      ? 0.82
+      : presentation.sequence === 'intro'
+        ? 0.54
+        : 0.36;
+  return clamp(variantBase * sequenceScale, 0, 0.42);
+};
+
+const drawBlueprintAccent = (graphics: Phaser.GameObjects.Graphics, layout: ReturnType<typeof createBoardLayout>): void => {
+  const safeTileSize = Math.max(2, Math.round(layout.tileSize));
+  const width = Math.max(16, Math.round(layout.boardWidth));
+  const height = Math.max(16, Math.round(layout.boardHeight));
+  const step = Math.max(safeTileSize * 4, Math.round(Math.min(width, height) * 0.18));
+  const inset = Math.max(2, Math.round(safeTileSize * 0.45));
+
+  graphics.clear();
+  graphics.lineStyle(1, palette.board.topHighlight, 0.12);
+  for (let x = step; x < width; x += step) {
+    graphics.lineBetween(x + 0.5, inset, x + 0.5, height - inset);
+  }
+  for (let y = step; y < height; y += step) {
+    graphics.lineBetween(inset, y + 0.5, width - inset, y + 0.5);
+  }
+  graphics.lineStyle(1, palette.board.innerStroke, 0.22);
+  graphics.strokeRect(inset + 0.5, inset + 0.5, width - (inset * 2) - 1, height - (inset * 2) - 1);
 };
 
 const resolveSignedRange = (value: number, range: number): number => (

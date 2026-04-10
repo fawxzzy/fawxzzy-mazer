@@ -40,6 +40,7 @@ interface HudVariantProfile {
 }
 
 const toCssColor = (value: number): string => `#${value.toString(16).padStart(6, '0')}`;
+const META_SEPARATOR = '   ';
 
 const moodLabels: Record<DemoMood, string> = {
   solve: 'SOLVE',
@@ -57,28 +58,28 @@ const sequenceLabels: Record<DemoSequence, string> = {
 const VARIANT_PROFILES: Record<AmbientPresentationVariant, HudVariantProfile> = {
   title: {
     modePrefix: 'LIVE',
-    railAlphaScale: 0.34,
+    railAlphaScale: 0.28,
     modeAlphaScale: 1,
-    metaAlphaScale: 0.92,
-    flashAlphaScale: 0.72,
+    metaAlphaScale: 0.76,
+    flashAlphaScale: 0.58,
     showMode: true,
     showFlash: true
   },
   ambient: {
     modePrefix: 'AMBIENT',
-    railAlphaScale: 0.22,
-    modeAlphaScale: 0.72,
-    metaAlphaScale: 0.64,
+    railAlphaScale: 0.18,
+    modeAlphaScale: 0.62,
+    metaAlphaScale: 0.58,
     flashAlphaScale: 0,
     showMode: true,
     showFlash: false
   },
   loading: {
     modePrefix: 'SYSTEM',
-    railAlphaScale: 0.42,
+    railAlphaScale: 0.38,
     modeAlphaScale: 1,
     metaAlphaScale: 1,
-    flashAlphaScale: 0.92,
+    flashAlphaScale: 0.78,
     showMode: true,
     showFlash: true
   }
@@ -91,18 +92,18 @@ const resolveCompactWidth = (scene: Phaser.Scene): number => resolveSceneViewpor
 
 const resolveModeLabel = (
   mood: DemoMood,
-  sequence: DemoSequence,
+  _sequence: DemoSequence,
   variant: AmbientPresentationVariant,
-  phaseLabel: string
+  _phaseLabel: string
 ): string => {
   switch (variant) {
     case 'ambient':
-      return `${moodLabels[mood]} / ${sequenceLabels[sequence]}`;
+      return `${VARIANT_PROFILES.ambient.modePrefix} ${moodLabels[mood]}`;
     case 'loading':
-      return `${VARIANT_PROFILES.loading.modePrefix} / ${phaseLabel.toUpperCase()}`;
+      return `${VARIANT_PROFILES.loading.modePrefix} ${moodLabels[mood]}`;
     case 'title':
     default:
-      return `${VARIANT_PROFILES.title.modePrefix} / ${moodLabels[mood]} / ${sequenceLabels[sequence]}`;
+      return `${VARIANT_PROFILES.title.modePrefix} ${moodLabels[mood]}`;
   }
 };
 
@@ -114,12 +115,41 @@ const resolveMetaLabel = (episode: MazeEpisode, variant: AmbientPresentationVari
   const rasterHeight = isFiniteNumber(episode?.raster?.height) ? episode.raster.height : 0;
   switch (variant) {
     case 'ambient':
-      return `${size} / #${seed}`;
+      return [
+        `SIZE ${size}`,
+        `SEED ${seed}`
+      ].join(META_SEPARATOR);
     case 'loading':
-      return `${size} / ${difficulty} / #${seed} / ${rasterWidth}x${rasterHeight}`;
+      return [
+        `SIZE ${size}`,
+        `DIFF ${difficulty}`,
+        `SEED ${seed}`,
+        `GRID ${rasterWidth}x${rasterHeight}`
+      ].join(META_SEPARATOR);
     case 'title':
     default:
-      return `${size} / ${difficulty} / #${seed}`;
+      return [
+        `SIZE ${size}`,
+        `DIFF ${difficulty}`,
+        `SEED ${seed}`
+      ].join(META_SEPARATOR);
+  }
+};
+
+const resolveFlashLabel = (
+  _mood: DemoMood,
+  sequence: DemoSequence,
+  variant: AmbientPresentationVariant,
+  phaseLabel: string
+): string => {
+  switch (variant) {
+    case 'loading':
+      return `PHASE ${phaseLabel.toUpperCase()}`;
+    case 'ambient':
+      return '';
+    case 'title':
+    default:
+      return `STATE ${sequenceLabels[sequence]}`;
   }
 };
 
@@ -158,18 +188,18 @@ export const createDemoStatusHud = (
     fontFamily: '"Courier New", monospace',
     fontSize: `${compact ? 9 : 10}px`,
     fontStyle: 'bold'
-  }).setOrigin(0, 0.5);
+  }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2);
   const metaText = scene.add.text(rightX, baselineY, '', {
     color: toCssColor(palette.hud.hintText),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? 9 : 10}px`
-  }).setOrigin(1, 0.5);
+    fontSize: `${compact ? 8 : 9}px`
+  }).setOrigin(1, 0.5).setLetterSpacing(1);
   const flashText = scene.add.text(flashX, flashY, '', {
     color: toCssColor(palette.board.topHighlight),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? 9 : 10}px`,
+    fontSize: `${compact ? 8 : 9}px`,
     fontStyle: 'bold'
-  }).setOrigin(1, 0);
+  }).setOrigin(1, 0).setLetterSpacing(1);
   root.add([rail, modeText, metaText, flashText]);
 
   const pulseTween = reducedMotion ? undefined : scene.tweens.add({
@@ -197,9 +227,7 @@ export const createDemoStatusHud = (
         metaText.setText(nextMeta);
       }
 
-      const nextFlash = safeVariant === 'loading'
-        ? `${moodLabels[mood]} / ${sequenceLabels[sequence]}`
-        : phaseLabel.toUpperCase();
+      const nextFlash = resolveFlashLabel(mood, sequence, safeVariant, phaseLabel);
       if (nextFlash !== lastFlash || safeVariant !== lastVariant) {
         lastFlash = nextFlash;
         flashText.setText(nextFlash);

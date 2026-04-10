@@ -108,6 +108,11 @@ describe('demo-only build', () => {
     const seenSizes = new Set<string>();
     const seenPacing = new Set<string>();
     const moods: string[] = [];
+    const moodCounts = {
+      solve: 0,
+      scan: 0,
+      blueprint: 0
+    };
 
     for (let cycle = 0; cycle < 32; cycle += 1) {
       const step = resolveMenuDemoCycle(9001, cycle);
@@ -116,6 +121,7 @@ describe('demo-only build', () => {
       seenSizes.add(step.size);
       seenPacing.add(JSON.stringify(step.pacing));
       moods.push(step.mood);
+      moodCounts[step.mood] += 1;
       expect(['chill', 'standard', 'spicy', 'brutal']).toContain(step.difficulty);
       expect(['solve', 'scan', 'blueprint']).toContain(step.mood);
       expect(['small', 'medium', 'large', 'huge']).toContain(step.size);
@@ -135,6 +141,8 @@ describe('demo-only build', () => {
     expect(seenPacing.size).toBeGreaterThan(1);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeLessThanOrEqual(6);
     expect(moods.filter((mood) => mood === 'blueprint').length).toBeGreaterThanOrEqual(4);
+    expect(moodCounts.solve).toBeGreaterThan(moodCounts.scan);
+    expect(moodCounts.scan).toBeGreaterThan(moodCounts.blueprint);
 
     for (let index = 1; index < moods.length; index += 1) {
       expect(moods[index] === 'blueprint' && moods[index - 1] === 'blueprint').toBe(false);
@@ -203,6 +211,16 @@ describe('demo-only build', () => {
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
     }
+
+    const titlePresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'title');
+    const ambientPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient');
+    const loadingPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'loading');
+
+    expect(titlePresentation.solutionPathAlpha).toBeGreaterThan(ambientPresentation.solutionPathAlpha);
+    expect(titlePresentation.boardVeilAlpha).toBeGreaterThan(ambientPresentation.boardVeilAlpha);
+    expect(loadingPresentation.metadataAlpha).toBeGreaterThan(ambientPresentation.metadataAlpha);
+    expect(loadingPresentation.flashAlpha).toBeGreaterThan(0);
+    expect(ambientPresentation.flashAlpha).toBe(0);
 
     disposeMazeEpisode(episode);
   });
