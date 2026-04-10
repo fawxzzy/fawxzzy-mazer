@@ -159,6 +159,19 @@ interface PresentationOffsets {
   driftY: number;
 }
 
+interface EpisodePresentationShell {
+  layout: ReturnType<typeof createBoardLayout>;
+  boardCenterX: number;
+  boardCenterY: number;
+  boardRenderer: BoardRenderer;
+  demoStatusHud: ReturnType<typeof createDemoStatusHud>;
+  boardAura: Phaser.GameObjects.Ellipse;
+  boardHalo: Phaser.GameObjects.Ellipse;
+  boardShade: Phaser.GameObjects.Rectangle;
+  boardVeil: Phaser.GameObjects.Rectangle;
+  blueprintAccent: Phaser.GameObjects.Graphics;
+}
+
 interface MenuDemoCycleOverrides {
   difficulty?: MazeDifficulty;
   size?: MazeSize;
@@ -543,6 +556,8 @@ const CURATED_MOOD_PATTERNS: readonly MoodPattern[] = [
   ['solve', 'solve', 'scan', 'solve', 'solve', 'blueprint', 'scan', 'solve']
 ] as const;
 
+const ANIMATION_TIME_WRAP_MS = 600_000;
+
 export interface MenuPresentationModel {
   viewport: ViewportSize;
   layout: SceneLayoutProfile;
@@ -612,8 +627,7 @@ export class MenuScene extends Phaser.Scene {
     let recoveryEpisode: MazeEpisode | undefined;
     let patternEngine: PatternEngine | undefined;
     let patternFrame: PatternFrame | undefined;
-    let boardRenderer: BoardRenderer | undefined;
-    let demoStatusHud: ReturnType<typeof createDemoStatusHud> | undefined;
+    let episodePresentationShell: EpisodePresentationShell | undefined;
     let resizeRestart: Phaser.Time.TimerEvent | undefined;
     let handleVisibilityChange: (() => void) | undefined;
     let handleResize: ((gameSize?: { width?: number; height?: number }) => void) | undefined;
@@ -645,6 +659,26 @@ export class MenuScene extends Phaser.Scene {
       removeInstallSurfaceListener = undefined;
       updateDemo = undefined;
     };
+    const destroyEpisodePresentationShell = (): void => {
+      if (!episodePresentationShell) {
+        return;
+      }
+
+      this.tweens.killTweensOf([
+        episodePresentationShell.boardAura,
+        episodePresentationShell.boardHalo,
+        episodePresentationShell.boardShade,
+        episodePresentationShell.boardVeil
+      ]);
+      episodePresentationShell.demoStatusHud.destroy();
+      episodePresentationShell.boardRenderer.destroy();
+      episodePresentationShell.blueprintAccent.destroy();
+      episodePresentationShell.boardVeil.destroy();
+      episodePresentationShell.boardShade.destroy();
+      episodePresentationShell.boardHalo.destroy();
+      episodePresentationShell.boardAura.destroy();
+      episodePresentationShell = undefined;
+    };
     const destroyPresentation = (destroyEngine: boolean): void => {
       resizeRestart?.remove(false);
       resizeRestart = undefined;
@@ -654,10 +688,7 @@ export class MenuScene extends Phaser.Scene {
       this.titleDriftTween = undefined;
       this.starDriftTween?.remove();
       this.starDriftTween = undefined;
-      demoStatusHud?.destroy();
-      demoStatusHud = undefined;
-      boardRenderer?.destroy();
-      boardRenderer = undefined;
+      destroyEpisodePresentationShell();
       if (destroyEngine) {
         patternEngine?.destroy();
         patternEngine = undefined;
@@ -721,56 +752,73 @@ export class MenuScene extends Phaser.Scene {
         size: launchConfig.size,
         mood: moodOverride
       });
+      pendingCyclePlan = undefined;
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
+      const createEpisodePresentationShell = (episode: MazeEpisode): EpisodePresentationShell => {
+        const layout = createBoardLayout(this, episode, {
+          boardScale: sceneLayout.boardScale
+            + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
+          topReserve: sceneLayout.topReserve,
+          sidePadding: sceneLayout.sidePadding,
+          bottomPadding: sceneLayout.bottomPadding
+        });
+        const boardCenterX = layout.boardX + (layout.boardWidth / 2);
+        const boardCenterY = layout.boardY + (layout.boardHeight / 2);
+        const boardRenderer = new BoardRenderer(this, episode, layout);
+        boardRenderer.drawBoardChrome();
 
-      const layout = createBoardLayout(this, patternFrame.episode, {
-        boardScale: sceneLayout.boardScale
-          + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
-        topReserve: sceneLayout.topReserve,
-        sidePadding: sceneLayout.sidePadding,
-        bottomPadding: sceneLayout.bottomPadding
-      });
-      const boardCenterX = layout.boardX + (layout.boardWidth / 2);
-      const boardCenterY = layout.boardY + (layout.boardHeight / 2);
-      boardRenderer = new BoardRenderer(this, patternFrame.episode, layout);
-      boardRenderer.drawBoardChrome();
+        const boardAura = this.add.ellipse(
+          boardCenterX,
+          boardCenterY,
+          Math.max(24, layout.boardWidth * 1.14),
+          Math.max(24, layout.boardHeight * 1.08),
+          palette.background.nebulaCore,
+          0.1
+        ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
+        const boardHalo = this.add.ellipse(
+          boardCenterX,
+          boardCenterY,
+          Math.max(20, layout.boardWidth * 1.05),
+          Math.max(20, layout.boardHeight * 1.03),
+          palette.board.topHighlight,
+          0.032
+        ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
+        const boardShade = this.add.rectangle(
+          boardCenterX,
+          boardCenterY,
+          Math.max(16, layout.boardWidth),
+          Math.max(16, layout.boardHeight),
+          palette.board.topHighlight,
+          0.02
+        ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
+        const boardVeil = this.add.rectangle(
+          boardCenterX,
+          boardCenterY,
+          Math.max(16, layout.boardWidth),
+          Math.max(16, layout.boardHeight),
+          palette.background.deepSpace,
+          0
+        ).setOrigin(0.5).setDepth(7.2);
+        const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
+        runOptional('blueprint accent setup', () => {
+          drawBlueprintAccent(blueprintAccent, layout);
+        });
 
-      const boardAura = this.add.ellipse(
-        boardCenterX,
-        boardCenterY,
-        Math.max(24, layout.boardWidth * 1.14),
-        Math.max(24, layout.boardHeight * 1.08),
-        palette.background.nebulaCore,
-        0.1
-      ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
-      const boardHalo = this.add.ellipse(
-        boardCenterX,
-        boardCenterY,
-        Math.max(20, layout.boardWidth * 1.05),
-        Math.max(20, layout.boardHeight * 1.03),
-        palette.board.topHighlight,
-        0.032
-      ).setOrigin(0.5).setDepth(6).setBlendMode(Phaser.BlendModes.SCREEN);
-      const boardShade = this.add.rectangle(
-        boardCenterX,
-        boardCenterY,
-        Math.max(16, layout.boardWidth),
-        Math.max(16, layout.boardHeight),
-        palette.board.topHighlight,
-        0.02
-      ).setOrigin(0.5).setDepth(7).setBlendMode(Phaser.BlendModes.SCREEN);
-      const boardVeil = this.add.rectangle(
-        boardCenterX,
-        boardCenterY,
-        Math.max(16, layout.boardWidth),
-        Math.max(16, layout.boardHeight),
-        palette.background.deepSpace,
-        0
-      ).setOrigin(0.5).setDepth(7.2);
-      const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
-      runOptional('blueprint accent setup', () => {
-        drawBlueprintAccent(blueprintAccent, layout);
-      });
+        return {
+          layout,
+          boardCenterX,
+          boardCenterY,
+          boardRenderer,
+          demoStatusHud: createDemoStatusHud(this, layout, { reducedMotion, chrome, profile: deploymentProfileId }),
+          boardAura,
+          boardHalo,
+          boardShade,
+          boardVeil,
+          blueprintAccent
+        };
+      };
+      episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);
+      const layout = episodePresentationShell.layout;
 
       if (titleVisible) {
         const titlePlateMaxWidth = Math.max(96, width - Math.max(24, sceneLayout.sidePadding * 4));
@@ -981,8 +1029,6 @@ export class MenuScene extends Phaser.Scene {
         }
       }
 
-      demoStatusHud = createDemoStatusHud(this, layout, { reducedMotion, chrome, profile: deploymentProfileId });
-
       let lastCue: DemoWalkerCue = 'spawn';
       let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
       let demoPresentation = resolveMenuDemoPresentation(
@@ -993,21 +1039,26 @@ export class MenuScene extends Phaser.Scene {
         variant
       );
       const applyPresentationLayer = (presentation: MenuDemoPresentation): void => {
+        const shell = episodePresentationShell;
+        if (!shell) {
+          return;
+        }
+
         const offsetX = sanitizeOffset(presentation.frameOffsetX);
         const offsetY = sanitizeOffset(presentation.frameOffsetY);
-        boardRenderer?.setPresentationOffset(offsetX, offsetY);
+        shell.boardRenderer.setPresentationOffset(offsetX, offsetY);
         runOptional('board chrome', () => {
-          boardAura.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+          shell.boardAura.setPosition(shell.boardCenterX + offsetX, shell.boardCenterY + offsetY)
             .setAlpha(presentation.boardAuraAlpha)
             .setScale(presentation.boardAuraScale);
-          boardHalo.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+          shell.boardHalo.setPosition(shell.boardCenterX + offsetX, shell.boardCenterY + offsetY)
             .setAlpha(presentation.boardHaloAlpha)
             .setScale(presentation.boardHaloScale);
-          boardShade.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+          shell.boardShade.setPosition(shell.boardCenterX + offsetX, shell.boardCenterY + offsetY)
             .setAlpha(presentation.boardShadeAlpha);
-          boardVeil.setPosition(boardCenterX + offsetX, boardCenterY + offsetY)
+          shell.boardVeil.setPosition(shell.boardCenterX + offsetX, shell.boardCenterY + offsetY)
             .setAlpha(presentation.boardVeilAlpha);
-          blueprintAccent.setPosition(layout.boardX + offsetX, layout.boardY + offsetY)
+          shell.blueprintAccent.setPosition(shell.layout.boardX + offsetX, shell.layout.boardY + offsetY)
             .setAlpha(resolveBlueprintAccentAlpha(presentation));
         });
       };
@@ -1016,6 +1067,8 @@ export class MenuScene extends Phaser.Scene {
           return;
         }
 
+        destroyEpisodePresentationShell();
+        episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);
         demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
         demoPresentation = resolveMenuDemoPresentation(
           patternFrame.episode,
@@ -1025,14 +1078,14 @@ export class MenuScene extends Phaser.Scene {
           variant,
           deploymentProfileId
         );
-        boardRenderer?.setEpisode(patternFrame.episode);
+        lastCue = 'spawn';
         recoveryEpisode = patternFrame.episode;
         applyPresentationLayer(demoPresentation);
-        boardRenderer?.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
-        boardRenderer?.drawStart('spawn');
-        boardRenderer?.drawGoal();
+        episodePresentationShell.boardRenderer.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
+        episodePresentationShell.boardRenderer.drawStart('spawn');
+        episodePresentationShell.boardRenderer.drawGoal();
         if (!reducedMotion) {
-          boardRenderer?.startAmbientMotion(
+          episodePresentationShell.boardRenderer.startAmbientMotion(
             demoPresentation.ambientDriftPxX,
             demoPresentation.ambientDriftPxY,
             demoPresentation.ambientDriftMs
@@ -1042,25 +1095,32 @@ export class MenuScene extends Phaser.Scene {
       applyEpisodePresentation();
 
       const accentCueBeat = (cue: DemoWalkerCue): void => {
-        if (reducedMotion || recoveryActivated) {
+        const shell = episodePresentationShell;
+        if (reducedMotion || recoveryActivated || !shell) {
           return;
         }
 
         const pulseBoard = (shadeFrom: number, haloFrom: number, auraFrom: number, duration: number, scaleFrom = 1.015): void => {
-          this.tweens.add({ targets: boardShade, alpha: { from: shadeFrom, to: boardShade.alpha }, duration, ease: 'Quad.easeOut' });
+          this.tweens.killTweensOf([shell.boardShade, shell.boardHalo, shell.boardAura]);
           this.tweens.add({
-            targets: boardHalo,
-            alpha: { from: haloFrom, to: boardHalo.alpha },
-            scaleX: { from: scaleFrom, to: boardHalo.scaleX },
-            scaleY: { from: scaleFrom, to: boardHalo.scaleY },
+            targets: shell.boardShade,
+            alpha: { from: shadeFrom, to: shell.boardShade.alpha },
             duration,
             ease: 'Quad.easeOut'
           });
           this.tweens.add({
-            targets: boardAura,
-            alpha: { from: auraFrom, to: boardAura.alpha },
-            scaleX: { from: scaleFrom + 0.01, to: boardAura.scaleX },
-            scaleY: { from: scaleFrom + 0.01, to: boardAura.scaleY },
+            targets: shell.boardHalo,
+            alpha: { from: haloFrom, to: shell.boardHalo.alpha },
+            scaleX: { from: scaleFrom, to: shell.boardHalo.scaleX },
+            scaleY: { from: scaleFrom, to: shell.boardHalo.scaleY },
+            duration,
+            ease: 'Quad.easeOut'
+          });
+          this.tweens.add({
+            targets: shell.boardAura,
+            alpha: { from: auraFrom, to: shell.boardAura.alpha },
+            scaleX: { from: scaleFrom + 0.01, to: shell.boardAura.scaleX },
+            scaleY: { from: scaleFrom + 0.01, to: shell.boardAura.scaleY },
             duration: duration + 60,
             ease: 'Quad.easeOut'
           });
@@ -1075,7 +1135,8 @@ export class MenuScene extends Phaser.Scene {
         }
       };
       const renderDemo = (): void => {
-        if (!patternFrame) {
+        const shell = episodePresentationShell;
+        if (!patternFrame || !shell) {
           return;
         }
 
@@ -1098,9 +1159,9 @@ export class MenuScene extends Phaser.Scene {
 
         applyPresentationLayer(demoPresentation);
 
-        boardRenderer?.drawStart(view.cue);
-        boardRenderer?.drawGoal(view.cue);
-        boardRenderer?.drawTrail(path, {
+        shell.boardRenderer.drawStart(view.cue);
+        shell.boardRenderer.drawGoal(view.cue);
+        shell.boardRenderer.drawTrail(path, {
           cue: view.cue,
           limit: view.trailLimit,
           start: view.trailStart,
@@ -1108,9 +1169,9 @@ export class MenuScene extends Phaser.Scene {
         });
 
         if (view.currentIndex === view.nextIndex || view.progress <= 0) {
-          boardRenderer?.drawActor(view.currentIndex, view.direction, view.cue, demoPresentation.actorPulseBoost);
+          shell.boardRenderer.drawActor(view.currentIndex, view.direction, view.cue, demoPresentation.actorPulseBoost);
         } else {
-          boardRenderer?.drawActorMotion(
+          shell.boardRenderer.drawActorMotion(
             view.currentIndex,
             view.nextIndex,
             view.progress,
@@ -1121,7 +1182,7 @@ export class MenuScene extends Phaser.Scene {
         }
 
         runOptional('hud metadata', () => {
-          demoStatusHud?.setState(
+          shell.demoStatusHud.setState(
             episode,
             demoPresentation.mood,
             demoPresentation.sequence,
@@ -1152,6 +1213,7 @@ export class MenuScene extends Phaser.Scene {
           patternFrame = nextFrame;
           recoveryEpisode = nextFrame.episode;
           demoCyclePlan = pendingCyclePlan ?? demoCyclePlan;
+          pendingCyclePlan = undefined;
           applyEpisodePresentation();
           renderDemo();
         } catch (error) {
@@ -1486,9 +1548,10 @@ const resolveDemoTrailWindow = (episode: MazeEpisode, mood: DemoMood): number =>
         ? 26
         : 30;
   const moodProfile = DEMO_MOOD_PROFILES[mood];
-  return Math.max(
+  return clamp(
+    Math.round((difficultyBase + sizeOffset + moodProfile.trailWindowOffset) * moodProfile.trailWindowScale),
     4,
-    Math.round((difficultyBase + sizeOffset + moodProfile.trailWindowOffset) * moodProfile.trailWindowScale)
+    46
   );
 };
 
@@ -1531,7 +1594,8 @@ export const resolveMenuDemoPresentation = (
   const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
   const sequenceState = resolveMenuDemoSequence(episode, elapsedMs, config);
   const progress = ease(sequenceState.progress);
-  const wave = 0.5 + (Math.sin((elapsedMs + (episode.seed * 17)) * 0.0022) * 0.5);
+  const oscillationTimeMs = normalizeAnimationTime(elapsedMs);
+  const wave = 0.5 + (Math.sin((oscillationTimeMs + (episode.seed * 17)) * 0.0022) * 0.5);
   const offsets = resolvePresentationOffsets(episode.seed, safeVariant);
   let boardVeilAlpha = 0.03;
   let boardAuraAlpha = moodProfile.auraAlpha;
@@ -1626,7 +1690,7 @@ export const resolveMenuDemoPresentation = (
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
     ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
     ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale || 0,
-    ambientDriftMs: Math.round(moodProfile.ambientDriftMs * deploymentProfile.driftDurationScale),
+    ambientDriftMs: clamp(Math.round(moodProfile.ambientDriftMs * deploymentProfile.driftDurationScale), 1200, 12000),
     frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale) || 0,
     frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale) || 0,
     hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale) || 0,
@@ -1637,7 +1701,7 @@ export const resolveMenuDemoPresentation = (
     boardShadeAlpha: clamp(boardShadeAlpha + (variantProfile.boardShadeBias * deploymentProfile.boardShadeBiasScale), 0.012, 0.18),
     boardAuraScale: clamp(1 + boardAuraScaleDelta + (wave * variantProfile.boardAuraBias * 0.1 * deploymentProfile.boardAuraBiasScale), 1, 1.05),
     boardHaloScale: clamp(1 + boardHaloScaleDelta + (wave * variantProfile.boardHaloBias * 0.1 * deploymentProfile.boardHaloBiasScale), 1, 1.03),
-    actorPulseBoost: moodProfile.actorPulseBoost + variantProfile.actorPulseBias,
+    actorPulseBoost: clamp(moodProfile.actorPulseBoost + variantProfile.actorPulseBias, 0, 0.12),
     metadataAlpha: clamp(metadataAlpha * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
     flashAlpha: clamp(flashAlpha * variantProfile.flashAlphaScale * deploymentProfile.flashAlphaScale, 0, 0.84)
   };
@@ -1790,6 +1854,15 @@ const ease = (value: number): number => {
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const lerp = (from: number, to: number, t: number): number => from + ((to - from) * t);
+
+const normalizeAnimationTime = (value: number, periodMs = ANIMATION_TIME_WRAP_MS): number => {
+  if (!Number.isFinite(value) || periodMs <= 0) {
+    return 0;
+  }
+
+  const wrapped = value % periodMs;
+  return wrapped < 0 ? wrapped + periodMs : wrapped;
+};
 
 const prefersReducedMotion = (): boolean => (
   typeof window !== 'undefined'

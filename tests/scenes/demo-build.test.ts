@@ -1,6 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  cleanupPresentationArtifacts,
+  createPresentationArtifactFixtures,
+  listPresentationArtifacts
+} from './presentationArtifactCleanup';
 
 vi.mock('phaser', () => ({
   default: {
@@ -58,6 +63,39 @@ beforeAll(async () => {
   ({ legacyTuning } = await import('../../src/config/tuning'));
   ({ resolveViewportSize } = await import('../../src/render/viewport'));
 });
+
+beforeEach(() => {
+  cleanupPresentationArtifacts();
+});
+
+afterEach(() => {
+  cleanupPresentationArtifacts();
+});
+
+const createViewportSceneStub = (width: number, height: number) => ({
+  scale: { width, height },
+  cameras: {
+    main: { width, height }
+  }
+}) as never;
+
+const createDemoConfig = (cycle: Parameters<typeof resolveMenuDemoPresentation>[1]) => ({
+  ...legacyTuning.demo,
+  cadence: {
+    ...legacyTuning.demo.cadence,
+    spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
+    exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
+    goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
+    resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
+  }
+});
+
+const resolveCycleDurationMs = (episode: { raster: { pathIndices: ArrayLike<number> } }, config: ReturnType<typeof createDemoConfig>): number => (
+  Math.max(1, config.cadence.spawnHoldMs)
+  + Math.max(1, Math.max(1, episode.raster.pathIndices.length - 1) * Math.max(1, config.cadence.exploreStepMs))
+  + Math.max(1, config.cadence.goalHoldMs)
+  + Math.max(1, config.cadence.resetHoldMs)
+);
 
 describe('demo-only build', () => {
   test('BootScene starts the passive menu scene immediately', () => {
@@ -386,6 +424,141 @@ describe('demo-only build', () => {
     expect(mobilePresentation.ambientDriftMs).toBeGreaterThan(ambientPresentation.ambientDriftMs);
 
     disposeMazeEpisode(episode);
+  });
+
+  test('presentation artifact cleanup removes stale screenshot and capture outputs', () => {
+    const created = createPresentationArtifactFixtures();
+    expect(listPresentationArtifacts()).toEqual(created.sort());
+
+    const removed = cleanupPresentationArtifacts();
+    expect(removed).toEqual(created.sort());
+    expect(listPresentationArtifacts()).toEqual([]);
+  });
+
+  test('MenuScene keeps listener cleanup and per-cycle episode resets explicit', () => {
+    const menuSceneSource = readFileSync(resolve(process.cwd(), 'src/scenes/MenuScene.ts'), 'utf8');
+
+    expect(menuSceneSource).toContain('destroyEpisodePresentationShell();');
+    expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode);');
+    expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
+    expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
+    expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");
+  });
+
+  test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: 15000 }, () => {
+    createPresentationArtifactFixtures();
+    cleanupPresentationArtifacts();
+
+    const profileCases = [
+      { width: 1920, height: 1080, variant: 'ambient' as const, profile: 'tv' as const, chrome: 'minimal' as const, titleVisible: false },
+      { width: 1920, height: 1080, variant: 'ambient' as const, profile: 'obs' as const, chrome: 'minimal' as const, titleVisible: false },
+      { width: 390, height: 844, variant: 'ambient' as const, profile: 'mobile' as const, chrome: 'full' as const, titleVisible: true }
+    ];
+    const observedBoardWidths = new Set<number>();
+    const totalCycles = 48;
+
+    for (let cycleIndex = 0; cycleIndex < totalCycles; cycleIndex += 1) {
+      const cycle = resolveMenuDemoCycle(20260410, cycleIndex);
+      const resolved = generateMazeForDifficulty({
+        scale: 50,
+        seed: 20260410 + cycleIndex,
+        size: cycle.size,
+        presentationPreset: cycle.presentationPreset,
+        checkPointModifier: 0.35,
+        shortcutCountModifier: 0.13
+      }, cycle.difficulty, 0, 1);
+      const episode = resolved.episode;
+      const config = createDemoConfig(cycle);
+      const cycleDurationMs = resolveCycleDurationMs(episode, config);
+      const elapsedSamples = [
+        Math.max(1, Math.floor(config.cadence.spawnHoldMs * 0.5)),
+        Math.max(1, Math.floor(cycleDurationMs * 0.35)),
+        Math.max(1, Math.floor(cycleDurationMs * 0.85)),
+        2_147_483_647 + (cycleIndex * 17)
+      ];
+
+      for (const profileCase of profileCases) {
+        const presentationModel = resolveMenuPresentationModel(
+          profileCase.width,
+          profileCase.height,
+          profileCase.variant,
+          profileCase.chrome,
+          profileCase.titleVisible,
+          profileCase.profile
+        );
+        const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+          boardScale: presentationModel.layout.boardScale,
+          topReserve: presentationModel.layout.topReserve,
+          sidePadding: presentationModel.layout.sidePadding,
+          bottomPadding: presentationModel.layout.bottomPadding
+        });
+
+        observedBoardWidths.add(Math.round(layout.boardWidth));
+
+        expect(layout.boardWidth).toBeGreaterThan(0);
+        expect(layout.boardHeight).toBeGreaterThan(0);
+        expect(layout.tileSize).toBeGreaterThan(0);
+
+        for (const elapsedMs of elapsedSamples) {
+          const presentation = resolveMenuDemoPresentation(
+            episode,
+            cycle,
+            elapsedMs,
+            config,
+            profileCase.variant,
+            profileCase.profile
+          );
+          const finalBounds = resolveBoardPresentationBounds(layout, presentation.frameOffsetX, presentation.frameOffsetY);
+
+          expect(presentation.trailWindow).toBeGreaterThanOrEqual(4);
+          expect(presentation.trailWindow).toBeLessThanOrEqual(46);
+          expect(presentation.boardVeilAlpha).toBeGreaterThanOrEqual(0);
+          expect(presentation.boardVeilAlpha).toBeLessThanOrEqual(0.24);
+          expect(presentation.boardAuraAlpha).toBeGreaterThanOrEqual(0.06);
+          expect(presentation.boardAuraAlpha).toBeLessThanOrEqual(0.22);
+          expect(presentation.boardHaloAlpha).toBeGreaterThanOrEqual(0.018);
+          expect(presentation.boardHaloAlpha).toBeLessThanOrEqual(0.16);
+          expect(presentation.boardShadeAlpha).toBeGreaterThanOrEqual(0.012);
+          expect(presentation.boardShadeAlpha).toBeLessThanOrEqual(0.18);
+          expect(presentation.boardAuraScale).toBeGreaterThanOrEqual(1);
+          expect(presentation.boardAuraScale).toBeLessThanOrEqual(1.05);
+          expect(presentation.boardHaloScale).toBeGreaterThanOrEqual(1);
+          expect(presentation.boardHaloScale).toBeLessThanOrEqual(1.03);
+          expect(presentation.metadataAlpha).toBeGreaterThanOrEqual(0.18);
+          expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
+          expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
+          expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
+          expect(presentation.actorPulseBoost).toBeGreaterThanOrEqual(0);
+          expect(presentation.actorPulseBoost).toBeLessThanOrEqual(0.12);
+          expect(presentation.ambientDriftMs).toBeGreaterThanOrEqual(1200);
+          expect(presentation.ambientDriftMs).toBeLessThanOrEqual(12000);
+          expect(finalBounds.left).toBeGreaterThanOrEqual(0);
+          expect(finalBounds.top).toBeGreaterThanOrEqual(0);
+          expect(finalBounds.right).toBeLessThanOrEqual(presentationModel.viewport.width);
+          expect(finalBounds.bottom).toBeLessThanOrEqual(presentationModel.viewport.height);
+
+          if (profileCase.profile === 'obs') {
+            expect(presentation.frameOffsetX).toBe(0);
+            expect(presentation.frameOffsetY).toBe(0);
+            expect(presentation.hudOffsetX).toBe(0);
+            expect(presentation.hudOffsetY).toBe(0);
+            expect(presentation.ambientDriftPxX).toBe(0);
+            expect(presentation.ambientDriftPxY).toBe(0);
+            expect(finalBounds.left).toBeGreaterThanOrEqual(layout.safeBounds.left);
+            expect(finalBounds.top).toBeGreaterThanOrEqual(layout.safeBounds.top);
+            expect(finalBounds.right).toBeLessThanOrEqual(layout.safeBounds.right);
+            expect(finalBounds.bottom).toBeLessThanOrEqual(layout.safeBounds.bottom);
+            expect(Math.abs(finalBounds.centerX - layout.safeBounds.centerX)).toBeLessThanOrEqual(0.5);
+            expect(Math.abs(finalBounds.centerY - layout.safeBounds.centerY)).toBeLessThanOrEqual(0.5);
+          }
+        }
+      }
+
+      disposeMazeEpisode(episode);
+    }
+
+    expect(observedBoardWidths.size).toBeGreaterThan(2);
+    expect(listPresentationArtifacts()).toEqual([]);
   });
 
   test('board relayout stays visible across tiny, wide, and tall viewports', () => {

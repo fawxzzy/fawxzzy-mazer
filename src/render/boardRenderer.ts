@@ -73,6 +73,7 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 ] as const;
 
 const MIN_BOARD_SIZE = 24;
+const ANIMATION_TIME_WRAP_MS = 600_000;
 const BOARD_RENDER_PRESET_PROFILES: Record<MazeEpisode['presentationPreset'], BoardRenderPresetProfile> = {
   classic: {
     floorInsetAlphaScale: 1,
@@ -119,6 +120,14 @@ const sanitizePositive = (value: unknown, fallback: number, minimum = 1): number
 const sanitizeRange = (value: unknown, fallback: number, min: number, max: number): number => (
   Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, min, max)
 );
+const normalizeAnimationTime = (value: number, periodMs = ANIMATION_TIME_WRAP_MS): number => {
+  if (!Number.isFinite(value) || periodMs <= 0) {
+    return 0;
+  }
+
+  const wrapped = value % periodMs;
+  return wrapped < 0 ? wrapped + periodMs : wrapped;
+};
 const createBounds = (left: number, top: number, width: number, height: number): BoardBounds => ({
   left,
   top,
@@ -527,7 +536,7 @@ export class BoardRenderer {
     }
 
     const { tileSize } = this.layout;
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     const tileX = this.tileX(this.episode.raster.startIndex);
     const tileY = this.tileY(this.episode.raster.startIndex);
     const centerX = tileX + tileSize / 2;
@@ -567,7 +576,7 @@ export class BoardRenderer {
     }
 
     const { tileSize } = this.layout;
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     this.goal.clear();
 
     const tileX = this.tileX(this.episode.raster.endIndex);
@@ -678,7 +687,7 @@ export class BoardRenderer {
 
     const { tileSize } = this.layout;
     const cue = options.cue ?? 'explore';
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     const trailLength = Math.min(options.limit ?? trail.length, trail.length);
     const trailStart = Math.max(0, Math.min(options.start ?? 0, Math.max(0, trailLength - 1)));
     const demoEmphasis = options.emphasis === 'demo';
@@ -923,7 +932,7 @@ export class BoardRenderer {
     }
 
     const { tileSize } = this.layout;
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     const tileX = this.tileX(index);
     const tileY = this.tileY(index);
     const centerX = tileX + tileSize / 2;
@@ -945,7 +954,7 @@ export class BoardRenderer {
     }
 
     const { tileSize } = this.layout;
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     const fromTileX = this.tileX(fromIndex);
     const fromTileY = this.tileY(fromIndex);
     const toTileX = this.tileX(toIndex);
@@ -973,7 +982,7 @@ export class BoardRenderer {
     }
 
     const { tileSize } = this.layout;
-    const now = this.scene.time.now;
+    const now = normalizeAnimationTime(this.scene.time.now);
     const tileX = this.tileX(index);
     const tileY = this.tileY(index);
     const centerX = tileX + (tileSize / 2) + offsetX;
