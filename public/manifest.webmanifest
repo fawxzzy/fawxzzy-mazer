@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Mazer",
   "short_name": "Mazer",
-  "description": "Laptop-first maze runs with optional touch support.",
+  "description": "Ambient-only maze presentation with profile-driven launch surfaces.",
   "lang": "en-US",
   "start_url": "/",
   "scope": "/",

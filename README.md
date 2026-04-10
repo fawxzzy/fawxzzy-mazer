@@ -1,4 +1,4 @@
-# Mazer (Rebuild Foundation)
+# Mazer
 
 This repository is a clean rebuild of Mazer using **Vite + TypeScript + Phaser**.
 
@@ -20,12 +20,33 @@ npm install
 npm run dev -- --open
 npm run build
 npm run preview
+npm run lint
 npm run test
 npm run test:soak
 ```
 
 `npm run preview` serves the production build locally on port `4173`.
 `dist/` is generated build output and is ignored by git.
+
+## Launch profiles
+Use the production preview for freeze validation:
+
+- `http://127.0.0.1:4173/?profile=tv`
+- `http://127.0.0.1:4173/?profile=tv&title=show`
+- `http://127.0.0.1:4173/?profile=obs&chrome=none`
+- `http://127.0.0.1:4173/?profile=mobile`
+
+Defaults stay unchanged. Launch profiles tune packaging and presentation for deployment surfaces without changing app logic.
+
+## Testing surfaces
+- TV / kiosk: run `?profile=tv` for the ambient loop, or `?profile=tv&title=show` when explicit branding is needed. Validate distance legibility, brightness, reload behavior, and long-loop calmness.
+- OBS: start with `?profile=obs&chrome=none` in a Browser Source sized to the scene. Check for clean edges, no odd padding, and stable refresh behavior.
+- Mobile: use `?profile=mobile`, then try `?profile=mobile&chrome=none` for a board-first shell check. Test portrait and landscape, resize, reload, and tab away/back.
+
+## Freeze notes
+- Rule: freeze product behavior before adding more polish once deployment profiles are validated.
+- Pattern: use URL-level launch profiles for deployment surfaces instead of branching app logic.
+- Failure Mode: tiny packaging issues like icons, manifest wiring, or audio-init warnings can make a polished ambient build feel unfinished even when the core loop is stable.
 
 ## Notes about service workers
 - PWA plugin is configured with `devOptions.enabled = false`.
@@ -39,9 +60,7 @@ npm run test:soak
   - TV ambient loop: `?profile=tv`
   - TV with explicit title: `?profile=tv&title=show`
   - OBS-safe board-first shell: `?profile=obs&chrome=none`
-  - OBS loading composition: `?profile=obs&presentation=loading`
   - Mobile portrait ambient shell: `?profile=mobile`
-  - Mobile scan mood: `?profile=mobile&mood=scan`
 
 ## Legacy boundary
 - `legacy/` and `docs/legacy/` are archival reference only.

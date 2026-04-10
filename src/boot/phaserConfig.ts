@@ -11,6 +11,9 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   width: initialViewport.width,
   height: initialViewport.height,
   backgroundColor: '#101018',
+  audio: {
+    noAudio: true
+  },
   scene: [BootScene, MenuScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
