@@ -76,7 +76,7 @@ const defaultConfig: DemoWalkerConfig = {
     anticipationStepMs: 84,
     branchCommitMs: 112,
     branchResumeMs: 148,
-    goalHoldMs: 1180,
+    goalHoldMs: 3000,
     resetHoldMs: 340
   },
   behavior: {

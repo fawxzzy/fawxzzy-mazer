@@ -277,7 +277,8 @@ export const legacyTuning = {
       anticipationStepMs: 84,
       branchCommitMs: 112,
       branchResumeMs: 148,
-      goalHoldMs: 1180,
+      // Ambient shell should linger at the solved end-state long enough to read the full route.
+      goalHoldMs: 3000,
       resetHoldMs: 340,
       goalPulseMs: 72,
       heroRefreshMs: 56

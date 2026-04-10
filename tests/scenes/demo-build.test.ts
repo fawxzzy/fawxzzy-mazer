@@ -515,6 +515,12 @@ describe('demo-only build', () => {
     const arrivalMs = config.cadence.spawnHoldMs + ((episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs);
     const arrivalFrame = resolveDemoWalkerViewFrame(episode, arrivalMs, config, 6);
     const holdFrame = resolveDemoWalkerViewFrame(episode, arrivalMs + 1, config, 6);
+    const lateHoldFrame = resolveDemoWalkerViewFrame(
+      episode,
+      arrivalMs + Math.max(1, config.cadence.goalHoldMs - 2),
+      config,
+      6
+    );
 
     expect(arrivalFrame.nextIndex).toBe(episode.raster.endIndex);
     expect(arrivalFrame.progress).toBe(1);
@@ -523,6 +529,10 @@ describe('demo-only build', () => {
     expect(holdFrame.currentIndex).toBe(episode.raster.endIndex);
     expect(holdFrame.trailStart).toBe(0);
     expect(holdFrame.trailLimit).toBe(episode.raster.pathIndices.length);
+    expect(lateHoldFrame.currentIndex).toBe(episode.raster.endIndex);
+    expect(lateHoldFrame.cue).toBe('goal');
+    expect(lateHoldFrame.trailStart).toBe(0);
+    expect(lateHoldFrame.trailLimit).toBe(episode.raster.pathIndices.length);
 
     disposeMazeEpisode(episode);
   });
