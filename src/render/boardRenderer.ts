@@ -347,6 +347,41 @@ export class BoardRenderer {
     );
   }
 
+  private fillAxisAlignedSegment(
+    graphics: Phaser.GameObjects.Graphics,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    thickness: number,
+    color: number,
+    alpha: number
+  ): void {
+    const width = Math.max(1, thickness);
+    const minX = Math.min(fromX, toX);
+    const maxX = Math.max(fromX, toX);
+    const minY = Math.min(fromY, toY);
+    const maxY = Math.max(fromY, toY);
+
+    graphics.fillStyle(color, alpha);
+    if (Math.abs(fromX - toX) >= Math.abs(fromY - toY)) {
+      graphics.fillRect(
+        minX,
+        fromY - (width / 2),
+        Math.max(width, (maxX - minX) + width),
+        width
+      );
+      return;
+    }
+
+    graphics.fillRect(
+      fromX - (width / 2),
+      minY,
+      width,
+      Math.max(width, (maxY - minY) + width)
+    );
+  }
+
   public drawBoardChrome(): void {
     if (!isRenderableLayout(this.layout)) {
       this.chromeBack.clear();
@@ -540,7 +575,7 @@ export class BoardRenderer {
         if (showSolutionPath && isTilePath(this.episode.raster.tiles, index)) {
           const hintInset = tileSize * 0.22;
           this.base.fillStyle(
-            colors.board.trailGlow,
+            colors.board.routeGlow,
             0.18 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
           );
           this.base.fillRect(
@@ -551,7 +586,7 @@ export class BoardRenderer {
           );
           this.grid.lineStyle(
             Math.max(1, tileSize * 0.03),
-            colors.board.trailCore,
+            colors.board.routeCore,
             0.28 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
           );
           this.grid.strokeRect(
@@ -639,21 +674,27 @@ export class BoardRenderer {
     const pulse = 0.92 + (Math.sin((now * 0.0044) + 0.65) * 0.16 * cueBoost);
     const bracketInset = tileSize * 0.14;
     const bracketLength = tileSize * 0.18;
-    const coreRadius = tileSize * 0.11;
-    const ringRadius = tileSize * 0.34;
+    const coreRadius = tileSize * 0.12;
+    const ringRadius = tileSize * 0.32;
+    const innerSize = Math.max(2, tileSize * 0.44);
+    const outerSize = Math.max(3, tileSize * 0.72);
 
     this.start.clear();
-    this.start.fillStyle(colors.board.playerHalo, 0.12 * pulse * haloScale);
+    this.start.fillStyle(colors.board.startGlow, 0.12 * pulse * haloScale);
     this.start.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.playerHalo, 0.46 * pulse * haloScale);
+    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.startGlow, 0.5 * pulse * haloScale);
     this.start.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
-    this.start.fillStyle(colors.board.playerHalo, 0.16 * pulse * haloScale);
-    this.start.fillCircle(centerX, centerY, tileSize * 0.46);
-    this.start.lineStyle(Math.max(1, tileSize * 0.045), colors.board.player, 0.72 * pulse);
-    this.start.strokeCircle(centerX, centerY, ringRadius);
-    this.start.fillStyle(colors.board.playerCore, 0.96);
+    this.start.fillStyle(colors.board.start, 0.16 * pulse * haloScale);
+    this.start.fillCircle(centerX, centerY, tileSize * 0.42);
+    this.start.lineStyle(Math.max(1, tileSize * 0.048), colors.board.start, 0.84 * pulse);
+    this.start.strokeRect(centerX - (outerSize / 2), centerY - (outerSize / 2), outerSize, outerSize);
+    this.start.fillStyle(colors.board.startCore, 0.98);
     this.start.fillCircle(centerX, centerY, coreRadius);
-    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.playerCore, 0.84);
+    this.start.lineStyle(Math.max(1, tileSize * 0.04), colors.board.startCore, 0.9);
+    this.start.lineBetween(centerX - ringRadius, centerY, centerX + ringRadius, centerY);
+    this.start.lineBetween(centerX, centerY - ringRadius, centerX, centerY + ringRadius);
+    this.start.lineStyle(Math.max(1, tileSize * 0.032), colors.board.startCore, 0.82);
+    this.start.strokeRect(centerX - (innerSize / 2), centerY - (innerSize / 2), innerSize, innerSize);
     this.drawTileBrackets(this.start, tileX, tileY, tileSize, bracketInset, bracketLength);
   }
 
@@ -896,6 +937,42 @@ export class BoardRenderer {
         headCenterY = renderCenterY;
       }
 
+      if (i !== trailStart) {
+        const bodyGlowWidth = Math.max(
+          2,
+          tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackGlowLineWidthRatio : legacyTuning.board.trail.glowLineWidthRatio)
+        );
+        const bodyCoreWidth = Math.max(
+          1,
+          tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackLineWidthRatio : legacyTuning.board.trail.lineWidthRatio)
+        );
+        this.fillAxisAlignedSegment(
+          this.trail,
+          previousCenterX,
+          previousCenterY,
+          renderCenterX,
+          renderCenterY,
+          bodyGlowWidth,
+          segmentGlowColor,
+          glowAlpha * (isHead ? 0.88 : isBacktrack ? 0.58 : 0.48) * trailGlowScale
+        );
+        this.fillAxisAlignedSegment(
+          this.trail,
+          previousCenterX,
+          previousCenterY,
+          renderCenterX,
+          renderCenterY,
+          bodyCoreWidth,
+          segmentCoreColor,
+          Phaser.Math.Clamp(
+            Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
+              + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.36 : 0),
+            0,
+            1
+          ) * (isBacktrack ? legacyTuning.board.trail.backtrackLineAlphaScale : 1) * trailCoreScale
+        );
+      }
+
       if (isBacktrack) {
         this.trail.fillStyle(segmentGlowColor, legacyTuning.board.trail.backtrackGlowAlpha * glowAlpha * trailGlowScale);
         this.trail.fillRect(
@@ -948,32 +1025,6 @@ export class BoardRenderer {
         previousCenterY = renderCenterY;
         continue;
       }
-
-      const bodyGlowWidth = Math.max(
-        isBacktrack ? 2 : 2,
-        tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackGlowLineWidthRatio : legacyTuning.board.trail.glowLineWidthRatio)
-      );
-      const bodyCoreWidth = Math.max(
-        isBacktrack ? 1 : 1,
-        tileSize * (isBacktrack ? legacyTuning.board.trail.backtrackLineWidthRatio : legacyTuning.board.trail.lineWidthRatio)
-      );
-      this.trail.lineStyle(
-        bodyGlowWidth,
-        segmentGlowColor,
-        glowAlpha * (isHead ? 0.88 : isBacktrack ? 0.58 : 0.48) * trailGlowScale
-      );
-      this.trail.lineBetween(previousCenterX, previousCenterY, renderCenterX, renderCenterY);
-      this.trail.lineStyle(
-        bodyCoreWidth,
-        segmentCoreColor,
-        Phaser.Math.Clamp(
-          Phaser.Math.Linear(legacyTuning.board.trail.minLineAlpha, legacyTuning.board.trail.maxLineAlpha, t)
-            + (isHead ? legacyTuning.board.trail.headAlphaBoost * 0.36 : 0),
-          0,
-          1
-        ) * (isBacktrack ? legacyTuning.board.trail.backtrackLineAlphaScale : 1) * trailCoreScale
-      );
-      this.trail.lineBetween(previousCenterX, previousCenterY, renderCenterX, renderCenterY);
       previousCenterX = renderCenterX;
       previousCenterY = renderCenterY;
     }

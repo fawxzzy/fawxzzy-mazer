@@ -22,9 +22,15 @@ export interface PresentationPalette {
     wall: number;
     floor: number;
     path: number;
+    route: number;
+    routeCore: number;
+    routeGlow: number;
     trail: number;
     trailCore: number;
     trailGlow: number;
+    start: number;
+    startCore: number;
+    startGlow: number;
     goal: number;
     goalCore: number;
     player: number;
@@ -98,6 +104,20 @@ export const getContrastRatio = (foreground: number, background: number): number
   return (lighter + 0.05) / (darker + 0.05);
 };
 
+export interface PaletteReadabilityCheckpoint {
+  key: string;
+  foreground: number;
+  background: number;
+  ratio: number;
+  minimum: number;
+  passes: boolean;
+}
+
+export interface PaletteReadabilityReport {
+  checkpoints: PaletteReadabilityCheckpoint[];
+  failures: PaletteReadabilityCheckpoint[];
+}
+
 const ensureMinContrast = (
   foreground: number,
   background: number,
@@ -158,9 +178,15 @@ export const palette: PresentationPalette = {
       legacyTuning.colors.path.linearRgb.g,
       legacyTuning.colors.path.linearRgb.b
     ),
+    route: 0x53d676,
+    routeCore: 0xf6fff6,
+    routeGlow: 0x1f7b46,
     trail: legacyTuning.colors.trail,
     trailCore: legacyTuning.colors.trailCore,
     trailGlow: legacyTuning.colors.trailGlow,
+    start: 0xe3bf72,
+    startCore: 0xfff6da,
+    startGlow: 0x8d6d2f,
     goal: legacyTuning.colors.goal,
     goalCore: legacyTuning.colors.goalCore,
     player: legacyTuning.colors.player,
@@ -189,11 +215,47 @@ export const palette: PresentationPalette = {
   }
 };
 
+const createReadabilityCheckpoint = (
+  key: string,
+  foreground: number,
+  background: number,
+  minimum: number
+): PaletteReadabilityCheckpoint => {
+  const ratio = getContrastRatio(foreground, background);
+  return {
+    key,
+    foreground,
+    background,
+    ratio,
+    minimum,
+    passes: ratio >= minimum
+  };
+};
+
+export const getPaletteReadabilityReport = (input: PresentationPalette): PaletteReadabilityReport => {
+  const checkpoints = [
+    createReadabilityCheckpoint('wall-vs-route', input.board.route, input.board.wall, 3),
+    createReadabilityCheckpoint('wall-vs-player', input.board.player, input.board.wall, 3),
+    createReadabilityCheckpoint('floor-vs-route', input.board.route, input.board.floor, 3),
+    createReadabilityCheckpoint('route-vs-trail', input.board.routeCore, input.board.trail, 2),
+    createReadabilityCheckpoint('trail-vs-player', input.board.playerCore, input.board.trail, 2),
+    createReadabilityCheckpoint('goal-vs-background', input.board.goal, input.background.deepSpace, 3),
+    createReadabilityCheckpoint('metadata-vs-background', input.hud.hintText, input.hud.panel, 4.4)
+  ];
+
+  return {
+    checkpoints,
+    failures: checkpoints.filter((checkpoint) => !checkpoint.passes)
+  };
+};
+
 export const applyPresentationContrastFloors = (input: PresentationPalette): PresentationPalette => {
   const floor = input.board.floor;
   const wall = input.board.wall;
   const panel = input.board.panel;
+  const hudPanel = input.hud.panel;
   const prefer = getRelativeLuminance(floor) >= 0.52 ? 'dark' : 'light';
+  const panelPrefer = getRelativeLuminance(hudPanel) >= 0.52 ? 'dark' : 'light';
 
   return {
     ...input,
@@ -202,10 +264,16 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
       outerStroke: ensureMinContrast(input.board.outerStroke, input.board.outer, 2.2, prefer),
       innerStroke: ensureMinContrast(input.board.innerStroke, panel, 2.1, prefer),
       topHighlight: ensureMinContrast(input.board.topHighlight, wall, 2.6, prefer),
-      path: ensureMinContrast(input.board.path, floor, 1.6, prefer),
-      trail: ensureMinContrast(input.board.trail, floor, 2.5, prefer),
-      trailCore: ensureMinContrast(input.board.trailCore, floor, 2.9, prefer === 'dark' ? 'light' : 'dark'),
-      trailGlow: ensureMinContrast(input.board.trailGlow, floor, 3, prefer),
+      path: ensureMinContrast(input.board.path, floor, 1.9, prefer),
+      route: ensureMinContrast(input.board.route, floor, 3.2, prefer),
+      routeCore: ensureMinContrast(input.board.routeCore, input.board.route, 1.3, prefer === 'dark' ? 'light' : 'dark'),
+      routeGlow: ensureMinContrast(input.board.routeGlow, wall, 3.1, prefer),
+      trail: ensureMinContrast(input.board.trail, floor, 3.2, prefer),
+      trailCore: ensureMinContrast(input.board.trailCore, floor, 4, prefer === 'dark' ? 'light' : 'dark'),
+      trailGlow: ensureMinContrast(input.board.trailGlow, wall, 3.2, prefer),
+      start: ensureMinContrast(input.board.start, floor, 3.25, prefer),
+      startCore: ensureMinContrast(input.board.startCore, input.board.start, 1.3, prefer === 'dark' ? 'light' : 'dark'),
+      startGlow: ensureMinContrast(input.board.startGlow, wall, 3, prefer),
       goal: ensureMinContrast(input.board.goal, floor, 3.25, prefer),
       goalCore: ensureMinContrast(input.board.goalCore, input.board.goal, 1.25, prefer === 'dark' ? 'light' : 'dark'),
       player: ensureMinContrast(input.board.player, floor, 3.4, prefer),
@@ -214,9 +282,9 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     },
     hud: {
       ...input.hud,
-      panelStroke: ensureMinContrast(input.hud.panelStroke, panel, 2.8, prefer),
-      accent: ensureMinContrast(input.hud.accent, panel, 4.2, prefer),
-      hintText: ensureMinContrast(input.hud.hintText, panel, 3.8, prefer),
+      panelStroke: ensureMinContrast(input.hud.panelStroke, hudPanel, 2.8, panelPrefer),
+      accent: ensureMinContrast(input.hud.accent, hudPanel, 4.5, panelPrefer),
+      hintText: ensureMinContrast(input.hud.hintText, hudPanel, 4.5, panelPrefer),
     }
   };
 };

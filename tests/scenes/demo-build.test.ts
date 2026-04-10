@@ -36,12 +36,15 @@ let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMe
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let resolveTitleBandFrame: typeof import('../../src/scenes/MenuScene').resolveTitleBandFrame;
+let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
 let resolveDemoWalkerViewFrame: typeof import('../../src/domain/ai').resolveDemoWalkerViewFrame;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
 let resolveBoardPresentationBounds: typeof import('../../src/render/boardRenderer').resolveBoardPresentationBounds;
+let getPaletteReadabilityReport: typeof import('../../src/render/palette').getPaletteReadabilityReport;
 let generateMazeForDifficulty: typeof import('../../src/domain/maze').generateMazeForDifficulty;
 let disposeMazeEpisode: typeof import('../../src/domain/maze').disposeMazeEpisode;
 let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
@@ -60,9 +63,10 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveTitleBandFrame, resolveAmbientThemeProfile, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
+  ({ getPaletteReadabilityReport } = await import('../../src/render/palette'));
   ({ generateMazeForDifficulty, disposeMazeEpisode } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
   ({ resolveViewportSize } = await import('../../src/render/viewport'));
@@ -260,6 +264,51 @@ describe('demo-only build', () => {
     expect(backdrop.bottom).toBeGreaterThanOrEqual(insetAwareModel.viewport.height);
 
     disposeMazeEpisode(episode);
+  });
+
+  test('title band stays above the board-safe frame and leaves a right-side chrome lane', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 4404,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1280, 720, 'title', 'full', true);
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: presentationModel.layout.boardScale,
+      topReserve: presentationModel.layout.topReserve,
+      sidePadding: presentationModel.layout.sidePadding,
+      bottomPadding: presentationModel.layout.bottomPadding
+    });
+    const titleBand = resolveTitleBandFrame(presentationModel.viewport.width, presentationModel.layout, layout);
+
+    expect(titleBand.height).toBeGreaterThan(0);
+    expect(titleBand.top).toBeGreaterThanOrEqual(0);
+    expect(titleBand.bottom).toBeLessThanOrEqual(layout.safeBounds.top);
+    expect(titleBand.bottom).toBeLessThan(layout.boardY);
+    expect(titleBand.right + titleBand.reservedRight).toBeLessThanOrEqual(presentationModel.viewport.width);
+    expect(titleBand.centerX).toBeGreaterThan(titleBand.left);
+    expect(titleBand.centerX).toBeLessThan(titleBand.right);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('theme palettes keep route, trail, player, goal, and metadata readable', () => {
+    for (const theme of ['noir', 'ember', 'aurora', 'vellum', 'monolith'] as const) {
+      const report = getPaletteReadabilityReport(resolveAmbientThemeProfile(theme).palette);
+      expect(report.failures, `${theme}: ${report.failures.map((failure) => failure.key).join(', ')}`).toEqual([]);
+      expect(report.checkpoints.map((checkpoint) => checkpoint.key)).toEqual([
+        'wall-vs-route',
+        'wall-vs-player',
+        'floor-vs-route',
+        'route-vs-trail',
+        'trail-vs-player',
+        'goal-vs-background',
+        'metadata-vs-background'
+      ]);
+    }
   });
 
   test('BootScene falls back to title when presentation resolution throws', () => {
