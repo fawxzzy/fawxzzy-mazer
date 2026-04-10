@@ -141,8 +141,16 @@ export const createBoardLayout = (
   const tileSize = Math.max(1, boardSize / Math.max(rasterWidth, rasterHeight));
   const boardWidth = tileSize * rasterWidth;
   const boardHeight = tileSize * rasterHeight;
-  const boardX = width / 2 - boardWidth / 2;
-  const boardY = topReserve + ((availableHeight - boardHeight) / 2);
+  const boardX = Phaser.Math.Clamp(
+    (width / 2) - (boardWidth / 2),
+    sidePadding,
+    Math.max(sidePadding, width - sidePadding - boardWidth)
+  );
+  const boardY = Phaser.Math.Clamp(
+    topReserve + ((availableHeight - boardHeight) / 2),
+    topReserve,
+    Math.max(topReserve, height - bottomPadding - boardHeight)
+  );
 
   return {
     boardX,

@@ -75,10 +75,34 @@ describe('demo-only build', () => {
     expect(resolveBootPresentationVariant('')).toBe('title');
     expect(resolveBootPresentationVariant('?presentation=ambient')).toBe('ambient');
     expect(resolveBootPresentationVariant('?presentation=loading')).toBe('loading');
+    expect(resolveBootPresentationVariant('?profile=tv')).toBe('ambient');
+    expect(resolveBootPresentationVariant('?profile=obs')).toBe('ambient');
+    expect(resolveBootPresentationVariant('?profile=mobile')).toBe('ambient');
     expect(resolveBootPresentationVariant('?presentation=unknown')).toBe('title');
     expect(resolveBootPresentationVariant({} as unknown as string)).toBe('title');
 
     expect(resolveBootPresentationConfig('')).toEqual(DEFAULT_PRESENTATION_LAUNCH_CONFIG);
+    expect(resolveBootPresentationConfig('?profile=tv')).toEqual({
+      presentation: 'ambient',
+      chrome: 'minimal',
+      mood: 'auto',
+      title: 'hide',
+      profile: 'tv'
+    });
+    expect(resolveBootPresentationConfig('?profile=obs')).toEqual({
+      presentation: 'ambient',
+      chrome: 'minimal',
+      mood: 'auto',
+      title: 'hide',
+      profile: 'obs'
+    });
+    expect(resolveBootPresentationConfig('?profile=mobile')).toEqual({
+      presentation: 'ambient',
+      chrome: 'full',
+      mood: 'auto',
+      title: 'show',
+      profile: 'mobile'
+    });
     expect(resolveBootPresentationConfig('?presentation=loading&chrome=minimal&mood=scan&seed=42&size=large&difficulty=spicy&title=hide')).toEqual({
       presentation: 'loading',
       chrome: 'minimal',
@@ -88,7 +112,31 @@ describe('demo-only build', () => {
       difficulty: 'spicy',
       title: 'hide'
     });
+    expect(resolveBootPresentationConfig('?profile=tv&title=show')).toEqual({
+      presentation: 'ambient',
+      chrome: 'minimal',
+      mood: 'auto',
+      title: 'show',
+      profile: 'tv'
+    });
+    expect(resolveBootPresentationConfig('?profile=obs&presentation=loading')).toEqual({
+      presentation: 'loading',
+      chrome: 'minimal',
+      mood: 'auto',
+      title: 'hide',
+      profile: 'obs'
+    });
+    expect(resolveBootPresentationConfig('?profile=mobile&chrome=none')).toEqual({
+      presentation: 'ambient',
+      chrome: 'none',
+      mood: 'auto',
+      title: 'show',
+      profile: 'mobile'
+    });
     expect(resolveBootPresentationConfig('?presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
+      DEFAULT_PRESENTATION_LAUNCH_CONFIG
+    );
+    expect(resolveBootPresentationConfig('?profile=nope&presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
       DEFAULT_PRESENTATION_LAUNCH_CONFIG
     );
     expect(resolveEffectivePresentationChrome({
@@ -100,6 +148,9 @@ describe('demo-only build', () => {
       ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
       title: 'hide'
     })).toBe(false);
+    expect(shouldShowPresentationTitle(resolveBootPresentationConfig('?profile=tv'))).toBe(false);
+    expect(shouldShowPresentationTitle(resolveBootPresentationConfig('?profile=mobile'))).toBe(true);
+    expect(shouldShowPresentationTitle(resolveBootPresentationConfig('?profile=mobile&chrome=none'))).toBe(false);
   });
 
   test('invalid viewport input sanitizes to a safe presentation model', () => {
@@ -313,12 +364,21 @@ describe('demo-only build', () => {
     const titlePresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'title');
     const ambientPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient');
     const loadingPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'loading');
+    const tvPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient', 'tv');
+    const obsPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient', 'obs');
+    const mobilePresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient', 'mobile');
 
     expect(titlePresentation.solutionPathAlpha).toBeGreaterThan(ambientPresentation.solutionPathAlpha);
     expect(titlePresentation.boardVeilAlpha).toBeGreaterThan(ambientPresentation.boardVeilAlpha);
     expect(loadingPresentation.metadataAlpha).toBeGreaterThan(ambientPresentation.metadataAlpha);
     expect(loadingPresentation.flashAlpha).toBeGreaterThan(0);
     expect(ambientPresentation.flashAlpha).toBe(0);
+    expect(tvPresentation.metadataAlpha).toBeLessThan(ambientPresentation.metadataAlpha);
+    expect(tvPresentation.ambientDriftMs).toBeGreaterThan(ambientPresentation.ambientDriftMs);
+    expect(Math.abs(obsPresentation.frameOffsetX)).toBeLessThanOrEqual(Math.abs(ambientPresentation.frameOffsetX));
+    expect(Math.abs(obsPresentation.hudOffsetY)).toBeLessThanOrEqual(Math.abs(ambientPresentation.hudOffsetY));
+    expect(mobilePresentation.metadataAlpha).toBeGreaterThanOrEqual(ambientPresentation.metadataAlpha);
+    expect(mobilePresentation.ambientDriftMs).toBeGreaterThan(ambientPresentation.ambientDriftMs);
 
     disposeMazeEpisode(episode);
   });
@@ -335,12 +395,20 @@ describe('demo-only build', () => {
     const viewports = [
       { width: 160, height: 120, variant: 'title' as const },
       { width: 320, height: 180, variant: 'title' as const },
-      { width: 1920, height: 280, variant: 'ambient' as const },
-      { width: 280, height: 1200, variant: 'loading' as const }
+      { width: 1920, height: 280, variant: 'ambient' as const, profile: 'tv' as const },
+      { width: 1920, height: 1080, variant: 'ambient' as const, profile: 'obs' as const, chrome: 'minimal' as const, titleVisible: false },
+      { width: 280, height: 1200, variant: 'loading' as const, profile: 'mobile' as const }
     ];
 
     for (const viewport of viewports) {
-      const model = resolveMenuPresentationModel(viewport.width, viewport.height, viewport.variant);
+      const model = resolveMenuPresentationModel(
+        viewport.width,
+        viewport.height,
+        viewport.variant,
+        viewport.chrome ?? 'full',
+        viewport.titleVisible ?? true,
+        viewport.profile
+      );
       const layout = createBoardLayout({
         scale: {
           width: model.viewport.width,
@@ -375,10 +443,19 @@ describe('demo-only build', () => {
     const defaultModel = resolveMenuPresentationModel(1280, 720, DEFAULT_PRESENTATION_VARIANT);
     const explicitDefaultModel = resolveMenuPresentationModel(1280, 720, 'title', 'full', true);
     const boardFirstModel = resolveMenuPresentationModel(1280, 720, 'ambient', 'none', false);
+    const tvModel = resolveMenuPresentationModel(1920, 1080, 'ambient', 'minimal', false, 'tv');
+    const defaultAmbientModel = resolveMenuPresentationModel(1920, 1080, 'ambient', 'minimal', false);
+    const obsModel = resolveMenuPresentationModel(1920, 1080, 'ambient', 'minimal', false, 'obs');
+    const portraitBaseModel = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true);
+    const mobileModel = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile');
 
     expect(defaultModel).toEqual(explicitDefaultModel);
     expect(defaultModel.layout.topReserve).toBeGreaterThan(boardFirstModel.layout.topReserve);
     expect(defaultModel.layout.boardScale).toBeLessThan(boardFirstModel.layout.boardScale);
+    expect(tvModel.layout.topReserve).toBeLessThan(defaultAmbientModel.layout.topReserve);
+    expect(obsModel.layout.sidePadding).toBeGreaterThan(defaultAmbientModel.layout.sidePadding);
+    expect(mobileModel.layout.topReserve).toBeGreaterThan(portraitBaseModel.layout.topReserve);
+    expect(mobileModel.layout.boardScale).toBeLessThan(portraitBaseModel.layout.boardScale);
   });
 
   test('play, options, and win scene files are removed and no gameplay CTA remains in the menu scene', () => {

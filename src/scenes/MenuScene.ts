@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type {
   AmbientPresentationVariant,
   PresentationChrome,
+  PresentationDeploymentProfile,
   PresentationLaunchConfig,
   PresentationMood
 } from '../boot/presentation';
@@ -169,6 +170,24 @@ interface ChromeProfile {
   passiveAlpha: number;
   plateAlpha: number;
   panelAlpha: number;
+}
+
+interface DeploymentPresentationProfile {
+  boardScaleBias: number;
+  portraitBoardScaleBias: number;
+  topReserveBias: number;
+  portraitTopReserveBias: number;
+  bottomPaddingBias: number;
+  sidePaddingBias: number;
+  titlePlateWidthScale: number;
+  titlePlateHeightScale: number;
+  titleLineSpacingScale: number;
+  titleYOffsetBias: number;
+  offsetScale: number;
+  driftScale: number;
+  driftDurationScale: number;
+  metadataAlphaScale: number;
+  flashAlphaScale: number;
 }
 
 type MoodPattern = readonly [DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood, DemoMood];
@@ -379,6 +398,78 @@ const CHROME_PROFILES: Record<PresentationChrome, ChromeProfile> = {
   }
 };
 
+const DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE: DeploymentPresentationProfile = {
+  boardScaleBias: 0,
+  portraitBoardScaleBias: 0,
+  topReserveBias: 0,
+  portraitTopReserveBias: 0,
+  bottomPaddingBias: 0,
+  sidePaddingBias: 0,
+  titlePlateWidthScale: 1,
+  titlePlateHeightScale: 1,
+  titleLineSpacingScale: 1,
+  titleYOffsetBias: 0,
+  offsetScale: 1,
+  driftScale: 1,
+  driftDurationScale: 1,
+  metadataAlphaScale: 1,
+  flashAlphaScale: 1
+};
+
+const DEPLOYMENT_PRESENTATION_PROFILES: Record<PresentationDeploymentProfile, DeploymentPresentationProfile> = {
+  tv: {
+    boardScaleBias: 0.018,
+    portraitBoardScaleBias: -0.006,
+    topReserveBias: -12,
+    portraitTopReserveBias: 6,
+    bottomPaddingBias: -4,
+    sidePaddingBias: -4,
+    titlePlateWidthScale: 0.92,
+    titlePlateHeightScale: 0.96,
+    titleLineSpacingScale: 1,
+    titleYOffsetBias: -4,
+    offsetScale: 0.56,
+    driftScale: 0.72,
+    driftDurationScale: 1.34,
+    metadataAlphaScale: 0.72,
+    flashAlphaScale: 0.6
+  },
+  obs: {
+    boardScaleBias: 0.01,
+    portraitBoardScaleBias: -0.01,
+    topReserveBias: -8,
+    portraitTopReserveBias: 8,
+    bottomPaddingBias: 6,
+    sidePaddingBias: 10,
+    titlePlateWidthScale: 0.9,
+    titlePlateHeightScale: 0.94,
+    titleLineSpacingScale: 1,
+    titleYOffsetBias: -2,
+    offsetScale: 0.34,
+    driftScale: 0.82,
+    driftDurationScale: 1.14,
+    metadataAlphaScale: 0.82,
+    flashAlphaScale: 0.72
+  },
+  mobile: {
+    boardScaleBias: -0.024,
+    portraitBoardScaleBias: -0.02,
+    topReserveBias: 18,
+    portraitTopReserveBias: 18,
+    bottomPaddingBias: 12,
+    sidePaddingBias: 8,
+    titlePlateWidthScale: 1.02,
+    titlePlateHeightScale: 1.2,
+    titleLineSpacingScale: 1.12,
+    titleYOffsetBias: 10,
+    offsetScale: 0.76,
+    driftScale: 0.9,
+    driftDurationScale: 1.08,
+    metadataAlphaScale: 1.08,
+    flashAlphaScale: 1
+  }
+};
+
 const CURATED_MOOD_PATTERNS: readonly MoodPattern[] = [
   ['solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve', 'solve'],
   ['solve', 'solve', 'scan', 'solve', 'blueprint', 'solve', 'scan', 'solve'],
@@ -391,18 +482,25 @@ export interface MenuPresentationModel {
   layout: SceneLayoutProfile;
 }
 
+const resolveDeploymentPresentationProfile = (
+  profile: PresentationDeploymentProfile | null | undefined
+): DeploymentPresentationProfile => (
+  profile ? DEPLOYMENT_PRESENTATION_PROFILES[profile] : DEFAULT_DEPLOYMENT_PRESENTATION_PROFILE
+);
+
 export function resolveMenuPresentationModel(
   width: number,
   height: number,
   variant: AmbientPresentationVariant,
   chrome: PresentationChrome = DEFAULT_PRESENTATION_CHROME,
-  titleVisible = true
+  titleVisible = true,
+  profile?: PresentationDeploymentProfile
 ): MenuPresentationModel {
   const viewport = resolveViewportSize(width, height, DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT);
 
   return {
     viewport,
-    layout: resolveSceneLayoutProfile(viewport.width, viewport.height, variant, chrome, titleVisible)
+    layout: resolveSceneLayoutProfile(viewport.width, viewport.height, variant, chrome, titleVisible, profile)
   };
 }
 
@@ -427,9 +525,18 @@ export class MenuScene extends Phaser.Scene {
     const variant = sanitizePresentationVariant(launchConfig.presentation);
     const chrome = resolveEffectivePresentationChrome(launchConfig);
     const titleVisible = shouldShowPresentationTitle(launchConfig);
+    const deploymentProfileId = launchConfig.profile;
+    const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
     const deterministicCapture = isDeterministicPresentationCapture(launchConfig);
     const moodOverride = resolveForcedDemoMood(launchConfig.mood);
-    const presentationModel = resolveMenuPresentationModel(this.scale.width, this.scale.height, variant, chrome, titleVisible);
+    const presentationModel = resolveMenuPresentationModel(
+      this.scale.width,
+      this.scale.height,
+      variant,
+      chrome,
+      titleVisible,
+      deploymentProfileId
+    );
     const { width, height } = presentationModel.viewport;
     const reducedMotion = prefersReducedMotion();
     const variantProfile = VARIANT_PROFILES[variant];
@@ -599,18 +706,32 @@ export class MenuScene extends Phaser.Scene {
       if (titleVisible) {
         const titlePlateMaxWidth = Math.max(96, width - Math.max(24, sceneLayout.sidePadding * 4));
         const titlePlateWidth = Phaser.Math.Clamp(
-          Math.round(layout.boardSize * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio) * variantProfile.titleScale * chromeProfile.titleScale),
+          Math.round(
+            layout.boardSize
+              * (sceneLayout.isNarrow ? 0.48 : legacyTuning.menu.title.plateWidthRatio)
+              * variantProfile.titleScale
+              * chromeProfile.titleScale
+              * deploymentProfile.titlePlateWidthScale
+          ),
           Math.min(variantProfile.titleAnchor === 'left' ? 200 : 216, titlePlateMaxWidth),
           Math.max(Math.min(sceneLayout.isPortrait ? 356 : 404, titlePlateMaxWidth), 96)
         );
         const titlePlateHeight = Phaser.Math.Clamp(
-          Math.round(layout.boardSize * legacyTuning.menu.title.plateHeightRatio * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))),
+          Math.round(
+            layout.boardSize
+              * legacyTuning.menu.title.plateHeightRatio
+              * Phaser.Math.Linear(0.86, 1, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))
+              * deploymentProfile.titlePlateHeightScale
+          ),
           sceneLayout.isTiny ? 28 : 38,
           legacyTuning.menu.title.plateHeightMaxPx
         );
         const titleY = Math.max(
           titlePlateHeight / 2 + 10,
-          layout.boardY - Math.round(titlePlateHeight * variantProfile.titleYOffsetRatio) - (sceneLayout.isPortrait ? 2 : 0)
+          layout.boardY
+            - Math.round(titlePlateHeight * variantProfile.titleYOffsetRatio)
+            - (sceneLayout.isPortrait ? 2 : 0)
+            - deploymentProfile.titleYOffsetBias
         );
         const titleX = variantProfile.titleAnchor === 'left'
           ? layout.boardX + Math.round(titlePlateWidth * 0.54)
@@ -632,16 +753,26 @@ export class MenuScene extends Phaser.Scene {
         }).setOrigin(0.5).setLetterSpacing(sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide)
           .setAlpha(variantProfile.titleAlpha * chromeProfile.titleAlpha)
           .setStroke('#17381f', legacyTuning.menu.title.strokePx).setShadow(0, 0, '#2c9c48', legacyTuning.menu.title.shadowBlur - 4, true, true);
-        const signature = this.add.text(0, Math.round(titlePlateHeight * 0.23), '\u00b0 by fawxzzy', {
+        const signature = this.add.text(
+          0,
+          Math.round(titlePlateHeight * 0.23 * deploymentProfile.titleLineSpacingScale),
+          '\u00b0 by fawxzzy',
+          {
           color: '#a5d7af',
           fontFamily: '"Courier New", monospace',
-          fontSize: `${sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10}px`
-        }).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha * chromeProfile.signatureAlpha).setLetterSpacing(1);
-        const passiveTag = this.add.text(0, Math.round(titlePlateHeight * 0.42), PASSIVE_TAGLINES[variant], {
+            fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
+          }
+        ).setOrigin(0.5).setAlpha(variantProfile.signatureAlpha * chromeProfile.signatureAlpha).setLetterSpacing(1);
+        const passiveTag = this.add.text(
+          0,
+          Math.round(titlePlateHeight * 0.42 * deploymentProfile.titleLineSpacingScale),
+          PASSIVE_TAGLINES[variant],
+          {
           color: '#d7deef',
           fontFamily: '"Courier New", monospace',
-          fontSize: `${sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11}px`
-        }).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha * chromeProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
+            fontSize: `${Math.round((sceneLayout.isTiny ? 9 : sceneLayout.isNarrow ? 10 : 11) * deploymentProfile.titleLineSpacingScale)}px`
+          }
+        ).setOrigin(0.5).setAlpha(variantProfile.passiveAlpha * chromeProfile.passiveAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
         titleContainer.add([title, signature, passiveTag]);
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
@@ -683,7 +814,7 @@ export class MenuScene extends Phaser.Scene {
         }
       }
 
-      demoStatusHud = createDemoStatusHud(this, layout, { reducedMotion, chrome });
+      demoStatusHud = createDemoStatusHud(this, layout, { reducedMotion, chrome, profile: deploymentProfileId });
 
       let lastCue: DemoWalkerCue = 'spawn';
       let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
@@ -724,7 +855,8 @@ export class MenuScene extends Phaser.Scene {
           demoCyclePlan,
           0,
           demoConfig,
-          variant
+          variant,
+          deploymentProfileId
         );
         boardRenderer?.setEpisode(patternFrame.episode);
         recoveryEpisode = patternFrame.episode;
@@ -786,7 +918,8 @@ export class MenuScene extends Phaser.Scene {
           demoCyclePlan,
           patternFrame.t * 1000,
           demoConfig,
-          variant
+          variant,
+          deploymentProfileId
         );
         const view = resolveDemoWalkerViewFrame(
           episode,
@@ -1029,7 +1162,14 @@ export class MenuScene extends Phaser.Scene {
   private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
-    const layoutModel = resolveMenuPresentationModel(safeWidth, safeHeight, this.presentationVariant, 'full', true);
+    const layoutModel = resolveMenuPresentationModel(
+      safeWidth,
+      safeHeight,
+      this.presentationVariant,
+      'full',
+      true,
+      this.launchConfig.profile
+    );
 
     this.drawStarfield(safeWidth, safeHeight);
     this.add.text(safeWidth / 2, Math.max(56, safeHeight * 0.18), legacyTuning.menu.title.text, {
@@ -1076,12 +1216,14 @@ export function resolveSceneLayoutProfile(
   height: number,
   variant: AmbientPresentationVariant,
   chrome: PresentationChrome = DEFAULT_PRESENTATION_CHROME,
-  titleVisible = true
+  titleVisible = true,
+  deploymentProfileId?: PresentationDeploymentProfile
 ): SceneLayoutProfile {
   const safeVariant = sanitizePresentationVariant(variant);
   const safeChrome = CHROME_PROFILES[chrome] ? chrome : DEFAULT_PRESENTATION_CHROME;
   const chromeProfile = CHROME_PROFILES[safeChrome];
   const profile = VARIANT_PROFILES[safeVariant];
+  const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
   const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
   const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
   const isNarrow = safeWidth <= legacyTuning.menu.layout.narrowBreakpoint;
@@ -1091,8 +1233,9 @@ export function resolveSceneLayoutProfile(
   const boardScale = Phaser.Math.Clamp(
     (isNarrow ? profile.boardScaleNarrow : profile.boardScaleWide)
       + chromeProfile.boardScaleBias
+      + deploymentProfile.boardScaleBias
       + (!titleVisible ? 0.004 : 0)
-      + (isPortrait ? 0.008 : 0)
+      + (isPortrait ? 0.008 + deploymentProfile.portraitBoardScaleBias : 0)
       - (isTiny ? 0.026 : 0)
       - (isShort ? 0.012 : 0),
     isTiny ? 0.82 : 0.92,
@@ -1110,7 +1253,8 @@ export function resolveSceneLayoutProfile(
         12,
         profile.topReserveMinPx
           + chromeProfile.topReserveBias
-          + (isPortrait ? 12 : 0)
+          + deploymentProfile.topReserveBias
+          + (isPortrait ? 12 + deploymentProfile.portraitTopReserveBias : 0)
           - (safeVariant === 'ambient' ? 6 : 0)
           - (isTiny ? 28 : 0)
           - (!titleVisible ? 12 : 0)
@@ -1118,15 +1262,25 @@ export function resolveSceneLayoutProfile(
       Math.round(
         safeHeight
           * (profile.topReserveRatio + (isPortrait ? 0.024 : 0) - (isShort ? 0.016 : 0) - (isTiny ? 0.04 : 0))
-      ) + chromeProfile.topReserveBias
+      ) + chromeProfile.topReserveBias + deploymentProfile.topReserveBias
     ),
     bottomPadding: Math.max(
       6,
-      profile.bottomPaddingPx + chromeProfile.bottomPaddingBias + (isPortrait ? 4 : 0) + (safeVariant === 'loading' ? 4 : 0) - (isTiny ? 12 : 0)
+      profile.bottomPaddingPx
+        + chromeProfile.bottomPaddingBias
+        + deploymentProfile.bottomPaddingBias
+        + (isPortrait ? 4 : 0)
+        + (safeVariant === 'loading' ? 4 : 0)
+        - (isTiny ? 12 : 0)
     ),
     sidePadding: Math.max(
       2,
-      profile.sidePaddingPx + chromeProfile.sidePaddingBias + (isPortrait ? 2 : 0) + (isNarrow ? -2 : 0) - (isTiny ? 4 : 0)
+      profile.sidePaddingPx
+        + chromeProfile.sidePaddingBias
+        + deploymentProfile.sidePaddingBias
+        + (isPortrait ? 2 : 0)
+        + (isNarrow ? -2 : 0)
+        - (isTiny ? 4 : 0)
     )
   };
 }
@@ -1188,11 +1342,13 @@ export const resolveMenuDemoPresentation = (
   cycle: MenuDemoCycle,
   elapsedMs: number,
   config: DemoWalkerConfig,
-  variant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT
+  variant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT,
+  deploymentProfileId?: PresentationDeploymentProfile
 ): MenuDemoPresentation => {
   const moodProfile = DEMO_MOOD_PROFILES[cycle.mood];
   const safeVariant = sanitizePresentationVariant(variant);
   const variantProfile = VARIANT_PROFILES[safeVariant];
+  const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
   const sequenceState = resolveMenuDemoSequence(episode, elapsedMs, config);
   const progress = ease(sequenceState.progress);
   const wave = 0.5 + (Math.sin((elapsedMs + (episode.seed * 17)) * 0.0022) * 0.5);
@@ -1286,13 +1442,13 @@ export const resolveMenuDemoPresentation = (
     phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
     solutionPathAlpha: clamp(moodProfile.solutionPathAlpha * variantProfile.solutionPathScale, 0.14, 1),
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
-    ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale,
-    ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale,
-    ambientDriftMs: moodProfile.ambientDriftMs,
-    frameOffsetX: offsets.frameOffsetX,
-    frameOffsetY: offsets.frameOffsetY,
-    hudOffsetX: offsets.hudOffsetX,
-    hudOffsetY: offsets.hudOffsetY,
+    ambientDriftPxX: offsets.driftX * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale,
+    ambientDriftPxY: offsets.driftY * moodProfile.ambientDriftPx * variantProfile.driftScale * deploymentProfile.driftScale,
+    ambientDriftMs: Math.round(moodProfile.ambientDriftMs * deploymentProfile.driftDurationScale),
+    frameOffsetX: Math.round(offsets.frameOffsetX * deploymentProfile.offsetScale),
+    frameOffsetY: Math.round(offsets.frameOffsetY * deploymentProfile.offsetScale),
+    hudOffsetX: Math.round(offsets.hudOffsetX * deploymentProfile.offsetScale),
+    hudOffsetY: Math.round(offsets.hudOffsetY * deploymentProfile.offsetScale),
     boardVeilAlpha: clamp(boardVeilAlpha + variantProfile.boardVeilBias, 0, 0.24),
     boardAuraAlpha: clamp(boardAuraAlpha + variantProfile.boardAuraBias, 0.06, 0.22),
     boardHaloAlpha: clamp(boardHaloAlpha + variantProfile.boardHaloBias, 0.018, 0.16),
@@ -1300,8 +1456,8 @@ export const resolveMenuDemoPresentation = (
     boardAuraScale: clamp(boardAuraScale + (wave * variantProfile.boardAuraBias * 0.1), 1, 1.05),
     boardHaloScale: clamp(boardHaloScale + (wave * variantProfile.boardHaloBias * 0.1), 1, 1.03),
     actorPulseBoost: moodProfile.actorPulseBoost + variantProfile.actorPulseBias,
-    metadataAlpha: clamp(metadataAlpha, 0.18, 0.82),
-    flashAlpha: clamp(flashAlpha * variantProfile.flashAlphaScale, 0, 0.84)
+    metadataAlpha: clamp(metadataAlpha * deploymentProfile.metadataAlphaScale, 0.18, 0.82),
+    flashAlpha: clamp(flashAlpha * variantProfile.flashAlphaScale * deploymentProfile.flashAlphaScale, 0, 0.84)
   };
 };
 

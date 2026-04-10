@@ -4,12 +4,14 @@ export type AmbientPresentationVariant = 'title' | 'ambient' | 'loading';
 export type PresentationChrome = 'full' | 'minimal' | 'none';
 export type PresentationMood = 'auto' | 'solve' | 'scan' | 'blueprint';
 export type PresentationTitleMode = 'show' | 'hide';
+export type PresentationDeploymentProfile = 'tv' | 'obs' | 'mobile';
 
 export interface PresentationLaunchConfig {
   presentation: AmbientPresentationVariant;
   chrome: PresentationChrome;
   mood: PresentationMood;
   title: PresentationTitleMode;
+  profile?: PresentationDeploymentProfile;
   seed?: number;
   size?: MazeSize;
   difficulty?: MazeDifficulty;
@@ -28,6 +30,7 @@ export const DEFAULT_PRESENTATION_LAUNCH_CONFIG: PresentationLaunchConfig = {
 };
 
 const PRESENTATION_QUERY_KEYS = {
+  profile: 'profile',
   presentation: 'presentation',
   chrome: 'chrome',
   mood: 'mood',
@@ -38,6 +41,12 @@ const PRESENTATION_QUERY_KEYS = {
 } as const;
 
 const MAX_PRESENTATION_SEED = 0x7fffffff;
+
+export const isPresentationDeploymentProfile = (
+  value: string | null | undefined
+): value is PresentationDeploymentProfile => (
+  value === 'tv' || value === 'obs' || value === 'mobile'
+);
 
 export const isAmbientPresentationVariant = (value: string | null | undefined): value is AmbientPresentationVariant => (
   value === 'title' || value === 'ambient' || value === 'loading'
@@ -68,6 +77,11 @@ const normalizeString = (value: unknown): string | undefined => (
     ? value.trim().toLowerCase()
     : undefined
 );
+
+export const sanitizePresentationDeploymentProfile = (value: unknown): PresentationDeploymentProfile | undefined => {
+  const normalized = normalizeString(value);
+  return isPresentationDeploymentProfile(normalized) ? normalized : undefined;
+};
 
 export const sanitizePresentationVariant = (value: unknown): AmbientPresentationVariant => {
   const normalized = normalizeString(value);
@@ -119,6 +133,7 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
   }
 
   const candidate = value as Partial<PresentationLaunchConfig>;
+  const profile = sanitizePresentationDeploymentProfile(candidate.profile);
   const seed = sanitizePresentationSeed(candidate.seed);
   const size = sanitizePresentationSize(candidate.size);
   const difficulty = sanitizePresentationDifficulty(candidate.difficulty);
@@ -128,11 +143,42 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
     chrome: sanitizePresentationChrome(candidate.chrome),
     mood: sanitizePresentationMood(candidate.mood),
     title: sanitizePresentationTitleMode(candidate.title),
+    ...(profile ? { profile } : {}),
     ...(seed !== undefined ? { seed } : {}),
     ...(size ? { size } : {}),
     ...(difficulty ? { difficulty } : {})
   };
 };
+
+const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<PresentationLaunchConfig, 'seed' | 'size' | 'difficulty'>> = {
+  tv: {
+    presentation: 'ambient',
+    chrome: 'minimal',
+    mood: DEFAULT_PRESENTATION_MOOD,
+    title: 'hide',
+    profile: 'tv'
+  },
+  obs: {
+    presentation: 'ambient',
+    chrome: 'minimal',
+    mood: DEFAULT_PRESENTATION_MOOD,
+    title: 'hide',
+    profile: 'obs'
+  },
+  mobile: {
+    presentation: 'ambient',
+    chrome: DEFAULT_PRESENTATION_CHROME,
+    mood: DEFAULT_PRESENTATION_MOOD,
+    title: DEFAULT_PRESENTATION_TITLE_MODE,
+    profile: 'mobile'
+  }
+};
+
+export const resolvePresentationProfileDefaults = (
+  profile: PresentationDeploymentProfile | null | undefined
+): Partial<PresentationLaunchConfig> => (
+  profile ? { ...PRESENTATION_PROFILE_DEFAULTS[profile] } : {}
+);
 
 const toSearchParams = (search: string | URLSearchParams | null | undefined): URLSearchParams => {
   if (search instanceof URLSearchParams) {
@@ -155,15 +201,60 @@ export const resolveBootPresentationConfig = (
 ): PresentationLaunchConfig => {
   try {
     const params = toSearchParams(search);
-    return sanitizePresentationLaunchConfig({
-      presentation: params.get(PRESENTATION_QUERY_KEYS.presentation),
-      chrome: params.get(PRESENTATION_QUERY_KEYS.chrome),
-      mood: params.get(PRESENTATION_QUERY_KEYS.mood),
-      title: params.get(PRESENTATION_QUERY_KEYS.title),
-      seed: params.get(PRESENTATION_QUERY_KEYS.seed),
-      size: params.get(PRESENTATION_QUERY_KEYS.size),
-      difficulty: params.get(PRESENTATION_QUERY_KEYS.difficulty)
-    });
+    const profile = sanitizePresentationDeploymentProfile(params.get(PRESENTATION_QUERY_KEYS.profile));
+    const baseConfig: PresentationLaunchConfig = {
+      ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
+      ...resolvePresentationProfileDefaults(profile),
+      ...(profile ? { profile } : {})
+    };
+
+    const resolved: PresentationLaunchConfig = { ...baseConfig };
+    const presentation = params.get(PRESENTATION_QUERY_KEYS.presentation);
+    const chrome = params.get(PRESENTATION_QUERY_KEYS.chrome);
+    const mood = params.get(PRESENTATION_QUERY_KEYS.mood);
+    const title = params.get(PRESENTATION_QUERY_KEYS.title);
+    const seed = params.get(PRESENTATION_QUERY_KEYS.seed);
+    const size = params.get(PRESENTATION_QUERY_KEYS.size);
+    const difficulty = params.get(PRESENTATION_QUERY_KEYS.difficulty);
+
+    if (presentation !== null) {
+      resolved.presentation = sanitizePresentationVariant(presentation);
+    }
+    if (chrome !== null) {
+      resolved.chrome = sanitizePresentationChrome(chrome);
+    }
+    if (mood !== null) {
+      resolved.mood = sanitizePresentationMood(mood);
+    }
+    if (title !== null) {
+      resolved.title = sanitizePresentationTitleMode(title);
+    }
+    if (seed !== null) {
+      const sanitizedSeed = sanitizePresentationSeed(seed);
+      if (sanitizedSeed === undefined) {
+        delete resolved.seed;
+      } else {
+        resolved.seed = sanitizedSeed;
+      }
+    }
+    if (size !== null) {
+      const sanitizedSize = sanitizePresentationSize(size);
+      if (!sanitizedSize) {
+        delete resolved.size;
+      } else {
+        resolved.size = sanitizedSize;
+      }
+    }
+    if (difficulty !== null) {
+      const sanitizedDifficulty = sanitizePresentationDifficulty(difficulty);
+      if (!sanitizedDifficulty) {
+        delete resolved.difficulty;
+      } else {
+        resolved.difficulty = sanitizedDifficulty;
+      }
+    }
+
+    return sanitizePresentationLaunchConfig(resolved);
   } catch {
     return { ...DEFAULT_PRESENTATION_LAUNCH_CONFIG };
   }

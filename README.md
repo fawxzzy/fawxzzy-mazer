@@ -35,6 +35,13 @@ npm run test:soak
 - Wilson remains the maze generation truth.
 - Solving now runs on a compressed corridor graph, then expands back to tile indices only for rendering.
 - Ambient presentation can route mazes through deterministic `classic`, `braided`, `framed`, and rare `blueprint-rare` presets without adding storage or gameplay state.
+- Deployment profiles tune presentation defaults only:
+  - TV ambient loop: `?profile=tv`
+  - TV with explicit title: `?profile=tv&title=show`
+  - OBS-safe board-first shell: `?profile=obs&chrome=none`
+  - OBS loading composition: `?profile=obs&presentation=loading`
+  - Mobile portrait ambient shell: `?profile=mobile`
+  - Mobile scan mood: `?profile=mobile&mood=scan`
 
 ## Legacy boundary
 - `legacy/` and `docs/legacy/` are archival reference only.

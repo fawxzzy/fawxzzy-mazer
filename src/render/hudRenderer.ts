@@ -5,7 +5,8 @@ import {
   sanitizePresentationChrome,
   sanitizePresentationVariant,
   type AmbientPresentationVariant,
-  type PresentationChrome
+  type PresentationChrome,
+  type PresentationDeploymentProfile
 } from '../boot/presentation';
 import type { MazeEpisode } from '../domain/maze';
 import { getMazeSizeLabel } from '../domain/maze';
@@ -35,6 +36,7 @@ interface DemoStatusHandle {
 interface HudRenderOptions {
   reducedMotion?: boolean;
   chrome?: PresentationChrome;
+  profile?: PresentationDeploymentProfile;
 }
 
 interface HudVariantProfile {
@@ -67,6 +69,16 @@ interface HudChromeProfile {
   showMode: boolean;
   showMeta: boolean;
   showFlash: boolean;
+}
+
+interface HudDeploymentProfile {
+  railInset: number;
+  baselineGap: number;
+  flashInsetX: number;
+  flashInsetY: number;
+  modeFontScale: number;
+  metaFontScale: number;
+  flashFontScale: number;
 }
 
 const VARIANT_PROFILES: Record<AmbientPresentationVariant, HudVariantProfile> = {
@@ -117,10 +129,55 @@ const CHROME_PROFILES: Record<PresentationChrome, HudChromeProfile> = {
   }
 };
 
+const DEFAULT_HUD_DEPLOYMENT_PROFILE: HudDeploymentProfile = {
+  railInset: 6,
+  baselineGap: 0,
+  flashInsetX: 4,
+  flashInsetY: 0,
+  modeFontScale: 1,
+  metaFontScale: 1,
+  flashFontScale: 1
+};
+
+const HUD_DEPLOYMENT_PROFILES: Record<PresentationDeploymentProfile, HudDeploymentProfile> = {
+  tv: {
+    railInset: 10,
+    baselineGap: 2,
+    flashInsetX: 8,
+    flashInsetY: 0,
+    modeFontScale: 0.96,
+    metaFontScale: 0.92,
+    flashFontScale: 0.92
+  },
+  obs: {
+    railInset: 14,
+    baselineGap: 4,
+    flashInsetX: 10,
+    flashInsetY: 2,
+    modeFontScale: 0.94,
+    metaFontScale: 0.92,
+    flashFontScale: 0.92
+  },
+  mobile: {
+    railInset: 10,
+    baselineGap: 10,
+    flashInsetX: 8,
+    flashInsetY: 8,
+    modeFontScale: 1.08,
+    metaFontScale: 1.08,
+    flashFontScale: 1.04
+  }
+};
+
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const sanitizeAlpha = (value: unknown, fallback: number): number => Phaser.Math.Clamp(isFiniteNumber(value) ? value : fallback, 0, 1);
 const sanitizeOffset = (value: unknown): number => (isFiniteNumber(value) ? value : 0);
 const resolveCompactWidth = (scene: Phaser.Scene): number => resolveSceneViewport(scene).width;
+const resolveHudDeploymentProfile = (
+  profile: PresentationDeploymentProfile | null | undefined
+): HudDeploymentProfile => (
+  profile ? HUD_DEPLOYMENT_PROFILES[profile] : DEFAULT_HUD_DEPLOYMENT_PROFILE
+);
 
 const resolveModeLabel = (
   mood: DemoMood,
@@ -204,16 +261,17 @@ export const createDemoStatusHud = (
   const reducedMotion = options.reducedMotion === true;
   const chrome = sanitizePresentationChrome(options.chrome ?? DEFAULT_PRESENTATION_CHROME);
   const chromeProfile = CHROME_PROFILES[chrome];
+  const deploymentProfile = resolveHudDeploymentProfile(options.profile);
   const compact = resolveCompactWidth(scene) <= legacyTuning.menu.layout.narrowBreakpoint;
   const boardX = isFiniteNumber(layout.boardX) ? layout.boardX : 0;
   const boardY = isFiniteNumber(layout.boardY) ? layout.boardY : 0;
   const boardWidth = Math.max(80, isFiniteNumber(layout.boardWidth) ? layout.boardWidth : 80);
   const boardHeight = Math.max(80, isFiniteNumber(layout.boardHeight) ? layout.boardHeight : 80);
-  const leftX = boardX + 6;
-  const rightX = boardX + boardWidth - 6;
-  const baselineY = boardY + boardHeight + (compact ? 12 : 14);
-  const flashX = boardX + boardWidth - 4;
-  const flashY = boardY + (compact ? 8 : 10);
+  const leftX = boardX + deploymentProfile.railInset;
+  const rightX = boardX + boardWidth - deploymentProfile.railInset;
+  const baselineY = boardY + boardHeight + (compact ? 12 : 14) + deploymentProfile.baselineGap;
+  const flashX = boardX + boardWidth - deploymentProfile.flashInsetX;
+  const flashY = boardY + (compact ? 8 : 10) + deploymentProfile.flashInsetY;
   let lastModeLabel = '';
   let lastMeta = '';
   let lastFlash = '';
@@ -223,7 +281,7 @@ export const createDemoStatusHud = (
   const rail = scene.add.rectangle(
     boardX + (boardWidth / 2),
     baselineY - (compact ? 10 : 11),
-    boardWidth,
+    Math.max(24, boardWidth - (deploymentProfile.railInset * 2)),
     1,
     palette.hud.panelStroke,
     0.2
@@ -231,18 +289,18 @@ export const createDemoStatusHud = (
   const modeText = scene.add.text(leftX, baselineY, '', {
     color: toCssColor(palette.hud.accent),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? 9 : 10}px`,
+    fontSize: `${Math.round((compact ? 9 : 10) * deploymentProfile.modeFontScale)}px`,
     fontStyle: 'bold'
   }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2);
   const metaText = scene.add.text(rightX, baselineY, '', {
     color: toCssColor(palette.hud.hintText),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? 8 : 9}px`
+    fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.metaFontScale)}px`
   }).setOrigin(1, 0.5).setLetterSpacing(1);
   const flashText = scene.add.text(flashX, flashY, '', {
     color: toCssColor(palette.board.topHighlight),
     fontFamily: '"Courier New", monospace',
-    fontSize: `${compact ? 8 : 9}px`,
+    fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.flashFontScale)}px`,
     fontStyle: 'bold'
   }).setOrigin(1, 0).setLetterSpacing(1);
   root.add([rail, modeText, metaText, flashText]);

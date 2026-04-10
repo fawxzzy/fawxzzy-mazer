@@ -61,7 +61,16 @@ No Phaser scene code is used inside this lane.
 ### Runtime patterns
 
 - Pattern: compress corridors before solving when the runtime representation is corridor-heavy.
+- Pattern: apply deployment profile defaults first, then explicit URL params as overrides.
+- Rule: deployment profiles may tune presentation defaults, but must never fork the maze substrate.
 - Failure mode: optional presentation polish must never be able to black-screen the board/title path.
+- Failure mode: presentation-specific polish must degrade to visible board/title output, never blank the screen.
+
+### Deployment profiles
+
+- `profile=tv|obs|mobile` is a presentation-only resolver that sits on top of the existing URL param launch path.
+- Profiles may adjust ambient defaults, chrome bias, spacing, drift, and safe framing, but they do not create alternate maze generation, solver, or retention paths.
+- The menu scene remains single-source for board state, hidden-tab suspend/resume, and current-episode-only retention.
 
 ## Scene map
 
