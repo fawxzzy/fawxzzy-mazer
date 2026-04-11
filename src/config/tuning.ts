@@ -1,3 +1,77 @@
+const createAmbientSkyTuning = () => ({
+  twinkleCount: 18,
+  twinkleAlphaMin: 0.08,
+  twinkleAlphaMax: 0.24,
+  twinklePulseDurationMinMs: 2400,
+  twinklePulseDurationMaxMs: 7600,
+  twinkleDriftRangePx: 6,
+  driftMoteCount: 7,
+  driftMoteAlphaMin: 0.03,
+  driftMoteAlphaMax: 0.12,
+  driftMoteSpeedPxPerSecMin: 0.4,
+  driftMoteSpeedPxPerSecMax: 1.1,
+  hazeLayerCount: 3,
+  hazeAlphaMin: 0.035,
+  hazeAlphaMax: 0.1,
+  hazeDriftRangePx: 24,
+  hazeDriftDurationMinMs: 40000,
+  hazeDriftDurationMaxMs: 92000,
+  shootingStar: {
+    minIntervalMs: 18000,
+    maxIntervalMs: 36000,
+    durationMinMs: 900,
+    durationMaxMs: 1600,
+    lengthMinPx: 44,
+    lengthMaxPx: 78,
+    alphaMin: 0.16,
+    alphaMax: 0.38
+  },
+  comet: {
+    minIntervalMs: 46000,
+    maxIntervalMs: 78000,
+    durationMinMs: 1600,
+    durationMaxMs: 2600,
+    lengthMinPx: 60,
+    lengthMaxPx: 112,
+    alphaMin: 0.18,
+    alphaMax: 0.32
+  },
+  satellite: {
+    minIntervalMs: 68000,
+    maxIntervalMs: 112000,
+    durationMinMs: 3200,
+    durationMaxMs: 5200,
+    alphaMin: 0.14,
+    alphaMax: 0.26,
+    blinkDurationMinMs: 420,
+    blinkDurationMaxMs: 880
+  },
+  ufo: {
+    minIntervalMs: 120000,
+    maxIntervalMs: 190000,
+    durationMinMs: 3600,
+    durationMaxMs: 6200,
+    alphaMin: 0.12,
+    alphaMax: 0.22,
+    blinkDurationMinMs: 360,
+    blinkDurationMaxMs: 720
+  },
+  clearZone: {
+    boardPadTiles: 2.6,
+    titlePadPx: 18,
+    installPadPx: 18,
+    mobilePadPx: 16,
+    obsPadPx: 28
+  }
+} as const);
+
+let ambientSkyTuningCache: ReturnType<typeof createAmbientSkyTuning> | undefined;
+
+const resolveAmbientSkyTuning = () => {
+  ambientSkyTuningCache ??= createAmbientSkyTuning();
+  return ambientSkyTuningCache;
+};
+
 export const legacyTuning = {
   board: {
     // Legacy C++ truth (`MazerGameModeBase::SetupGrid`): default `_Scale` when unset.
@@ -193,6 +267,9 @@ export const legacyTuning = {
       starsDriftDurationMs: 15000,
       vignetteAlpha: 0.38,
       vignetteBandRatio: 0.18
+    },
+    get ambientSky() {
+      return resolveAmbientSkyTuning();
     }
   },
   game: {

@@ -205,12 +205,42 @@ const validateBoard = (diagnostics) => {
   ];
 };
 
+const validateAmbient = (diagnostics) => {
+  if (!diagnostics.ambient) {
+    return [
+      createCheck(
+        'ambient-diagnostics',
+        false,
+        'Ambient diagnostics were not published for visual capture.'
+      )
+    ];
+  }
+
+  return [
+    createCheck(
+      'ambient-behind-board',
+      diagnostics.ambient.behindBoard === true,
+      diagnostics.ambient.behindBoard
+        ? 'Ambient events remain behind board and chrome depths.'
+        : 'Ambient events climbed into the board or shell chrome depth range.'
+    ),
+    createCheck(
+      'ambient-density-budget',
+      diagnostics.ambient.uncluttered === true && diagnostics.ambient.reservedZoneBreaches === 0,
+      diagnostics.ambient.uncluttered === true && diagnostics.ambient.reservedZoneBreaches === 0
+        ? 'Ambient event counts stayed inside the configured clutter budget and clear zones.'
+        : `Ambient clutter budget failed (breaches=${diagnostics.ambient.reservedZoneBreaches}, moving=${diagnostics.ambient.activeCounts.moving}).`
+    )
+  ];
+};
+
 const validateDiagnostics = (diagnostics) => {
   const checks = [
     ...validateTitle(diagnostics),
     ...validateInstall(diagnostics),
     ...validateTrail(diagnostics),
-    ...validateBoard(diagnostics)
+    ...validateBoard(diagnostics),
+    ...validateAmbient(diagnostics)
   ];
   return {
     checks,

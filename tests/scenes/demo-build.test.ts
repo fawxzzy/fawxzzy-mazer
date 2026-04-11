@@ -43,6 +43,7 @@ let resolveMenuSceneInstallSurfaceState: typeof import('../../src/scenes/MenuSce
 let resolveMenuSceneVisualCaptureConfig: typeof import('../../src/scenes/MenuScene').resolveMenuSceneVisualCaptureConfig;
 let resolveTitleBandFrame: typeof import('../../src/scenes/MenuScene').resolveTitleBandFrame;
 let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
+let resolveAmbientSkyProfileTuning: typeof import('../../src/scenes/MenuScene').resolveAmbientSkyProfileTuning;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
 let MENU_SCENE_VISUAL_CAPTURE_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_CAPTURE_KEY;
@@ -87,6 +88,7 @@ beforeAll(async () => {
     resolveMenuSceneVisualCaptureConfig,
     resolveTitleBandFrame,
     resolveAmbientThemeProfile,
+    resolveAmbientSkyProfileTuning,
     resolvePresentationBackdropFrame,
     resolveMenuResizeRecoveryDecision
   } = await import('../../src/scenes/MenuScene'));
@@ -465,6 +467,44 @@ describe('demo-only build', () => {
         'flash-vs-panel'
       ]);
     }
+  });
+
+  test('ambient sky theme language stays theme-aware and restrained', () => {
+    const noir = resolveAmbientThemeProfile('noir').ambientSky;
+    const ember = resolveAmbientThemeProfile('ember').ambientSky;
+    const aurora = resolveAmbientThemeProfile('aurora').ambientSky;
+    const vellum = resolveAmbientThemeProfile('vellum').ambientSky;
+    const monolith = resolveAmbientThemeProfile('monolith').ambientSky;
+
+    expect(noir.configuredFamilies).toContain('satellite-blink');
+    expect(noir.allowSatellite).toBe(true);
+    expect(noir.allowUfo).toBe(true);
+    expect(ember.configuredFamilies).toContain('ember-dust');
+    expect(ember.allowSatellite).toBe(false);
+    expect(aurora.configuredFamilies).toContain('aurora-veil');
+    expect(aurora.allowUfo).toBe(true);
+    expect(vellum.configuredFamilies).toContain('paper-sky-dust');
+    expect(vellum.allowUfo).toBe(false);
+    expect(monolith.configuredFamilies).toContain('technical-streak');
+    expect(monolith.allowSatellite).toBe(true);
+    expect(monolith.allowUfo).toBe(false);
+  });
+
+  test('ambient sky profile tuning favors tv while keeping obs/mobile restrained and reduced motion calmer', () => {
+    const ambient = resolveAmbientSkyProfileTuning(undefined, 'ambient', false);
+    const tv = resolveAmbientSkyProfileTuning('tv', 'ambient', false);
+    const obs = resolveAmbientSkyProfileTuning('obs', 'ambient', false);
+    const mobile = resolveAmbientSkyProfileTuning('mobile', 'ambient', false);
+    const reduced = resolveAmbientSkyProfileTuning('tv', 'title', true);
+
+    expect(tv.densityScale).toBeGreaterThan(ambient.densityScale);
+    expect(tv.eventIntervalScale).toBeLessThan(ambient.eventIntervalScale);
+    expect(obs.densityScale).toBeLessThan(ambient.densityScale);
+    expect(obs.clearZoneScale).toBeGreaterThan(ambient.clearZoneScale);
+    expect(mobile.movingEventCap).toBeLessThanOrEqual(ambient.movingEventCap);
+    expect(reduced.motionScale).toBeLessThan(tv.motionScale);
+    expect(reduced.eventIntervalScale).toBeGreaterThan(tv.eventIntervalScale);
+    expect(reduced.signatureEventCap).toBe(0);
   });
 
   test('BootScene falls back to title when presentation resolution throws', () => {
@@ -883,6 +923,8 @@ describe('demo-only build', () => {
     const menuSceneSource = readFileSync(resolve(process.cwd(), 'src/scenes/MenuScene.ts'), 'utf8');
 
     expect(menuSceneSource).toContain('destroyEpisodePresentationShell();');
+    expect(menuSceneSource).toContain('this.ambientSky?.destroy();');
+    expect(menuSceneSource).toContain('this.ambientSky?.update(delta);');
     expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);');
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");

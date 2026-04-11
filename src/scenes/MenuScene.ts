@@ -275,6 +275,78 @@ interface ResizeRecoveryDecision {
   restartKey?: string;
 }
 
+type AmbientSkyMovingFamily = 'shooting-star' | 'comet' | 'satellite' | 'ufo';
+
+interface AmbientSkyThemeStyle {
+  configuredFamilies: readonly string[];
+  hazeColor: number;
+  hazeAccentColor: number;
+  streakColor: number;
+  cometColor: number;
+  satelliteColor: number;
+  ufoColor: number;
+  driftMoteColor: number;
+  staticStarDensityScale: number;
+  twinkleDensityScale: number;
+  hazeAlphaScale: number;
+  driftMoteDensityScale: number;
+  shootingIntervalScale: number;
+  cometIntervalScale: number;
+  satelliteIntervalScale: number;
+  ufoIntervalScale: number;
+  allowSatellite: boolean;
+  allowUfo: boolean;
+}
+
+interface AmbientSkyProfileTuning {
+  densityScale: number;
+  motionScale: number;
+  eventIntervalScale: number;
+  twinkleCount: number;
+  driftMoteCount: number;
+  movingEventCap: number;
+  signatureEventCap: number;
+  clearZoneScale: number;
+}
+
+interface AmbientSkyDepths {
+  base: number;
+  haze: number;
+  stars: number;
+  twinkles: number;
+  motes: number;
+  events: number;
+}
+
+interface AmbientSkyDiagnostics {
+  reducedMotion: boolean;
+  configuredFamilies: readonly string[];
+  activeCounts: {
+    twinkles: number;
+    driftMotes: number;
+    moving: number;
+    shootingStars: number;
+    comets: number;
+    satellites: number;
+    ufos: number;
+  };
+  caps: {
+    twinkles: number;
+    driftMotes: number;
+    moving: number;
+    signatureEvents: number;
+  };
+  reservedZoneBreaches: number;
+  uncluttered: boolean;
+  behindBoard: boolean;
+  depths: {
+    backgroundMax: number;
+    boardMin: number;
+    title?: number;
+    install?: number;
+  };
+}
+
 interface AmbientThemeProfile {
   id: PresentationThemeFamily;
   label: string;
@@ -314,6 +386,7 @@ interface AmbientThemeProfile {
     flashAlphaBias: number;
     actorPulseBias: number;
   };
+  ambientSky: AmbientSkyThemeStyle;
   title: {
     fontFamily: string;
     signatureFontFamily: string;
@@ -446,6 +519,26 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       flashAlphaBias: -0.02,
       actorPulseBias: 0.004
     },
+    ambientSky: {
+      configuredFamilies: ['micro-twinkle', 'cold-streak', 'satellite-blink', 'ufo-blink', 'distant-galaxy'],
+      hazeColor: 0x10213c,
+      hazeAccentColor: 0x365f8a,
+      streakColor: 0xf1f6ff,
+      cometColor: 0x9bc8ff,
+      satelliteColor: 0xcde8ff,
+      ufoColor: 0x8fdcff,
+      driftMoteColor: 0x66758a,
+      staticStarDensityScale: 0.76,
+      twinkleDensityScale: 0.78,
+      hazeAlphaScale: 0.72,
+      driftMoteDensityScale: 0.18,
+      shootingIntervalScale: 1.18,
+      cometIntervalScale: 1.22,
+      satelliteIntervalScale: 0.96,
+      ufoIntervalScale: 1.24,
+      allowSatellite: true,
+      allowUfo: true
+    },
     title: {
       fontFamily: '"Bahnschrift SemiCondensed", "Trebuchet MS", "Segoe UI", sans-serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
@@ -559,6 +652,26 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       metadataAlphaBias: 0.02,
       flashAlphaBias: 0.02,
       actorPulseBias: 0.01
+    },
+    ambientSky: {
+      configuredFamilies: ['micro-twinkle', 'warm-meteor', 'comet', 'ember-dust'],
+      hazeColor: 0x5b2b18,
+      hazeAccentColor: 0xc06e37,
+      streakColor: 0xffd4a1,
+      cometColor: 0xff9d57,
+      satelliteColor: 0xffc483,
+      ufoColor: 0xffa062,
+      driftMoteColor: 0xf18f4d,
+      staticStarDensityScale: 0.7,
+      twinkleDensityScale: 0.74,
+      hazeAlphaScale: 0.94,
+      driftMoteDensityScale: 0.96,
+      shootingIntervalScale: 0.96,
+      cometIntervalScale: 0.88,
+      satelliteIntervalScale: 1.28,
+      ufoIntervalScale: 1.42,
+      allowSatellite: false,
+      allowUfo: false
     },
     title: {
       fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
@@ -674,6 +787,26 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       flashAlphaBias: 0.04,
       actorPulseBias: 0.006
     },
+    ambientSky: {
+      configuredFamilies: ['micro-twinkle', 'cool-streak', 'comet', 'aurora-veil', 'ufo-flyby'],
+      hazeColor: 0x214a82,
+      hazeAccentColor: 0x7f59df,
+      streakColor: 0xd9fbff,
+      cometColor: 0x8be7ff,
+      satelliteColor: 0xbbe0ff,
+      ufoColor: 0xb391ff,
+      driftMoteColor: 0x6fe6ff,
+      staticStarDensityScale: 0.86,
+      twinkleDensityScale: 0.96,
+      hazeAlphaScale: 1,
+      driftMoteDensityScale: 0.42,
+      shootingIntervalScale: 0.86,
+      cometIntervalScale: 0.82,
+      satelliteIntervalScale: 1,
+      ufoIntervalScale: 0.92,
+      allowSatellite: true,
+      allowUfo: true
+    },
     title: {
       fontFamily: '"Segoe UI", "Trebuchet MS", sans-serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
@@ -787,6 +920,26 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       metadataAlphaBias: 0.01,
       flashAlphaBias: -0.04,
       actorPulseBias: -0.004
+    },
+    ambientSky: {
+      configuredFamilies: ['paper-sky-dust', 'pinprick-stars', 'quiet-streak', 'soft-galaxy'],
+      hazeColor: 0xd8d0be,
+      hazeAccentColor: 0xb1c5d7,
+      streakColor: 0x7a91b0,
+      cometColor: 0x8aa4bf,
+      satelliteColor: 0xa2b5c8,
+      ufoColor: 0xa2b5c8,
+      driftMoteColor: 0xa89066,
+      staticStarDensityScale: 0.54,
+      twinkleDensityScale: 0.62,
+      hazeAlphaScale: 0.58,
+      driftMoteDensityScale: 0.92,
+      shootingIntervalScale: 1.36,
+      cometIntervalScale: 1.42,
+      satelliteIntervalScale: 1.64,
+      ufoIntervalScale: 1.8,
+      allowSatellite: false,
+      allowUfo: false
     },
     title: {
       fontFamily: '"Garamond", Georgia, serif',
@@ -902,6 +1055,26 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       flashAlphaBias: -0.06,
       actorPulseBias: -0.002
     },
+    ambientSky: {
+      configuredFamilies: ['technical-streak', 'grayscale-stars', 'signal-blink', 'satellite-drift'],
+      hazeColor: 0x1f232a,
+      hazeAccentColor: 0x58626f,
+      streakColor: 0xf1f3f6,
+      cometColor: 0xb2bcc8,
+      satelliteColor: 0xd8dde4,
+      ufoColor: 0xadb7c4,
+      driftMoteColor: 0x7c8794,
+      staticStarDensityScale: 0.52,
+      twinkleDensityScale: 0.58,
+      hazeAlphaScale: 0.66,
+      driftMoteDensityScale: 0.22,
+      shootingIntervalScale: 1.12,
+      cometIntervalScale: 1.18,
+      satelliteIntervalScale: 0.9,
+      ufoIntervalScale: 1.8,
+      allowSatellite: true,
+      allowUfo: false
+    },
     title: {
       fontFamily: '"Bahnschrift", "Segoe UI", sans-serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
@@ -921,6 +1094,206 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       buttonStrokeColor: 0xc9ced6
     }
   }
+};
+
+const AMBIENT_SKY_DEPTHS: AmbientSkyDepths = Object.freeze({
+  base: -14,
+  haze: -13,
+  stars: -12,
+  twinkles: -11,
+  motes: -10.5,
+  events: -10
+});
+const AMBIENT_SKY_MAX_DELTA_MS = 80;
+const AMBIENT_SKY_TEXTURES = Object.freeze({
+  twinkle: 'mazer-ambient-twinkle',
+  streak: 'mazer-ambient-streak',
+  comet: 'mazer-ambient-comet',
+  satellite: 'mazer-ambient-satellite',
+  ufo: 'mazer-ambient-ufo'
+});
+
+interface AmbientSkyRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+interface AmbientSkyTwinkleState {
+  sprite: Phaser.GameObjects.Image;
+  anchorX: number;
+  anchorY: number;
+  baseAlpha: number;
+  amplitude: number;
+  pulseMs: number;
+  driftX: number;
+  driftY: number;
+  phase: number;
+}
+
+interface AmbientSkyDriftMoteState {
+  sprite: Phaser.GameObjects.Image;
+  anchorX: number;
+  anchorY: number;
+  rangeX: number;
+  rangeY: number;
+  speedX: number;
+  speedY: number;
+  phase: number;
+  baseAlpha: number;
+  amplitude: number;
+}
+
+interface AmbientSkyVeilState {
+  graphics: Phaser.GameObjects.Graphics;
+  anchorX: number;
+  anchorY: number;
+  rangeX: number;
+  rangeY: number;
+  pulseMs: number;
+  phase: number;
+  baseAlpha: number;
+  amplitude: number;
+}
+
+interface AmbientSkyMovingEvent {
+  family: AmbientSkyMovingFamily;
+  body: Phaser.GameObjects.Image;
+  glow?: Phaser.GameObjects.Image;
+  startedAt: number;
+  durationMs: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  maxAlpha: number;
+  blinkMs?: number;
+  wobblePx?: number;
+  wobbleSpeed?: number;
+  phase: number;
+  width: number;
+  height: number;
+}
+
+interface AmbientSkyLaneSegment {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+const expandAmbientRect = (rect: AmbientSkyRect, amount: number): AmbientSkyRect => ({
+  left: rect.left - amount,
+  top: rect.top - amount,
+  right: rect.right + amount,
+  bottom: rect.bottom + amount
+});
+
+const rectsIntersect = (left: AmbientSkyRect, right: AmbientSkyRect): boolean => (
+  left.left < right.right
+  && left.right > right.left
+  && left.top < right.bottom
+  && left.bottom > right.top
+);
+
+export const resolveAmbientSkyProfileTuning = (
+  profile?: PresentationDeploymentProfile,
+  variant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT,
+  reducedMotion = false
+): AmbientSkyProfileTuning => {
+  const safeVariant = sanitizePresentationVariant(variant);
+  let tuning: AmbientSkyProfileTuning = {
+    densityScale: 1,
+    motionScale: 1,
+    eventIntervalScale: 1,
+    twinkleCount: legacyTuning.menu.ambientSky.twinkleCount,
+    driftMoteCount: legacyTuning.menu.ambientSky.driftMoteCount,
+    movingEventCap: 2,
+    signatureEventCap: 1,
+    clearZoneScale: 1
+  };
+
+  switch (profile) {
+    case 'tv':
+      tuning = {
+        ...tuning,
+        densityScale: 1.18,
+        motionScale: 1.08,
+        eventIntervalScale: 0.82,
+        twinkleCount: 24,
+        driftMoteCount: 9,
+        movingEventCap: 2,
+        signatureEventCap: 1,
+        clearZoneScale: 0.96
+      };
+      break;
+    case 'obs':
+      tuning = {
+        ...tuning,
+        densityScale: 0.58,
+        motionScale: 0.72,
+        eventIntervalScale: 1.34,
+        twinkleCount: 10,
+        driftMoteCount: 3,
+        movingEventCap: 1,
+        signatureEventCap: 1,
+        clearZoneScale: 1.34
+      };
+      break;
+    case 'mobile':
+      tuning = {
+        ...tuning,
+        densityScale: 0.72,
+        motionScale: 0.78,
+        eventIntervalScale: 1.18,
+        twinkleCount: 12,
+        driftMoteCount: 4,
+        movingEventCap: 1,
+        signatureEventCap: 1,
+        clearZoneScale: 1.22
+      };
+      break;
+    default:
+      break;
+  }
+
+  switch (safeVariant) {
+    case 'title':
+      tuning = {
+        ...tuning,
+        densityScale: tuning.densityScale * 1.08,
+        eventIntervalScale: tuning.eventIntervalScale * 0.92
+      };
+      break;
+    case 'loading':
+      tuning = {
+        ...tuning,
+        densityScale: tuning.densityScale * 0.82,
+        motionScale: tuning.motionScale * 0.88,
+        eventIntervalScale: tuning.eventIntervalScale * 1.12
+      };
+      break;
+    case 'ambient':
+    default:
+      break;
+  }
+
+  if (reducedMotion) {
+    tuning = {
+      ...tuning,
+      densityScale: tuning.densityScale * 0.76,
+      motionScale: tuning.motionScale * 0.42,
+      eventIntervalScale: tuning.eventIntervalScale * 1.5,
+      twinkleCount: Math.max(6, Math.round(tuning.twinkleCount * 0.78)),
+      driftMoteCount: Math.max(1, Math.round(tuning.driftMoteCount * 0.6)),
+      movingEventCap: Math.min(tuning.movingEventCap, 1),
+      signatureEventCap: 0,
+      clearZoneScale: tuning.clearZoneScale * 1.08
+    };
+  }
+
+  return tuning;
 };
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
@@ -1492,6 +1865,7 @@ export interface MenuSceneVisualDiagnostics {
     render: TrailRenderDiagnostics;
   };
   paletteReadability: PaletteReadabilityReport;
+  ambient?: AmbientSkyDiagnostics;
 }
 
 declare global {
@@ -1600,6 +1974,835 @@ const clearMenuSceneVisualDiagnostics = (): void => {
   delete runtime[MENU_SCENE_VISUAL_DIAGNOSTICS_KEY];
 };
 
+interface AmbientSkyLayerOptions {
+  width: number;
+  height: number;
+  seed: number;
+  themeProfile: AmbientThemeProfile;
+  variant: AmbientPresentationVariant;
+  profile?: PresentationDeploymentProfile;
+  reducedMotion: boolean;
+}
+
+class AmbientSkyLayer {
+  private readonly width: number;
+  private readonly height: number;
+  private readonly themeProfile: AmbientThemeProfile;
+  private readonly tuning: AmbientSkyProfileTuning;
+  private readonly reducedMotion: boolean;
+  private readonly base: Phaser.GameObjects.Graphics;
+  private readonly clouds: Phaser.GameObjects.Graphics;
+  private readonly farStars: Phaser.GameObjects.Graphics;
+  private readonly nearStars: Phaser.GameObjects.Graphics;
+  private readonly twinkles: AmbientSkyTwinkleState[] = [];
+  private readonly driftMotes: AmbientSkyDriftMoteState[] = [];
+  private readonly veils: AmbientSkyVeilState[] = [];
+  private readonly movingEvents: AmbientSkyMovingEvent[] = [];
+  private timelineMs = 0;
+  private rngState: number;
+  private nextShootingAt = 0;
+  private nextCometAt = 0;
+  private nextSatelliteAt = 0;
+  private nextUfoAt = 0;
+  private boardRect?: AmbientSkyRect;
+  private titleRect?: AmbientSkyRect;
+  private installRect?: AmbientSkyRect;
+  private reservedRects: AmbientSkyRect[] = [];
+
+  public constructor(
+    private readonly scene: Phaser.Scene,
+    options: AmbientSkyLayerOptions
+  ) {
+    this.width = sanitizePositive(options.width, DEFAULT_VIEWPORT_WIDTH);
+    this.height = sanitizePositive(options.height, DEFAULT_VIEWPORT_HEIGHT);
+    this.themeProfile = options.themeProfile;
+    this.reducedMotion = options.reducedMotion;
+    this.tuning = resolveAmbientSkyProfileTuning(options.profile, options.variant, options.reducedMotion);
+    this.rngState = ((options.seed >>> 0)
+      ^ (this.width << 4)
+      ^ (this.height << 1)
+      ^ options.themeProfile.id.charCodeAt(0)
+      ^ options.variant.charCodeAt(0)
+      ^ (options.profile?.charCodeAt(0) ?? 0)
+    ) >>> 0 || 1;
+    this.ensureTextures();
+    this.base = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.base);
+    this.clouds = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.haze).setBlendMode(Phaser.BlendModes.SCREEN);
+    this.farStars = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.stars);
+    this.nearStars = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.stars);
+    this.drawBackdrop();
+    this.createVeils();
+    this.createTwinkles();
+    this.createDriftMotes();
+    this.resetSchedules();
+  }
+
+  public setReservedFrames(
+    boardBounds?: BoardBounds,
+    boardTileSize?: number,
+    titleFrame?: TitleBandFrame,
+    installFrame?: InstallChromeFrame
+  ): void {
+    const clearZoneTuning = legacyTuning.menu.ambientSky.clearZone;
+    const profilePad = (boardTileSize ?? 0) * clearZoneTuning.boardPadTiles * this.tuning.clearZoneScale;
+    const extraPad = this.tuning.clearZoneScale > 1.2
+      ? (clearZoneTuning.obsPadPx * 0.5)
+      : this.tuning.clearZoneScale > 1.08
+        ? clearZoneTuning.mobilePadPx
+        : 0;
+    this.boardRect = boardBounds
+      ? expandAmbientRect(
+        {
+          left: boardBounds.left,
+          top: boardBounds.top,
+          right: boardBounds.right,
+          bottom: boardBounds.bottom
+        },
+        profilePad + extraPad
+      )
+      : undefined;
+    this.titleRect = titleFrame
+      ? expandAmbientRect(
+        {
+          left: titleFrame.left,
+          top: titleFrame.top,
+          right: titleFrame.right,
+          bottom: titleFrame.bottom
+        },
+        clearZoneTuning.titlePadPx * this.tuning.clearZoneScale
+      )
+      : undefined;
+    this.installRect = installFrame
+      ? expandAmbientRect(
+        {
+          left: installFrame.left,
+          top: installFrame.top,
+          right: installFrame.right,
+          bottom: installFrame.bottom
+        },
+        clearZoneTuning.installPadPx * this.tuning.clearZoneScale
+      )
+      : undefined;
+    this.reservedRects = [this.boardRect, this.titleRect, this.installRect].filter((value): value is AmbientSkyRect => Boolean(value));
+  }
+
+  public update(deltaMs: number): void {
+    const frameMs = Math.max(0, Math.min(AMBIENT_SKY_MAX_DELTA_MS, deltaMs || 0));
+    this.timelineMs += frameMs;
+    this.updateVeils();
+    this.updateTwinkles();
+    this.updateDriftMotes();
+    this.updateMovingEvents();
+    this.maybeSpawnEvents();
+  }
+
+  public getDiagnostics(boardMinDepth: number, titleDepth?: number, installDepth?: number): AmbientSkyDiagnostics {
+    const movingCounts = {
+      shootingStars: this.countMovingEvents('shooting-star'),
+      comets: this.countMovingEvents('comet'),
+      satellites: this.countMovingEvents('satellite'),
+      ufos: this.countMovingEvents('ufo')
+    };
+    const reservedZoneBreaches = this.movingEvents.reduce((total, event) => (
+      total + (this.eventViolatesReservedZones(event) ? 1 : 0)
+    ), 0);
+    const signatureEvents = movingCounts.satellites + movingCounts.ufos;
+    const backgroundMax = Math.max(
+      AMBIENT_SKY_DEPTHS.base,
+      AMBIENT_SKY_DEPTHS.haze,
+      AMBIENT_SKY_DEPTHS.stars,
+      AMBIENT_SKY_DEPTHS.twinkles,
+      AMBIENT_SKY_DEPTHS.motes,
+      AMBIENT_SKY_DEPTHS.events
+    );
+
+    return {
+      reducedMotion: this.reducedMotion,
+      configuredFamilies: this.themeProfile.ambientSky.configuredFamilies,
+      activeCounts: {
+        twinkles: this.twinkles.length,
+        driftMotes: this.driftMotes.length,
+        moving: this.movingEvents.length,
+        ...movingCounts
+      },
+      caps: {
+        twinkles: this.tuning.twinkleCount,
+        driftMotes: this.tuning.driftMoteCount,
+        moving: this.tuning.movingEventCap,
+        signatureEvents: this.tuning.signatureEventCap
+      },
+      reservedZoneBreaches,
+      uncluttered: this.twinkles.length <= this.tuning.twinkleCount
+        && this.driftMotes.length <= this.tuning.driftMoteCount
+        && this.movingEvents.length <= this.tuning.movingEventCap
+        && signatureEvents <= this.tuning.signatureEventCap,
+      behindBoard: backgroundMax < boardMinDepth,
+      depths: {
+        backgroundMax,
+        boardMin: boardMinDepth,
+        ...(titleDepth !== undefined ? { title: titleDepth } : {}),
+        ...(installDepth !== undefined ? { install: installDepth } : {})
+      }
+    };
+  }
+
+  public destroy(): void {
+    this.destroyMovingEvents();
+    for (const twinkle of this.twinkles) {
+      twinkle.sprite.destroy();
+    }
+    this.twinkles.length = 0;
+    for (const mote of this.driftMotes) {
+      mote.sprite.destroy();
+    }
+    this.driftMotes.length = 0;
+    for (const veil of this.veils) {
+      veil.graphics.destroy();
+    }
+    this.veils.length = 0;
+    this.nearStars.destroy();
+    this.farStars.destroy();
+    this.clouds.destroy();
+    this.base.destroy();
+  }
+
+  private ensureTextures(): void {
+    const { textures } = this.scene;
+    if (!textures.exists(AMBIENT_SKY_TEXTURES.twinkle)) {
+      const graphics = this.scene.add.graphics().setVisible(false);
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillRect(2, 0, 1, 5);
+      graphics.fillRect(0, 2, 5, 1);
+      graphics.fillRect(2, 2, 1, 1);
+      graphics.generateTexture(AMBIENT_SKY_TEXTURES.twinkle, 5, 5);
+      graphics.destroy();
+    }
+    if (!textures.exists(AMBIENT_SKY_TEXTURES.streak)) {
+      const graphics = this.scene.add.graphics().setVisible(false);
+      for (let index = 0; index < 14; index += 1) {
+        const alpha = (index + 1) / 14;
+        graphics.fillStyle(0xffffff, alpha);
+        graphics.fillRect(index * 4, index < 8 ? 2 : 1, 4, index < 8 ? 1 : 2);
+      }
+      graphics.generateTexture(AMBIENT_SKY_TEXTURES.streak, 56, 4);
+      graphics.destroy();
+    }
+    if (!textures.exists(AMBIENT_SKY_TEXTURES.comet)) {
+      const graphics = this.scene.add.graphics().setVisible(false);
+      for (let index = 0; index < 12; index += 1) {
+        graphics.fillStyle(0xffffff, Math.max(0.08, (index + 1) / 12));
+        graphics.fillRect(index * 4, 2, 4, 2);
+      }
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillRect(48, 1, 8, 4);
+      graphics.generateTexture(AMBIENT_SKY_TEXTURES.comet, 56, 6);
+      graphics.destroy();
+    }
+    if (!textures.exists(AMBIENT_SKY_TEXTURES.satellite)) {
+      const graphics = this.scene.add.graphics().setVisible(false);
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillRect(0, 1, 3, 2);
+      graphics.fillRect(4, 0, 4, 4);
+      graphics.fillRect(9, 1, 3, 2);
+      graphics.generateTexture(AMBIENT_SKY_TEXTURES.satellite, 12, 4);
+      graphics.destroy();
+    }
+    if (!textures.exists(AMBIENT_SKY_TEXTURES.ufo)) {
+      const graphics = this.scene.add.graphics().setVisible(false);
+      graphics.fillStyle(0xffffff, 1);
+      graphics.fillRect(2, 1, 10, 2);
+      graphics.fillRect(4, 0, 6, 1);
+      graphics.fillRect(1, 3, 12, 2);
+      graphics.fillRect(5, 5, 4, 1);
+      graphics.generateTexture(AMBIENT_SKY_TEXTURES.ufo, 14, 6);
+      graphics.destroy();
+    }
+  }
+
+  private drawBackdrop(): void {
+    const staticStarScale = this.themeProfile.ambientSky.staticStarDensityScale * this.tuning.densityScale;
+    const cloudCount = Math.max(4, Math.round(legacyTuning.menu.starfield.cloudCount * staticStarScale));
+    const farStarCount = Math.max(96, Math.floor(legacyTuning.menu.starfield.starCount * 0.5 * staticStarScale));
+    const nearStarCount = Math.max(72, Math.ceil(legacyTuning.menu.starfield.starCount * 0.24 * staticStarScale));
+
+    this.base.clear();
+    this.base.fillGradientStyle(
+      this.themeProfile.background.topLeft,
+      this.themeProfile.background.topRight,
+      this.themeProfile.background.bottomLeft,
+      this.themeProfile.background.bottomRight,
+      1
+    );
+    this.base.fillRect(0, 0, this.width, this.height);
+    this.base.fillStyle(this.themeProfile.palette.background.nebulaCore, 0.16);
+    this.base.fillCircle(this.width * 0.5, this.height * 0.46, Math.max(this.width, this.height) * 0.24);
+    this.base.fillStyle(this.themeProfile.palette.background.nebula, 0.11);
+    this.base.fillCircle(this.width * 0.5, this.height * 0.56, Math.max(this.width, this.height) * 0.34);
+    this.base.fillStyle(this.themeProfile.palette.background.deepSpace, 0.14);
+    this.base.fillRect(0, this.height * 0.78, this.width, this.height * 0.22);
+
+    this.clouds.clear();
+    for (let index = 0; index < cloudCount; index += 1) {
+      this.clouds.fillStyle(
+        this.themeProfile.palette.background.cloud,
+        this.range(legacyTuning.menu.starfield.cloudAlphaMin, legacyTuning.menu.starfield.cloudAlphaMax)
+          * this.themeProfile.background.cloudAlphaScale
+          * 0.72
+      );
+      this.clouds.fillCircle(
+        this.range(this.width * 0.12, this.width * 0.88),
+        this.range(this.height * 0.14, this.height * 0.86),
+        this.range(legacyTuning.menu.starfield.cloudRadiusMin * 0.8, legacyTuning.menu.starfield.cloudRadiusMax * 0.88)
+      );
+    }
+
+    this.farStars.clear();
+    for (let index = 0; index < farStarCount; index += 1) {
+      this.farStars.fillStyle(
+        this.themeProfile.palette.background.star,
+        this.range(
+          legacyTuning.menu.starfield.starAlphaMin * 0.5,
+          legacyTuning.menu.starfield.starAlphaMax * 0.42
+        ) * this.themeProfile.background.farStarAlphaScale
+      );
+      this.farStars.fillCircle(
+        this.range(0, this.width),
+        this.range(0, this.height),
+        this.range(legacyTuning.menu.starfield.starRadiusMin * 0.8, legacyTuning.menu.starfield.starRadiusMax * 0.68)
+      );
+    }
+
+    this.nearStars.clear();
+    for (let index = 0; index < nearStarCount; index += 1) {
+      this.nearStars.fillStyle(
+        this.themeProfile.palette.background.star,
+        this.range(
+          legacyTuning.menu.starfield.starAlphaMin * 0.56,
+          legacyTuning.menu.starfield.starAlphaMax * 0.54
+        ) * this.themeProfile.background.nearStarAlphaScale
+      );
+      this.nearStars.fillCircle(
+        this.range(0, this.width),
+        this.range(0, this.height),
+        this.range(legacyTuning.menu.starfield.starRadiusMin * 0.9, legacyTuning.menu.starfield.starRadiusMax * 0.86)
+      );
+    }
+
+    this.base.fillStyle(
+      this.themeProfile.palette.background.vignette,
+      legacyTuning.menu.starfield.vignetteAlpha * this.themeProfile.background.vignetteAlphaScale
+    );
+    this.base.fillRect(0, 0, this.width, this.height * legacyTuning.menu.starfield.vignetteBandRatio);
+    this.base.fillRect(
+      0,
+      this.height * (1 - legacyTuning.menu.starfield.vignetteBandRatio),
+      this.width,
+      this.height * legacyTuning.menu.starfield.vignetteBandRatio
+    );
+    this.base.fillStyle(this.themeProfile.palette.background.vignette, 0.1);
+    this.base.fillCircle(this.width * 0.5, this.height * 0.5, Math.max(this.width, this.height) * 0.58);
+  }
+
+  private createVeils(): void {
+    const veilCount = Math.max(
+      1,
+      Math.round(legacyTuning.menu.ambientSky.hazeLayerCount * this.tuning.densityScale)
+    );
+    for (let index = 0; index < veilCount; index += 1) {
+      const graphics = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.haze).setBlendMode(Phaser.BlendModes.SCREEN);
+      const width = this.range(this.width * 0.18, this.width * 0.34);
+      const height = this.range(this.height * 0.08, this.height * 0.16);
+      const alpha = this.range(
+        legacyTuning.menu.ambientSky.hazeAlphaMin,
+        legacyTuning.menu.ambientSky.hazeAlphaMax
+      ) * this.themeProfile.ambientSky.hazeAlphaScale;
+      graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha);
+      graphics.fillEllipse(0, 0, width, height);
+      graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, alpha * 0.72);
+      graphics.fillEllipse(width * 0.1, -Math.max(6, height * 0.08), width * 0.68, height * 0.56);
+      graphics.setPosition(
+        this.range(this.width * 0.16, this.width * 0.84),
+        this.range(this.height * 0.16, this.height * 0.74)
+      );
+      graphics.setAlpha(0.78);
+      this.veils.push({
+        graphics,
+        anchorX: graphics.x,
+        anchorY: graphics.y,
+        rangeX: this.range(legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.45, legacyTuning.menu.ambientSky.hazeDriftRangePx),
+        rangeY: this.range(legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.18, legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.58),
+        pulseMs: this.range(
+          legacyTuning.menu.ambientSky.hazeDriftDurationMinMs,
+          legacyTuning.menu.ambientSky.hazeDriftDurationMaxMs
+        ) / Math.max(0.25, this.tuning.motionScale),
+        phase: this.range(0, Math.PI * 2),
+        baseAlpha: graphics.alpha,
+        amplitude: 0.08
+      });
+    }
+  }
+
+  private createTwinkles(): void {
+    const count = Math.max(6, Math.round(this.tuning.twinkleCount * this.themeProfile.ambientSky.twinkleDensityScale));
+    for (let index = 0; index < count; index += 1) {
+      const anchor = this.sampleOpenSkyPoint(true);
+      const sprite = this.scene.add.image(anchor.x, anchor.y, AMBIENT_SKY_TEXTURES.twinkle)
+        .setDepth(AMBIENT_SKY_DEPTHS.twinkles)
+        .setTint(this.themeProfile.palette.background.star)
+        .setScale(this.range(0.8, 1.4))
+        .setAlpha(this.range(legacyTuning.menu.ambientSky.twinkleAlphaMin, legacyTuning.menu.ambientSky.twinkleAlphaMax));
+      this.twinkles.push({
+        sprite,
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+        baseAlpha: sprite.alpha,
+        amplitude: this.range(0.06, 0.16),
+        pulseMs: this.range(
+          legacyTuning.menu.ambientSky.twinklePulseDurationMinMs,
+          legacyTuning.menu.ambientSky.twinklePulseDurationMaxMs
+        ) / Math.max(0.25, this.tuning.motionScale),
+        driftX: this.range(-legacyTuning.menu.ambientSky.twinkleDriftRangePx, legacyTuning.menu.ambientSky.twinkleDriftRangePx),
+        driftY: this.range(-legacyTuning.menu.ambientSky.twinkleDriftRangePx * 0.45, legacyTuning.menu.ambientSky.twinkleDriftRangePx * 0.45),
+        phase: this.range(0, Math.PI * 2)
+      });
+    }
+  }
+
+  private createDriftMotes(): void {
+    const count = Math.max(
+      0,
+      Math.round(this.tuning.driftMoteCount * this.themeProfile.ambientSky.driftMoteDensityScale)
+    );
+    for (let index = 0; index < count; index += 1) {
+      const anchor = this.sampleOpenSkyPoint(false);
+      const sprite = this.scene.add.image(anchor.x, anchor.y, AMBIENT_SKY_TEXTURES.twinkle)
+        .setDepth(AMBIENT_SKY_DEPTHS.motes)
+        .setTint(this.themeProfile.ambientSky.driftMoteColor)
+        .setScale(this.range(0.6, 1.12))
+        .setAlpha(this.range(legacyTuning.menu.ambientSky.driftMoteAlphaMin, legacyTuning.menu.ambientSky.driftMoteAlphaMax));
+      this.driftMotes.push({
+        sprite,
+        anchorX: anchor.x,
+        anchorY: anchor.y,
+        rangeX: this.range(8, 26) * this.tuning.motionScale,
+        rangeY: this.range(10, 34) * this.tuning.motionScale,
+        speedX: this.range(
+          legacyTuning.menu.ambientSky.driftMoteSpeedPxPerSecMin,
+          legacyTuning.menu.ambientSky.driftMoteSpeedPxPerSecMax
+        ) / 1000,
+        speedY: this.range(
+          legacyTuning.menu.ambientSky.driftMoteSpeedPxPerSecMin * 0.68,
+          legacyTuning.menu.ambientSky.driftMoteSpeedPxPerSecMax * 0.82
+        ) / 1000,
+        phase: this.range(0, Math.PI * 2),
+        baseAlpha: sprite.alpha,
+        amplitude: this.range(0.02, 0.06)
+      });
+    }
+  }
+
+  private updateVeils(): void {
+    for (const veil of this.veils) {
+      const wave = ((this.timelineMs + veil.phase) % veil.pulseMs) / veil.pulseMs;
+      const phase = wave * Math.PI * 2;
+      veil.graphics.setPosition(
+        veil.anchorX + (Math.sin(phase) * veil.rangeX),
+        veil.anchorY + (Math.cos(phase * 0.7) * veil.rangeY)
+      );
+      veil.graphics.setAlpha(veil.baseAlpha + (Math.sin(phase * 0.8) * veil.amplitude));
+    }
+  }
+
+  private updateTwinkles(): void {
+    for (const twinkle of this.twinkles) {
+      const wave = ((this.timelineMs + twinkle.phase) % twinkle.pulseMs) / twinkle.pulseMs;
+      const phase = wave * Math.PI * 2;
+      twinkle.sprite.setPosition(
+        twinkle.anchorX + (Math.sin(phase) * twinkle.driftX),
+        twinkle.anchorY + (Math.cos(phase * 0.8) * twinkle.driftY)
+      );
+      twinkle.sprite.setAlpha(
+        Phaser.Math.Clamp(
+          twinkle.baseAlpha + (Math.sin(phase) * twinkle.amplitude),
+          legacyTuning.menu.ambientSky.twinkleAlphaMin * 0.66,
+          legacyTuning.menu.ambientSky.twinkleAlphaMax * 1.1
+        )
+      );
+    }
+  }
+
+  private updateDriftMotes(): void {
+    for (const mote of this.driftMotes) {
+      const driftX = Math.sin((this.timelineMs * mote.speedX) + mote.phase) * mote.rangeX;
+      const driftY = Math.cos((this.timelineMs * mote.speedY) + mote.phase) * mote.rangeY;
+      mote.sprite.setPosition(mote.anchorX + driftX, mote.anchorY + driftY);
+      mote.sprite.setAlpha(Math.max(0.01, mote.baseAlpha + (Math.sin((this.timelineMs * mote.speedX * 0.8) + mote.phase) * mote.amplitude)));
+    }
+  }
+
+  private updateMovingEvents(): void {
+    for (let index = this.movingEvents.length - 1; index >= 0; index -= 1) {
+      const event = this.movingEvents[index];
+      const progress = Phaser.Math.Clamp((this.timelineMs - event.startedAt) / event.durationMs, 0, 1);
+      if (progress >= 1) {
+        event.glow?.destroy();
+        event.body.destroy();
+        this.movingEvents.splice(index, 1);
+        continue;
+      }
+
+      const eased = event.family === 'satellite' || event.family === 'ufo'
+        ? progress
+        : ease(progress);
+      const x = Phaser.Math.Linear(event.fromX, event.toX, eased);
+      const wobble = event.wobblePx
+        ? Math.sin((this.timelineMs * (event.wobbleSpeed ?? 0.003)) + event.phase) * event.wobblePx
+        : 0;
+      const y = Phaser.Math.Linear(event.fromY, event.toY, eased) + wobble;
+      const fadeIn = Math.min(1, progress / 0.12);
+      const fadeOut = Math.min(1, (1 - progress) / 0.18);
+      const envelope = Math.min(fadeIn, fadeOut);
+      const blink = event.blinkMs
+        ? 0.7 + (Math.max(0, Math.sin((this.timelineMs - event.startedAt) / event.blinkMs * Math.PI * 2)) * 0.3)
+        : 1;
+      const alpha = event.maxAlpha * envelope * blink;
+
+      event.body.setPosition(x, y).setAlpha(alpha);
+      event.glow?.setPosition(x, y).setAlpha(alpha * (event.family === 'comet' ? 0.7 : 0.46));
+    }
+  }
+
+  private maybeSpawnEvents(): void {
+    if (this.movingEvents.length >= this.tuning.movingEventCap) {
+      return;
+    }
+
+    if (this.timelineMs >= this.nextShootingAt) {
+      this.spawnMovingEvent('shooting-star');
+      this.nextShootingAt = this.timelineMs + this.resolveEventInterval('shooting-star');
+    }
+    if (this.timelineMs >= this.nextCometAt && this.movingEvents.length < this.tuning.movingEventCap) {
+      this.spawnMovingEvent('comet');
+      this.nextCometAt = this.timelineMs + this.resolveEventInterval('comet');
+    }
+    if (
+      this.themeProfile.ambientSky.allowSatellite
+      && this.tuning.signatureEventCap > 0
+      && this.timelineMs >= this.nextSatelliteAt
+      && this.countSignatureEvents() < this.tuning.signatureEventCap
+      && this.movingEvents.length < this.tuning.movingEventCap
+    ) {
+      this.spawnMovingEvent('satellite');
+      this.nextSatelliteAt = this.timelineMs + this.resolveEventInterval('satellite');
+    }
+    if (
+      this.themeProfile.ambientSky.allowUfo
+      && this.tuning.signatureEventCap > 0
+      && this.timelineMs >= this.nextUfoAt
+      && this.countSignatureEvents() < this.tuning.signatureEventCap
+      && this.movingEvents.length < this.tuning.movingEventCap
+    ) {
+      this.spawnMovingEvent('ufo');
+      this.nextUfoAt = this.timelineMs + this.resolveEventInterval('ufo');
+    }
+  }
+
+  private spawnMovingEvent(family: AmbientSkyMovingFamily): void {
+    const created = family === 'shooting-star'
+      ? this.createStreakEvent(false)
+      : family === 'comet'
+        ? this.createStreakEvent(true)
+        : family === 'satellite'
+          ? this.createSatelliteEvent(false)
+          : this.createSatelliteEvent(true);
+
+    if (created) {
+      this.movingEvents.push(created);
+    }
+  }
+
+  private createStreakEvent(comet: boolean): AmbientSkyMovingEvent | undefined {
+    const tuning = comet ? legacyTuning.menu.ambientSky.comet : legacyTuning.menu.ambientSky.shootingStar;
+    const width = this.range(tuning.lengthMinPx, tuning.lengthMaxPx);
+    const height = comet ? 6 : 4;
+    const durationMs = this.range(tuning.durationMinMs, tuning.durationMaxMs) / Math.max(0.25, this.tuning.motionScale);
+    const segment = this.pickLaneSegment(comet ? 'comet' : 'shooting-star', width, height);
+    if (!segment) {
+      return undefined;
+    }
+
+    const textureKey = comet ? AMBIENT_SKY_TEXTURES.comet : AMBIENT_SKY_TEXTURES.streak;
+    const tint = comet ? this.themeProfile.ambientSky.cometColor : this.themeProfile.ambientSky.streakColor;
+    const body = this.scene.add.image(segment.startX, segment.startY, textureKey)
+      .setDepth(AMBIENT_SKY_DEPTHS.events)
+      .setTint(tint)
+      .setBlendMode(Phaser.BlendModes.SCREEN)
+      .setDisplaySize(width, height);
+    const glow = this.scene.add.image(segment.startX, segment.startY, AMBIENT_SKY_TEXTURES.streak)
+      .setDepth(AMBIENT_SKY_DEPTHS.events - 0.1)
+      .setTint(comet ? this.themeProfile.ambientSky.streakColor : tint)
+      .setBlendMode(Phaser.BlendModes.SCREEN)
+      .setDisplaySize(width * (comet ? 0.92 : 0.82), height * (comet ? 2.2 : 1.6))
+      .setAlpha(0);
+    const rotation = Phaser.Math.Angle.Between(segment.startX, segment.startY, segment.endX, segment.endY);
+    body.setRotation(rotation);
+    glow.setRotation(rotation);
+
+    return {
+      family: comet ? 'comet' : 'shooting-star',
+      body,
+      glow,
+      startedAt: this.timelineMs,
+      durationMs,
+      fromX: segment.startX,
+      fromY: segment.startY,
+      toX: segment.endX,
+      toY: segment.endY,
+      maxAlpha: this.range(tuning.alphaMin, tuning.alphaMax),
+      wobblePx: comet ? 1.5 * this.tuning.motionScale : 0.8 * this.tuning.motionScale,
+      wobbleSpeed: comet ? 0.0042 : 0.0052,
+      phase: this.range(0, Math.PI * 2),
+      width,
+      height
+    };
+  }
+
+  private createSatelliteEvent(ufo: boolean): AmbientSkyMovingEvent | undefined {
+    const tuning = ufo ? legacyTuning.menu.ambientSky.ufo : legacyTuning.menu.ambientSky.satellite;
+    const width = ufo ? 18 : 14;
+    const height = ufo ? 7 : 5;
+    const durationMs = this.range(tuning.durationMinMs, tuning.durationMaxMs) / Math.max(0.25, this.tuning.motionScale);
+    const segment = this.pickLaneSegment(ufo ? 'ufo' : 'satellite', width, height);
+    if (!segment) {
+      return undefined;
+    }
+
+    const body = this.scene.add.image(
+      segment.startX,
+      segment.startY,
+      ufo ? AMBIENT_SKY_TEXTURES.ufo : AMBIENT_SKY_TEXTURES.satellite
+    )
+      .setDepth(AMBIENT_SKY_DEPTHS.events)
+      .setTint(ufo ? this.themeProfile.ambientSky.ufoColor : this.themeProfile.ambientSky.satelliteColor)
+      .setDisplaySize(width, height);
+    const glow = this.scene.add.image(segment.startX, segment.startY, AMBIENT_SKY_TEXTURES.twinkle)
+      .setDepth(AMBIENT_SKY_DEPTHS.events - 0.1)
+      .setTint(ufo ? this.themeProfile.ambientSky.ufoColor : this.themeProfile.ambientSky.satelliteColor)
+      .setBlendMode(Phaser.BlendModes.SCREEN)
+      .setScale(ufo ? 1.8 : 1.4)
+      .setAlpha(0);
+    const rotation = Phaser.Math.Angle.Between(segment.startX, segment.startY, segment.endX, segment.endY);
+    body.setRotation(rotation);
+    glow.setRotation(rotation);
+
+    return {
+      family: ufo ? 'ufo' : 'satellite',
+      body,
+      glow,
+      startedAt: this.timelineMs,
+      durationMs,
+      fromX: segment.startX,
+      fromY: segment.startY,
+      toX: segment.endX,
+      toY: segment.endY,
+      maxAlpha: this.range(tuning.alphaMin, tuning.alphaMax),
+      blinkMs: this.range(tuning.blinkDurationMinMs, tuning.blinkDurationMaxMs),
+      wobblePx: ufo ? 1.4 : 0.8,
+      wobbleSpeed: ufo ? 0.0046 : 0.0034,
+      phase: this.range(0, Math.PI * 2),
+      width,
+      height
+    };
+  }
+
+  private pickLaneSegment(family: AmbientSkyMovingFamily, width: number, height: number): AmbientSkyLaneSegment | undefined {
+    const board = this.boardRect ?? {
+      left: this.width * 0.28,
+      top: this.height * 0.22,
+      right: this.width * 0.72,
+      bottom: this.height * 0.82
+    };
+    const topLimit = Math.max(44, Math.min(board.top - 18, this.height * 0.38));
+    const sideLeft = Math.max(96, board.left - 28);
+    const sideRight = Math.min(this.width - 96, board.right + 28);
+    const candidates: AmbientSkyLaneSegment[] = [];
+    const leftY = this.range(18, Math.max(26, topLimit));
+    const rightY = this.range(18, Math.max(26, topLimit));
+
+    if (family === 'shooting-star' || family === 'comet') {
+      candidates.push({
+        startX: -width,
+        startY: leftY,
+        endX: Math.max(sideLeft * 0.72, 96),
+        endY: Math.min(board.top - 12, leftY + this.range(18, 48))
+      });
+      candidates.push({
+        startX: this.width + width,
+        startY: rightY,
+        endX: Math.min(this.width - 96, sideRight + ((this.width - sideRight) * 0.28)),
+        endY: Math.min(board.top - 12, rightY + this.range(18, 48))
+      });
+      if (!this.titleRect && topLimit > 56) {
+        const crossY = this.range(18, Math.max(22, topLimit * 0.72));
+        candidates.push({
+          startX: -width,
+          startY: crossY,
+          endX: this.width + width,
+          endY: crossY + this.range(16, 40)
+        });
+      }
+    } else {
+      const leftLaneY = this.range(18, Math.max(26, topLimit));
+      const rightLaneY = this.range(18, Math.max(26, topLimit));
+      candidates.push({
+        startX: -width,
+        startY: leftLaneY,
+        endX: Math.max(sideLeft, this.width * 0.34),
+        endY: leftLaneY + this.range(-6, 6)
+      });
+      candidates.push({
+        startX: this.width + width,
+        startY: rightLaneY,
+        endX: Math.min(sideRight, this.width * 0.66),
+        endY: rightLaneY + this.range(-6, 6)
+      });
+      if (!this.titleRect && topLimit > 48) {
+        const crossY = this.range(18, Math.max(22, topLimit * 0.68));
+        candidates.push({
+          startX: -width,
+          startY: crossY,
+          endX: this.width + width,
+          endY: crossY + this.range(-4, 4)
+        });
+      }
+    }
+
+    const shuffled = [...candidates];
+    while (shuffled.length > 0) {
+      const segment = shuffled.splice(Math.floor(this.rand() * shuffled.length), 1)[0];
+      if (this.segmentClearsReservedZones(segment, width, height)) {
+        return segment;
+      }
+    }
+
+    return undefined;
+  }
+
+  private segmentClearsReservedZones(segment: AmbientSkyLaneSegment, width: number, height: number): boolean {
+    if (this.reservedRects.length === 0) {
+      return true;
+    }
+
+    const paddedWidth = Math.max(width, height) * 0.72;
+    const paddedHeight = Math.max(height, 8) * 2.2;
+    for (const progress of [0.15, 0.35, 0.55, 0.75, 0.92]) {
+      const x = Phaser.Math.Linear(segment.startX, segment.endX, progress);
+      const y = Phaser.Math.Linear(segment.startY, segment.endY, progress);
+      const bounds = {
+        left: x - (paddedWidth / 2),
+        top: y - (paddedHeight / 2),
+        right: x + (paddedWidth / 2),
+        bottom: y + (paddedHeight / 2)
+      };
+      if (this.reservedRects.some((reserved) => rectsIntersect(bounds, reserved))) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private eventViolatesReservedZones(event: AmbientSkyMovingEvent): boolean {
+    if (this.reservedRects.length === 0) {
+      return false;
+    }
+
+    const bounds = toVisualSceneBounds(event.body.getBounds());
+    return bounds
+      ? this.reservedRects.some((reserved) => rectsIntersect(bounds, reserved))
+      : false;
+  }
+
+  private resetSchedules(): void {
+    this.nextShootingAt = this.resolveEventInterval('shooting-star');
+    this.nextCometAt = this.resolveEventInterval('comet') * 0.88;
+    this.nextSatelliteAt = this.resolveEventInterval('satellite') * 0.9;
+    this.nextUfoAt = this.resolveEventInterval('ufo') * 0.92;
+  }
+
+  private resolveEventInterval(family: AmbientSkyMovingFamily): number {
+    const base = family === 'shooting-star'
+      ? legacyTuning.menu.ambientSky.shootingStar
+      : family === 'comet'
+        ? legacyTuning.menu.ambientSky.comet
+        : family === 'satellite'
+          ? legacyTuning.menu.ambientSky.satellite
+          : legacyTuning.menu.ambientSky.ufo;
+    const themeScale = family === 'shooting-star'
+      ? this.themeProfile.ambientSky.shootingIntervalScale
+      : family === 'comet'
+        ? this.themeProfile.ambientSky.cometIntervalScale
+        : family === 'satellite'
+          ? this.themeProfile.ambientSky.satelliteIntervalScale
+          : this.themeProfile.ambientSky.ufoIntervalScale;
+    return this.range(base.minIntervalMs, base.maxIntervalMs) * this.tuning.eventIntervalScale * themeScale;
+  }
+
+  private countMovingEvents(family: AmbientSkyMovingFamily): number {
+    return this.movingEvents.filter((event) => event.family === family).length;
+  }
+
+  private countSignatureEvents(): number {
+    return this.countMovingEvents('satellite') + this.countMovingEvents('ufo');
+  }
+
+  private destroyMovingEvents(): void {
+    for (const event of this.movingEvents) {
+      event.glow?.destroy();
+      event.body.destroy();
+    }
+    this.movingEvents.length = 0;
+  }
+
+  private sampleOpenSkyPoint(preferUpperBand: boolean): { x: number; y: number } {
+    const blocked = this.boardRect ?? {
+      left: this.width * 0.28,
+      top: this.height * 0.22,
+      right: this.width * 0.72,
+      bottom: this.height * 0.82
+    };
+
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const x = this.range(this.width * 0.04, this.width * 0.96);
+      const y = this.range(
+        preferUpperBand ? this.height * 0.06 : this.height * 0.12,
+        preferUpperBand ? this.height * 0.72 : this.height * 0.86
+      );
+      if (x < blocked.left || x > blocked.right || y < blocked.top || y > blocked.bottom) {
+        return { x, y };
+      }
+    }
+
+    return {
+      x: this.range(this.width * 0.08, this.width * 0.92),
+      y: this.range(this.height * 0.08, this.height * 0.84)
+    };
+  }
+
+  private rand(): number {
+    this.rngState = ((Math.imul(this.rngState, 1664525) + 1013904223) >>> 0) || 1;
+    return this.rngState / 0xffffffff;
+  }
+
+  private range(min: number, max: number): number {
+    if (min === max) {
+      return min;
+    }
+
+    return min + ((max - min) * this.rand());
+  }
+}
+
 export function resolveMenuPresentationModel(
   width: number,
   height: number,
@@ -1701,7 +2904,7 @@ export function resolveInstallChromeFrame(
 export class MenuScene extends Phaser.Scene {
   private titlePulseTween?: Phaser.Tweens.Tween;
   private titleDriftTween?: Phaser.Tweens.Tween;
-  private starDriftTween?: Phaser.Tweens.Tween;
+  private ambientSky?: AmbientSkyLayer;
   private presentationVariant: AmbientPresentationVariant = DEFAULT_PRESENTATION_VARIANT;
   private launchConfig: PresentationLaunchConfig = { ...DEFAULT_PRESENTATION_LAUNCH_CONFIG };
   private activeTheme: PresentationThemeFamily = PRESENTATION_THEME_FAMILIES[0];
@@ -1814,8 +3017,8 @@ export class MenuScene extends Phaser.Scene {
       this.titlePulseTween = undefined;
       this.titleDriftTween?.remove();
       this.titleDriftTween = undefined;
-      this.starDriftTween?.remove();
-      this.starDriftTween = undefined;
+      this.ambientSky?.destroy();
+      this.ambientSky = undefined;
       destroyEpisodePresentationShell();
       if (destroyEngine) {
         patternEngine?.destroy();
@@ -1896,7 +3099,7 @@ export class MenuScene extends Phaser.Scene {
       pendingCyclePlan = undefined;
       this.activeTheme = demoCyclePlan.theme;
       const sceneThemeProfile = resolveAmbientThemeProfile(demoCyclePlan.theme);
-      this.drawStarfield(width, height, sceneThemeProfile);
+      this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
       const publishVisualDiagnostics = (
         view?: DemoWalkerViewFrame,
@@ -1966,7 +3169,16 @@ export class MenuScene extends Phaser.Scene {
             bridgeRendered: trailRender.bridgeRendered,
             render: trailRender
           },
-          paletteReadability: getPaletteReadabilityReport(themeProfile.palette)
+          paletteReadability: getPaletteReadabilityReport(themeProfile.palette),
+          ...(this.ambientSky
+            ? {
+                ambient: this.ambientSky.getDiagnostics(
+                  Math.min(0, episodePresentationShell.boardAura.depth, episodePresentationShell.boardHalo.depth, episodePresentationShell.boardShade.depth),
+                  activeTitleContainer?.depth,
+                  installChrome.depth
+                )
+              }
+            : {})
         });
       };
       const createEpisodePresentationShell = (
@@ -2066,6 +3278,15 @@ export class MenuScene extends Phaser.Scene {
       };
       episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
       const layout = episodePresentationShell.layout;
+      const syncAmbientSkyReservedFrames = (): void => {
+        this.ambientSky?.setReservedFrames(
+          episodePresentationShell?.layout.boardBounds,
+          episodePresentationShell?.layout.tileSize,
+          activeTitleBandFrame,
+          activeInstallFrame
+        );
+      };
+      syncAmbientSkyReservedFrames();
       let installPromptPending = false;
       const installChrome = this.add.container(0, 0).setDepth(11);
       const renderInstallChrome = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
@@ -2193,6 +3414,7 @@ export class MenuScene extends Phaser.Scene {
 
         installChrome.add([shadow, chip, accent, label]);
         activeInstallBounds = toVisualSceneBounds(chip.getBounds());
+        syncAmbientSkyReservedFrames();
       };
       renderInstallChrome();
       removeInstallSurfaceListener = subscribeInstallSurface((state) => {
@@ -2340,6 +3562,7 @@ export class MenuScene extends Phaser.Scene {
           });
         }
       }
+      syncAmbientSkyReservedFrames();
 
       let lastCue: DemoWalkerCue = 'spawn';
       let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
@@ -2387,6 +3610,7 @@ export class MenuScene extends Phaser.Scene {
         destroyEpisodePresentationShell();
         this.activeTheme = demoCyclePlan.theme;
         episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
+        syncAmbientSkyReservedFrames();
         demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
         demoPresentation = resolveMenuDemoPresentation(
           patternFrame.episode,
@@ -2616,7 +3840,12 @@ export class MenuScene extends Phaser.Scene {
       }
       this.scale.on(Phaser.Scale.Events.RESIZE, handleResize);
       updateDemo = (_time: number, delta: number): void => {
-        if (sceneHidden || recoveryActivated || !patternEngine) {
+        if (sceneHidden) {
+          return;
+        }
+
+        this.ambientSky?.update(delta);
+        if (recoveryActivated || !patternEngine) {
           return;
         }
 
@@ -2650,92 +3879,27 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
-  private drawStarfield(width: number, height: number, themeProfile: AmbientThemeProfile): void {
+  private drawStarfield(
+    width: number,
+    height: number,
+    themeProfile: AmbientThemeProfile,
+    seed: number = legacyTuning.demo.seed,
+    variant: AmbientPresentationVariant = this.presentationVariant,
+    profile = this.launchConfig.profile,
+    reducedMotion = prefersReducedMotion()
+  ): void {
     const safeWidth = sanitizePositive(width, DEFAULT_VIEWPORT_WIDTH);
     const safeHeight = sanitizePositive(height, DEFAULT_VIEWPORT_HEIGHT);
-    const bg = this.add.graphics();
-    bg.fillGradientStyle(
-      themeProfile.background.topLeft,
-      themeProfile.background.topRight,
-      themeProfile.background.bottomLeft,
-      themeProfile.background.bottomRight,
-      1
-    );
-    bg.fillRect(0, 0, safeWidth, safeHeight);
-    bg.fillStyle(themeProfile.palette.background.nebulaCore, 0.18);
-    bg.fillCircle(safeWidth * 0.5, safeHeight * 0.46, Math.max(safeWidth, safeHeight) * 0.24);
-    bg.fillStyle(themeProfile.palette.background.nebula, 0.12);
-    bg.fillCircle(safeWidth * 0.5, safeHeight * 0.56, Math.max(safeWidth, safeHeight) * 0.34);
-    bg.fillStyle(themeProfile.palette.background.deepSpace, 0.14);
-    bg.fillRect(0, safeHeight * 0.78, safeWidth, safeHeight * 0.22);
-
-    const clouds = this.add.graphics();
-    clouds.setBlendMode(Phaser.BlendModes.SCREEN);
-    for (let i = 0; i < legacyTuning.menu.starfield.cloudCount; i += 1) {
-      const x = Phaser.Math.Between(safeWidth * 0.12, safeWidth * 0.88);
-      const y = Phaser.Math.Between(safeHeight * 0.16, safeHeight * 0.84);
-      const radius = Phaser.Math.Between(legacyTuning.menu.starfield.cloudRadiusMin, legacyTuning.menu.starfield.cloudRadiusMax);
-      clouds.fillStyle(
-        themeProfile.palette.background.cloud,
-        Phaser.Math.FloatBetween(legacyTuning.menu.starfield.cloudAlphaMin, legacyTuning.menu.starfield.cloudAlphaMax)
-          * themeProfile.background.cloudAlphaScale
-      );
-      clouds.fillCircle(x, y, radius);
-    }
-
-    const farStars = this.add.graphics();
-    for (let i = 0; i < Math.floor(legacyTuning.menu.starfield.starCount * 0.58); i += 1) {
-      const x = Phaser.Math.Between(0, safeWidth);
-      const y = Phaser.Math.Between(0, safeHeight);
-      const r = Phaser.Math.FloatBetween(
-        legacyTuning.menu.starfield.starRadiusMin * 0.8,
-        legacyTuning.menu.starfield.starRadiusMax * 0.72
-      );
-      farStars.fillStyle(
-        themeProfile.palette.background.star,
-        Phaser.Math.FloatBetween(
-          legacyTuning.menu.starfield.starAlphaMin * 0.7,
-          legacyTuning.menu.starfield.starAlphaMax * 0.52
-        ) * themeProfile.background.farStarAlphaScale
-      );
-      farStars.fillCircle(x, y, r);
-    }
-
-    const nearStars = this.add.graphics();
-    for (let i = 0; i < Math.ceil(legacyTuning.menu.starfield.starCount * 0.42); i += 1) {
-      const x = Phaser.Math.Between(0, safeWidth);
-      const y = Phaser.Math.Between(0, safeHeight);
-      const r = Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starRadiusMin, legacyTuning.menu.starfield.starRadiusMax);
-      nearStars.fillStyle(
-        themeProfile.palette.background.star,
-        Phaser.Math.FloatBetween(legacyTuning.menu.starfield.starAlphaMin, legacyTuning.menu.starfield.starAlphaMax)
-          * themeProfile.background.nearStarAlphaScale
-      );
-      nearStars.fillCircle(x, y, r);
-    }
-
-    try {
-      this.starDriftTween = this.tweens.add({
-        targets: nearStars,
-        y: legacyTuning.menu.starfield.starsDriftRangePx,
-        duration: legacyTuning.menu.starfield.starsDriftDurationMs,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
-    } catch (error) {
-      console.error('MenuScene optional star drift skipped.', error);
-    }
-
-    const vignette = this.add.graphics();
-    vignette.fillStyle(
-      themeProfile.palette.background.vignette,
-      legacyTuning.menu.starfield.vignetteAlpha * themeProfile.background.vignetteAlphaScale
-    );
-    vignette.fillRect(0, 0, safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
-    vignette.fillRect(0, safeHeight * (1 - legacyTuning.menu.starfield.vignetteBandRatio), safeWidth, safeHeight * legacyTuning.menu.starfield.vignetteBandRatio);
-    vignette.fillStyle(themeProfile.palette.background.vignette, 0.12);
-    vignette.fillCircle(safeWidth * 0.5, safeHeight * 0.5, Math.max(safeWidth, safeHeight) * 0.58);
+    this.ambientSky?.destroy();
+    this.ambientSky = new AmbientSkyLayer(this, {
+      width: safeWidth,
+      height: safeHeight,
+      seed,
+      themeProfile,
+      variant,
+      profile,
+      reducedMotion
+    });
   }
 
   private renderRecoveryShell(width: number, height: number, episode?: MazeEpisode): void {
@@ -2753,7 +3917,7 @@ export class MenuScene extends Phaser.Scene {
       viewportSafeInsets
     );
 
-    this.drawStarfield(safeWidth, safeHeight, themeProfile);
+    this.drawStarfield(safeWidth, safeHeight, themeProfile, legacyTuning.demo.seed, this.presentationVariant, this.launchConfig.profile, true);
     this.add.text(safeWidth / 2, Math.max(56, safeHeight * 0.18), legacyTuning.menu.title.text, {
       color: themeProfile.title.titleColor,
       fontFamily: themeProfile.title.fontFamily,
