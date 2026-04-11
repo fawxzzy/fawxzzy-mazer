@@ -276,9 +276,12 @@ interface ResizeRecoveryDecision {
 }
 
 type AmbientSkyMovingFamily = 'shooting-star' | 'comet' | 'satellite' | 'ufo';
+type AmbientSkyBackdropMotif = 'noir-band' | 'ember-glow' | 'aurora-curtain' | 'vellum-wash' | 'monolith-signal';
+type AmbientSkyEventTier = 'occasional' | 'hero' | 'signature';
 
 interface AmbientSkyThemeStyle {
   configuredFamilies: readonly string[];
+  backdropMotif: AmbientSkyBackdropMotif;
   hazeColor: number;
   hazeAccentColor: number;
   streakColor: number;
@@ -294,6 +297,12 @@ interface AmbientSkyThemeStyle {
   cometIntervalScale: number;
   satelliteIntervalScale: number;
   ufoIntervalScale: number;
+  heroCooldownScale: number;
+  signatureCooldownScale: number;
+  motifAlphaScale: number;
+  veilWidthScale: number;
+  veilHeightScale: number;
+  veilRotationRange: number;
   allowSatellite: boolean;
   allowUfo: boolean;
 }
@@ -323,6 +332,7 @@ interface AmbientSkyDiagnostics {
   configuredFamilies: readonly string[];
   activeCounts: {
     twinkles: number;
+    veils: number;
     driftMotes: number;
     moving: number;
     shootingStars: number;
@@ -520,7 +530,8 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: 0.004
     },
     ambientSky: {
-      configuredFamilies: ['micro-twinkle', 'cold-streak', 'satellite-blink', 'ufo-blink', 'distant-galaxy'],
+      configuredFamilies: ['micro-twinkle', 'cold-streak', 'satellite-blink', 'ufo-blink', 'distant-galaxy-band'],
+      backdropMotif: 'noir-band',
       hazeColor: 0x10213c,
       hazeAccentColor: 0x365f8a,
       streakColor: 0xf1f6ff,
@@ -536,6 +547,12 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       cometIntervalScale: 1.22,
       satelliteIntervalScale: 0.96,
       ufoIntervalScale: 1.24,
+      heroCooldownScale: 1.08,
+      signatureCooldownScale: 1.18,
+      motifAlphaScale: 0.72,
+      veilWidthScale: 1.14,
+      veilHeightScale: 0.74,
+      veilRotationRange: 10,
       allowSatellite: true,
       allowUfo: true
     },
@@ -654,7 +671,8 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: 0.01
     },
     ambientSky: {
-      configuredFamilies: ['micro-twinkle', 'warm-meteor', 'comet', 'ember-dust'],
+      configuredFamilies: ['micro-twinkle', 'warm-meteor', 'comet', 'ember-dust', 'deep-cinder-glow'],
+      backdropMotif: 'ember-glow',
       hazeColor: 0x5b2b18,
       hazeAccentColor: 0xc06e37,
       streakColor: 0xffd4a1,
@@ -670,6 +688,12 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       cometIntervalScale: 0.88,
       satelliteIntervalScale: 1.28,
       ufoIntervalScale: 1.42,
+      heroCooldownScale: 0.92,
+      signatureCooldownScale: 1.08,
+      motifAlphaScale: 0.9,
+      veilWidthScale: 0.96,
+      veilHeightScale: 0.84,
+      veilRotationRange: 13,
       allowSatellite: false,
       allowUfo: false
     },
@@ -788,7 +812,8 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: 0.006
     },
     ambientSky: {
-      configuredFamilies: ['micro-twinkle', 'cool-streak', 'comet', 'aurora-veil', 'ufo-flyby'],
+      configuredFamilies: ['micro-twinkle', 'cool-streak', 'comet', 'aurora-curtain', 'ion-veil', 'ufo-flyby'],
+      backdropMotif: 'aurora-curtain',
       hazeColor: 0x214a82,
       hazeAccentColor: 0x7f59df,
       streakColor: 0xd9fbff,
@@ -804,6 +829,12 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       cometIntervalScale: 0.82,
       satelliteIntervalScale: 1,
       ufoIntervalScale: 0.92,
+      heroCooldownScale: 0.88,
+      signatureCooldownScale: 0.96,
+      motifAlphaScale: 1.04,
+      veilWidthScale: 0.74,
+      veilHeightScale: 1.46,
+      veilRotationRange: 8,
       allowSatellite: true,
       allowUfo: true
     },
@@ -922,7 +953,8 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: -0.004
     },
     ambientSky: {
-      configuredFamilies: ['paper-sky-dust', 'pinprick-stars', 'quiet-streak', 'soft-galaxy'],
+      configuredFamilies: ['paper-sky-dust', 'pinprick-stars', 'quiet-streak', 'vellum-sky-wash', 'soft-galaxy'],
+      backdropMotif: 'vellum-wash',
       hazeColor: 0xd8d0be,
       hazeAccentColor: 0xb1c5d7,
       streakColor: 0x7a91b0,
@@ -938,6 +970,12 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       cometIntervalScale: 1.42,
       satelliteIntervalScale: 1.64,
       ufoIntervalScale: 1.8,
+      heroCooldownScale: 1.18,
+      signatureCooldownScale: 1.3,
+      motifAlphaScale: 0.58,
+      veilWidthScale: 1.22,
+      veilHeightScale: 0.72,
+      veilRotationRange: 6,
       allowSatellite: false,
       allowUfo: false
     },
@@ -1056,7 +1094,8 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: -0.002
     },
     ambientSky: {
-      configuredFamilies: ['technical-streak', 'grayscale-stars', 'signal-blink', 'satellite-drift'],
+      configuredFamilies: ['technical-streak', 'grayscale-stars', 'signal-blink', 'signal-band', 'satellite-drift'],
+      backdropMotif: 'monolith-signal',
       hazeColor: 0x1f232a,
       hazeAccentColor: 0x58626f,
       streakColor: 0xf1f3f6,
@@ -1072,6 +1111,12 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       cometIntervalScale: 1.18,
       satelliteIntervalScale: 0.9,
       ufoIntervalScale: 1.8,
+      heroCooldownScale: 1.04,
+      signatureCooldownScale: 1.18,
+      motifAlphaScale: 0.66,
+      veilWidthScale: 1.34,
+      veilHeightScale: 0.42,
+      veilRotationRange: 4,
       allowSatellite: true,
       allowUfo: false
     },
@@ -1155,6 +1200,10 @@ interface AmbientSkyVeilState {
   phase: number;
   baseAlpha: number;
   amplitude: number;
+  scaleAmplitudeX: number;
+  scaleAmplitudeY: number;
+  rotationRange: number;
+  rotationPhase: number;
 }
 
 interface AmbientSkyMovingEvent {
@@ -1282,11 +1331,11 @@ export const resolveAmbientSkyProfileTuning = (
   if (reducedMotion) {
     tuning = {
       ...tuning,
-      densityScale: tuning.densityScale * 0.76,
+      densityScale: tuning.densityScale * 0.86,
       motionScale: tuning.motionScale * 0.42,
-      eventIntervalScale: tuning.eventIntervalScale * 1.5,
-      twinkleCount: Math.max(6, Math.round(tuning.twinkleCount * 0.78)),
-      driftMoteCount: Math.max(1, Math.round(tuning.driftMoteCount * 0.6)),
+      eventIntervalScale: tuning.eventIntervalScale * 1.58,
+      twinkleCount: Math.max(6, Math.round(tuning.twinkleCount * 0.9)),
+      driftMoteCount: Math.max(1, Math.round(tuning.driftMoteCount * 0.72)),
       movingEventCap: Math.min(tuning.movingEventCap, 1),
       signatureEventCap: 0,
       clearZoneScale: tuning.clearZoneScale * 1.08
@@ -2004,6 +2053,8 @@ class AmbientSkyLayer {
   private nextCometAt = 0;
   private nextSatelliteAt = 0;
   private nextUfoAt = 0;
+  private nextHeroWindowAt = 0;
+  private nextSignatureWindowAt = 0;
   private boardRect?: AmbientSkyRect;
   private titleRect?: AmbientSkyRect;
   private installRect?: AmbientSkyRect;
@@ -2121,6 +2172,7 @@ class AmbientSkyLayer {
       configuredFamilies: this.themeProfile.ambientSky.configuredFamilies,
       activeCounts: {
         twinkles: this.twinkles.length,
+        veils: this.veils.length,
         driftMotes: this.driftMotes.length,
         moving: this.movingEvents.length,
         ...movingCounts
@@ -2221,7 +2273,7 @@ class AmbientSkyLayer {
 
   private drawBackdrop(): void {
     const staticStarScale = this.themeProfile.ambientSky.staticStarDensityScale * this.tuning.densityScale;
-    const cloudCount = Math.max(4, Math.round(legacyTuning.menu.starfield.cloudCount * staticStarScale));
+    const cloudCount = Math.max(3, Math.round(legacyTuning.menu.starfield.cloudCount * staticStarScale * 0.74));
     const farStarCount = Math.max(96, Math.floor(legacyTuning.menu.starfield.starCount * 0.5 * staticStarScale));
     const nearStarCount = Math.max(72, Math.ceil(legacyTuning.menu.starfield.starCount * 0.24 * staticStarScale));
 
@@ -2234,10 +2286,10 @@ class AmbientSkyLayer {
       1
     );
     this.base.fillRect(0, 0, this.width, this.height);
-    this.base.fillStyle(this.themeProfile.palette.background.nebulaCore, 0.16);
-    this.base.fillCircle(this.width * 0.5, this.height * 0.46, Math.max(this.width, this.height) * 0.24);
-    this.base.fillStyle(this.themeProfile.palette.background.nebula, 0.11);
-    this.base.fillCircle(this.width * 0.5, this.height * 0.56, Math.max(this.width, this.height) * 0.34);
+    this.base.fillStyle(this.themeProfile.palette.background.nebulaCore, 0.11);
+    this.base.fillCircle(this.width * 0.46, this.height * 0.42, Math.max(this.width, this.height) * 0.21);
+    this.base.fillStyle(this.themeProfile.palette.background.nebula, 0.08);
+    this.base.fillCircle(this.width * 0.58, this.height * 0.62, Math.max(this.width, this.height) * 0.29);
     this.base.fillStyle(this.themeProfile.palette.background.deepSpace, 0.14);
     this.base.fillRect(0, this.height * 0.78, this.width, this.height * 0.22);
 
@@ -2288,6 +2340,8 @@ class AmbientSkyLayer {
       );
     }
 
+    this.drawBackdropMotif(staticStarScale);
+
     this.base.fillStyle(
       this.themeProfile.palette.background.vignette,
       legacyTuning.menu.starfield.vignetteAlpha * this.themeProfile.background.vignetteAlphaScale
@@ -2299,8 +2353,98 @@ class AmbientSkyLayer {
       this.width,
       this.height * legacyTuning.menu.starfield.vignetteBandRatio
     );
-    this.base.fillStyle(this.themeProfile.palette.background.vignette, 0.1);
+    this.base.fillStyle(this.themeProfile.palette.background.vignette, 0.08);
     this.base.fillCircle(this.width * 0.5, this.height * 0.5, Math.max(this.width, this.height) * 0.58);
+  }
+
+  private drawBackdropMotif(staticStarScale: number): void {
+    const motifAlpha = this.themeProfile.ambientSky.motifAlphaScale * Math.max(0.56, this.tuning.densityScale * 0.92);
+    const clusterCount = Math.max(6, Math.round(12 * staticStarScale));
+    const lineHeight = Math.max(1, Math.round(this.height * 0.0024));
+
+    switch (this.themeProfile.ambientSky.backdropMotif) {
+      case 'noir-band':
+        this.drawBackdropBand(this.clouds, this.width * 0.16, this.height * 0.42, this.width * 0.34, this.height * 0.18, this.themeProfile.ambientSky.hazeColor, 0.052 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.84, this.height * 0.68, this.width * 0.28, this.height * 0.16, this.themeProfile.ambientSky.hazeAccentColor, 0.034 * motifAlpha);
+        this.base.fillStyle(this.themeProfile.ambientSky.streakColor, 0.016 * motifAlpha);
+        this.base.fillRect(0, Math.round(this.height * 0.2), this.width, lineHeight);
+        this.drawStarCluster(this.farStars, this.width * 0.14, this.height * 0.18, this.width * 0.12, this.height * 0.08, clusterCount, this.themeProfile.palette.background.star, 0.08, 0.22, 0.45, 1.1);
+        this.drawStarCluster(this.nearStars, this.width * 0.88, this.height * 0.24, this.width * 0.1, this.height * 0.08, Math.max(5, Math.round(clusterCount * 0.78)), this.themeProfile.palette.background.star, 0.1, 0.26, 0.5, 1.2);
+        break;
+      case 'ember-glow':
+        this.drawBackdropBand(this.clouds, this.width * 0.18, this.height * 0.74, this.width * 0.3, this.height * 0.28, this.themeProfile.ambientSky.hazeColor, 0.062 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.82, this.height * 0.6, this.width * 0.26, this.height * 0.22, this.themeProfile.ambientSky.hazeAccentColor, 0.048 * motifAlpha);
+        this.base.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, 0.02 * motifAlpha);
+        this.base.fillRect(0, Math.round(this.height * 0.74), this.width, Math.max(8, Math.round(this.height * 0.08)));
+        this.drawStarCluster(this.nearStars, this.width * 0.24, this.height * 0.16, this.width * 0.1, this.height * 0.07, Math.max(5, Math.round(clusterCount * 0.72)), this.themeProfile.ambientSky.cometColor, 0.08, 0.22, 0.45, 1);
+        break;
+      case 'aurora-curtain':
+        this.drawBackdropBand(this.clouds, this.width * 0.14, this.height * 0.56, this.width * 0.3, this.height * 0.84, this.themeProfile.ambientSky.hazeColor, 0.066 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.84, this.height * 0.54, this.width * 0.32, this.height * 0.78, this.themeProfile.ambientSky.hazeAccentColor, 0.056 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.5, this.height * 0.34, this.width * 0.42, this.height * 0.18, this.themeProfile.ambientSky.cometColor, 0.032 * motifAlpha);
+        this.base.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, 0.022 * motifAlpha);
+        this.base.fillRect(0, Math.round(this.height * 0.38), this.width, Math.max(10, Math.round(this.height * 0.16)));
+        this.drawStarCluster(this.nearStars, this.width * 0.18, this.height * 0.18, this.width * 0.12, this.height * 0.09, clusterCount, this.themeProfile.palette.background.star, 0.1, 0.28, 0.48, 1.2);
+        this.drawStarCluster(this.nearStars, this.width * 0.84, this.height * 0.2, this.width * 0.1, this.height * 0.08, Math.max(5, Math.round(clusterCount * 0.84)), this.themeProfile.palette.background.star, 0.1, 0.3, 0.48, 1.26);
+        break;
+      case 'vellum-wash':
+        this.drawBackdropBand(this.clouds, this.width * 0.22, this.height * 0.4, this.width * 0.42, this.height * 0.18, this.themeProfile.ambientSky.hazeColor, 0.026 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.8, this.height * 0.62, this.width * 0.36, this.height * 0.14, this.themeProfile.ambientSky.hazeAccentColor, 0.022 * motifAlpha);
+        this.base.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, 0.014 * motifAlpha);
+        this.base.fillRect(0, Math.round(this.height * 0.42), this.width, Math.max(8, Math.round(this.height * 0.12)));
+        this.drawStarCluster(this.farStars, this.width * 0.16, this.height * 0.16, this.width * 0.1, this.height * 0.08, Math.max(5, Math.round(clusterCount * 0.6)), this.themeProfile.palette.background.star, 0.06, 0.16, 0.4, 0.9);
+        break;
+      case 'monolith-signal':
+        this.base.fillStyle(this.themeProfile.ambientSky.hazeColor, 0.04 * motifAlpha);
+        this.base.fillRect(0, Math.round(this.height * 0.18), this.width, Math.max(8, Math.round(this.height * 0.07)));
+        this.base.fillRect(0, Math.round(this.height * 0.76), this.width, Math.max(8, Math.round(this.height * 0.08)));
+        this.drawBackdropBand(this.clouds, this.width * 0.18, this.height * 0.66, this.width * 0.22, this.height * 0.2, this.themeProfile.ambientSky.hazeAccentColor, 0.026 * motifAlpha);
+        this.drawBackdropBand(this.clouds, this.width * 0.82, this.height * 0.38, this.width * 0.2, this.height * 0.16, this.themeProfile.ambientSky.hazeColor, 0.022 * motifAlpha);
+        this.base.fillStyle(this.themeProfile.ambientSky.streakColor, 0.018 * motifAlpha);
+        this.base.fillRect(Math.round(this.width * 0.12), Math.round(this.height * 0.5), Math.round(this.width * 0.76), lineHeight);
+        this.drawStarCluster(this.farStars, this.width * 0.12, this.height * 0.2, this.width * 0.08, this.height * 0.07, Math.max(4, Math.round(clusterCount * 0.56)), this.themeProfile.palette.background.star, 0.08, 0.18, 0.42, 0.96);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private drawBackdropBand(
+    graphics: Phaser.GameObjects.Graphics,
+    centerX: number,
+    centerY: number,
+    width: number,
+    height: number,
+    color: number,
+    alpha: number
+  ): void {
+    graphics.fillStyle(color, alpha);
+    graphics.fillEllipse(centerX, centerY, width, height);
+  }
+
+  private drawStarCluster(
+    graphics: Phaser.GameObjects.Graphics,
+    centerX: number,
+    centerY: number,
+    radiusX: number,
+    radiusY: number,
+    count: number,
+    color: number,
+    alphaMin: number,
+    alphaMax: number,
+    sizeMin: number,
+    sizeMax: number
+  ): void {
+    for (let index = 0; index < count; index += 1) {
+      const angle = this.range(0, Math.PI * 2);
+      const distance = Math.sqrt(this.rand());
+      graphics.fillStyle(color, this.range(alphaMin, alphaMax));
+      graphics.fillCircle(
+        centerX + (Math.cos(angle) * radiusX * distance),
+        centerY + (Math.sin(angle) * radiusY * distance),
+        this.range(sizeMin, sizeMax)
+      );
+    }
   }
 
   private createVeils(): void {
@@ -2310,25 +2454,20 @@ class AmbientSkyLayer {
     );
     for (let index = 0; index < veilCount; index += 1) {
       const graphics = this.scene.add.graphics().setDepth(AMBIENT_SKY_DEPTHS.haze).setBlendMode(Phaser.BlendModes.SCREEN);
-      const width = this.range(this.width * 0.18, this.width * 0.34);
-      const height = this.range(this.height * 0.08, this.height * 0.16);
+      const width = this.range(this.width * 0.18, this.width * 0.34) * this.themeProfile.ambientSky.veilWidthScale;
+      const height = this.range(this.height * 0.08, this.height * 0.16) * this.themeProfile.ambientSky.veilHeightScale;
       const alpha = this.range(
         legacyTuning.menu.ambientSky.hazeAlphaMin,
         legacyTuning.menu.ambientSky.hazeAlphaMax
-      ) * this.themeProfile.ambientSky.hazeAlphaScale;
-      graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha);
-      graphics.fillEllipse(0, 0, width, height);
-      graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, alpha * 0.72);
-      graphics.fillEllipse(width * 0.1, -Math.max(6, height * 0.08), width * 0.68, height * 0.56);
-      graphics.setPosition(
-        this.range(this.width * 0.16, this.width * 0.84),
-        this.range(this.height * 0.16, this.height * 0.74)
-      );
+      ) * this.themeProfile.ambientSky.hazeAlphaScale * this.themeProfile.ambientSky.motifAlphaScale;
+      this.drawVeilShape(graphics, width, height, alpha, index);
+      const anchor = this.resolveVeilAnchor(index);
+      graphics.setPosition(anchor.x, anchor.y);
       graphics.setAlpha(0.78);
       this.veils.push({
         graphics,
-        anchorX: graphics.x,
-        anchorY: graphics.y,
+        anchorX: anchor.x,
+        anchorY: anchor.y,
         rangeX: this.range(legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.45, legacyTuning.menu.ambientSky.hazeDriftRangePx),
         rangeY: this.range(legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.18, legacyTuning.menu.ambientSky.hazeDriftRangePx * 0.58),
         pulseMs: this.range(
@@ -2337,8 +2476,115 @@ class AmbientSkyLayer {
         ) / Math.max(0.25, this.tuning.motionScale),
         phase: this.range(0, Math.PI * 2),
         baseAlpha: graphics.alpha,
-        amplitude: 0.08
+        amplitude: 0.08,
+        scaleAmplitudeX: this.range(0.02, 0.07),
+        scaleAmplitudeY: this.range(0.02, 0.09),
+        rotationRange: (this.themeProfile.ambientSky.veilRotationRange * (Math.PI / 180)) * this.range(0.72, 1.08),
+        rotationPhase: this.range(0, Math.PI * 2)
       });
+    }
+  }
+
+  private drawVeilShape(
+    graphics: Phaser.GameObjects.Graphics,
+    width: number,
+    height: number,
+    alpha: number,
+    index: number
+  ): void {
+    const accentAlpha = alpha * 0.68;
+
+    switch (this.themeProfile.ambientSky.backdropMotif) {
+      case 'aurora-curtain':
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha);
+        graphics.fillEllipse(0, 0, width * 0.62, height);
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, accentAlpha);
+        graphics.fillEllipse(width * 0.08, -height * 0.12, width * 0.28, height * 0.84);
+        graphics.fillStyle(this.themeProfile.ambientSky.cometColor, alpha * 0.32);
+        graphics.fillEllipse(-width * 0.12, height * 0.06, width * 0.22, height * 0.72);
+        break;
+      case 'ember-glow':
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha);
+        graphics.fillEllipse(0, 0, width, height * 0.9);
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, accentAlpha);
+        graphics.fillEllipse(width * 0.14, -height * 0.08, width * 0.56, height * 0.46);
+        graphics.fillStyle(this.themeProfile.ambientSky.driftMoteColor, alpha * 0.26);
+        graphics.fillEllipse(-width * 0.18, height * 0.04, width * 0.28, height * 0.22);
+        break;
+      case 'vellum-wash':
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha * 0.92);
+        graphics.fillEllipse(0, 0, width, height * 0.78);
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, alpha * 0.34);
+        graphics.fillEllipse(width * 0.1, -height * 0.04, width * 0.7, height * 0.42);
+        break;
+      case 'monolith-signal':
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha * 0.9);
+        graphics.fillRect(-width * 0.5, -height * 0.12, width, height * 0.24);
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, accentAlpha);
+        graphics.fillRect(-width * 0.34, height * (index % 2 === 0 ? -0.02 : 0.08), width * 0.68, height * 0.1);
+        break;
+      case 'noir-band':
+      default:
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeColor, alpha);
+        graphics.fillEllipse(0, 0, width, height * 0.8);
+        graphics.fillStyle(this.themeProfile.ambientSky.hazeAccentColor, accentAlpha);
+        graphics.fillEllipse(width * 0.08, -Math.max(6, height * 0.08), width * 0.64, height * 0.5);
+        break;
+    }
+  }
+
+  private resolveVeilAnchor(index: number): { x: number; y: number } {
+    switch (this.themeProfile.ambientSky.backdropMotif) {
+      case 'aurora-curtain':
+        if (index % 3 === 0) {
+          return {
+            x: this.range(this.width * 0.12, this.width * 0.24),
+            y: this.range(this.height * 0.24, this.height * 0.78)
+          };
+        }
+        if (index % 3 === 1) {
+          return {
+            x: this.range(this.width * 0.76, this.width * 0.88),
+            y: this.range(this.height * 0.2, this.height * 0.76)
+          };
+        }
+        return {
+          x: this.range(this.width * 0.42, this.width * 0.58),
+          y: this.range(this.height * 0.16, this.height * 0.34)
+        };
+      case 'ember-glow':
+        return index % 2 === 0
+          ? {
+            x: this.range(this.width * 0.14, this.width * 0.34),
+            y: this.range(this.height * 0.6, this.height * 0.82)
+          }
+          : {
+            x: this.range(this.width * 0.68, this.width * 0.86),
+            y: this.range(this.height * 0.44, this.height * 0.76)
+          };
+      case 'vellum-wash':
+        return {
+          x: this.range(this.width * 0.18, this.width * 0.82),
+          y: this.range(this.height * 0.18, this.height * 0.82)
+        };
+      case 'monolith-signal':
+        return {
+          x: this.range(this.width * 0.22, this.width * 0.78),
+          y: index % 2 === 0
+            ? this.range(this.height * 0.2, this.height * 0.32)
+            : this.range(this.height * 0.68, this.height * 0.8)
+        };
+      case 'noir-band':
+      default:
+        return index % 2 === 0
+          ? {
+            x: this.range(this.width * 0.12, this.width * 0.32),
+            y: this.range(this.height * 0.24, this.height * 0.46)
+          }
+          : {
+            x: this.range(this.width * 0.68, this.width * 0.88),
+            y: this.range(this.height * 0.54, this.height * 0.78)
+          };
     }
   }
 
@@ -2409,6 +2655,11 @@ class AmbientSkyLayer {
         veil.anchorX + (Math.sin(phase) * veil.rangeX),
         veil.anchorY + (Math.cos(phase * 0.7) * veil.rangeY)
       );
+      veil.graphics.setScale(
+        1 + (Math.sin((phase * 0.7) + veil.rotationPhase) * veil.scaleAmplitudeX),
+        1 + (Math.cos((phase * 0.54) + veil.rotationPhase) * veil.scaleAmplitudeY)
+      );
+      veil.graphics.setRotation(Math.sin((phase * 0.42) + veil.rotationPhase) * veil.rotationRange);
       veil.graphics.setAlpha(veil.baseAlpha + (Math.sin(phase * 0.8) * veil.amplitude));
     }
   }
@@ -2478,36 +2729,53 @@ class AmbientSkyLayer {
     }
 
     if (this.timelineMs >= this.nextShootingAt) {
-      this.spawnMovingEvent('shooting-star');
-      this.nextShootingAt = this.timelineMs + this.resolveEventInterval('shooting-star');
+      const spawned = this.spawnMovingEvent('shooting-star');
+      this.nextShootingAt = this.timelineMs + (this.resolveEventInterval('shooting-star') * (spawned ? 1 : 0.42));
     }
-    if (this.timelineMs >= this.nextCometAt && this.movingEvents.length < this.tuning.movingEventCap) {
-      this.spawnMovingEvent('comet');
-      this.nextCometAt = this.timelineMs + this.resolveEventInterval('comet');
+    if (
+      this.timelineMs >= this.nextCometAt
+      && this.timelineMs >= this.nextHeroWindowAt
+      && this.movingEvents.length < this.tuning.movingEventCap
+    ) {
+      const spawned = this.spawnMovingEvent('comet');
+      this.nextCometAt = this.timelineMs + (this.resolveEventInterval('comet') * (spawned ? 1 : 0.48));
+      if (spawned) {
+        this.nextHeroWindowAt = this.timelineMs + this.resolveTierCooldown('hero');
+      }
     }
     if (
       this.themeProfile.ambientSky.allowSatellite
       && this.tuning.signatureEventCap > 0
       && this.timelineMs >= this.nextSatelliteAt
+      && this.timelineMs >= this.nextSignatureWindowAt
       && this.countSignatureEvents() < this.tuning.signatureEventCap
       && this.movingEvents.length < this.tuning.movingEventCap
     ) {
-      this.spawnMovingEvent('satellite');
-      this.nextSatelliteAt = this.timelineMs + this.resolveEventInterval('satellite');
+      const spawned = this.spawnMovingEvent('satellite');
+      this.nextSatelliteAt = this.timelineMs + (this.resolveEventInterval('satellite') * (spawned ? 1 : 0.56));
+      if (spawned) {
+        this.nextUfoAt = Math.max(this.nextUfoAt, this.timelineMs + (this.resolveTierCooldown('signature') * 0.82));
+        this.nextSignatureWindowAt = this.timelineMs + this.resolveTierCooldown('signature');
+      }
     }
     if (
       this.themeProfile.ambientSky.allowUfo
       && this.tuning.signatureEventCap > 0
       && this.timelineMs >= this.nextUfoAt
+      && this.timelineMs >= this.nextSignatureWindowAt
       && this.countSignatureEvents() < this.tuning.signatureEventCap
       && this.movingEvents.length < this.tuning.movingEventCap
     ) {
-      this.spawnMovingEvent('ufo');
-      this.nextUfoAt = this.timelineMs + this.resolveEventInterval('ufo');
+      const spawned = this.spawnMovingEvent('ufo');
+      this.nextUfoAt = this.timelineMs + (this.resolveEventInterval('ufo') * (spawned ? 1 : 0.56));
+      if (spawned) {
+        this.nextSatelliteAt = Math.max(this.nextSatelliteAt, this.timelineMs + (this.resolveTierCooldown('signature') * 0.82));
+        this.nextSignatureWindowAt = this.timelineMs + this.resolveTierCooldown('signature');
+      }
     }
   }
 
-  private spawnMovingEvent(family: AmbientSkyMovingFamily): void {
+  private spawnMovingEvent(family: AmbientSkyMovingFamily): boolean {
     const created = family === 'shooting-star'
       ? this.createStreakEvent(false)
       : family === 'comet'
@@ -2518,7 +2786,10 @@ class AmbientSkyLayer {
 
     if (created) {
       this.movingEvents.push(created);
+      return true;
     }
+
+    return false;
   }
 
   private createStreakEvent(comet: boolean): AmbientSkyMovingEvent | undefined {
@@ -2728,6 +2999,8 @@ class AmbientSkyLayer {
     this.nextCometAt = this.resolveEventInterval('comet') * 0.88;
     this.nextSatelliteAt = this.resolveEventInterval('satellite') * 0.9;
     this.nextUfoAt = this.resolveEventInterval('ufo') * 0.92;
+    this.nextHeroWindowAt = this.resolveTierCooldown('hero') * 0.72;
+    this.nextSignatureWindowAt = this.resolveTierCooldown('signature') * 0.88;
   }
 
   private resolveEventInterval(family: AmbientSkyMovingFamily): number {
@@ -2746,6 +3019,21 @@ class AmbientSkyLayer {
           ? this.themeProfile.ambientSky.satelliteIntervalScale
           : this.themeProfile.ambientSky.ufoIntervalScale;
     return this.range(base.minIntervalMs, base.maxIntervalMs) * this.tuning.eventIntervalScale * themeScale;
+  }
+
+  private resolveTierCooldown(tier: AmbientSkyEventTier): number {
+    if (tier === 'occasional') {
+      return 0;
+    }
+
+    if (tier === 'hero') {
+      const base = (legacyTuning.menu.ambientSky.comet.minIntervalMs + legacyTuning.menu.ambientSky.comet.maxIntervalMs) / 2;
+      return base * this.tuning.eventIntervalScale * this.themeProfile.ambientSky.heroCooldownScale;
+    }
+
+    const satelliteBase = (legacyTuning.menu.ambientSky.satellite.minIntervalMs + legacyTuning.menu.ambientSky.satellite.maxIntervalMs) / 2;
+    const ufoBase = (legacyTuning.menu.ambientSky.ufo.minIntervalMs + legacyTuning.menu.ambientSky.ufo.maxIntervalMs) / 2;
+    return Math.max(satelliteBase, ufoBase) * this.tuning.eventIntervalScale * this.themeProfile.ambientSky.signatureCooldownScale;
   }
 
   private countMovingEvents(family: AmbientSkyMovingFamily): number {

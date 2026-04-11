@@ -477,17 +477,28 @@ describe('demo-only build', () => {
     const monolith = resolveAmbientThemeProfile('monolith').ambientSky;
 
     expect(noir.configuredFamilies).toContain('satellite-blink');
+    expect(noir.configuredFamilies).toContain('distant-galaxy-band');
+    expect(noir.backdropMotif).toBe('noir-band');
     expect(noir.allowSatellite).toBe(true);
     expect(noir.allowUfo).toBe(true);
     expect(ember.configuredFamilies).toContain('ember-dust');
+    expect(ember.configuredFamilies).toContain('deep-cinder-glow');
+    expect(ember.backdropMotif).toBe('ember-glow');
     expect(ember.allowSatellite).toBe(false);
-    expect(aurora.configuredFamilies).toContain('aurora-veil');
+    expect(aurora.configuredFamilies).toContain('aurora-curtain');
+    expect(aurora.backdropMotif).toBe('aurora-curtain');
     expect(aurora.allowUfo).toBe(true);
+    expect(aurora.veilHeightScale).toBeGreaterThan(noir.veilHeightScale);
     expect(vellum.configuredFamilies).toContain('paper-sky-dust');
+    expect(vellum.configuredFamilies).toContain('vellum-sky-wash');
+    expect(vellum.backdropMotif).toBe('vellum-wash');
     expect(vellum.allowUfo).toBe(false);
-    expect(monolith.configuredFamilies).toContain('technical-streak');
+    expect(vellum.motifAlphaScale).toBeLessThan(aurora.motifAlphaScale);
+    expect(monolith.configuredFamilies).toContain('signal-band');
+    expect(monolith.backdropMotif).toBe('monolith-signal');
     expect(monolith.allowSatellite).toBe(true);
     expect(monolith.allowUfo).toBe(false);
+    expect(monolith.signatureCooldownScale).toBeGreaterThan(aurora.signatureCooldownScale);
   });
 
   test('ambient sky profile tuning favors tv while keeping obs/mobile restrained and reduced motion calmer', () => {
@@ -505,6 +516,8 @@ describe('demo-only build', () => {
     expect(reduced.motionScale).toBeLessThan(tv.motionScale);
     expect(reduced.eventIntervalScale).toBeGreaterThan(tv.eventIntervalScale);
     expect(reduced.signatureEventCap).toBe(0);
+    expect(reduced.twinkleCount).toBeGreaterThanOrEqual(6);
+    expect(reduced.driftMoteCount).toBeGreaterThanOrEqual(1);
   });
 
   test('BootScene falls back to title when presentation resolution throws', () => {
@@ -925,6 +938,9 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain('destroyEpisodePresentationShell();');
     expect(menuSceneSource).toContain('this.ambientSky?.destroy();');
     expect(menuSceneSource).toContain('this.ambientSky?.update(delta);');
+    expect(menuSceneSource).toContain('this.drawBackdropMotif(staticStarScale);');
+    expect(menuSceneSource).toContain("this.nextHeroWindowAt = this.resolveTierCooldown('hero')");
+    expect(menuSceneSource).toContain("this.nextSignatureWindowAt = this.resolveTierCooldown('signature')");
     expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);');
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
