@@ -33,6 +33,7 @@ interface BoardLayoutOptions {
   topReserve?: number;
   sidePadding?: number;
   bottomPadding?: number;
+  safeBounds?: Partial<Pick<BoardBounds, 'left' | 'top' | 'right' | 'bottom'>>;
 }
 
 interface BaseRenderOptions {
@@ -220,30 +221,57 @@ export const createBoardLayout = (
   const viewport = resolveSceneViewport(scene);
   const width = viewport.width;
   const height = viewport.height;
+  const requestedSafeBounds = normalizedOptions.safeBounds;
+  const safeLeft = Phaser.Math.Clamp(
+    sanitizePositive(requestedSafeBounds?.left, sidePadding, 0),
+    0,
+    width
+  );
+  const safeTop = Phaser.Math.Clamp(
+    sanitizePositive(requestedSafeBounds?.top, topReserve, 0),
+    0,
+    height
+  );
+  const safeRight = Phaser.Math.Clamp(
+    sanitizePositive(requestedSafeBounds?.right, Math.max(safeLeft + 1, width - sidePadding), 1),
+    Math.min(width, safeLeft + 1),
+    width
+  );
+  const safeBottom = Phaser.Math.Clamp(
+    sanitizePositive(requestedSafeBounds?.bottom, Math.max(safeTop + 1, height - bottomPadding), 1),
+    Math.min(height, safeTop + 1),
+    height
+  );
   const rasterWidth = sanitizePositive(episode?.raster?.width, 1, 1);
   const rasterHeight = sanitizePositive(episode?.raster?.height, 1, 1);
-  const availableWidth = Math.max(1, width - (sidePadding * 2));
-  const availableHeight = Math.max(1, height - topReserve - bottomPadding);
+  const availableWidth = Math.max(1, safeRight - safeLeft);
+  const availableHeight = Math.max(1, safeBottom - safeTop);
   const minimumBoardSize = Math.min(MIN_BOARD_SIZE, availableWidth, availableHeight);
   const boardSize = Math.max(minimumBoardSize, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
   const tileSize = Math.max(1, Math.floor(boardSize / Math.max(rasterWidth, rasterHeight)));
   const boardWidth = tileSize * rasterWidth;
   const boardHeight = tileSize * rasterHeight;
-  const maxBoardX = Math.max(0, width - sidePadding - boardWidth);
-  const minBoardX = Math.min(sidePadding, maxBoardX);
-  const maxBoardY = Math.max(0, height - bottomPadding - boardHeight);
-  const minBoardY = Math.min(topReserve, maxBoardY);
+  const fitsWithinSafeWidth = boardWidth <= availableWidth;
+  const fitsWithinSafeHeight = boardHeight <= availableHeight;
+  const maxBoardX = fitsWithinSafeWidth
+    ? Math.max(safeLeft, safeRight - boardWidth)
+    : Math.max(0, width - boardWidth);
+  const minBoardX = fitsWithinSafeWidth ? Math.min(safeLeft, maxBoardX) : 0;
+  const maxBoardY = fitsWithinSafeHeight
+    ? Math.max(safeTop, safeBottom - boardHeight)
+    : Math.max(0, height - boardHeight);
+  const minBoardY = fitsWithinSafeHeight ? Math.min(safeTop, maxBoardY) : 0;
   const boardX = Phaser.Math.Clamp(
-    (width / 2) - (boardWidth / 2),
+    (fitsWithinSafeWidth ? safeLeft + ((availableWidth - boardWidth) / 2) : (width - boardWidth) / 2),
     minBoardX,
     Math.max(minBoardX, maxBoardX)
   );
   const boardY = Phaser.Math.Clamp(
-    topReserve + ((availableHeight - boardHeight) / 2),
+    (fitsWithinSafeHeight ? safeTop + ((availableHeight - boardHeight) / 2) : (height - boardHeight) / 2),
     minBoardY,
     Math.max(minBoardY, maxBoardY)
   );
-  const safeBounds = createBounds(sidePadding, topReserve, availableWidth, availableHeight);
+  const safeBounds = createBounds(safeLeft, safeTop, availableWidth, availableHeight);
   const boardBounds = createBounds(boardX, boardY, boardWidth, boardHeight);
 
   return {

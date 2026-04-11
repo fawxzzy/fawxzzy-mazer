@@ -38,6 +38,7 @@ let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').res
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
 let resolveDemoTrailRenderBounds: typeof import('../../src/scenes/MenuScene').resolveDemoTrailRenderBounds;
+let resolveBoardCompositionFrame: typeof import('../../src/scenes/MenuScene').resolveBoardCompositionFrame;
 let resolveInstallChromeFrame: typeof import('../../src/scenes/MenuScene').resolveInstallChromeFrame;
 let resolveMenuSceneInstallSurfaceState: typeof import('../../src/scenes/MenuScene').resolveMenuSceneInstallSurfaceState;
 let resolveMenuSceneVisualCaptureConfig: typeof import('../../src/scenes/MenuScene').resolveMenuSceneVisualCaptureConfig;
@@ -83,6 +84,7 @@ beforeAll(async () => {
     resolveMenuDemoSequence,
     resolveMenuPresentationModel,
     resolveDemoTrailRenderBounds,
+    resolveBoardCompositionFrame,
     resolveInstallChromeFrame,
     resolveMenuSceneInstallSurfaceState,
     resolveMenuSceneVisualCaptureConfig,
@@ -344,17 +346,11 @@ describe('demo-only build', () => {
       bottom: 34,
       left: 0
     });
-    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
-      boardScale: presentationModel.layout.boardScale,
-      topReserve: presentationModel.layout.topReserve,
-      sidePadding: presentationModel.layout.sidePadding,
-      bottomPadding: presentationModel.layout.bottomPadding
-    });
     const installFrame = resolveInstallChromeFrame(
       presentationModel.viewport.width,
       presentationModel.viewport.height,
       presentationModel.layout,
-      layout,
+      undefined,
       168,
       30,
       {
@@ -366,8 +362,148 @@ describe('demo-only build', () => {
     );
 
     expect(installFrame.centerX).toBeCloseTo(presentationModel.viewport.width / 2, 1);
-    expect(installFrame.top).toBeGreaterThanOrEqual(layout.safeBounds.bottom);
+    expect(installFrame.top).toBeGreaterThan(presentationModel.viewport.height * 0.85);
     expect(installFrame.bottom).toBeLessThanOrEqual(presentationModel.viewport.height - 34);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('board composition frame keeps the title and CTA at a tight 5px shell buffer', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 9124,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1280, 720, 'title', 'full', true);
+    const titleBand = resolveTitleBandFrame(
+      presentationModel.viewport.width,
+      presentationModel.layout,
+      undefined
+    );
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      126,
+      25
+    );
+    const boardFrame = resolveBoardCompositionFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      titleBand,
+      installFrame
+    );
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: 1,
+      safeBounds: boardFrame
+    });
+
+    expect(boardFrame.top - titleBand.bottom).toBe(5);
+    expect(installFrame.top - boardFrame.bottom).toBe(5);
+    expect(layout.boardY - titleBand.bottom).toBeGreaterThanOrEqual(5);
+    expect(layout.boardY - titleBand.bottom).toBeLessThanOrEqual(12);
+    expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThanOrEqual(5);
+    expect(installFrame.top - layout.boardBounds.bottom).toBeLessThanOrEqual(12);
+    expect(layout.boardHeight).toBeGreaterThan(550);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('obs board composition frame tightens fit while keeping the board centered', () => {
+    const cycle = resolveMenuDemoCycle(4242, 3);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 4242,
+      size: cycle.size,
+      family: cycle.family,
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, cycle.difficulty, 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1920, 1080, 'ambient', 'minimal', false, 'obs');
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      126,
+      25
+    );
+    const boardFrame = resolveBoardCompositionFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      installFrame,
+      undefined,
+      'obs'
+    );
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: 1,
+      safeBounds: boardFrame
+    });
+
+    expect(Math.abs(layout.boardBounds.centerX - (presentationModel.viewport.width / 2))).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(layout.boardBounds.centerY - (presentationModel.viewport.height / 2))).toBeLessThanOrEqual(0.5);
+    expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThanOrEqual(5);
+    expect(layout.boardHeight).toBeGreaterThan(900);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('mobile board composition frame can advance to the next integer tile step without breaking chrome spacing', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 9124,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile');
+    const titleBand = resolveTitleBandFrame(
+      presentationModel.viewport.width,
+      presentationModel.layout,
+      undefined,
+      undefined,
+      'mobile'
+    );
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      96,
+      23
+    );
+    const boardFrame = resolveBoardCompositionFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      titleBand,
+      installFrame,
+      undefined,
+      'mobile'
+    );
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: 1,
+      safeBounds: boardFrame
+    });
+
+    expect(boardFrame.top - titleBand.bottom).toBe(6);
+    expect(installFrame.top - boardFrame.bottom).toBe(6);
+    expect(layout.tileSize).toBe(7);
+    expect(layout.boardWidth).toBe(350);
+    expect(layout.boardHeight).toBe(350);
+    expect(layout.boardBounds.left).toBeGreaterThanOrEqual(boardFrame.left);
+    expect(layout.boardBounds.right).toBeLessThanOrEqual(boardFrame.right);
+    expect(layout.boardBounds.top).toBeGreaterThanOrEqual(boardFrame.top);
+    expect(layout.boardBounds.bottom).toBeLessThanOrEqual(boardFrame.bottom);
 
     disposeMazeEpisode(episode);
   });

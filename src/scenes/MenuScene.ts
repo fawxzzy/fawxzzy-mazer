@@ -42,7 +42,7 @@ import {
   type PatternFrame,
   resolveCuratedFamilyRotation
 } from '../domain/maze';
-import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
+import { legacyTuning } from '../config/tuning';
 import {
   createBoardLayout,
   BoardRenderer,
@@ -1370,6 +1370,50 @@ const sanitizeViewportSafeInsets = (
   left: sanitizeInset(safeInsets?.left)
 });
 
+const resolveBoardEdgeBufferPx = (
+  sceneLayout: SceneLayoutProfile,
+  profile?: PresentationDeploymentProfile
+): number => (
+  profile === 'mobile' && (sceneLayout.isTiny || sceneLayout.isNarrow)
+    ? MOBILE_BOARD_EDGE_BUFFER_PX
+    : TARGET_BOARD_EDGE_BUFFER_PX
+);
+
+const resolveTitleBandMetrics = (
+  sceneLayout: SceneLayoutProfile,
+  profile?: PresentationDeploymentProfile
+): TitleBandMetrics => {
+  const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
+  return {
+    bandInset: compact ? COMPACT_TITLE_BAND_INSET_PX : DEFAULT_TITLE_BAND_INSET_PX,
+    bandHeight: (compact ? COMPACT_TITLE_BAND_HEIGHT_PX : DEFAULT_TITLE_BAND_HEIGHT_PX) + (sceneLayout.isPortrait ? 2 : 0),
+    minHeight: compact ? 48 : 52,
+    boardGap: resolveBoardEdgeBufferPx(sceneLayout, profile)
+  };
+};
+
+const resolveInstallEdgeInsetPx = (sceneLayout: SceneLayoutProfile): number => (
+  sceneLayout.isTiny || sceneLayout.isNarrow
+    ? COMPACT_INSTALL_EDGE_INSET_PX
+    : DEFAULT_INSTALL_EDGE_INSET_PX
+);
+
+const createSceneBounds = (
+  left: number,
+  top: number,
+  right: number,
+  bottom: number
+): BoardBounds => ({
+  left,
+  top,
+  right,
+  bottom,
+  width: right - left,
+  height: bottom - top,
+  centerX: left + ((right - left) / 2),
+  centerY: top + ((bottom - top) / 2)
+});
+
 export const resolveViewportSafeInsets = (
   source?: Pick<CSSStyleDeclaration, 'getPropertyValue'> | null
 ): ViewportSafeInsets => {
@@ -1858,6 +1902,22 @@ export interface InstallChromeFrame {
   height: number;
   centerX: number;
   centerY: number;
+}
+
+const TARGET_BOARD_EDGE_BUFFER_PX = 5;
+const MOBILE_BOARD_EDGE_BUFFER_PX = 6;
+const DEFAULT_TITLE_BAND_INSET_PX = 0;
+const COMPACT_TITLE_BAND_INSET_PX = 0;
+const DEFAULT_TITLE_BAND_HEIGHT_PX = 64;
+const COMPACT_TITLE_BAND_HEIGHT_PX = 60;
+const DEFAULT_INSTALL_EDGE_INSET_PX = 14;
+const COMPACT_INSTALL_EDGE_INSET_PX = 12;
+
+interface TitleBandMetrics {
+  bandInset: number;
+  bandHeight: number;
+  minHeight: number;
+  boardGap: number;
 }
 
 export const MENU_SCENE_VISUAL_CAPTURE_KEY = '__MAZER_VISUAL_CAPTURE__' as const;
@@ -3124,12 +3184,14 @@ export function resolveMenuPresentationModel(
 export function resolveTitleBandFrame(
   viewportWidth: number,
   sceneLayout: SceneLayoutProfile,
-  boardLayout: BoardLayout,
-  safeInsets?: Partial<ViewportSafeInsets> | null
+  boardLayout?: BoardLayout | null,
+  safeInsets?: Partial<ViewportSafeInsets> | null,
+  profile?: PresentationDeploymentProfile
 ): TitleBandFrame {
   const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
   const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
-  const bandInset = compact ? 14 : 18;
+  const metrics = resolveTitleBandMetrics(sceneLayout, profile);
+  const bandInset = metrics.bandInset;
   const reservedRight = 0;
   const left = Math.max(viewportSafeInsets.left + bandInset, sceneLayout.sidePadding + bandInset);
   const right = Math.max(
@@ -3137,15 +3199,21 @@ export function resolveTitleBandFrame(
     viewportWidth - Math.max(viewportSafeInsets.right + bandInset, sceneLayout.sidePadding + bandInset)
   );
   const top = Math.max(viewportSafeInsets.top + bandInset, bandInset);
-  const minBandHeight = compact ? 40 : 48;
-  const bandGap = Math.max(compact ? 12 : 18, Math.round(boardLayout.tileSize * (compact ? 1.08 : 1.35)));
-  const bottom = Math.max(
-    top + minBandHeight,
-    Math.min(
-      boardLayout.safeBounds.top - bandInset,
-      boardLayout.boardY - bandGap
+  const preferredBottom = top + metrics.bandHeight;
+  const boardGap = boardLayout
+    ? Math.max(
+      metrics.boardGap,
+      Math.round(boardLayout.tileSize * (compact ? 0.5 : 0.65))
     )
-  );
+    : metrics.boardGap;
+  const maxBottom = boardLayout
+    ? Math.min(
+      preferredBottom,
+      boardLayout.safeBounds.top - boardGap,
+      boardLayout.boardY - boardGap
+    )
+    : preferredBottom;
+  const bottom = Math.max(top + metrics.minHeight, maxBottom);
 
   return {
     left,
@@ -3164,29 +3232,24 @@ export function resolveInstallChromeFrame(
   viewportWidth: number,
   viewportHeight: number,
   sceneLayout: SceneLayoutProfile,
-  boardLayout: BoardLayout,
+  boardLayout: BoardLayout | null | undefined,
   chipWidth: number,
   chipHeight: number,
   safeInsets?: Partial<ViewportSafeInsets> | null
 ): InstallChromeFrame {
+  void boardLayout;
   const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
   const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
   const safeWidth = sanitizePositive(viewportWidth, DEFAULT_VIEWPORT_WIDTH, 1);
   const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
   const horizontalInset = Math.max(viewportSafeInsets.left, viewportSafeInsets.right) + (compact ? 10 : 12);
-  const laneTop = boardLayout.safeBounds.bottom + (compact ? 6 : 8);
-  const laneBottom = safeHeight - Math.max(viewportSafeInsets.bottom + (compact ? 12 : 14), 12);
-  const minCenterY = laneTop + (chipHeight / 2);
-  const maxCenterY = laneBottom - (chipHeight / 2);
+  const bottomInset = Math.max(viewportSafeInsets.bottom + resolveInstallEdgeInsetPx(sceneLayout), 12);
   const centerX = Phaser.Math.Clamp(
     safeWidth / 2,
     horizontalInset + (chipWidth / 2),
     safeWidth - horizontalInset - (chipWidth / 2)
   );
-  const centeredLaneY = laneTop + ((laneBottom - laneTop) / 2);
-  const centerY = maxCenterY < minCenterY
-    ? maxCenterY
-    : Phaser.Math.Clamp(centeredLaneY, minCenterY, maxCenterY);
+  const centerY = Math.max(chipHeight / 2, safeHeight - bottomInset - (chipHeight / 2));
   const left = Math.round(centerX - (chipWidth / 2));
   const top = Math.round(centerY - (chipHeight / 2));
 
@@ -3200,6 +3263,47 @@ export function resolveInstallChromeFrame(
     centerX,
     centerY
   };
+}
+
+export function resolveBoardCompositionFrame(
+  viewportWidth: number,
+  viewportHeight: number,
+  sceneLayout: SceneLayoutProfile,
+  titleFrame?: TitleBandFrame,
+  installFrame?: InstallChromeFrame,
+  safeInsets?: Partial<ViewportSafeInsets> | null,
+  profile?: PresentationDeploymentProfile
+): BoardBounds {
+  const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
+  const safeWidth = sanitizePositive(viewportWidth, DEFAULT_VIEWPORT_WIDTH, 1);
+  const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
+  const boardBuffer = resolveBoardEdgeBufferPx(sceneLayout, profile);
+  const left = Math.max(viewportSafeInsets.left + boardBuffer, boardBuffer);
+  const right = Math.max(
+    left + 24,
+    safeWidth - Math.max(viewportSafeInsets.right + boardBuffer, boardBuffer)
+  );
+  let top = titleFrame
+    ? titleFrame.bottom + boardBuffer
+    : Math.max(viewportSafeInsets.top + boardBuffer, boardBuffer);
+  let bottom = installFrame
+    ? installFrame.top - boardBuffer
+    : safeHeight - Math.max(viewportSafeInsets.bottom + boardBuffer, boardBuffer);
+
+  if (profile === 'obs' && !titleFrame) {
+    const symmetricMargin = Math.max(top, safeHeight - bottom);
+    top = symmetricMargin;
+    bottom = safeHeight - symmetricMargin;
+  }
+
+  if (bottom <= top + 24) {
+    const fallbackTop = Math.max(viewportSafeInsets.top + boardBuffer, boardBuffer);
+    const fallbackBottom = safeHeight - Math.max(viewportSafeInsets.bottom + boardBuffer, boardBuffer);
+    top = Math.min(top, fallbackBottom - 24);
+    bottom = Math.max(bottom, fallbackTop + 24);
+  }
+
+  return createSceneBounds(left, top, right, bottom);
 }
 
 export class MenuScene extends Phaser.Scene {
@@ -3402,6 +3506,8 @@ export class MenuScene extends Phaser.Scene {
       const sceneThemeProfile = resolveAmbientThemeProfile(demoCyclePlan.theme);
       this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
+      let installPromptPending = false;
+      const compactInstallChrome = sceneLayout.isTiny || sceneLayout.isNarrow;
       const publishVisualDiagnostics = (
         view?: DemoWalkerViewFrame,
         renderedTrail?: { start: number; limit: number }
@@ -3487,17 +3593,85 @@ export class MenuScene extends Phaser.Scene {
             : {})
         });
       };
+      const resolveInstallChromeLabel = (state: InstallSurfaceState): string => (
+        state.mode === 'manual'
+          ? (state.instruction ?? 'Add to Home Screen')
+          : installPromptPending
+            ? (compactInstallChrome ? 'Install...' : 'Install Mazer...')
+            : (compactInstallChrome ? 'Install' : 'Install Mazer')
+      );
+      const createInstallChromeLabelStyle = (
+        themeProfile: AmbientThemeProfile,
+        state: InstallSurfaceState
+      ) => ({
+        color: state.mode === 'available'
+          ? (installPromptPending ? themeProfile.title.pendingColor : themeProfile.title.installColor)
+          : themeProfile.title.supportColor,
+        fontFamily: themeProfile.title.supportFontFamily,
+        fontSize: `${compactInstallChrome ? 9 : 10}px`,
+        fontStyle: state.mode === 'available' ? 'bold' : 'normal',
+        wordWrap: state.mode === 'manual'
+          ? {
+            width: Math.max(152, Math.min(264, width * (compactInstallChrome ? 0.56 : 0.4))),
+            useAdvancedWrap: true
+          }
+          : undefined
+      });
+      const measureInstallChromeMetrics = (
+        themeProfile: AmbientThemeProfile,
+        state: InstallSurfaceState = activeInstallState
+      ): { compactInstall: boolean; labelText: string; chipWidth: number; chipHeight: number } | undefined => {
+        if (state.mode === 'hidden') {
+          return undefined;
+        }
+
+        const labelText = resolveInstallChromeLabel(state);
+        const label = this.add.text(-4096, -4096, labelText, createInstallChromeLabelStyle(themeProfile, state))
+          .setOrigin(0.5)
+          .setLetterSpacing(compactInstallChrome ? 1 : 2)
+          .setVisible(false)
+          .setAlpha(0);
+        const chipWidth = Phaser.Math.Clamp(
+          Math.ceil(label.width + (compactInstallChrome ? 22 : 28)),
+          state.mode === 'manual' ? 164 : (compactInstallChrome ? 96 : 126),
+          Math.max(
+            state.mode === 'manual' ? 164 : (compactInstallChrome ? 96 : 126),
+            Math.round(width * (state.mode === 'manual' ? (compactInstallChrome ? 0.66 : 0.46) : compactInstallChrome ? 0.36 : 0.24))
+          )
+        );
+        const chipHeight = Math.max(compactInstallChrome ? 23 : 25, Math.ceil(label.height + (compactInstallChrome ? 12 : 14)));
+        label.destroy();
+        return {
+          compactInstall: compactInstallChrome,
+          labelText,
+          chipWidth,
+          chipHeight
+        };
+      };
       const createEpisodePresentationShell = (
         episode: MazeEpisode,
         themeId: PresentationThemeFamily
       ): EpisodePresentationShell => {
         const themeProfile = resolveAmbientThemeProfile(themeId);
+        const titleFrame = titleVisible
+          ? resolveTitleBandFrame(width, sceneLayout, undefined, viewportSafeInsets, deploymentProfileId)
+          : undefined;
+        const installMetrics = measureInstallChromeMetrics(sceneThemeProfile, activeInstallState);
+        const installFrame = installMetrics
+          ? resolveInstallChromeFrame(width, height, sceneLayout, undefined, installMetrics.chipWidth, installMetrics.chipHeight, viewportSafeInsets)
+          : undefined;
+        const boardCompositionFrame = resolveBoardCompositionFrame(
+          width,
+          height,
+          sceneLayout,
+          titleFrame,
+          installFrame,
+          viewportSafeInsets,
+          deploymentProfileId
+        );
         const layout = createBoardLayout(this, episode, {
-          boardScale: sceneLayout.boardScale
-            + (resolveBoardScaleFromCamScale(legacyTuning.camera.camScaleDefault) - legacyTuning.camera.normalizedBaseline),
-          topReserve: sceneLayout.topReserve,
-          sidePadding: sceneLayout.sidePadding,
-          bottomPadding: sceneLayout.bottomPadding
+          boardScale: 1,
+          safeBounds: boardCompositionFrame
         });
         const boardCenterX = layout.boardX + (layout.boardWidth / 2);
         const boardCenterY = layout.boardY + (layout.boardHeight / 2);
@@ -3597,7 +3771,6 @@ export class MenuScene extends Phaser.Scene {
         );
       };
       syncAmbientSkyReservedFrames();
-      let installPromptPending = false;
       const installChrome = this.add.container(0, 0).setDepth(11);
       const renderInstallChrome = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
         const resolvedState = resolveMenuSceneInstallSurfaceState(state, visualCaptureConfig);
@@ -3611,35 +3784,16 @@ export class MenuScene extends Phaser.Scene {
           return;
         }
 
-        const compactInstall = sceneLayout.isTiny || sceneLayout.isNarrow;
-        const labelText = resolvedState.mode === 'manual'
-          ? (resolvedState.instruction ?? 'Add to Home Screen')
-          : installPromptPending
-            ? (compactInstall ? 'Install...' : 'Install Mazer...')
-            : (compactInstall ? 'Install' : 'Install Mazer');
-        const label = this.add.text(0, 0, labelText, {
-          color: resolvedState.mode === 'available'
-            ? (installPromptPending ? sceneThemeProfile.title.pendingColor : sceneThemeProfile.title.installColor)
-            : sceneThemeProfile.title.supportColor,
-          fontFamily: sceneThemeProfile.title.supportFontFamily,
-          fontSize: `${compactInstall ? 9 : 10}px`,
-          fontStyle: resolvedState.mode === 'available' ? 'bold' : 'normal',
-          wordWrap: resolvedState.mode === 'manual'
-            ? {
-              width: Math.max(152, Math.min(264, width * (compactInstall ? 0.56 : 0.4))),
-              useAdvancedWrap: true
-            }
-            : undefined
-        }).setOrigin(0.5).setLetterSpacing(compactInstall ? 1 : 2);
-        const chipWidth = Phaser.Math.Clamp(
-          Math.ceil(label.width + (compactInstall ? 22 : 28)),
-          resolvedState.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
-          Math.max(
-            resolvedState.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
-            Math.round(width * (resolvedState.mode === 'manual' ? (compactInstall ? 0.66 : 0.46) : compactInstall ? 0.36 : 0.24))
-          )
-        );
-        const chipHeight = Math.max(compactInstall ? 23 : 25, Math.ceil(label.height + (compactInstall ? 12 : 14)));
+        const installMetrics = measureInstallChromeMetrics(sceneThemeProfile, resolvedState);
+        if (!installMetrics) {
+          installChrome.setVisible(false);
+          return;
+        }
+
+        const { compactInstall, labelText, chipWidth, chipHeight } = installMetrics;
+        const label = this.add.text(0, 0, labelText, createInstallChromeLabelStyle(sceneThemeProfile, resolvedState))
+          .setOrigin(0.5)
+          .setLetterSpacing(compactInstall ? 1 : 2);
         const installFrame = resolveInstallChromeFrame(
           width,
           height,
@@ -3738,8 +3892,8 @@ export class MenuScene extends Phaser.Scene {
       activeTitleBandFrame = undefined;
       activeTitleContainer = undefined;
       activeTitleText = undefined;
-      if (titleVisible) {
-        const titleBandFrame = resolveTitleBandFrame(width, sceneLayout, layout, viewportSafeInsets);
+        if (titleVisible) {
+          const titleBandFrame = resolveTitleBandFrame(width, sceneLayout, layout, viewportSafeInsets, deploymentProfileId);
         activeTitleBandFrame = titleBandFrame;
         const titlePlateMaxWidth = Math.max(112, titleBandFrame.width - 18);
         const titlePlateWidth = Phaser.Math.Clamp(
@@ -3763,8 +3917,9 @@ export class MenuScene extends Phaser.Scene {
           sceneLayout.isTiny ? 32 : 38,
           Math.max(legacyTuning.menu.title.plateHeightMaxPx - 2, 52)
         );
+        const titleCenterOffset = Math.round(Math.max(4, titlePlateHeight * 0.12));
         const titleY = Phaser.Math.Clamp(
-          titleBandFrame.centerY + Math.round(deploymentProfile.titleYOffsetBias * 0.2),
+          titleBandFrame.centerY + titleCenterOffset + Math.round(deploymentProfile.titleYOffsetBias * 0.2),
           titleBandFrame.top + (titlePlateHeight / 2),
           titleBandFrame.bottom - (titlePlateHeight / 2)
         );
