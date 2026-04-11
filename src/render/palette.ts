@@ -130,19 +130,19 @@ const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number 
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
-  route: 0x25c571,
-  trail: 0x5b6fe3,
-  player: 0x18d9ff,
-  start: 0xd59c36,
-  goal: 0xc94a73
+  route: 0x1fcb73,
+  trail: 0x4f68eb,
+  player: 0x0fd2ff,
+  start: 0xdba343,
+  goal: 0xd04e79
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
-  route: 0.12,
-  trail: 0.16,
-  player: 0.12,
-  start: 0.18,
-  goal: 0.18
+  route: 0.16,
+  trail: 0.22,
+  player: 0.16,
+  start: 0.22,
+  goal: 0.22
 };
 
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {

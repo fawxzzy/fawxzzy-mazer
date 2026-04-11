@@ -71,6 +71,26 @@ export interface BoardCueOptions {
   };
 }
 
+export interface TrailRenderDiagnostics {
+  cue: DemoWalkerCue;
+  trailStart: number;
+  trailLimit: number;
+  renderedHeadIndex: number | null;
+  renderedHeadMode: DemoTrailStep['mode'];
+  viewMotionProgress: number;
+  hasActiveMotion: boolean;
+  bridgeRendered: boolean;
+  attachedToActor: boolean;
+  headCenter?: {
+    x: number;
+    y: number;
+  };
+  motionHeadCenter?: {
+    x: number;
+    y: number;
+  };
+}
+
 interface BoardRenderPresetProfile {
   floorInsetAlphaScale: number;
   floorGridAlphaScale: number;
@@ -97,6 +117,17 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 
 const MIN_BOARD_SIZE = 24;
 const ANIMATION_TIME_WRAP_MS = 600_000;
+const createEmptyTrailRenderDiagnostics = (): TrailRenderDiagnostics => ({
+  cue: 'explore',
+  trailStart: 0,
+  trailLimit: 0,
+  renderedHeadIndex: null,
+  renderedHeadMode: 'explore',
+  viewMotionProgress: 0,
+  hasActiveMotion: false,
+  bridgeRendered: false,
+  attachedToActor: true
+});
 const BOARD_RENDER_PRESET_PROFILES: Record<MazeEpisode['presentationPreset'], BoardRenderPresetProfile> = {
   classic: {
     floorInsetAlphaScale: 1,
@@ -253,6 +284,7 @@ export class BoardRenderer {
   private ambientTween?: Phaser.Tweens.Tween;
   private baseOffsetX = 0;
   private baseOffsetY = 0;
+  private lastTrailDiagnostics: TrailRenderDiagnostics = createEmptyTrailRenderDiagnostics();
 
   public constructor(
     private readonly scene: Phaser.Scene,
@@ -299,6 +331,10 @@ export class BoardRenderer {
 
   public getTileSize(): number {
     return Math.max(1, this.layout.tileSize);
+  }
+
+  public getTrailRenderDiagnostics(): TrailRenderDiagnostics {
+    return this.lastTrailDiagnostics;
   }
 
   public setPresentationOffset(x: number, y: number): void {
@@ -857,6 +893,7 @@ export class BoardRenderer {
     if (!isRenderableLayout(this.layout)) {
       this.trail.clear();
       this.signal.clear();
+      this.lastTrailDiagnostics = createEmptyTrailRenderDiagnostics();
       return;
     }
 
@@ -900,6 +937,12 @@ export class BoardRenderer {
     this.trail.clear();
     this.signal.clear();
     if (trailLength === 0 || trailStart >= trailLength) {
+      this.lastTrailDiagnostics = {
+        ...createEmptyTrailRenderDiagnostics(),
+        cue,
+        trailStart,
+        trailLimit: trailLength
+      };
       return;
     }
     let previousCenterX = 0;
@@ -909,6 +952,7 @@ export class BoardRenderer {
     const headIndex = trailLength - 1;
     const headStep = trail[headIndex];
     const headStepIndex = typeof headStep === 'number' ? headStep : headStep.index;
+    const headStepMode = typeof headStep === 'number' ? 'explore' : headStep.mode;
     const bridgeHeadMotion = hasActiveMotion && headStepIndex === activeMotion?.fromIndex;
     const headPulse = 1 + (Math.sin(now * 0.008) * (legacyTuning.board.trail.headPulseAmplitude + pulseBoost));
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
@@ -921,9 +965,10 @@ export class BoardRenderer {
         : 0;
     const visibleLength = Math.max(1, trailLength - trailStart);
     const insetScale = demoEmphasis ? 0.9 : 1;
-    const alphaBoost = demoEmphasis ? 0.08 : 0;
-    const glowBoost = demoEmphasis ? 0.06 : 0;
+    const alphaBoost = demoEmphasis ? 0.12 : 0;
+    const glowBoost = demoEmphasis ? 0.08 : 0;
 
+    let bridgeRendered = false;
     for (let i = trailStart; i < trailLength; i += 1) {
       const step = trail[i];
       const index = typeof step === 'number' ? step : step.index;
@@ -1011,7 +1056,7 @@ export class BoardRenderer {
           renderCenterY,
           bodyGlowWidth,
           segmentGlowColor,
-          glowAlpha * (movingHead ? 0.42 : isHead ? 0.68 : isBacktrack ? 0.38 : 0.32) * trailGlowScale
+          glowAlpha * (movingHead ? 0.5 : isHead ? 0.74 : isBacktrack ? 0.42 : 0.36) * trailGlowScale
         );
         this.fillAxisAlignedSegment(
           this.trail,
@@ -1053,8 +1098,8 @@ export class BoardRenderer {
         this.trail.lineBetween(renderCenterX - nodeRadius, renderCenterY - nodeRadius, renderCenterX + nodeRadius, renderCenterY + nodeRadius);
       } else {
         if (!isHead || !hasActiveMotion || isGoalStep || bridgeHeadMotion) {
-          const tileFillAlpha = alpha * (isGoalStep ? 0.7 : demoEmphasis ? 0.34 : 0.22) * trailFillScale;
-          const nodeCoreAlpha = Math.min(1, alpha * (isGoalStep ? 0.92 : demoEmphasis ? 0.62 : 0.46)) * trailCoreScale;
+          const tileFillAlpha = alpha * (isGoalStep ? 0.72 : demoEmphasis ? 0.42 : 0.24) * trailFillScale;
+          const nodeCoreAlpha = Math.min(1, alpha * (isGoalStep ? 0.94 : demoEmphasis ? 0.74 : 0.5)) * trailCoreScale;
           this.trail.fillStyle(segmentFillColor, tileFillAlpha);
           this.trail.fillRect(
             tileX + cellInset,
@@ -1081,9 +1126,9 @@ export class BoardRenderer {
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + 0.22) * trailCoreScale);
         this.trail.fillRect(renderCenterX - coreSize / 2, renderCenterY - coreSize / 2, coreSize, coreSize);
       } else if ((isHead && !bridgeHeadMotion) || isGoalStep) {
-        const headGlowRadius = movingHead ? nodeRadius * 0.98 : nodeRadius * (isHead ? 1.42 : 1.18);
-        const headCoreRadius = movingHead ? nodeRadius * 0.62 : nodeRadius * (isHead ? 0.92 : 0.78);
-        const headGlowAlpha = glowAlpha * (movingHead ? 0.28 : isHead ? 0.56 : 0.4) * trailGlowScale;
+        const headGlowRadius = movingHead ? nodeRadius * 1.04 : nodeRadius * (isHead ? 1.42 : 1.18);
+        const headCoreRadius = movingHead ? nodeRadius * 0.68 : nodeRadius * (isHead ? 0.92 : 0.78);
+        const headGlowAlpha = glowAlpha * (movingHead ? 0.34 : isHead ? 0.56 : 0.4) * trailGlowScale;
         const headCoreAlpha = Math.min(1, alpha + (movingHead ? 0.12 : isGoalStep ? 0.28 : 0.2)) * trailCoreScale;
         this.trail.fillStyle(segmentGlowColor, headGlowAlpha);
         this.trail.fillCircle(renderCenterX, renderCenterY, headGlowRadius);
@@ -1101,21 +1146,22 @@ export class BoardRenderer {
     }
 
     if (bridgeHeadMotion && motionHeadCenter) {
+      bridgeRendered = true;
       const bridgeGlowWidth = Math.max(2, tileSize * legacyTuning.board.trail.glowLineWidthRatio);
       const bridgeCoreWidth = Math.max(1, tileSize * legacyTuning.board.trail.lineWidthRatio);
       const bridgeGlowAlpha = Phaser.Math.Clamp(
         legacyTuning.board.trail.glowMinAlpha + glowBoost + (motionProgress * 0.22),
         0,
         1
-      ) * 0.52 * trailGlowScale;
+      ) * 0.68 * trailGlowScale;
       const bridgeCoreAlpha = Phaser.Math.Clamp(
         legacyTuning.board.trail.minLineAlpha + alphaBoost + (motionProgress * 0.2),
         0,
         1
-      ) * 0.62 * trailCoreScale;
+      ) * 0.82 * trailCoreScale;
       const bridgeRadius = Math.max(
         2,
-        tileSize * legacyTuning.board.trail.headRadiusRatio * (0.76 + (motionProgress * 0.28))
+        tileSize * legacyTuning.board.trail.headRadiusRatio * (0.86 + (motionProgress * 0.32))
       );
 
       this.fillAxisAlignedSegment(
@@ -1143,6 +1189,30 @@ export class BoardRenderer {
       this.trail.fillStyle(colors.board.trailCore, bridgeCoreAlpha * 0.96);
       this.trail.fillCircle(motionHeadCenter.x, motionHeadCenter.y, bridgeRadius * 0.4);
     }
+
+    this.lastTrailDiagnostics = {
+      cue,
+      trailStart,
+      trailLimit: trailLength,
+      renderedHeadIndex: headStepIndex,
+      renderedHeadMode: headStepMode,
+      viewMotionProgress: motionProgress,
+      hasActiveMotion,
+      bridgeRendered,
+      attachedToActor: !hasActiveMotion || !bridgeHeadMotion || bridgeRendered,
+      headCenter: {
+        x: headCenterX,
+        y: headCenterY
+      },
+      ...(motionHeadCenter
+        ? {
+            motionHeadCenter: {
+              x: motionHeadCenter.x,
+              y: motionHeadCenter.y
+            }
+          }
+        : {})
+    };
 
     if (options.targetIndex !== null
       && options.targetIndex !== undefined

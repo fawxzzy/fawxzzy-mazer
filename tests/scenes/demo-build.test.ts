@@ -39,10 +39,14 @@ let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolve
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
 let resolveDemoTrailRenderBounds: typeof import('../../src/scenes/MenuScene').resolveDemoTrailRenderBounds;
 let resolveInstallChromeFrame: typeof import('../../src/scenes/MenuScene').resolveInstallChromeFrame;
+let resolveMenuSceneInstallSurfaceState: typeof import('../../src/scenes/MenuScene').resolveMenuSceneInstallSurfaceState;
+let resolveMenuSceneVisualCaptureConfig: typeof import('../../src/scenes/MenuScene').resolveMenuSceneVisualCaptureConfig;
 let resolveTitleBandFrame: typeof import('../../src/scenes/MenuScene').resolveTitleBandFrame;
 let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
+let MENU_SCENE_VISUAL_CAPTURE_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_CAPTURE_KEY;
+let MENU_SCENE_VISUAL_DIAGNOSTICS_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_DIAGNOSTICS_KEY;
 let resolveDemoWalkerViewFrame: typeof import('../../src/domain/ai').resolveDemoWalkerViewFrame;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
@@ -69,7 +73,23 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveDemoTrailRenderBounds, resolveInstallChromeFrame, resolveTitleBandFrame, resolveAmbientThemeProfile, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
+  ({
+    MENU_SCENE_VISUAL_CAPTURE_KEY,
+    MENU_SCENE_VISUAL_DIAGNOSTICS_KEY,
+    resolveMenuDemoCycle,
+    resolveMenuDemoPreset,
+    resolveMenuDemoPresentation,
+    resolveMenuDemoSequence,
+    resolveMenuPresentationModel,
+    resolveDemoTrailRenderBounds,
+    resolveInstallChromeFrame,
+    resolveMenuSceneInstallSurfaceState,
+    resolveMenuSceneVisualCaptureConfig,
+    resolveTitleBandFrame,
+    resolveAmbientThemeProfile,
+    resolvePresentationBackdropFrame,
+    resolveMenuResizeRecoveryDecision
+  } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ getPaletteReadabilityReport } = await import('../../src/render/palette'));
@@ -348,6 +368,77 @@ describe('demo-only build', () => {
     expect(installFrame.bottom).toBeLessThanOrEqual(presentationModel.viewport.height - 34);
 
     disposeMazeEpisode(episode);
+  });
+
+  test('visual capture config only activates when explicitly enabled', () => {
+    expect(MENU_SCENE_VISUAL_CAPTURE_KEY).toBe('__MAZER_VISUAL_CAPTURE__');
+    expect(MENU_SCENE_VISUAL_DIAGNOSTICS_KEY).toBe('__MAZER_VISUAL_DIAGNOSTICS__');
+    expect(resolveMenuSceneVisualCaptureConfig(undefined)).toEqual({ enabled: false });
+    expect(resolveMenuSceneVisualCaptureConfig({
+      [MENU_SCENE_VISUAL_CAPTURE_KEY]: {}
+    } as unknown as Window)).toEqual({ enabled: false });
+    expect(resolveMenuSceneVisualCaptureConfig({
+      [MENU_SCENE_VISUAL_CAPTURE_KEY]: {
+        enabled: true,
+        forceInstallMode: 'available'
+      }
+    } as unknown as Window)).toEqual({
+      enabled: true,
+      forceInstallMode: 'available'
+    });
+    expect(resolveMenuSceneVisualCaptureConfig({
+      [MENU_SCENE_VISUAL_CAPTURE_KEY]: {
+        enabled: true,
+        forceInstallMode: 'manual',
+        manualInstallInstruction: '  Add from Home Screen  '
+      }
+    } as unknown as Window)).toEqual({
+      enabled: true,
+      forceInstallMode: 'manual',
+      manualInstallInstruction: 'Add from Home Screen'
+    });
+  });
+
+  test('visual capture install override keeps runtime chrome inert unless forced', () => {
+    const runtimeState = {
+      mode: 'hidden',
+      canPrompt: false,
+      installed: false,
+      standalone: false
+    } as const;
+
+    expect(resolveMenuSceneInstallSurfaceState(runtimeState, { enabled: false })).toEqual(runtimeState);
+    expect(resolveMenuSceneInstallSurfaceState(runtimeState, { enabled: true })).toEqual(runtimeState);
+    expect(resolveMenuSceneInstallSurfaceState(runtimeState, {
+      enabled: true,
+      forceInstallMode: 'available'
+    })).toEqual({
+      mode: 'available',
+      canPrompt: true,
+      installed: false,
+      standalone: false
+    });
+    expect(resolveMenuSceneInstallSurfaceState(runtimeState, {
+      enabled: true,
+      forceInstallMode: 'manual',
+      manualInstallInstruction: 'Install from browser menu'
+    })).toEqual({
+      mode: 'manual',
+      canPrompt: false,
+      installed: false,
+      standalone: false,
+      instruction: 'Install from browser menu'
+    });
+    expect(resolveMenuSceneInstallSurfaceState(runtimeState, {
+      enabled: true,
+      forceInstallMode: 'manual'
+    })).toEqual({
+      mode: 'manual',
+      canPrompt: false,
+      installed: false,
+      standalone: false,
+      instruction: 'Add to Home Screen'
+    });
   });
 
   test('theme palettes keep route, trail, player, goal, and metadata readable', () => {

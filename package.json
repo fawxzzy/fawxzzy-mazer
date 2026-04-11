@@ -9,13 +9,16 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort",
     "test": "vitest run --exclude tests/maze/maze-soak.test.ts",
     "test:soak": "vitest run tests/maze/maze-soak.test.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "visual:capture": "node ./scripts/visual/capture.mjs",
+    "visual:gate": "node ./scripts/visual/gate.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "playwright": "^1.59.1",
     "typescript": "^5.8.3",
     "vite": "^7.0.0",
     "vite-plugin-pwa": "^1.0.2",

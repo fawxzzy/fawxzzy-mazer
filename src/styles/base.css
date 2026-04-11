@@ -12,8 +12,8 @@
   --mazer-bg-c: #060a12;
   --mazer-bg-d: #020409;
   --mazer-bg-focus: rgba(142, 208, 255, 0.1);
-  --mazer-stage-glow: rgba(126, 198, 255, 0.08);
-  --mazer-stage-shadow: rgba(0, 0, 0, 0.26);
+  --mazer-stage-glow: rgba(126, 198, 255, 0.05);
+  --mazer-stage-shadow: rgba(0, 0, 0, 0.22);
   --mazer-frame-stroke: rgba(132, 168, 214, 0.54);
   --mazer-frame-focus: #b8e4ff;
   --mazer-canvas-shadow: rgba(0, 0, 0, 0.62);
@@ -66,7 +66,7 @@ body::before {
     radial-gradient(circle at 50% 46%, rgba(148, 210, 255, 0.05) 0, rgba(148, 210, 255, 0) 44%),
     radial-gradient(circle at 50% 76%, rgba(255, 255, 255, 0.03) 0, rgba(255, 255, 255, 0) 28%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0) 76%, rgba(255, 255, 255, 0.012) 100%);
-  opacity: 0.4;
+  opacity: 0.24;
 }
 
 body::after {
@@ -74,7 +74,7 @@ body::after {
     radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.03) 0, rgba(255, 255, 255, 0) 34%),
     radial-gradient(circle at 50% 44%, rgba(128, 188, 255, 0.045) 0, rgba(128, 188, 255, 0) 44%);
   mask-image: radial-gradient(circle at center, black 16%, transparent 76%);
-  opacity: 0.04;
+  opacity: 0.025;
 }
 
 #app {
@@ -97,8 +97,8 @@ body::after {
     radial-gradient(circle at 50% 62%, var(--mazer-stage-shadow) 0, rgba(0, 0, 0, 0) 72%),
     radial-gradient(circle at 50% 92%, var(--mazer-stage-glow) 0, rgba(126, 198, 255, 0) 42%);
   pointer-events: none;
-  filter: blur(22px);
-  opacity: 0.72;
+  filter: blur(14px);
+  opacity: 0.52;
 }
 
 canvas {
@@ -129,7 +129,7 @@ canvas:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   #app::before {
-    filter: blur(18px);
+    filter: blur(12px);
   }
 }
 
@@ -146,7 +146,7 @@ canvas:focus-visible {
 
   #app::before {
     inset: max(-10vh, -80px) max(-6vw, -48px);
-    filter: blur(18px);
+    filter: blur(12px);
   }
 }
 

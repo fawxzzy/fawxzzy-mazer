@@ -43,9 +43,21 @@ import {
   resolveCuratedFamilyRotation
 } from '../domain/maze';
 import { legacyTuning, resolveBoardScaleFromCamScale } from '../config/tuning';
-import { createBoardLayout, BoardRenderer, type BoardLayout, type BoardThemeStyle } from '../render/boardRenderer';
+import {
+  createBoardLayout,
+  BoardRenderer,
+  type BoardBounds,
+  type BoardLayout,
+  type BoardThemeStyle,
+  type TrailRenderDiagnostics
+} from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
-import { applyPresentationContrastFloors, palette } from '../render/palette';
+import {
+  applyPresentationContrastFloors,
+  getPaletteReadabilityReport,
+  palette,
+  type PaletteReadabilityReport
+} from '../render/palette';
 import {
   DEFAULT_VIEWPORT_HEIGHT,
   DEFAULT_VIEWPORT_WIDTH,
@@ -695,31 +707,31 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       },
       board: {
         glow: 0xd3cab7,
-        panel: 0xf0e7d2,
-        panelStroke: 0x647e99,
-        well: 0xf7f2e6,
-        shadow: 0xbba98d,
-        outer: 0xe3dac9,
-        outerStroke: 0x5e7892,
-        innerStroke: 0x879db3,
-        topHighlight: 0x4f7298,
-        wall: 0x5e6f82,
-        floor: 0xf7f5ee,
-        path: 0xa6bccd,
-        route: 0x2c5a2a,
+        panel: 0xebe1cc,
+        panelStroke: 0x5b7591,
+        well: 0xf4eee1,
+        shadow: 0xb49f82,
+        outer: 0xdfd4c1,
+        outerStroke: 0x58708a,
+        innerStroke: 0x7f96ad,
+        topHighlight: 0x466789,
+        wall: 0x5a6c81,
+        floor: 0xf1ecdf,
+        path: 0x9eb0bf,
+        route: 0x2f6a41,
         routeCore: 0xf7fbf2,
-        routeGlow: 0x6a8b60,
-        trail: 0x4f61bf,
+        routeGlow: 0x5f8461,
+        trail: 0x4660c7,
         trailCore: 0xfbfdff,
-        trailGlow: 0x8896d7,
-        start: 0xa97827,
+        trailGlow: 0x7b8ed1,
+        start: 0xb58631,
         startCore: 0xfff2d6,
         startGlow: 0x77551f,
-        goal: 0x91405b,
+        goal: 0xa44c68,
         goalCore: 0xfff6f9,
-        player: 0x1f4c73,
+        player: 0x28577f,
         playerCore: 0xfafbff,
-        playerHalo: 0x8eb7dc,
+        playerHalo: 0x86b0d4,
         playerShadow: 0xb4a487
       },
       hud: {
@@ -780,19 +792,19 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       fontFamily: '"Garamond", Georgia, serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
       supportFontFamily: '"Consolas", "Courier New", monospace',
-      titleColor: '#415571',
-      titleStroke: '#efe6d0',
-      titleShadow: '#c1b199',
-      signatureColor: '#627a95',
-      supportColor: '#536a85',
-      installColor: '#445a74',
-      pendingColor: '#6b7e95',
-      plateShadowColor: 0xc0b19a,
-      plateOuterColor: 0xf4eee2,
-      plateInnerColor: 0xe9e1cf,
-      plateLineColor: 0x6d8aaa,
-      buttonFillColor: 0xe0d6c0,
-      buttonStrokeColor: 0x7e98b3
+      titleColor: '#33485f',
+      titleStroke: '#f3ead7',
+      titleShadow: '#b7a488',
+      signatureColor: '#58708a',
+      supportColor: '#496079',
+      installColor: '#38506a',
+      pendingColor: '#64778d',
+      plateShadowColor: 0xbca98a,
+      plateOuterColor: 0xf0e7d7,
+      plateInnerColor: 0xe4d9c5,
+      plateLineColor: 0x64829f,
+      buttonFillColor: 0xd8ccb5,
+      buttonStrokeColor: 0x7490ac
     }
   },
   monolith: {
@@ -810,7 +822,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       board: {
         glow: 0x111317,
         panel: 0x0d0f13,
-        panelStroke: 0x838991,
+        panelStroke: 0x8d949d,
         well: 0x07080b,
         shadow: 0x000000,
         outer: 0x181a1f,
@@ -818,22 +830,22 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         innerStroke: 0x979ea8,
         topHighlight: 0xf1f4f8,
         wall: 0x17191e,
-        floor: 0xcfd6dd,
-        path: 0x939aa3,
-        route: 0x21b36a,
+        floor: 0xd6dde4,
+        path: 0x8a929b,
+        route: 0x23c377,
         routeCore: 0xf7fff9,
-        routeGlow: 0x164b33,
-        trail: 0x4d62cb,
+        routeGlow: 0x184f38,
+        trail: 0x5870ea,
         trailCore: 0xf7f9ff,
-        trailGlow: 0x90a1ff,
-        start: 0xb08433,
+        trailGlow: 0x9bafff,
+        start: 0xc18f39,
         startCore: 0xfff2d1,
         startGlow: 0x6e4f1f,
-        goal: 0xa83a57,
+        goal: 0xbb486b,
         goalCore: 0xfff0f4,
-        player: 0x0aa8d8,
+        player: 0x14cfff,
         playerCore: 0xfcffff,
-        playerHalo: 0x92ebff,
+        playerHalo: 0xa2f1ff,
         playerShadow: 0x020202
       },
       hud: {
@@ -894,19 +906,19 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       fontFamily: '"Bahnschrift", "Segoe UI", sans-serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
       supportFontFamily: '"Consolas", "Courier New", monospace',
-      titleColor: '#f1f2f4',
+      titleColor: '#f4f6f8',
       titleStroke: '#121316',
       titleShadow: '#0d0f12',
-      signatureColor: '#babec4',
-      supportColor: '#d7d9dd',
-      installColor: '#f1f2f4',
-      pendingColor: '#afb4bb',
+      signatureColor: '#c2c8cf',
+      supportColor: '#e1e5ea',
+      installColor: '#f4f6f8',
+      pendingColor: '#b7bcc4',
       plateShadowColor: 0x000000,
       plateOuterColor: 0x08090c,
-      plateInnerColor: 0x14161a,
-      plateLineColor: 0xe1e3e7,
-      buttonFillColor: 0x111317,
-      buttonStrokeColor: 0xbfc4cb
+      plateInnerColor: 0x15181d,
+      plateLineColor: 0xe7eaee,
+      buttonFillColor: 0x121419,
+      buttonStrokeColor: 0xc9ced6
     }
   }
 };
@@ -1099,12 +1111,12 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
     topReserveMinPx: 104,
     bottomPaddingPx: 34,
     sidePaddingPx: 14,
-    titleScale: 0.9,
-    titleAlpha: 0.82,
+    titleScale: 0.94,
+    titleAlpha: 0.9,
     signatureAlpha: 0.62,
-    passiveAlpha: 0.42,
-    plateAlpha: 0.08,
-    panelAlpha: 0.11,
+    passiveAlpha: 0.5,
+    plateAlpha: 0.1,
+    panelAlpha: 0.16,
     titleYOffsetRatio: 0.18,
     titleAnchor: 'center',
     titleDriftX: 0,
@@ -1133,12 +1145,12 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
     topReserveMinPx: 78,
     bottomPaddingPx: 30,
     sidePaddingPx: 12,
-    titleScale: 0.72,
-    titleAlpha: 0.34,
+    titleScale: 0.78,
+    titleAlpha: 0.5,
     signatureAlpha: 0.42,
-    passiveAlpha: 0.28,
-    plateAlpha: 0.05,
-    panelAlpha: 0.1,
+    passiveAlpha: 0.38,
+    plateAlpha: 0.07,
+    panelAlpha: 0.14,
     titleYOffsetRatio: 0.11,
     titleAnchor: 'center',
     titleDriftX: 0,
@@ -1167,12 +1179,12 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
     topReserveMinPx: 82,
     bottomPaddingPx: 40,
     sidePaddingPx: 14,
-    titleScale: 0.8,
-    titleAlpha: 0.58,
+    titleScale: 0.84,
+    titleAlpha: 0.66,
     signatureAlpha: 0.54,
-    passiveAlpha: 0.42,
-    plateAlpha: 0.09,
-    panelAlpha: 0.14,
+    passiveAlpha: 0.46,
+    plateAlpha: 0.1,
+    panelAlpha: 0.16,
     titleYOffsetRatio: 0.13,
     titleAnchor: 'left',
     titleDriftX: 0,
@@ -1413,6 +1425,181 @@ export interface InstallChromeFrame {
   centerY: number;
 }
 
+export const MENU_SCENE_VISUAL_CAPTURE_KEY = '__MAZER_VISUAL_CAPTURE__' as const;
+export const MENU_SCENE_VISUAL_DIAGNOSTICS_KEY = '__MAZER_VISUAL_DIAGNOSTICS__' as const;
+
+type VisualCaptureInstallMode = InstallSurfaceState['mode'];
+
+export interface VisualSceneBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+}
+
+export interface MenuSceneVisualCaptureConfig {
+  enabled: boolean;
+  forceInstallMode?: VisualCaptureInstallMode;
+  manualInstallInstruction?: string;
+}
+
+export interface MenuSceneVisualDiagnostics {
+  revision: number;
+  updatedAt: number;
+  variant: AmbientPresentationVariant;
+  chrome: PresentationChrome;
+  profile?: PresentationDeploymentProfile;
+  theme: PresentationThemeFamily;
+  viewport: {
+    width: number;
+    height: number;
+    safeInsets: ViewportSafeInsets;
+  };
+  board: {
+    bounds: BoardBounds;
+    safeBounds: BoardBounds;
+    tileSize: number;
+  };
+  title: {
+    expected: boolean;
+    visible: boolean;
+    frame?: TitleBandFrame;
+    bounds?: VisualSceneBounds;
+    textBounds?: VisualSceneBounds;
+  };
+  install: {
+    expected: boolean;
+    visible: boolean;
+    forced: boolean;
+    state: InstallSurfaceState['mode'];
+    frame?: InstallChromeFrame;
+    bounds?: VisualSceneBounds;
+  };
+  trail: {
+    start: number;
+    limit: number;
+    currentIndex: number;
+    nextIndex: number;
+    progress: number;
+    cue: DemoWalkerCue;
+    suppressesFuturePreview: boolean;
+    attachedToActor: boolean;
+    bridgeRendered: boolean;
+    render: TrailRenderDiagnostics;
+  };
+  paletteReadability: PaletteReadabilityReport;
+}
+
+declare global {
+  interface Window {
+    __MAZER_VISUAL_CAPTURE__?: Partial<MenuSceneVisualCaptureConfig>;
+    __MAZER_VISUAL_DIAGNOSTICS__?: MenuSceneVisualDiagnostics;
+  }
+}
+
+const resolveRuntimeWindow = (): Window | undefined => (
+  typeof window === 'undefined' ? undefined : window
+);
+
+const isVisualCaptureInstallMode = (value: unknown): value is VisualCaptureInstallMode => (
+  value === 'hidden' || value === 'available' || value === 'manual'
+);
+
+export const resolveMenuSceneVisualCaptureConfig = (
+  source: Pick<Window, typeof MENU_SCENE_VISUAL_CAPTURE_KEY> | undefined = resolveRuntimeWindow()
+): MenuSceneVisualCaptureConfig => {
+  const raw = source?.[MENU_SCENE_VISUAL_CAPTURE_KEY];
+  if (!raw || raw.enabled !== true) {
+    return { enabled: false };
+  }
+
+  return {
+    enabled: true,
+    ...(isVisualCaptureInstallMode(raw.forceInstallMode)
+      ? { forceInstallMode: raw.forceInstallMode }
+      : {}),
+    ...(typeof raw.manualInstallInstruction === 'string' && raw.manualInstallInstruction.trim().length > 0
+      ? { manualInstallInstruction: raw.manualInstallInstruction.trim() }
+      : {})
+  };
+};
+
+export const resolveMenuSceneInstallSurfaceState = (
+  state: InstallSurfaceState,
+  captureConfig: MenuSceneVisualCaptureConfig
+): InstallSurfaceState => {
+  if (!captureConfig.enabled || !captureConfig.forceInstallMode) {
+    return state;
+  }
+
+  if (captureConfig.forceInstallMode === 'available') {
+    return {
+      mode: 'available',
+      canPrompt: true,
+      installed: false,
+      standalone: false
+    };
+  }
+
+  if (captureConfig.forceInstallMode === 'manual') {
+    return {
+      mode: 'manual',
+      canPrompt: false,
+      installed: false,
+      standalone: false,
+      instruction: captureConfig.manualInstallInstruction ?? 'Add to Home Screen'
+    };
+  }
+
+  return {
+    mode: 'hidden',
+    canPrompt: false,
+    installed: false,
+    standalone: false
+  };
+};
+
+const toVisualSceneBounds = (
+  bounds?: { x: number; y: number; width: number; height: number } | null
+): VisualSceneBounds | undefined => {
+  if (!bounds || !isFiniteNumber(bounds.x) || !isFiniteNumber(bounds.y) || !isFiniteNumber(bounds.width) || !isFiniteNumber(bounds.height)) {
+    return undefined;
+  }
+
+  return {
+    left: bounds.x,
+    top: bounds.y,
+    right: bounds.x + bounds.width,
+    bottom: bounds.y + bounds.height,
+    width: bounds.width,
+    height: bounds.height,
+    centerX: bounds.x + (bounds.width / 2),
+    centerY: bounds.y + (bounds.height / 2)
+  };
+};
+
+const publishMenuSceneVisualDiagnostics = (diagnostics: MenuSceneVisualDiagnostics): void => {
+  const runtime = resolveRuntimeWindow();
+  if (!runtime) {
+    return;
+  }
+
+  runtime[MENU_SCENE_VISUAL_DIAGNOSTICS_KEY] = diagnostics;
+};
+
+const clearMenuSceneVisualDiagnostics = (): void => {
+  const runtime = resolveRuntimeWindow();
+  if (!runtime || !(MENU_SCENE_VISUAL_DIAGNOSTICS_KEY in runtime)) {
+    return;
+  }
+
+  delete runtime[MENU_SCENE_VISUAL_DIAGNOSTICS_KEY];
+};
+
 export function resolveMenuPresentationModel(
   width: number,
   height: number,
@@ -1548,11 +1735,13 @@ export class MenuScene extends Phaser.Scene {
       viewportSafeInsets
     );
     const { width, height } = presentationModel.viewport;
+    const visualCaptureConfig = resolveMenuSceneVisualCaptureConfig();
     const reducedMotion = prefersReducedMotion();
     const variantProfile = VARIANT_PROFILES[variant];
     const chromeProfile = CHROME_PROFILES[chrome];
     const sceneLayout = presentationModel.layout;
     const sceneStartedAt = this.time.now;
+    let visualDiagnosticsRevision = 0;
     let recoveryActivated = false;
     let recoveryEpisode: MazeEpisode | undefined;
     let patternEngine: PatternEngine | undefined;
@@ -1564,6 +1753,12 @@ export class MenuScene extends Phaser.Scene {
     let handleResize: ((gameSize?: { width?: number; height?: number }) => void) | undefined;
     let removeInstallSurfaceListener: (() => void) | undefined;
     let updateDemo: ((time: number, delta: number) => void) | undefined;
+    let activeTitleBandFrame: TitleBandFrame | undefined;
+    let activeTitleContainer: Phaser.GameObjects.Container | undefined;
+    let activeTitleText: Phaser.GameObjects.Text | undefined;
+    let activeInstallFrame: InstallChromeFrame | undefined;
+    let activeInstallBounds: VisualSceneBounds | undefined;
+    let activeInstallState: InstallSurfaceState = resolveMenuSceneInstallSurfaceState(getInstallSurfaceState(), visualCaptureConfig);
 
     const runOptional = (label: string, render: () => void): void => {
       try {
@@ -1629,6 +1824,12 @@ export class MenuScene extends Phaser.Scene {
       this.time.removeAllEvents();
       this.tweens.killAll();
       this.children.removeAll(true);
+      activeTitleBandFrame = undefined;
+      activeTitleContainer = undefined;
+      activeTitleText = undefined;
+      activeInstallFrame = undefined;
+      activeInstallBounds = undefined;
+      clearMenuSceneVisualDiagnostics();
     };
     const renderVisibleRecovery = (): void => {
       const viewport = resolveSceneViewport(this);
@@ -1697,6 +1898,77 @@ export class MenuScene extends Phaser.Scene {
       const sceneThemeProfile = resolveAmbientThemeProfile(demoCyclePlan.theme);
       this.drawStarfield(width, height, sceneThemeProfile);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
+      const publishVisualDiagnostics = (
+        view?: DemoWalkerViewFrame,
+        renderedTrail?: { start: number; limit: number }
+      ): void => {
+        if (!visualCaptureConfig.enabled || !episodePresentationShell) {
+          return;
+        }
+
+        const themeProfile = resolveAmbientThemeProfile(this.activeTheme);
+        const trailRender = episodePresentationShell.boardRenderer.getTrailRenderDiagnostics();
+        const activePath = patternFrame?.episode.raster.pathIndices;
+        const renderedHeadIndex = renderedTrail && activePath && renderedTrail.limit > 0
+          ? activePath[renderedTrail.limit - 1] ?? null
+          : null;
+        const expectedTrailHeadIndex = view
+          ? (
+            view.currentIndex === view.nextIndex || view.progress >= DEMO_TRAIL_COMMIT_PROGRESS
+              ? view.nextIndex
+              : view.currentIndex
+          )
+          : null;
+        const titleBounds = activeTitleContainer ? toVisualSceneBounds(activeTitleContainer.getBounds()) : undefined;
+        const titleTextBounds = activeTitleText ? toVisualSceneBounds(activeTitleText.getBounds()) : undefined;
+
+        publishMenuSceneVisualDiagnostics({
+          revision: ++visualDiagnosticsRevision,
+          updatedAt: this.time.now,
+          variant,
+          chrome,
+          ...(deploymentProfileId ? { profile: deploymentProfileId } : {}),
+          theme: this.activeTheme,
+          viewport: {
+            width,
+            height,
+            safeInsets: viewportSafeInsets
+          },
+          board: {
+            bounds: episodePresentationShell.layout.boardBounds,
+            safeBounds: episodePresentationShell.layout.safeBounds,
+            tileSize: episodePresentationShell.layout.tileSize
+          },
+          title: {
+            expected: titleVisible,
+            visible: titleVisible && titleBounds !== undefined,
+            ...(activeTitleBandFrame ? { frame: activeTitleBandFrame } : {}),
+            ...(titleBounds ? { bounds: titleBounds } : {}),
+            ...(titleTextBounds ? { textBounds: titleTextBounds } : {})
+          },
+          install: {
+            expected: activeInstallState.mode !== 'hidden',
+            visible: activeInstallState.mode !== 'hidden' && activeInstallBounds !== undefined,
+            forced: visualCaptureConfig.forceInstallMode !== undefined,
+            state: activeInstallState.mode,
+            ...(activeInstallFrame ? { frame: activeInstallFrame } : {}),
+            ...(activeInstallBounds ? { bounds: activeInstallBounds } : {})
+          },
+          trail: {
+            start: renderedTrail?.start ?? trailRender.trailStart,
+            limit: renderedTrail?.limit ?? trailRender.trailLimit,
+            currentIndex: view?.currentIndex ?? patternFrame?.episode.raster.startIndex ?? 0,
+            nextIndex: view?.nextIndex ?? patternFrame?.episode.raster.startIndex ?? 0,
+            progress: view?.progress ?? 0,
+            cue: view?.cue ?? 'spawn',
+            suppressesFuturePreview: expectedTrailHeadIndex === null || renderedHeadIndex === expectedTrailHeadIndex,
+            attachedToActor: trailRender.attachedToActor,
+            bridgeRendered: trailRender.bridgeRendered,
+            render: trailRender
+          },
+          paletteReadability: getPaletteReadabilityReport(themeProfile.palette)
+        });
+      };
       const createEpisodePresentationShell = (
         episode: MazeEpisode,
         themeId: PresentationThemeFamily
@@ -1797,27 +2069,31 @@ export class MenuScene extends Phaser.Scene {
       let installPromptPending = false;
       const installChrome = this.add.container(0, 0).setDepth(11);
       const renderInstallChrome = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
+        const resolvedState = resolveMenuSceneInstallSurfaceState(state, visualCaptureConfig);
         installChrome.removeAll(true);
+        activeInstallState = resolvedState;
+        activeInstallBounds = undefined;
+        activeInstallFrame = undefined;
 
-        if (state.mode === 'hidden') {
+        if (resolvedState.mode === 'hidden') {
           installChrome.setVisible(false);
           return;
         }
 
         const compactInstall = sceneLayout.isTiny || sceneLayout.isNarrow;
-        const labelText = state.mode === 'manual'
-          ? (state.instruction ?? 'Add to Home Screen')
+        const labelText = resolvedState.mode === 'manual'
+          ? (resolvedState.instruction ?? 'Add to Home Screen')
           : installPromptPending
             ? (compactInstall ? 'Install...' : 'Install Mazer...')
             : (compactInstall ? 'Install' : 'Install Mazer');
         const label = this.add.text(0, 0, labelText, {
-          color: state.mode === 'available'
+          color: resolvedState.mode === 'available'
             ? (installPromptPending ? sceneThemeProfile.title.pendingColor : sceneThemeProfile.title.installColor)
             : sceneThemeProfile.title.supportColor,
           fontFamily: sceneThemeProfile.title.supportFontFamily,
-          fontSize: `${compactInstall ? 8 : 10}px`,
-          fontStyle: state.mode === 'available' ? 'bold' : 'normal',
-          wordWrap: state.mode === 'manual'
+          fontSize: `${compactInstall ? 9 : 10}px`,
+          fontStyle: resolvedState.mode === 'available' ? 'bold' : 'normal',
+          wordWrap: resolvedState.mode === 'manual'
             ? {
               width: Math.max(152, Math.min(264, width * (compactInstall ? 0.56 : 0.4))),
               useAdvancedWrap: true
@@ -1826,13 +2102,13 @@ export class MenuScene extends Phaser.Scene {
         }).setOrigin(0.5).setLetterSpacing(compactInstall ? 1 : 2);
         const chipWidth = Phaser.Math.Clamp(
           Math.ceil(label.width + (compactInstall ? 22 : 28)),
-          state.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
+          resolvedState.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
           Math.max(
-            state.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
-            Math.round(width * (state.mode === 'manual' ? (compactInstall ? 0.66 : 0.46) : compactInstall ? 0.36 : 0.24))
+            resolvedState.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
+            Math.round(width * (resolvedState.mode === 'manual' ? (compactInstall ? 0.66 : 0.46) : compactInstall ? 0.36 : 0.24))
           )
         );
-        const chipHeight = Math.max(compactInstall ? 22 : 24, Math.ceil(label.height + (compactInstall ? 12 : 14)));
+        const chipHeight = Math.max(compactInstall ? 23 : 25, Math.ceil(label.height + (compactInstall ? 12 : 14)));
         const installFrame = resolveInstallChromeFrame(
           width,
           height,
@@ -1842,6 +2118,7 @@ export class MenuScene extends Phaser.Scene {
           chipHeight,
           viewportSafeInsets
         );
+        activeInstallFrame = installFrame;
 
         installChrome.setVisible(true);
         installChrome.setPosition(installFrame.centerX, installFrame.centerY);
@@ -1853,7 +2130,7 @@ export class MenuScene extends Phaser.Scene {
           chipWidth,
           chipHeight,
           sceneThemeProfile.title.buttonFillColor,
-          state.mode === 'manual'
+          resolvedState.mode === 'manual'
             ? 0.22
             : installPromptPending
               ? 0.24
@@ -1861,7 +2138,7 @@ export class MenuScene extends Phaser.Scene {
         ).setStrokeStyle(
           1,
           sceneThemeProfile.title.buttonStrokeColor,
-          state.mode === 'manual'
+          resolvedState.mode === 'manual'
             ? 0.18
             : installPromptPending
               ? 0.16
@@ -1873,10 +2150,10 @@ export class MenuScene extends Phaser.Scene {
           Math.max(18, chipWidth - 14),
           2,
           sceneThemeProfile.title.buttonStrokeColor,
-          state.mode === 'manual' ? 0.1 : 0.16
+          resolvedState.mode === 'manual' ? 0.1 : 0.16
         );
 
-        if (state.mode === 'available' && !installPromptPending) {
+        if (resolvedState.mode === 'available' && !installPromptPending) {
           const setChipState = (hovered: boolean): void => {
             chip.setFillStyle(
               sceneThemeProfile.title.buttonFillColor,
@@ -1911,10 +2188,11 @@ export class MenuScene extends Phaser.Scene {
           });
           setChipState(false);
         } else {
-          label.setAlpha(state.mode === 'manual' ? 0.9 : 0.8);
+          label.setAlpha(resolvedState.mode === 'manual' ? 0.9 : 0.8);
         }
 
         installChrome.add([shadow, chip, accent, label]);
+        activeInstallBounds = toVisualSceneBounds(chip.getBounds());
       };
       renderInstallChrome();
       removeInstallSurfaceListener = subscribeInstallSurface((state) => {
@@ -1925,29 +2203,33 @@ export class MenuScene extends Phaser.Scene {
         }
       });
 
+      activeTitleBandFrame = undefined;
+      activeTitleContainer = undefined;
+      activeTitleText = undefined;
       if (titleVisible) {
         const titleBandFrame = resolveTitleBandFrame(width, sceneLayout, layout, viewportSafeInsets);
+        activeTitleBandFrame = titleBandFrame;
         const titlePlateMaxWidth = Math.max(112, titleBandFrame.width - 18);
         const titlePlateWidth = Phaser.Math.Clamp(
           Math.round(
             layout.boardSize
-              * (sceneLayout.isNarrow ? 0.52 : legacyTuning.menu.title.plateWidthRatio + 0.04)
+              * (sceneLayout.isNarrow ? 0.5 : legacyTuning.menu.title.plateWidthRatio + 0.01)
               * variantProfile.titleScale
               * chromeProfile.titleScale
               * deploymentProfile.titlePlateWidthScale
           ),
-          Math.min(variantProfile.titleAnchor === 'left' ? 220 : 236, titlePlateMaxWidth),
-          Math.max(Math.min(sceneLayout.isPortrait ? 348 : 404, titlePlateMaxWidth), 112)
+          Math.min(variantProfile.titleAnchor === 'left' ? 212 : 224, titlePlateMaxWidth),
+          Math.max(Math.min(sceneLayout.isPortrait ? 332 : 388, titlePlateMaxWidth), 112)
         );
         const titlePlateHeight = Phaser.Math.Clamp(
           Math.round(
             layout.boardSize
               * legacyTuning.menu.title.plateHeightRatio
-              * Phaser.Math.Linear(0.92, 1.04, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))
+              * Phaser.Math.Linear(0.86, 0.98, variantProfile.titleScale * Math.max(0.72, chromeProfile.titleScale))
               * deploymentProfile.titlePlateHeightScale
           ),
-          sceneLayout.isTiny ? 34 : 42,
-          Math.max(legacyTuning.menu.title.plateHeightMaxPx + 4, 62)
+          sceneLayout.isTiny ? 32 : 38,
+          Math.max(legacyTuning.menu.title.plateHeightMaxPx - 2, 52)
         );
         const titleY = Phaser.Math.Clamp(
           titleBandFrame.centerY + Math.round(deploymentProfile.titleYOffsetBias * 0.2),
@@ -1957,83 +2239,53 @@ export class MenuScene extends Phaser.Scene {
         const titleX = variantProfile.titleAnchor === 'left'
           ? titleBandFrame.left + (titlePlateWidth / 2)
           : titleBandFrame.centerX;
-        const titleShadowY = Math.min(
-          layout.safeBounds.top - 8,
-          titleY + Math.max(10, Math.round(titlePlateHeight * 0.58))
-        );
+        const titleShadowY = titleY + 2;
         const titleShadowContainer = this.add.container(titleX, titleShadowY).setDepth(6.9);
         const titleContainer = this.add.container(titleX, titleY).setDepth(9);
         const titleAlpha = variantProfile.titleAlpha * chromeProfile.titleAlpha * deploymentProfile.titleAlphaScale;
-        const signatureAlpha = variantProfile.signatureAlpha * chromeProfile.signatureAlpha * deploymentProfile.signatureAlphaScale;
         const passiveAlpha = variantProfile.passiveAlpha * chromeProfile.passiveAlpha * deploymentProfile.passiveAlphaScale;
         const plateAlpha = variantProfile.plateAlpha * chromeProfile.plateAlpha * deploymentProfile.plateAlphaScale;
         const panelAlpha = variantProfile.panelAlpha * chromeProfile.panelAlpha * deploymentProfile.panelAlphaScale;
-        const titleShadowAlpha = Math.min(0.038, 0.024 * titleAlpha);
+        const titleShadowAlpha = Math.min(0.12, 0.08 * titleAlpha);
         const titleFontSize = Phaser.Math.Clamp(
           Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale * 0.94),
-          sceneLayout.isNarrow ? 20 : 24,
+          sceneLayout.isNarrow ? 22 : 28,
           72
         );
         const titleLetterSpacing = sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide;
+        const titleFontStyle = sceneThemeProfile.id === 'vellum' ? 'normal' : 'bold';
         const titleStrokeWidth = 1;
-        const signatureY = Math.round(titlePlateHeight * 0.08 * deploymentProfile.titleLineSpacingScale);
-        const supportY = Math.round(titlePlateHeight * 0.28 * deploymentProfile.titleLineSpacingScale);
+        const supportY = Math.round(titlePlateHeight * 0.22 * deploymentProfile.titleLineSpacingScale);
         titleContainer.add([
-          this.add.rectangle(
-            0,
-            Math.round(titlePlateHeight * 0.36),
-            Math.max(84, titlePlateWidth - 34),
-            Math.max(8, Math.round(titlePlateHeight * 0.24)),
-            sceneThemeProfile.title.plateShadowColor,
-            0.08 * plateAlpha
-          ).setScale(0.92, 0.42),
           this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, sceneThemeProfile.title.plateOuterColor, plateAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.22 * titleAlpha),
+            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.28 * titleAlpha),
           this.add.rectangle(0, 0, titlePlateWidth - 12, titlePlateHeight - 10, sceneThemeProfile.title.plateInnerColor, panelAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.22 * titleAlpha),
+            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.28 * titleAlpha),
           this.add.rectangle(
             0,
             -(titlePlateHeight / 2) + 8,
             titlePlateWidth - 24,
             1,
             sceneThemeProfile.title.plateLineColor,
-            0.22 * titleAlpha
-          ),
-          this.add.rectangle(
-            0,
-            (titlePlateHeight / 2) - 7,
-            titlePlateWidth - 30,
-            1,
-            sceneThemeProfile.palette.board.innerStroke,
-            0.1 * titleAlpha
+            0.3 * titleAlpha
           )
         ]);
         titleShadowContainer.add([
-          this.add.text(2, 2, legacyTuning.menu.title.text, {
+          this.add.text(1, 1, legacyTuning.menu.title.text, {
             color: sceneThemeProfile.title.titleShadow,
             fontFamily: sceneThemeProfile.title.fontFamily,
             fontSize: `${titleFontSize}px`,
-            fontStyle: 'normal'
+            fontStyle: titleFontStyle
           }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing).setAlpha(titleShadowAlpha)
         ]);
-        const title = this.add.text(0, -Math.round(titlePlateHeight * 0.12), legacyTuning.menu.title.text, {
+        const title = this.add.text(0, -Math.round(titlePlateHeight * 0.08), legacyTuning.menu.title.text, {
           color: sceneThemeProfile.title.titleColor,
           fontFamily: sceneThemeProfile.title.fontFamily,
           fontSize: `${titleFontSize}px`,
-          fontStyle: 'normal'
+          fontStyle: titleFontStyle
         }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing)
           .setAlpha(titleAlpha)
           .setStroke(sceneThemeProfile.title.titleStroke, titleStrokeWidth);
-        const signature = this.add.text(
-          0,
-          signatureY,
-          '\u00b0 by fawxzzy',
-          {
-            color: sceneThemeProfile.title.signatureColor,
-            fontFamily: sceneThemeProfile.title.signatureFontFamily,
-            fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`
-          }
-        ).setOrigin(0.5).setAlpha(signatureAlpha).setLetterSpacing(sceneLayout.isNarrow ? 1 : 2);
         const supportSlot = this.add.container(0, supportY);
         const renderSupportSlot = (): void => {
           supportSlot.removeAll(true);
@@ -2044,7 +2296,7 @@ export class MenuScene extends Phaser.Scene {
             {
               color: sceneThemeProfile.title.supportColor,
               fontFamily: sceneThemeProfile.title.supportFontFamily,
-              fontSize: `${Math.round((sceneLayout.isTiny ? 8 : sceneLayout.isNarrow ? 9 : 10) * deploymentProfile.titleLineSpacingScale)}px`,
+              fontSize: `${Math.round((sceneLayout.isTiny ? 7 : sceneLayout.isNarrow ? 8 : 9) * deploymentProfile.titleLineSpacingScale)}px`,
               wordWrap: {
                 width: Math.max(132, titlePlateWidth - 28),
                 useAdvancedWrap: true
@@ -2054,7 +2306,9 @@ export class MenuScene extends Phaser.Scene {
           supportSlot.add(supportText);
         };
 
-        titleContainer.add([title, signature, supportSlot]);
+        titleContainer.add([title, supportSlot]);
+        activeTitleContainer = titleContainer;
+        activeTitleText = title;
         renderSupportSlot();
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
@@ -2269,6 +2523,7 @@ export class MenuScene extends Phaser.Scene {
             demoPresentation.hudOffsetY
           );
         });
+        publishVisualDiagnostics(view, renderedTrail);
         if (view.cue !== lastCue) {
           runOptional('cue accent', () => {
             accentCueBeat(view.cue);
