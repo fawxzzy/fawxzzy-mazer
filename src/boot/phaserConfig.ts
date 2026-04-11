@@ -13,6 +13,7 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#101018',
   pixelArt: true,
   antialias: false,
+  antialiasGL: false,
   roundPixels: true,
   audio: {
     noAudio: true
@@ -20,6 +21,7 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   scene: [BootScene, MenuScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
+    autoRound: true,
     autoCenter: Phaser.Scale.CENTER_BOTH
   }
 };

@@ -28,7 +28,7 @@ import {
   subscribeInstallSurface,
   type InstallSurfaceState
 } from '../boot/installSurface';
-import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue } from '../domain/ai';
+import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue, type DemoWalkerViewFrame } from '../domain/ai';
 import {
   disposeMazeEpisode,
   generateMazeForDifficulty,
@@ -988,6 +988,7 @@ export const resolvePresentationBackdropFrame = (
 
 const MENU_RESIZE_SETTLE_MS = 900;
 const MENU_RESIZE_BUCKET_PX = 4;
+const DEMO_TRAIL_COMMIT_PROGRESS = 0.62;
 
 const buildViewportRestartKey = (viewport: ViewportSize): string => {
   const widthBucket = Math.round(sanitizePositive(viewport.width, DEFAULT_VIEWPORT_WIDTH, 0) / MENU_RESIZE_BUCKET_PX) * MENU_RESIZE_BUCKET_PX;
@@ -1401,6 +1402,17 @@ export interface TitleBandFrame {
   reservedRight: number;
 }
 
+export interface InstallChromeFrame {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+}
+
 export function resolveMenuPresentationModel(
   width: number,
   height: number,
@@ -1427,16 +1439,17 @@ export function resolveTitleBandFrame(
   const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
   const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
   const bandInset = compact ? 14 : 18;
-  const reservedRight = Math.max(compact ? 84 : 116, Math.round(viewportWidth * (compact ? 0.18 : 0.15)));
+  const reservedRight = 0;
   const left = Math.max(viewportSafeInsets.left + bandInset, sceneLayout.sidePadding + bandInset);
   const right = Math.max(
-    left + 88,
-    viewportWidth - Math.max(viewportSafeInsets.right + bandInset, sceneLayout.sidePadding + bandInset) - reservedRight
+    left + (compact ? 104 : 132),
+    viewportWidth - Math.max(viewportSafeInsets.right + bandInset, sceneLayout.sidePadding + bandInset)
   );
   const top = Math.max(viewportSafeInsets.top + bandInset, bandInset);
-  const bandGap = Math.max(compact ? 12 : 18, Math.round(boardLayout.tileSize * (compact ? 1.05 : 1.35)));
+  const minBandHeight = compact ? 40 : 48;
+  const bandGap = Math.max(compact ? 12 : 18, Math.round(boardLayout.tileSize * (compact ? 1.08 : 1.35)));
   const bottom = Math.max(
-    top + (compact ? 34 : 42),
+    top + minBandHeight,
     Math.min(
       boardLayout.safeBounds.top - bandInset,
       boardLayout.boardY - bandGap
@@ -1453,6 +1466,48 @@ export function resolveTitleBandFrame(
     centerX: left + ((right - left) / 2),
     centerY: top + ((bottom - top) / 2),
     reservedRight
+  };
+}
+
+export function resolveInstallChromeFrame(
+  viewportWidth: number,
+  viewportHeight: number,
+  sceneLayout: SceneLayoutProfile,
+  boardLayout: BoardLayout,
+  chipWidth: number,
+  chipHeight: number,
+  safeInsets?: Partial<ViewportSafeInsets> | null
+): InstallChromeFrame {
+  const viewportSafeInsets = sanitizeViewportSafeInsets(safeInsets);
+  const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
+  const safeWidth = sanitizePositive(viewportWidth, DEFAULT_VIEWPORT_WIDTH, 1);
+  const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
+  const horizontalInset = Math.max(viewportSafeInsets.left, viewportSafeInsets.right) + (compact ? 10 : 12);
+  const laneTop = boardLayout.safeBounds.bottom + (compact ? 6 : 8);
+  const laneBottom = safeHeight - Math.max(viewportSafeInsets.bottom + (compact ? 12 : 14), 12);
+  const minCenterY = laneTop + (chipHeight / 2);
+  const maxCenterY = laneBottom - (chipHeight / 2);
+  const centerX = Phaser.Math.Clamp(
+    safeWidth / 2,
+    horizontalInset + (chipWidth / 2),
+    safeWidth - horizontalInset - (chipWidth / 2)
+  );
+  const centeredLaneY = laneTop + ((laneBottom - laneTop) / 2);
+  const centerY = maxCenterY < minCenterY
+    ? maxCenterY
+    : Phaser.Math.Clamp(centeredLaneY, minCenterY, maxCenterY);
+  const left = Math.round(centerX - (chipWidth / 2));
+  const top = Math.round(centerY - (chipHeight / 2));
+
+  return {
+    left,
+    top,
+    right: left + chipWidth,
+    bottom: top + chipHeight,
+    width: chipWidth,
+    height: chipHeight,
+    centerX,
+    centerY
   };
 }
 
@@ -1764,33 +1819,32 @@ export class MenuScene extends Phaser.Scene {
           fontStyle: state.mode === 'available' ? 'bold' : 'normal',
           wordWrap: state.mode === 'manual'
             ? {
-              width: Math.max(136, Math.min(220, width * 0.34)),
+              width: Math.max(152, Math.min(264, width * (compactInstall ? 0.56 : 0.4))),
               useAdvancedWrap: true
             }
             : undefined
         }).setOrigin(0.5).setLetterSpacing(compactInstall ? 1 : 2);
         const chipWidth = Phaser.Math.Clamp(
           Math.ceil(label.width + (compactInstall ? 22 : 28)),
-          state.mode === 'manual' ? 148 : (compactInstall ? 86 : 118),
-          Math.max(state.mode === 'manual' ? 148 : (compactInstall ? 86 : 118), Math.round(width * (compactInstall ? 0.24 : 0.34)))
+          state.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
+          Math.max(
+            state.mode === 'manual' ? 164 : (compactInstall ? 96 : 126),
+            Math.round(width * (state.mode === 'manual' ? (compactInstall ? 0.66 : 0.46) : compactInstall ? 0.36 : 0.24))
+          )
         );
         const chipHeight = Math.max(compactInstall ? 22 : 24, Math.ceil(label.height + (compactInstall ? 12 : 14)));
-        const rightInset = Math.max(
-          compactInstall ? 24 : 12,
-          sceneLayout.sidePadding + (compactInstall ? 10 : 6),
-          viewportSafeInsets.right + (compactInstall ? 18 : 12)
-        );
-        const topInset = Math.max(
-          12,
-          sceneLayout.sidePadding + (sceneLayout.isPortrait ? 12 : 4),
-          viewportSafeInsets.top + (compactInstall ? 14 : 10)
+        const installFrame = resolveInstallChromeFrame(
+          width,
+          height,
+          sceneLayout,
+          layout,
+          chipWidth,
+          chipHeight,
+          viewportSafeInsets
         );
 
         installChrome.setVisible(true);
-        installChrome.setPosition(
-          width - rightInset - (chipWidth / 2) - (compactInstall ? 32 : 0),
-          topInset + (chipHeight / 2)
-        );
+        installChrome.setPosition(installFrame.centerX, installFrame.centerY);
 
         const shadow = this.add.rectangle(0, 3, chipWidth + 6, chipHeight + 6, sceneThemeProfile.title.plateShadowColor, 0.18);
         const chip = this.add.rectangle(
@@ -1917,7 +1971,7 @@ export class MenuScene extends Phaser.Scene {
         const titleShadowAlpha = Math.min(0.038, 0.024 * titleAlpha);
         const titleFontSize = Phaser.Math.Clamp(
           Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale * 0.94),
-          24,
+          sceneLayout.isNarrow ? 20 : 24,
           72
         );
         const titleLetterSpacing = sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide;
@@ -2166,6 +2220,7 @@ export class MenuScene extends Phaser.Scene {
           demoPresentation.trailWindow
         );
         const path = episode.raster.pathIndices;
+        const renderedTrail = resolveDemoTrailRenderBounds(path, view);
 
         applyPresentationLayer(demoPresentation);
 
@@ -2173,8 +2228,8 @@ export class MenuScene extends Phaser.Scene {
         shell.boardRenderer.drawGoal(view.cue);
         shell.boardRenderer.drawTrail(path, {
           cue: view.cue,
-          limit: view.trailLimit,
-          start: view.trailStart,
+          limit: renderedTrail.limit,
+          start: renderedTrail.start,
           emphasis: 'demo',
           persistentTrail: demoPresentation.persistentTrail,
           persistentFadeFloor: demoPresentation.persistentFadeFloor,
@@ -2479,7 +2534,7 @@ export class MenuScene extends Phaser.Scene {
         }
       });
       recoveryBoard.drawBoardChrome();
-      recoveryBoard.drawBase({ solutionPathAlpha: 0.2 });
+      recoveryBoard.drawBase();
       recoveryBoard.drawStart('spawn');
       recoveryBoard.drawGoal();
     } catch (error) {
@@ -2543,6 +2598,7 @@ export function resolveSceneLayoutProfile(
       + chromeProfile.bottomPaddingBias
       + deploymentProfile.bottomPaddingBias
       + (isPortrait ? 4 : 0)
+      + (titleVisible && (deploymentProfileId === 'mobile' || isPortrait) ? 6 : 0)
       + (safeVariant === 'loading' ? 4 : 0)
       - (isTiny ? 12 : 0)
   ) + viewportSafeInsets.bottom;
@@ -2598,6 +2654,39 @@ const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): DemoWalk
   }
 });
 
+export const resolveDemoTrailRenderBounds = (
+  path: ArrayLike<number>,
+  view: DemoWalkerViewFrame
+): { start: number; limit: number } => {
+  if (path.length <= 0) {
+    return { start: 0, limit: 0 };
+  }
+
+  const headIndex = view.currentIndex === view.nextIndex || view.progress >= DEMO_TRAIL_COMMIT_PROGRESS
+    ? view.nextIndex
+    : view.currentIndex;
+  let headCursor = -1;
+  for (let index = 0; index < path.length; index += 1) {
+    if (path[index] === headIndex) {
+      headCursor = index;
+      break;
+    }
+  }
+
+  if (headCursor < 0) {
+    const fallbackLimit = Math.max(1, Math.min(path.length, view.trailLimit));
+    return {
+      start: Math.max(0, Math.min(view.trailStart, Math.max(0, fallbackLimit - 1))),
+      limit: fallbackLimit
+    };
+  }
+
+  return {
+    start: 0,
+    limit: Math.min(path.length, headCursor + 1)
+  };
+};
+
 const resolveDemoTrailWindow = (episode: MazeEpisode, mood: DemoMood): number => {
   const sizeOffset = episode.size === 'small' ? -2 : episode.size === 'medium' ? 0 : episode.size === 'large' ? 2 : 4;
   const difficultyBase = episode.difficulty === 'chill'
@@ -2650,6 +2739,7 @@ export const resolveMenuDemoPresentation = (
 ): MenuDemoPresentation => {
   const moodProfile = DEMO_MOOD_PROFILES[cycle.mood];
   const safeVariant = sanitizePresentationVariant(variant);
+  const showSolutionPathPreview = safeVariant === 'loading';
   const variantProfile = VARIANT_PROFILES[safeVariant];
   const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
   const themeProfile = resolveAmbientThemeProfile(cycle.theme);
@@ -2781,11 +2871,13 @@ export const resolveMenuDemoPresentation = (
     theme: cycle.theme,
     sequence: sequenceState.sequence,
     phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
-    solutionPathAlpha: clamp(
-      moodProfile.solutionPathAlpha * variantProfile.solutionPathScale * themeProfile.presentation.solutionPathAlphaScale,
-      0.14,
-      1
-    ),
+    solutionPathAlpha: showSolutionPathPreview
+      ? clamp(
+        moodProfile.solutionPathAlpha * variantProfile.solutionPathScale * themeProfile.presentation.solutionPathAlphaScale,
+        0.14,
+        1
+      )
+      : 0,
     trailWindow: resolveDemoTrailWindow(episode, cycle.mood),
     ambientDriftPxX: offsets.driftX
       * moodProfile.ambientDriftPx

@@ -37,6 +37,8 @@ let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMe
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
+let resolveDemoTrailRenderBounds: typeof import('../../src/scenes/MenuScene').resolveDemoTrailRenderBounds;
+let resolveInstallChromeFrame: typeof import('../../src/scenes/MenuScene').resolveInstallChromeFrame;
 let resolveTitleBandFrame: typeof import('../../src/scenes/MenuScene').resolveTitleBandFrame;
 let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
@@ -67,7 +69,7 @@ beforeAll(async () => {
     resolveEffectivePresentationChrome,
     shouldShowPresentationTitle
   } = await import('../../src/boot/presentation'));
-  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveTitleBandFrame, resolveAmbientThemeProfile, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
+  ({ resolveMenuDemoCycle, resolveMenuDemoPreset, resolveMenuDemoPresentation, resolveMenuDemoSequence, resolveMenuPresentationModel, resolveDemoTrailRenderBounds, resolveInstallChromeFrame, resolveTitleBandFrame, resolveAmbientThemeProfile, resolvePresentationBackdropFrame, resolveMenuResizeRecoveryDecision } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
   ({ getPaletteReadabilityReport } = await import('../../src/render/palette'));
@@ -220,6 +222,11 @@ describe('demo-only build', () => {
       height: 720,
       measured: false
     });
+    expect(resolveViewportSize(389.6, 843.5)).toEqual({
+      width: 390,
+      height: 844,
+      measured: true
+    });
 
     const model = resolveMenuPresentationModel(0, 0, 'ambient');
     expect(model.viewport.width).toBe(1280);
@@ -300,6 +307,49 @@ describe('demo-only build', () => {
     disposeMazeEpisode(episode);
   });
 
+  test('install chrome anchors bottom-center inside the safe bottom lane', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 7788,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(390, 844, 'title', 'full', true, 'mobile', {
+      top: 48,
+      right: 0,
+      bottom: 34,
+      left: 0
+    });
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: presentationModel.layout.boardScale,
+      topReserve: presentationModel.layout.topReserve,
+      sidePadding: presentationModel.layout.sidePadding,
+      bottomPadding: presentationModel.layout.bottomPadding
+    });
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      layout,
+      168,
+      30,
+      {
+        top: 48,
+        right: 0,
+        bottom: 34,
+        left: 0
+      }
+    );
+
+    expect(installFrame.centerX).toBeCloseTo(presentationModel.viewport.width / 2, 1);
+    expect(installFrame.top).toBeGreaterThanOrEqual(layout.safeBounds.bottom);
+    expect(installFrame.bottom).toBeLessThanOrEqual(presentationModel.viewport.height - 34);
+
+    disposeMazeEpisode(episode);
+  });
+
   test('theme palettes keep route, trail, player, goal, and metadata readable', () => {
     for (const theme of ['noir', 'ember', 'aurora', 'vellum', 'monolith'] as const) {
       const report = getPaletteReadabilityReport(resolveAmbientThemeProfile(theme).palette);
@@ -349,7 +399,9 @@ describe('demo-only build', () => {
     expect((phaserConfig.scene as Array<{ name?: string }>).map((scene) => scene.name)).toEqual(['BootScene', 'MenuScene']);
     expect(phaserConfig.pixelArt).toBe(true);
     expect(phaserConfig.antialias).toBe(false);
+    expect(phaserConfig.antialiasGL).toBe(false);
     expect(phaserConfig.roundPixels).toBe(true);
+    expect(phaserConfig.scale?.autoRound).toBe(true);
   });
 
   test('resize recovery ignores startup settle churn but allows a later material resize', () => {
@@ -624,7 +676,12 @@ describe('demo-only build', () => {
     const obsPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient', 'obs');
     const mobilePresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient', 'mobile');
 
-    expect(titlePresentation.solutionPathAlpha).toBeGreaterThan(ambientPresentation.solutionPathAlpha);
+    expect(titlePresentation.solutionPathAlpha).toBe(0);
+    expect(ambientPresentation.solutionPathAlpha).toBe(0);
+    expect(tvPresentation.solutionPathAlpha).toBe(0);
+    expect(obsPresentation.solutionPathAlpha).toBe(0);
+    expect(mobilePresentation.solutionPathAlpha).toBe(0);
+    expect(loadingPresentation.solutionPathAlpha).toBeGreaterThan(0);
     expect(titlePresentation.boardVeilAlpha).toBeGreaterThan(ambientPresentation.boardVeilAlpha);
     expect(loadingPresentation.metadataAlpha).toBeGreaterThan(ambientPresentation.metadataAlpha);
     expect(loadingPresentation.flashAlpha).toBeGreaterThan(0);
@@ -681,6 +738,40 @@ describe('demo-only build', () => {
     disposeMazeEpisode(episode);
   });
 
+  test('demo trail render bounds stop at the live actor instead of previewing ahead', () => {
+    const cycle = resolveMenuDemoCycle(90210, 5);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 90210,
+      size: cycle.size,
+      family: cycle.family,
+      presentationPreset: cycle.presentationPreset,
+      checkPointModifier: cycle.entropy.checkPointModifier,
+      shortcutCountModifier: cycle.entropy.shortcutCountModifier
+    }, cycle.difficulty, 0, 1);
+    const episode = resolved.episode;
+    const config = createDemoConfig(cycle);
+    const midTraverseMs = config.cadence.spawnHoldMs + Math.max(1, Math.floor(config.cadence.exploreStepMs * 2.5));
+    const view = resolveDemoWalkerViewFrame(episode, midTraverseMs, config, 6);
+    const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, view);
+
+    expect(view.currentIndex).not.toBe(view.nextIndex);
+    expect(view.trailLimit).toBeGreaterThan(renderedTrail.limit);
+    expect(renderedTrail.start).toBe(0);
+    expect(renderedTrail.limit).toBe(3);
+    expect(episode.raster.pathIndices[renderedTrail.limit - 1]).toBe(view.currentIndex);
+
+    const lateTraverseMs = config.cadence.spawnHoldMs + Math.max(1, Math.floor(config.cadence.exploreStepMs * 2.8));
+    const committedView = resolveDemoWalkerViewFrame(episode, lateTraverseMs, config, 6);
+    const committedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, committedView);
+
+    expect(committedView.progress).toBeGreaterThan(0.62);
+    expect(committedTrail.limit).toBe(4);
+    expect(episode.raster.pathIndices[committedTrail.limit - 1]).toBe(committedView.nextIndex);
+
+    disposeMazeEpisode(episode);
+  });
+
   test('theme-aware preset pairing keeps ambient chrome coherent', () => {
     expect(['classic', 'framed']).toContain(resolveMenuDemoPreset(42, 0, 'scan', 'vellum', 'framed'));
     expect(['classic', 'braided']).toContain(resolveMenuDemoPreset(42, 0, 'solve', 'aurora', 'braided'));
@@ -711,9 +802,12 @@ describe('demo-only build', () => {
     const baseCss = readFileSync(resolve(process.cwd(), 'src/styles/base.css'), 'utf8');
 
     expect(baseCss).toContain('--mazer-safe-area-top: env(safe-area-inset-top, 0px);');
+    expect(baseCss).toContain('--mazer-viewport-width: 100vw;');
+    expect(baseCss).toContain('--mazer-viewport-height: 100dvh;');
     expect(baseCss).toContain('#app {');
     expect(baseCss).toContain('position: fixed;');
-    expect(baseCss).toContain('inset: 0;');
+    expect(baseCss).toContain('width: var(--mazer-viewport-width);');
+    expect(baseCss).toContain('height: var(--mazer-viewport-height);');
     expect(baseCss).toContain('width: 100% !important;');
     expect(baseCss).toContain('height: 100% !important;');
     expect(baseCss).toContain('max-width: none;');

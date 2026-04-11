@@ -129,6 +129,22 @@ const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number 
   goal: { light: 0xffb2c1, dark: 0x701634 }
 };
 
+const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
+  route: 0x25c571,
+  trail: 0x5b6fe3,
+  player: 0x18d9ff,
+  start: 0xd59c36,
+  goal: 0xc94a73
+};
+
+const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
+  route: 0.12,
+  trail: 0.16,
+  player: 0.12,
+  start: 0.18,
+  goal: 0.18
+};
+
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {
   if (prefer === 'dark') {
     return 0x0b1320;
@@ -235,6 +251,18 @@ const ensurePairContrast = (
     right: best.right
   };
 };
+
+const applySignalPaletteCleanup = (input: PresentationPalette): PresentationPalette => ({
+  ...input,
+  board: {
+    ...input.board,
+    route: mixColor(input.board.route, SIGNAL_CLEANUP_TARGETS.route, SIGNAL_CLEANUP_BLEND.route),
+    trail: mixColor(input.board.trail, SIGNAL_CLEANUP_TARGETS.trail, SIGNAL_CLEANUP_BLEND.trail),
+    player: mixColor(input.board.player, SIGNAL_CLEANUP_TARGETS.player, SIGNAL_CLEANUP_BLEND.player),
+    start: mixColor(input.board.start, SIGNAL_CLEANUP_TARGETS.start, SIGNAL_CLEANUP_BLEND.start),
+    goal: mixColor(input.board.goal, SIGNAL_CLEANUP_TARGETS.goal, SIGNAL_CLEANUP_BLEND.goal)
+  }
+});
 
 export const palette: PresentationPalette = {
   background: {
@@ -357,6 +385,7 @@ export const getPaletteReadabilityReport = (input: PresentationPalette): Palette
 };
 
 export const applyPresentationContrastFloors = (input: PresentationPalette): PresentationPalette => {
+  input = applySignalPaletteCleanup(input);
   const floor = input.board.floor;
   const wall = input.board.wall;
   const panel = input.board.panel;

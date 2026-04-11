@@ -9,10 +9,30 @@ export interface ViewportSize {
   measured: boolean;
 }
 
+interface VisualViewportLike {
+  width?: number;
+  height?: number;
+}
+
+interface BrowserViewportLike {
+  innerWidth?: number;
+  innerHeight?: number;
+  visualViewport?: VisualViewportLike | null;
+  document?: {
+    documentElement?: {
+      clientWidth?: number;
+      clientHeight?: number;
+    } | null;
+  } | null;
+}
+
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const normalizeViewportDimension = (value: unknown): number | undefined => (
+  isFiniteNumber(value) && value > 0 ? Math.max(1, Math.round(value)) : undefined
+);
 
 export const sanitizeViewportDimension = (value: unknown, fallback: number): number => (
-  isFiniteNumber(value) && value > 0 ? value : fallback
+  normalizeViewportDimension(value) ?? Math.max(1, Math.round(fallback))
 );
 
 export const resolveViewportSize = (
@@ -21,13 +41,13 @@ export const resolveViewportSize = (
   fallbackWidth = DEFAULT_VIEWPORT_WIDTH,
   fallbackHeight = DEFAULT_VIEWPORT_HEIGHT
 ): ViewportSize => {
-  const measuredWidth = isFiniteNumber(width) && width > 0;
-  const measuredHeight = isFiniteNumber(height) && height > 0;
+  const measuredWidth = normalizeViewportDimension(width);
+  const measuredHeight = normalizeViewportDimension(height);
 
   return {
-    width: measuredWidth ? width : fallbackWidth,
-    height: measuredHeight ? height : fallbackHeight,
-    measured: measuredWidth && measuredHeight
+    width: measuredWidth ?? Math.max(1, Math.round(fallbackWidth)),
+    height: measuredHeight ?? Math.max(1, Math.round(fallbackHeight)),
+    measured: measuredWidth !== undefined && measuredHeight !== undefined
   };
 };
 
@@ -41,7 +61,15 @@ export const resolveSceneViewport = (
 };
 
 export const resolveBrowserViewport = (): ViewportSize => {
-  if (typeof window === 'undefined') {
+  return resolveBrowserViewportFromRuntime(
+    typeof window === 'undefined' ? undefined : window
+  );
+};
+
+export const resolveBrowserViewportFromRuntime = (
+  runtime: BrowserViewportLike | undefined
+): ViewportSize => {
+  if (!runtime) {
     return {
       width: DEFAULT_VIEWPORT_WIDTH,
       height: DEFAULT_VIEWPORT_HEIGHT,
@@ -49,9 +77,9 @@ export const resolveBrowserViewport = (): ViewportSize => {
     };
   }
 
-  const documentElement = window.document?.documentElement;
+  const documentElement = runtime.document?.documentElement;
   return resolveViewportSize(
-    window.innerWidth || documentElement?.clientWidth,
-    window.innerHeight || documentElement?.clientHeight
+    runtime.visualViewport?.width ?? runtime.innerWidth ?? documentElement?.clientWidth,
+    runtime.visualViewport?.height ?? runtime.innerHeight ?? documentElement?.clientHeight
   );
 };

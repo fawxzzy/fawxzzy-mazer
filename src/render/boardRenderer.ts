@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
-import { isTileFloor, isTilePath, xFromIndex, yFromIndex } from '../domain/maze';
+import { isTileFloor, isTilePath, resolveDirectionBetween, xFromIndex, yFromIndex } from '../domain/maze';
 import { palette } from './palette';
 import { resolveSceneViewport } from './viewport';
 
@@ -321,6 +321,29 @@ export class BoardRenderer {
     return {
       x: this.tileX(index) + (this.layout.tileSize / 2),
       y: this.tileY(index) + (this.layout.tileSize / 2)
+    };
+  }
+
+  private resolveActorBodyCenter(
+    centerX: number,
+    centerY: number,
+    tileSize: number,
+    direction: 0 | 1 | 2 | 3 | null,
+    cue: DemoWalkerCue,
+    now: number
+  ): { x: number; y: number } {
+    const actorTuning = legacyTuning.board.actor;
+    const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];
+    const nudgeRatio = cue === 'anticipate'
+      ? actorTuning.anticipationNudgeRatio
+      : cue === 'reacquire'
+        ? actorTuning.reacquireNudgeRatio
+        : 0;
+    const nudgeScale = facingVector === null ? 0 : (0.62 + (Math.sin(now * 0.012) * 0.38));
+
+    return {
+      x: centerX + ((facingVector?.x ?? 0) * tileSize * nudgeRatio * nudgeScale),
+      y: centerY + ((facingVector?.y ?? 0) * tileSize * nudgeRatio * nudgeScale)
     };
   }
 
@@ -861,6 +884,19 @@ export class BoardRenderer {
     const easedMotionProgress = motionProgress * motionProgress * (3 - (2 * motionProgress));
     const motionFromCenter = hasActiveMotion ? this.tileCenter(activeMotion.fromIndex) : undefined;
     const motionToCenter = hasActiveMotion ? this.tileCenter(activeMotion.toIndex) : undefined;
+    const motionDirection = hasActiveMotion
+      ? resolveDirectionBetween(activeMotion.fromIndex, activeMotion.toIndex, this.episode.raster.width)
+      : null;
+    const motionHeadCenter = hasActiveMotion
+      ? this.resolveActorBodyCenter(
+        Phaser.Math.Linear(motionFromCenter?.x ?? 0, motionToCenter?.x ?? 0, easedMotionProgress),
+        Phaser.Math.Linear(motionFromCenter?.y ?? 0, motionToCenter?.y ?? 0, easedMotionProgress),
+        tileSize,
+        motionDirection,
+        cue,
+        now
+      )
+      : undefined;
     this.trail.clear();
     this.signal.clear();
     if (trailLength === 0 || trailStart >= trailLength) {
@@ -871,6 +907,9 @@ export class BoardRenderer {
     let headCenterX = 0;
     let headCenterY = 0;
     const headIndex = trailLength - 1;
+    const headStep = trail[headIndex];
+    const headStepIndex = typeof headStep === 'number' ? headStep : headStep.index;
+    const bridgeHeadMotion = hasActiveMotion && headStepIndex === activeMotion?.fromIndex;
     const headPulse = 1 + (Math.sin(now * 0.008) * (legacyTuning.board.trail.headPulseAmplitude + pulseBoost));
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
     const cueHeadBoost = cue === 'anticipate'
@@ -929,19 +968,16 @@ export class BoardRenderer {
         )
       );
       const renderCenterX = isHead && hasActiveMotion
-        ? Phaser.Math.Linear(
-          motionFromCenter?.x ?? centerX,
-          motionToCenter?.x ?? centerX,
-          easedMotionProgress
-        )
+        ? bridgeHeadMotion
+          ? centerX
+          : motionHeadCenter?.x ?? centerX
         : centerX;
       const renderCenterY = isHead && hasActiveMotion
-        ? Phaser.Math.Linear(
-          motionFromCenter?.y ?? centerY,
-          motionToCenter?.y ?? centerY,
-          easedMotionProgress
-        )
+        ? bridgeHeadMotion
+          ? centerY
+          : motionHeadCenter?.y ?? centerY
         : centerY;
+      const movingHead = isHead && hasActiveMotion && !bridgeHeadMotion && !isGoalStep;
       const segmentCoreColor = isGoalStep
         ? colors.board.goalCore
         : isBacktrack
@@ -975,7 +1011,7 @@ export class BoardRenderer {
           renderCenterY,
           bodyGlowWidth,
           segmentGlowColor,
-          glowAlpha * (isHead ? 0.68 : isBacktrack ? 0.38 : 0.32) * trailGlowScale
+          glowAlpha * (movingHead ? 0.42 : isHead ? 0.68 : isBacktrack ? 0.38 : 0.32) * trailGlowScale
         );
         this.fillAxisAlignedSegment(
           this.trail,
@@ -1016,8 +1052,10 @@ export class BoardRenderer {
         this.trail.lineStyle(Math.max(1, tileSize * 0.03), segmentCoreColor, alpha * 0.84 * trailCoreScale);
         this.trail.lineBetween(renderCenterX - nodeRadius, renderCenterY - nodeRadius, renderCenterX + nodeRadius, renderCenterY + nodeRadius);
       } else {
-        if (!isHead || !hasActiveMotion || isGoalStep) {
-          this.trail.fillStyle(segmentFillColor, alpha * (isGoalStep ? 0.7 : 0.22) * trailFillScale);
+        if (!isHead || !hasActiveMotion || isGoalStep || bridgeHeadMotion) {
+          const tileFillAlpha = alpha * (isGoalStep ? 0.7 : demoEmphasis ? 0.34 : 0.22) * trailFillScale;
+          const nodeCoreAlpha = Math.min(1, alpha * (isGoalStep ? 0.92 : demoEmphasis ? 0.62 : 0.46)) * trailCoreScale;
+          this.trail.fillStyle(segmentFillColor, tileFillAlpha);
           this.trail.fillRect(
             tileX + cellInset,
             tileY + cellInset,
@@ -1025,10 +1063,7 @@ export class BoardRenderer {
             tileSize - cellInset * 2
           );
           const coreNodeSize = Math.max(2, Math.round(nodeRadius * (isGoalStep ? 1.18 : 0.82)));
-          this.trail.fillStyle(
-            segmentCoreColor,
-            Math.min(1, alpha * (isGoalStep ? 0.92 : 0.46)) * trailCoreScale
-          );
+          this.trail.fillStyle(segmentCoreColor, nodeCoreAlpha);
           this.trail.fillRect(
             renderCenterX - (coreNodeSize / 2),
             renderCenterY - (coreNodeSize / 2),
@@ -1045,11 +1080,15 @@ export class BoardRenderer {
         this.trail.fillRect(renderCenterX - glowSize / 2, renderCenterY - glowSize / 2, glowSize, glowSize);
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + 0.22) * trailCoreScale);
         this.trail.fillRect(renderCenterX - coreSize / 2, renderCenterY - coreSize / 2, coreSize, coreSize);
-      } else if (isHead || isGoalStep) {
-        this.trail.fillStyle(segmentGlowColor, glowAlpha * (isHead ? 0.56 : 0.4) * trailGlowScale);
-        this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 1.42 : 1.18));
-        this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + (isGoalStep ? 0.28 : 0.2)) * trailCoreScale);
-        this.trail.fillCircle(renderCenterX, renderCenterY, nodeRadius * (isHead ? 0.92 : 0.78));
+      } else if ((isHead && !bridgeHeadMotion) || isGoalStep) {
+        const headGlowRadius = movingHead ? nodeRadius * 0.98 : nodeRadius * (isHead ? 1.42 : 1.18);
+        const headCoreRadius = movingHead ? nodeRadius * 0.62 : nodeRadius * (isHead ? 0.92 : 0.78);
+        const headGlowAlpha = glowAlpha * (movingHead ? 0.28 : isHead ? 0.56 : 0.4) * trailGlowScale;
+        const headCoreAlpha = Math.min(1, alpha + (movingHead ? 0.12 : isGoalStep ? 0.28 : 0.2)) * trailCoreScale;
+        this.trail.fillStyle(segmentGlowColor, headGlowAlpha);
+        this.trail.fillCircle(renderCenterX, renderCenterY, headGlowRadius);
+        this.trail.fillStyle(segmentCoreColor, headCoreAlpha);
+        this.trail.fillCircle(renderCenterX, renderCenterY, headCoreRadius);
       }
 
       if (i === trailStart) {
@@ -1059,6 +1098,50 @@ export class BoardRenderer {
       }
       previousCenterX = renderCenterX;
       previousCenterY = renderCenterY;
+    }
+
+    if (bridgeHeadMotion && motionHeadCenter) {
+      const bridgeGlowWidth = Math.max(2, tileSize * legacyTuning.board.trail.glowLineWidthRatio);
+      const bridgeCoreWidth = Math.max(1, tileSize * legacyTuning.board.trail.lineWidthRatio);
+      const bridgeGlowAlpha = Phaser.Math.Clamp(
+        legacyTuning.board.trail.glowMinAlpha + glowBoost + (motionProgress * 0.22),
+        0,
+        1
+      ) * 0.52 * trailGlowScale;
+      const bridgeCoreAlpha = Phaser.Math.Clamp(
+        legacyTuning.board.trail.minLineAlpha + alphaBoost + (motionProgress * 0.2),
+        0,
+        1
+      ) * 0.62 * trailCoreScale;
+      const bridgeRadius = Math.max(
+        2,
+        tileSize * legacyTuning.board.trail.headRadiusRatio * (0.76 + (motionProgress * 0.28))
+      );
+
+      this.fillAxisAlignedSegment(
+        this.trail,
+        headCenterX,
+        headCenterY,
+        motionHeadCenter.x,
+        motionHeadCenter.y,
+        bridgeGlowWidth,
+        colors.board.trailGlow,
+        bridgeGlowAlpha
+      );
+      this.fillAxisAlignedSegment(
+        this.trail,
+        headCenterX,
+        headCenterY,
+        motionHeadCenter.x,
+        motionHeadCenter.y,
+        bridgeCoreWidth,
+        colors.board.trailCore,
+        bridgeCoreAlpha
+      );
+      this.trail.fillStyle(colors.board.trailGlow, bridgeGlowAlpha * 0.9);
+      this.trail.fillCircle(motionHeadCenter.x, motionHeadCenter.y, bridgeRadius * 0.72);
+      this.trail.fillStyle(colors.board.trailCore, bridgeCoreAlpha * 0.96);
+      this.trail.fillCircle(motionHeadCenter.x, motionHeadCenter.y, bridgeRadius * 0.4);
     }
 
     if (options.targetIndex !== null
@@ -1222,14 +1305,7 @@ export class BoardRenderer {
     const cuePulse = 1 + (Math.sin(now * actorTuning.pulseSpeed) * actorTuning.pulseAmplitude);
     const facingVector = direction === null ? null : ACTOR_DIRECTION_OFFSETS[direction];
     const perpendicular = direction === null ? null : ACTOR_PERPENDICULAR_OFFSETS[direction];
-    const nudgeRatio = cue === 'anticipate'
-      ? actorTuning.anticipationNudgeRatio
-      : cue === 'reacquire'
-        ? actorTuning.reacquireNudgeRatio
-        : 0;
-    const nudgeScale = facingVector === null ? 0 : (0.62 + (Math.sin(now * 0.012) * 0.38));
-    const bodyCenterX = centerX + ((facingVector?.x ?? 0) * tileSize * nudgeRatio * nudgeScale);
-    const bodyCenterY = centerY + ((facingVector?.y ?? 0) * tileSize * nudgeRatio * nudgeScale);
+    const { x: bodyCenterX, y: bodyCenterY } = this.resolveActorBodyCenter(centerX, centerY, tileSize, direction, cue, now);
     const actorPulse = (cue === 'goal'
       ? cuePulse * 1.06
       : cue === 'anticipate'

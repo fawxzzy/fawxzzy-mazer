@@ -5,6 +5,8 @@
   --mazer-safe-area-right: env(safe-area-inset-right, 0px);
   --mazer-safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --mazer-safe-area-left: env(safe-area-inset-left, 0px);
+  --mazer-viewport-width: 100vw;
+  --mazer-viewport-height: 100dvh;
   --mazer-bg-a: #16223d;
   --mazer-bg-b: #0d1528;
   --mazer-bg-c: #060a12;
@@ -77,9 +79,11 @@ body::after {
 
 #app {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  min-height: 100dvh;
+  top: 0;
+  left: 0;
+  width: var(--mazer-viewport-width);
+  height: var(--mazer-viewport-height);
+  min-height: var(--mazer-viewport-height);
   overflow: hidden;
   isolation: isolate;
 }
