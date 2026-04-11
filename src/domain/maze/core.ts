@@ -95,6 +95,12 @@ interface MazeTopologyStats {
   readonly quadrantCoverage: number;
   readonly startGoalSpan: number;
   readonly startGoalEdgeBias: number;
+  readonly endpointBranchReachMean: number;
+  readonly endpointRegionDepthMean: number;
+  readonly endpointTurnPotentialMean: number;
+  readonly endpointCorridorLeadMean: number;
+  readonly endpointAsymmetry: number;
+  readonly endpointStraightCorridorRisk: number;
   readonly turnRate: number;
 }
 
@@ -108,11 +114,51 @@ interface PlacementCandidate {
   readonly index: number;
   readonly x: number;
   readonly y: number;
+  readonly degree: number;
   readonly corridorLead: number;
   readonly edgeBias: number;
   readonly borderMask: number;
   readonly branchReach: number;
   readonly regionDepth: number;
+  readonly turnPotential: number;
+}
+
+interface PlacementPools {
+  readonly deadEnds: PlacementCandidate[];
+  readonly perimeter: PlacementCandidate[];
+  readonly all: PlacementCandidate[];
+  readonly byIndex: Array<PlacementCandidate | undefined>;
+  readonly maxCorridorLead: number;
+}
+
+interface EndpointRoleProfile {
+  readonly edgeBias: number;
+  readonly regionDepth: number;
+  readonly branchReach: number;
+  readonly turnPotential: number;
+  readonly corridorLead: number;
+}
+
+interface PlacementPairMetrics {
+  readonly separation: number;
+  readonly diagonal: number;
+  readonly edgeBiasSum: number;
+  readonly branchReachSum: number;
+  readonly regionDepthSum: number;
+  readonly turnPotentialSum: number;
+  readonly corridorLeadMean: number;
+  readonly corridorLeadMax: number;
+  readonly environmentAsymmetry: number;
+  readonly quadrantOpposition: number;
+  readonly opposedBorder: number;
+  readonly straightCorridorRisk: number;
+}
+
+interface PlacementEvaluation {
+  readonly pair: [PlacementCandidate, PlacementCandidate];
+  readonly metrics: PlacementPairMetrics;
+  readonly score: number;
+  readonly strategy: MazePlacementStrategy;
 }
 
 interface AntiStraightnessPassOptions {
@@ -127,6 +173,12 @@ interface AntiStraightnessPassOptions {
 interface MazeFamilyTopologyProfile {
   readonly searchWindow: number;
   readonly placementStrategies: readonly MazePlacementStrategy[];
+  readonly startRole: EndpointRoleProfile;
+  readonly goalRole: EndpointRoleProfile;
+  readonly minEndpointAsymmetry: number;
+  readonly maxStraightCorridorRisk: number;
+  readonly minEndpointTurnPotential: number;
+  readonly minEndpointRegionDepth: number;
   readonly maxStraightness: number;
   readonly minCorridorMean?: number;
   readonly maxCorridorMean?: number;
@@ -170,7 +222,25 @@ const tieBreakPriority = (_cost: number, nodeId: number): number => nodeId;
 const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   classic: {
     searchWindow: 10,
-    placementStrategies: ['region-opposed', 'corner-opposed', 'farthest-pair', 'region-opposed'],
+    placementStrategies: ['farthest-pair', 'corner-opposed', 'edge-biased', 'region-opposed', 'corner-opposed', 'farthest-pair'],
+    startRole: {
+      edgeBias: 0.98,
+      regionDepth: 0.18,
+      branchReach: 0.16,
+      turnPotential: 0.2,
+      corridorLead: -0.04
+    },
+    goalRole: {
+      edgeBias: 0.08,
+      regionDepth: 0.94,
+      branchReach: 0.72,
+      turnPotential: 0.62,
+      corridorLead: 0.16
+    },
+    minEndpointAsymmetry: 0.24,
+    maxStraightCorridorRisk: 0.5,
+    minEndpointTurnPotential: 0.12,
+    minEndpointRegionDepth: 0.26,
     maxStraightness: 0.76,
     maxCorridorMean: 3.35,
     maxCorridorP90: 6.2,
@@ -188,7 +258,25 @@ const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   },
   braided: {
     searchWindow: 12,
-    placementStrategies: ['region-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    placementStrategies: ['region-opposed', 'edge-biased', 'corner-opposed', 'edge-biased', 'region-opposed'],
+    startRole: {
+      edgeBias: 0.52,
+      regionDepth: 0.34,
+      branchReach: 0.9,
+      turnPotential: 0.76,
+      corridorLead: -0.2
+    },
+    goalRole: {
+      edgeBias: 0.18,
+      regionDepth: 0.88,
+      branchReach: 1.04,
+      turnPotential: 0.98,
+      corridorLead: -0.08
+    },
+    minEndpointAsymmetry: 0.28,
+    maxStraightCorridorRisk: 0.44,
+    minEndpointTurnPotential: 0.16,
+    minEndpointRegionDepth: 0.22,
     maxStraightness: 0.74,
     maxCorridorMean: 3.1,
     maxCorridorP90: 5.8,
@@ -206,7 +294,25 @@ const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   },
   sparse: {
     searchWindow: 16,
-    placementStrategies: ['corner-opposed', 'region-opposed', 'corridor-biased', 'farthest-pair'],
+    placementStrategies: ['farthest-pair', 'corner-opposed', 'corridor-biased', 'edge-biased', 'region-opposed'],
+    startRole: {
+      edgeBias: 0.94,
+      regionDepth: 0.14,
+      branchReach: 0.04,
+      turnPotential: 0.08,
+      corridorLead: 0.08
+    },
+    goalRole: {
+      edgeBias: 0.14,
+      regionDepth: 1.12,
+      branchReach: 0.24,
+      turnPotential: 0.24,
+      corridorLead: 0.84
+    },
+    minEndpointAsymmetry: 0.18,
+    maxStraightCorridorRisk: 0.7,
+    minEndpointTurnPotential: 0.06,
+    minEndpointRegionDepth: 0.34,
     maxStraightness: 0.82,
     minCorridorMean: 3.05,
     maxCorridorMean: 3.55,
@@ -225,7 +331,25 @@ const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   },
   dense: {
     searchWindow: 12,
-    placementStrategies: ['region-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    placementStrategies: ['edge-biased', 'region-opposed', 'corner-opposed', 'edge-biased', 'region-opposed'],
+    startRole: {
+      edgeBias: 0.84,
+      regionDepth: 0.24,
+      branchReach: 0.42,
+      turnPotential: 0.36,
+      corridorLead: -0.18
+    },
+    goalRole: {
+      edgeBias: 0.12,
+      regionDepth: 1.08,
+      branchReach: 0.98,
+      turnPotential: 0.94,
+      corridorLead: -0.08
+    },
+    minEndpointAsymmetry: 0.28,
+    maxStraightCorridorRisk: 0.42,
+    minEndpointTurnPotential: 0.18,
+    minEndpointRegionDepth: 0.24,
     maxStraightness: 0.76,
     maxCorridorMean: 3.02,
     maxCorridorP90: 5.4,
@@ -243,7 +367,25 @@ const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   },
   framed: {
     searchWindow: 14,
-    placementStrategies: ['edge-biased', 'region-opposed', 'edge-biased', 'corner-opposed'],
+    placementStrategies: ['edge-biased', 'corner-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    startRole: {
+      edgeBias: 1.18,
+      regionDepth: 0.1,
+      branchReach: 0.14,
+      turnPotential: 0.18,
+      corridorLead: -0.08
+    },
+    goalRole: {
+      edgeBias: 1.04,
+      regionDepth: 0.34,
+      branchReach: 0.44,
+      turnPotential: 0.42,
+      corridorLead: 0.06
+    },
+    minEndpointAsymmetry: 0.2,
+    maxStraightCorridorRisk: 0.52,
+    minEndpointTurnPotential: 0.1,
+    minEndpointRegionDepth: 0.12,
     maxStraightness: 0.8,
     maxCorridorMean: 3.25,
     maxCorridorP90: 6,
@@ -262,7 +404,25 @@ const FAMILY_TOPOLOGY_TUNING: Record<MazeFamily, MazeFamilyTopologyProfile> = {
   },
   'split-flow': {
     searchWindow: 16,
-    placementStrategies: ['region-opposed', 'corner-opposed', 'region-opposed', 'edge-biased'],
+    placementStrategies: ['region-opposed', 'corner-opposed', 'edge-biased', 'region-opposed', 'corner-opposed'],
+    startRole: {
+      edgeBias: 0.72,
+      regionDepth: 0.28,
+      branchReach: 0.16,
+      turnPotential: 0.24,
+      corridorLead: 0.04
+    },
+    goalRole: {
+      edgeBias: 0.16,
+      regionDepth: 1.1,
+      branchReach: 0.86,
+      turnPotential: 0.8,
+      corridorLead: 0.12
+    },
+    minEndpointAsymmetry: 0.28,
+    maxStraightCorridorRisk: 0.46,
+    minEndpointTurnPotential: 0.15,
+    minEndpointRegionDepth: 0.3,
     maxStraightness: 0.79,
     maxCorridorMean: 3.28,
     maxCorridorP90: 6,
@@ -1010,6 +1170,7 @@ const appendEdgePath = (target: number[], edge: CorridorEdge, fromNode: number, 
 
 const measureTopology = (maze: MazeCore, pathIndices: ArrayLike<number>): MazeTopologyStats => {
   const graph = buildCorridorGraph(maze, maze.start, maze.goal);
+  const pools = collectPlacementPools(maze);
   const corridorLengths = graph.edges.map((edge) => Math.max(1, edge.cost));
   let branchDegreeTotal = 0;
   let branchNodeCount = 0;
@@ -1051,6 +1212,12 @@ const measureTopology = (maze: MazeCore, pathIndices: ArrayLike<number>): MazeTo
 
   const dx = Math.abs(maze.goal.x - maze.start.x) / Math.max(1, maze.width - 1);
   const dy = Math.abs(maze.goal.y - maze.start.y) / Math.max(1, maze.height - 1);
+  const startIndex = indexOf(maze.width, maze.start.x, maze.start.y);
+  const goalIndex = indexOf(maze.width, maze.goal.x, maze.goal.y);
+  const startCandidate = pools.byIndex[startIndex] ?? describePlacementCandidate(maze, startIndex);
+  const goalCandidate = pools.byIndex[goalIndex] ?? describePlacementCandidate(maze, goalIndex);
+  const endpointMetrics = buildPlacementPairMetrics(startCandidate, goalCandidate, maze, pools);
+
   return {
     corridorMean: mean(corridorLengths),
     corridorP90: quantile(corridorLengths, 0.9),
@@ -1063,6 +1230,12 @@ const measureTopology = (maze: MazeCore, pathIndices: ArrayLike<number>): MazeTo
       Number(isOnPerimeter(maze.start.x, maze.start.y, maze.width, maze.height))
       + Number(isOnPerimeter(maze.goal.x, maze.goal.y, maze.width, maze.height))
     ) / 2,
+    endpointBranchReachMean: endpointMetrics.branchReachSum / 2,
+    endpointRegionDepthMean: endpointMetrics.regionDepthSum / 2,
+    endpointTurnPotentialMean: endpointMetrics.turnPotentialSum / 2,
+    endpointCorridorLeadMean: endpointMetrics.corridorLeadMean,
+    endpointAsymmetry: endpointMetrics.environmentAsymmetry,
+    endpointStraightCorridorRisk: endpointMetrics.straightCorridorRisk,
     turnRate: pathIndices.length <= 2 ? 0 : countTurns(pathIndices, maze.width) / Math.max(1, pathIndices.length - 2)
   };
 };
@@ -1076,6 +1249,11 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
   const shortcutScore = result.shortcutsCreated / sizeScale;
   const branchScore = result.metrics.branchDensity * 100;
   const turnScore = result.topology.turnRate * 4;
+  const endpointAsymmetryScore = result.topology.endpointAsymmetry * 1.2;
+  const endpointBranchScore = result.topology.endpointBranchReachMean * 3.6;
+  const endpointDepthScore = result.topology.endpointRegionDepthMean * 2.8;
+  const endpointTurnScore = result.topology.endpointTurnPotentialMean * 3.2;
+  const endpointCorridorScore = result.topology.endpointCorridorLeadMean * 1.8;
   const recencyPenalty = attempt * 0.015;
 
   switch (result.maze.family) {
@@ -1085,8 +1263,12 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (turnScore * 0.8)
         + (shortcutScore * 1.15)
         + (branchScore * 0.12)
+        + (endpointAsymmetryScore * 0.78)
+        + (endpointBranchScore * 0.62)
+        + (endpointTurnScore * 0.68)
         - (deadEndScore * 1.15)
         - (result.topology.corridorMean * 0.5)
+        - (result.topology.endpointStraightCorridorRisk * 0.92)
         - (result.metrics.straightness * 1.9)
         - recencyPenalty;
     case 'sparse':
@@ -1094,7 +1276,11 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (result.topology.startGoalSpan * 0.95)
         + rewardWindow(result.topology.corridorMean, 3.1, 3.5, 1.4)
         + (turnScore * 0.45)
+        + (endpointDepthScore * 0.84)
+        + (endpointCorridorScore * 0.62)
+        + (endpointAsymmetryScore * 0.44)
         - (junctionScore * 0.4)
+        - (result.topology.endpointStraightCorridorRisk * 0.42)
         - penalizeAbove(result.topology.corridorP90, 6.6, 0.55)
         - penalizeAbove(result.metrics.straightness, 0.8, 1.2)
         - recencyPenalty;
@@ -1105,8 +1291,12 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (turnScore * 0.95)
         + coverageScore
         + (shortcutScore * 0.55)
+        + (endpointAsymmetryScore * 0.78)
+        + (endpointBranchScore * 0.74)
+        + (endpointTurnScore * 0.76)
         - (result.topology.corridorMean * 0.68)
         - (result.topology.corridorP90 * 0.2)
+        - (result.topology.endpointStraightCorridorRisk * 0.96)
         - (result.metrics.straightness * 2.1)
         - recencyPenalty;
     case 'framed':
@@ -1114,7 +1304,11 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (result.topology.perimeterPathShare * 2.8)
         + (result.topology.startGoalEdgeBias * 1.8)
         + (turnScore * 0.7)
+        + (endpointAsymmetryScore * 0.56)
+        + (endpointDepthScore * 0.34)
+        + (endpointTurnScore * 0.42)
         + rewardWindow(result.topology.corridorMean, 3.0, 3.25, 0.9)
+        - (result.topology.endpointStraightCorridorRisk * 0.58)
         - penalizeAbove(result.metrics.straightness, 0.79, 1.7)
         - penalizeAbove(result.topology.corridorP90, 5.9, 0.45)
         - recencyPenalty;
@@ -1125,7 +1319,11 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (result.topology.quadrantCoverage * 0.6)
         + (result.topology.startGoalSpan * 1.1)
         + (turnScore * 0.7)
+        + (endpointAsymmetryScore * 0.82)
+        + (endpointDepthScore * 0.62)
+        + (endpointTurnScore * 0.52)
         + crossingBonus
+        - (result.topology.endpointStraightCorridorRisk * 0.72)
         - penalizeAbove(result.metrics.straightness, 0.78, 1.8)
         - recencyPenalty;
     }
@@ -1135,7 +1333,11 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
         + (turnScore * 0.78)
         + (coverageScore * 0.9)
         + (result.topology.startGoalSpan * 0.74)
+        + (endpointAsymmetryScore * 0.5)
+        + (endpointBranchScore * 0.28)
+        + (endpointTurnScore * 0.34)
         + rewardWindow(result.topology.corridorMean, 3.0, 3.3, 0.9)
+        - (result.topology.endpointStraightCorridorRisk * 0.66)
         - penalizeAbove(result.metrics.straightness, 0.75, 1.65)
         - recencyPenalty;
   }
@@ -1144,136 +1346,537 @@ const scoreFamilyCandidate = (result: CoreBuildResult, attempt: number): number 
 const placeFamilyEndpoints = (maze: MazeCore, scratch: MazeScratch): PlacementResult => {
   const strategies = FAMILY_TOPOLOGY_TUNING[maze.family].placementStrategies;
   const mixed = mixPlacementSeed(maze.seed, maze.family, maze.width, maze.height);
-  const strategy = strategies[mixed % strategies.length];
   const pools = collectPlacementPools(maze);
-  const placed = resolvePlacementByStrategy(maze, scratch, strategy, pools, mixed);
+  const rotatedStrategies = rotatePlacementStrategies(strategies, mixed % Math.max(1, strategies.length));
+  let bestPassing: PlacementEvaluation | null = null;
+  let bestOverall: PlacementEvaluation | null = null;
+  const passingEvaluations: PlacementEvaluation[] = [];
 
-  if (placed.start.x === placed.goal.x && placed.start.y === placed.goal.y) {
-    return resolvePlacementByStrategy(maze, scratch, 'farthest-pair', pools, mixed ^ 0x9e3779b9);
+  for (let slot = 0; slot < rotatedStrategies.length; slot += 1) {
+    const strategy = rotatedStrategies[slot];
+    const evaluated = evaluatePlacementStrategy(maze, scratch, strategy, pools, mixed ^ Math.imul(slot + 1, 0x45d9f3b));
+    if (!evaluated) {
+      continue;
+    }
+
+    const weighted: PlacementEvaluation = {
+      ...evaluated,
+      score: evaluated.score
+        + resolvePlacementStrategyExposureBias(strategy, evaluated.metrics)
+        + ((rotatedStrategies.length - slot) * 0.12)
+        - (slot * 0.01)
+    };
+
+    if (!bestOverall || weighted.score > bestOverall.score) {
+      bestOverall = weighted;
+    }
+
+    if (passesPlacementVarietyGate(maze.family, strategy, weighted.metrics)) {
+      passingEvaluations.push(weighted);
+      if (!bestPassing || weighted.score > bestPassing.score) {
+        bestPassing = weighted;
+      }
+    }
   }
 
-  return placed;
+  const selected = selectPreferredPassingEvaluation(maze.family, passingEvaluations)
+    ?? bestPassing
+    ?? bestOverall
+    ?? evaluatePlacementStrategy(maze, scratch, 'farthest-pair', pools, mixed ^ 0x9e3779b9);
+
+  if (!selected) {
+    const fallback = farthestPairCandidates(maze, scratch, pools)[0];
+    return evaluationToPlacement({
+      pair: fallback,
+      metrics: buildPlacementPairMetrics(fallback[0], fallback[1], maze, pools),
+      score: 0,
+      strategy: 'farthest-pair'
+    });
+  }
+
+  if (selected.pair[0].index === selected.pair[1].index) {
+    const fallback = farthestPairCandidates(maze, scratch, pools)[0];
+    return evaluationToPlacement({
+      pair: fallback,
+      metrics: buildPlacementPairMetrics(fallback[0], fallback[1], maze, pools),
+      score: selected.score,
+      strategy: 'farthest-pair'
+    });
+  }
+
+  return evaluationToPlacement(selected);
 };
 
-const resolvePlacementByStrategy = (
+const evaluatePlacementStrategy = (
   maze: MazeCore,
   scratch: MazeScratch,
   strategy: MazePlacementStrategy,
-  pools: { deadEnds: PlacementCandidate[]; perimeter: PlacementCandidate[]; all: PlacementCandidate[] },
+  pools: PlacementPools,
   seed: number
-): PlacementResult => {
+): PlacementEvaluation | null => {
   switch (strategy) {
     case 'edge-biased': {
-      const pair = selectBestPlacementPair(
-        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds,
+      return evaluateBestPlacementPair(
+        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds.length >= 2 ? pools.deadEnds : pools.all,
         maze,
-        (left, right) => {
-          const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          const branchBonus = (left.branchReach + right.branchReach) * 0.2;
-          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.3;
-          return separation + ((left.edgeBias + right.edgeBias) * 0.9) + opposedBorderBonus(left, right) + branchBonus - corridorPenalty;
-        }
+        pools,
+        strategy,
+        (metrics) => (
+          (metrics.separation * 1.04)
+          + (metrics.edgeBiasSum * 0.92)
+          + metrics.opposedBorder
+          + (metrics.branchReachSum * 0.3)
+          + (metrics.turnPotentialSum * 0.22)
+          + (metrics.environmentAsymmetry * 0.3)
+          - (metrics.straightCorridorRisk * 0.82)
+        )
       );
-      if (pair) {
-        return pairToPlacement(pair, strategy);
-      }
-      break;
     }
     case 'corner-opposed': {
-      const pair = selectBestPlacementPair(
-        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds,
+      return evaluateBestPlacementPair(
+        pools.perimeter.length >= 4 ? pools.perimeter : pools.deadEnds.length >= 2 ? pools.deadEnds : pools.all,
         maze,
-        (left, right) => {
-          const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          const diagonal = diagonalSpan(left, right, maze.width, maze.height);
-          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.25;
-          return (separation * 1.08) + (diagonal * 1.28) + ((left.edgeBias + right.edgeBias) * 0.65) - corridorPenalty;
-        }
+        pools,
+        strategy,
+        (metrics) => (
+          (metrics.separation * 1.08)
+          + (metrics.diagonal * 1.3)
+          + (metrics.edgeBiasSum * 0.56)
+          + (metrics.turnPotentialSum * 0.28)
+          + (metrics.environmentAsymmetry * 0.38)
+          - (metrics.straightCorridorRisk * 0.74)
+        )
       );
-      if (pair) {
-        return pairToPlacement(pair, strategy);
-      }
-      break;
     }
     case 'region-opposed': {
-      const candidateSource = pools.deadEnds.length >= 8 ? pools.deadEnds : downsampleCandidates(pools.all, 48, seed);
-      const pair = selectBestPlacementPair(
+      const candidateSource = pools.deadEnds.length >= 8 ? pools.deadEnds : downsampleCandidates(pools.all, 56, seed);
+      return evaluateBestPlacementPair(
         candidateSource,
         maze,
-        (left, right) => {
-          const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          const diagonal = diagonalSpan(left, right, maze.width, maze.height);
-          const quadrantBonus = isOpposedQuadrantPair(left, right, maze.width, maze.height) ? 1.2 : 0;
-          const branchBonus = (left.branchReach + right.branchReach) * 0.55;
-          const interiorBonus = (left.regionDepth + right.regionDepth) * 0.2;
-          const corridorPenalty = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.45;
-          return (separation * 1.22) + (diagonal * 0.72) + quadrantBonus + branchBonus + interiorBonus - corridorPenalty;
-        }
+        pools,
+        strategy,
+        (metrics) => (
+          (metrics.separation * 1.18)
+          + (metrics.diagonal * 0.68)
+          + (metrics.quadrantOpposition * 1.22)
+          + (metrics.branchReachSum * 0.58)
+          + (metrics.regionDepthSum * 0.56)
+          + (metrics.turnPotentialSum * 0.42)
+          + (metrics.environmentAsymmetry * 0.46)
+          - (metrics.straightCorridorRisk * 0.9)
+        )
       );
-      if (pair) {
-        return pairToPlacement(pair, strategy);
-      }
-      break;
     }
     case 'corridor-biased': {
-      const candidateSource = pools.deadEnds.length >= 6 ? pools.deadEnds : pools.perimeter;
-      const pair = selectBestPlacementPair(
+      const candidateSource = pools.deadEnds.length >= 6 ? pools.deadEnds : pools.perimeter.length >= 2 ? pools.perimeter : pools.all;
+      return evaluateBestPlacementPair(
         candidateSource,
         maze,
-        (left, right) => {
-          const separation = normalizedSeparation(left, right, maze.width, maze.height);
-          const corridorBonus = ((left.corridorLead + right.corridorLead) / Math.max(1, Math.max(maze.width, maze.height))) * 0.7;
-          const branchBonus = (left.branchReach + right.branchReach) * 0.18;
-          return separation + corridorBonus + (diagonalSpan(left, right, maze.width, maze.height) * 0.35) + branchBonus;
-        }
+        pools,
+        strategy,
+        (metrics) => (
+          (metrics.separation * 0.94)
+          + (metrics.corridorLeadMean * 0.72)
+          + (metrics.diagonal * 0.28)
+          + (metrics.branchReachSum * 0.22)
+          + (metrics.regionDepthSum * 0.4)
+          + (metrics.turnPotentialSum * 0.46)
+          + (metrics.environmentAsymmetry * 0.48)
+          - (metrics.straightCorridorRisk * 0.38)
+        )
       );
-      if (pair) {
-        return pairToPlacement(pair, strategy);
-      }
-      break;
     }
     case 'farthest-pair':
-    default:
-      break;
+    default: {
+      return evaluateBestFarthestPlacementPair(maze, scratch, pools, strategy);
+    }
+  }
+};
+
+const farthestPairCandidates = (
+  maze: MazeCore,
+  scratch: MazeScratch,
+  pools: PlacementPools
+): Array<[PlacementCandidate, PlacementCandidate]> => {
+  const anchors: Point[] = [
+    { x: 0, y: 0 },
+    { x: maze.width - 1, y: 0 },
+    { x: 0, y: maze.height - 1 },
+    { x: maze.width - 1, y: maze.height - 1 },
+    { x: Math.floor((maze.width - 1) / 2), y: Math.floor((maze.height - 1) / 2) }
+  ];
+  const seen = new Set<string>();
+  const candidates: Array<[PlacementCandidate, PlacementCandidate]> = [];
+
+  for (const anchor of anchors) {
+    const farA = farthestReachable(maze, anchor, scratch);
+    const farB = farthestReachable(maze, farA.point, scratch);
+    const startIndex = indexOf(maze.width, farA.point.x, farA.point.y);
+    const goalIndex = indexOf(maze.width, farB.point.x, farB.point.y);
+    if (startIndex === goalIndex) {
+      continue;
+    }
+
+    const pairKey = startIndex < goalIndex
+      ? `${startIndex}:${goalIndex}`
+      : `${goalIndex}:${startIndex}`;
+    if (seen.has(pairKey)) {
+      continue;
+    }
+
+    seen.add(pairKey);
+    candidates.push([
+      pools.byIndex[startIndex] ?? describePlacementCandidate(maze, startIndex),
+      pools.byIndex[goalIndex] ?? describePlacementCandidate(maze, goalIndex)
+    ]);
+  }
+
+  if (candidates.length > 0) {
+    return candidates;
   }
 
   const farA = farthestReachable(maze, { x: 0, y: 0 }, scratch);
   const farB = farthestReachable(maze, farA.point, scratch);
+  const startIndex = indexOf(maze.width, farA.point.x, farA.point.y);
+  const goalIndex = indexOf(maze.width, farB.point.x, farB.point.y);
+  return [[
+    pools.byIndex[startIndex] ?? describePlacementCandidate(maze, startIndex),
+    pools.byIndex[goalIndex] ?? describePlacementCandidate(maze, goalIndex)
+  ]];
+};
+
+const evaluateBestFarthestPlacementPair = (
+  maze: MazeCore,
+  scratch: MazeScratch,
+  pools: PlacementPools,
+  strategy: MazePlacementStrategy
+): PlacementEvaluation | null => {
+  let best: PlacementEvaluation | null = null;
+
+  for (const pair of farthestPairCandidates(maze, scratch, pools)) {
+    const evaluation = buildPlacementEvaluation(
+      maze,
+      pools,
+      strategy,
+      pair[0],
+      pair[1],
+      (metrics) => (
+        (metrics.separation * 1.42)
+        + (metrics.diagonal * 0.34)
+        + (metrics.opposedBorder * 0.26)
+        + (metrics.regionDepthSum * 0.18)
+        + (metrics.turnPotentialSum * 0.24)
+        + (metrics.environmentAsymmetry * 0.18)
+        - (metrics.straightCorridorRisk * 0.72)
+      )
+    );
+    if (!best || evaluation.score > best.score) {
+      best = evaluation;
+    }
+  }
+
+  return best;
+};
+
+const selectPreferredPassingEvaluation = (
+  family: MazeFamily,
+  evaluations: readonly PlacementEvaluation[]
+): PlacementEvaluation | null => {
+  if (evaluations.length === 0) {
+    return null;
+  }
+
+  const best = evaluations.reduce((currentBest, evaluation) => (
+    evaluation.score > currentBest.score ? evaluation : currentBest
+  ));
+  const bestFarthest = evaluations
+    .filter((evaluation) => evaluation.strategy === 'farthest-pair')
+    .reduce<PlacementEvaluation | null>((currentBest, evaluation) => (
+      !currentBest || evaluation.score > currentBest.score ? evaluation : currentBest
+    ), null);
+  if (
+    bestFarthest
+    && bestFarthest.metrics.separation >= 1.24
+    && bestFarthest.metrics.straightCorridorRisk <= (best.metrics.straightCorridorRisk + 0.28)
+  ) {
+    return bestFarthest;
+  }
+  if (bestFarthest && bestFarthest.score >= (best.score - 0.28)) {
+    return bestFarthest;
+  }
+
+  const bestEdge = evaluations
+    .filter((evaluation) => evaluation.strategy === 'edge-biased')
+    .reduce<PlacementEvaluation | null>((currentBest, evaluation) => (
+      !currentBest || evaluation.score > currentBest.score ? evaluation : currentBest
+    ), null);
+  if (
+    family === 'framed'
+    && bestEdge
+    && bestEdge.metrics.opposedBorder > 0
+    && bestEdge.score >= (best.score - 0.4)
+  ) {
+    return bestEdge;
+  }
+
+  const bestCorner = evaluations
+    .filter((evaluation) => evaluation.strategy === 'corner-opposed')
+    .reduce<PlacementEvaluation | null>((currentBest, evaluation) => (
+      !currentBest || evaluation.score > currentBest.score ? evaluation : currentBest
+    ), null);
+  if (best.strategy === 'region-opposed' && bestCorner && bestCorner.score >= (best.score - 0.18)) {
+    return bestCorner;
+  }
+
+  return best;
+};
+
+const rotatePlacementStrategies = (
+  strategies: readonly MazePlacementStrategy[],
+  offset: number
+): MazePlacementStrategy[] => {
+  if (strategies.length === 0) {
+    return ['farthest-pair'];
+  }
+
+  return strategies.map((_, index) => strategies[(index + offset) % strategies.length]);
+};
+
+const evaluateBestPlacementPair = (
+  candidates: readonly PlacementCandidate[],
+  maze: MazeCore,
+  pools: PlacementPools,
+  strategy: MazePlacementStrategy,
+  scorePair: (metrics: PlacementPairMetrics) => number
+): PlacementEvaluation | null => {
+  if (candidates.length < 2) {
+    return null;
+  }
+
+  let best: PlacementEvaluation | null = null;
+
+  for (let leftIndex = 0; leftIndex < candidates.length - 1; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
+      const left = candidates[leftIndex];
+      const right = candidates[rightIndex];
+      if (left.index === right.index) {
+        continue;
+      }
+
+      const evaluation = buildPlacementEvaluation(maze, pools, strategy, left, right, scorePair);
+      if (!best || evaluation.score > best.score) {
+        best = evaluation;
+      }
+    }
+  }
+
+  return best;
+};
+
+const buildPlacementEvaluation = (
+  maze: MazeCore,
+  pools: PlacementPools,
+  strategy: MazePlacementStrategy,
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  scorePair: (metrics: PlacementPairMetrics) => number
+): PlacementEvaluation => {
+  const oriented = orientPlacementPair(maze.family, left, right, pools.maxCorridorLead);
+  const metrics = buildPlacementPairMetrics(oriented.pair[0], oriented.pair[1], maze, pools);
   return {
-    start: farA.point,
-    goal: farB.point,
-    strategy: 'farthest-pair'
+    pair: oriented.pair,
+    metrics,
+    score: scorePair(metrics) + oriented.roleScore + (metrics.separation * 0.12) + (metrics.environmentAsymmetry * 0.18),
+    strategy
   };
 };
 
-const collectPlacementPools = (maze: MazeCore): {
-  deadEnds: PlacementCandidate[];
-  perimeter: PlacementCandidate[];
-  all: PlacementCandidate[];
-} => {
+const resolvePlacementStrategyExposureBias = (
+  strategy: MazePlacementStrategy,
+  metrics: PlacementPairMetrics
+): number => {
+  switch (strategy) {
+    case 'corner-opposed':
+      return (metrics.diagonal >= 0.78 ? 0.18 : 0)
+        + (metrics.edgeBiasSum >= 1.68 ? 0.08 : 0);
+    case 'farthest-pair':
+      return (metrics.separation >= 1.22 ? 0.42 : 0)
+        + (metrics.straightCorridorRisk <= 0.58 ? 0.12 : 0);
+    case 'edge-biased':
+      return (metrics.edgeBiasSum >= 1.54 ? 0.12 : 0)
+        + (metrics.opposedBorder > 0 ? 0.06 : 0);
+    case 'corridor-biased':
+      return metrics.corridorLeadMean >= 0.14 ? 0.08 : 0;
+    case 'region-opposed':
+    default:
+      return metrics.quadrantOpposition > 0 ? 0.04 : -0.1;
+  }
+};
+
+const orientPlacementPair = (
+  family: MazeFamily,
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  maxCorridorLead: number
+): { pair: [PlacementCandidate, PlacementCandidate]; roleScore: number } => {
+  const profile = FAMILY_TOPOLOGY_TUNING[family];
+  const directScore = scoreEndpointRole(left, profile.startRole, maxCorridorLead)
+    + scoreEndpointRole(right, profile.goalRole, maxCorridorLead);
+  const inverseScore = scoreEndpointRole(right, profile.startRole, maxCorridorLead)
+    + scoreEndpointRole(left, profile.goalRole, maxCorridorLead);
+
+  return inverseScore > directScore
+    ? { pair: [right, left], roleScore: inverseScore }
+    : { pair: [left, right], roleScore: directScore };
+};
+
+const scoreEndpointRole = (
+  candidate: PlacementCandidate,
+  role: EndpointRoleProfile,
+  maxCorridorLead: number
+): number => (
+  (candidate.edgeBias * role.edgeBias)
+  + (candidate.regionDepth * role.regionDepth)
+  + (candidate.branchReach * role.branchReach)
+  + (candidate.turnPotential * role.turnPotential)
+  + (((candidate.corridorLead / Math.max(1, maxCorridorLead)) || 0) * role.corridorLead)
+);
+
+const buildPlacementPairMetrics = (
+  left: PlacementCandidate,
+  right: PlacementCandidate,
+  maze: MazeCore,
+  pools: PlacementPools
+): PlacementPairMetrics => {
+  const leftCorridor = left.corridorLead / Math.max(1, pools.maxCorridorLead);
+  const rightCorridor = right.corridorLead / Math.max(1, pools.maxCorridorLead);
+  const branchReachSum = left.branchReach + right.branchReach;
+  const regionDepthSum = left.regionDepth + right.regionDepth;
+  const turnPotentialSum = left.turnPotential + right.turnPotential;
+  const corridorLeadMean = (leftCorridor + rightCorridor) / 2;
+  const corridorLeadMax = Math.max(leftCorridor, rightCorridor);
+  const localRichness = clamp(((branchReachSum * 0.46) + (turnPotentialSum * 0.54)) / 2, 0, 1);
+  const corridorSymmetry = 1 - clamp(Math.abs(leftCorridor - rightCorridor) * 1.35, 0, 1);
+  const straightCorridorRisk = clamp(
+    corridorLeadMean * (1.08 - (localRichness * 0.82)) * (0.76 + (corridorSymmetry * 0.32)),
+    0,
+    1.4
+  );
+
+  return {
+    separation: normalizedSeparation(left, right, maze.width, maze.height),
+    diagonal: diagonalSpan(left, right, maze.width, maze.height),
+    edgeBiasSum: left.edgeBias + right.edgeBias,
+    branchReachSum,
+    regionDepthSum,
+    turnPotentialSum,
+    corridorLeadMean,
+    corridorLeadMax,
+    environmentAsymmetry: (
+      (Math.abs(left.branchReach - right.branchReach) * 0.95)
+      + (Math.abs(left.regionDepth - right.regionDepth) * 0.88)
+      + (Math.abs(left.turnPotential - right.turnPotential) * 0.82)
+      + (Math.abs(left.edgeBias - right.edgeBias) * 0.54)
+      + (Math.abs(leftCorridor - rightCorridor) * 0.68)
+    ),
+    quadrantOpposition: isOpposedQuadrantPair(left, right, maze.width, maze.height) ? 1 : 0,
+    opposedBorder: opposedBorderBonus(left, right),
+    straightCorridorRisk
+  };
+};
+
+const passesPlacementVarietyGate = (
+  family: MazeFamily,
+  strategy: MazePlacementStrategy,
+  metrics: PlacementPairMetrics
+): boolean => {
+  const profile = FAMILY_TOPOLOGY_TUNING[family];
+  if (strategy === 'farthest-pair') {
+    return metrics.separation >= 0.9;
+  }
+  const asymmetryFloor = profile.minEndpointAsymmetry
+    + (strategy === 'corridor-biased'
+      ? -0.02
+      : strategy === 'corner-opposed'
+        ? -0.08
+        : strategy === 'edge-biased'
+          ? -0.03
+          : strategy === 'region-opposed'
+            ? 0.06
+            : 0);
+  const turnFloor = Math.max(
+    0,
+    profile.minEndpointTurnPotential
+      + (strategy === 'corridor-biased'
+        ? -0.02
+        : strategy === 'corner-opposed'
+          ? -0.02
+          : strategy === 'region-opposed'
+            ? 0.02
+            : 0)
+  );
+  const regionFloor = strategy === 'corner-opposed'
+    ? 0
+    : Math.max(
+      0,
+      profile.minEndpointRegionDepth
+        + (strategy === 'edge-biased'
+          ? -0.1
+          : strategy === 'corridor-biased'
+            ? -0.04
+            : strategy === 'region-opposed'
+              ? 0.06
+              : 0)
+    );
+  const straightRiskCeiling = profile.maxStraightCorridorRisk
+    + (strategy === 'corridor-biased'
+      ? 0.14
+      : strategy === 'corner-opposed'
+        ? 0.04
+        : strategy === 'edge-biased'
+          ? 0.05
+          : strategy === 'region-opposed'
+            ? -0.04
+            : 0);
+  const cornerGeometryPass = strategy !== 'corner-opposed'
+    || (metrics.diagonal >= 0.72 && metrics.edgeBiasSum >= 1.62);
+  return metrics.environmentAsymmetry >= asymmetryFloor
+    && (metrics.turnPotentialSum / 2) >= turnFloor
+    && (metrics.regionDepthSum / 2) >= regionFloor
+    && metrics.straightCorridorRisk <= straightRiskCeiling
+    && cornerGeometryPass;
+};
+
+const evaluationToPlacement = (evaluation: PlacementEvaluation): PlacementResult => ({
+  start: { x: evaluation.pair[0].x, y: evaluation.pair[0].y },
+  goal: { x: evaluation.pair[1].x, y: evaluation.pair[1].y },
+  strategy: evaluation.strategy
+});
+
+const collectPlacementPools = (maze: MazeCore): PlacementPools => {
   const deadEnds: PlacementCandidate[] = [];
   const perimeter: PlacementCandidate[] = [];
   const all: PlacementCandidate[] = [];
+  const byIndex: Array<PlacementCandidate | undefined> = new Array(maze.cells.length);
+  const perimeterDistances = computePerimeterDistances(maze);
+  const maxPerimeterDistance = Math.max(1, ...perimeterDistances);
+  const degrees = buildDegreeMap(maze);
+  const turnOpportunities = buildTurnOpportunityMap(maze, degrees);
+  let maxCorridorLead = 1;
 
   for (let index = 0; index < maze.cells.length; index += 1) {
-    const x = xFromIndex(index, maze.width);
-    const y = yFromIndex(index, maze.width);
-    const degree = countOpenNeighbors(maze, index);
-    const edgeDistance = Math.min(x, y, (maze.width - 1) - x, (maze.height - 1) - y);
-    const edgeBias = clamp(1 - (edgeDistance / Math.max(1, Math.floor(Math.min(maze.width, maze.height) / 2))), 0, 1);
-    const candidate: PlacementCandidate = {
+    const candidate = createPlacementCandidate(
+      maze,
       index,
-      x,
-      y,
-      corridorLead: degree === 1 ? measureDeadEndCorridorLead(maze, index) : 0,
-      edgeBias,
-      borderMask: resolveBorderMask(x, y, maze.width, maze.height),
-      branchReach: measureLocalBranchReach(maze, x, y),
-      regionDepth: 1 - edgeBias
-    };
-
+      perimeterDistances,
+      maxPerimeterDistance,
+      degrees,
+      turnOpportunities
+    );
+    byIndex[index] = candidate;
     all.push(candidate);
-    if (degree === 1) {
+    maxCorridorLead = Math.max(maxCorridorLead, candidate.corridorLead);
+    if (candidate.degree === 1) {
       deadEnds.push(candidate);
     }
     if (candidate.borderMask !== 0) {
@@ -1284,49 +1887,105 @@ const collectPlacementPools = (maze: MazeCore): {
   return {
     deadEnds,
     perimeter,
-    all
+    all,
+    byIndex,
+    maxCorridorLead
   };
 };
 
-const selectBestPlacementPair = (
-  candidates: readonly PlacementCandidate[],
+const createPlacementCandidate = (
   maze: MazeCore,
-  scorePair: (left: PlacementCandidate, right: PlacementCandidate) => number
-): [PlacementCandidate, PlacementCandidate] | null => {
-  if (candidates.length < 2) {
-    return null;
+  index: number,
+  perimeterDistances: Int32Array,
+  maxPerimeterDistance: number,
+  degrees: Uint8Array,
+  turnOpportunities: Uint8Array
+): PlacementCandidate => {
+  const x = xFromIndex(index, maze.width);
+  const y = yFromIndex(index, maze.width);
+  const degree = degrees[index];
+  const edgeDistance = Math.min(x, y, (maze.width - 1) - x, (maze.height - 1) - y);
+  const edgeBias = clamp(1 - (edgeDistance / Math.max(1, Math.floor(Math.min(maze.width, maze.height) / 2))), 0, 1);
+  return {
+    index,
+    x,
+    y,
+    degree,
+    corridorLead: degree === 1 ? measureDeadEndCorridorLead(maze, index) : 0,
+    edgeBias,
+    borderMask: resolveBorderMask(x, y, maze.width, maze.height),
+    branchReach: measureLocalBranchReach(maze, x, y, degrees),
+    regionDepth: clamp(perimeterDistances[index] / maxPerimeterDistance, 0, 1),
+    turnPotential: measureLocalTurnPotential(maze, x, y, degrees, turnOpportunities)
+  };
+};
+
+const describePlacementCandidate = (maze: MazeCore, index: number): PlacementCandidate => {
+  const perimeterDistances = computePerimeterDistances(maze);
+  const degrees = buildDegreeMap(maze);
+  const turnOpportunities = buildTurnOpportunityMap(maze, degrees);
+  return createPlacementCandidate(
+    maze,
+    index,
+    perimeterDistances,
+    Math.max(1, ...perimeterDistances),
+    degrees,
+    turnOpportunities
+  );
+};
+
+const computePerimeterDistances = (maze: MazeCore): Int32Array => {
+  const distances = new Int32Array(maze.cells.length);
+  distances.fill(-1);
+  const queue = new Int32Array(maze.cells.length);
+  let head = 0;
+  let tail = 0;
+
+  for (let index = 0; index < maze.cells.length; index += 1) {
+    const x = xFromIndex(index, maze.width);
+    const y = yFromIndex(index, maze.width);
+    if (!isOnPerimeter(x, y, maze.width, maze.height)) {
+      continue;
+    }
+
+    distances[index] = 0;
+    queue[tail] = index;
+    tail += 1;
   }
 
-  let bestScore = Number.NEGATIVE_INFINITY;
-  let bestPair: [PlacementCandidate, PlacementCandidate] | null = null;
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
 
-  for (let leftIndex = 0; leftIndex < candidates.length - 1; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
-      const left = candidates[leftIndex];
-      const right = candidates[rightIndex];
-      if (left.index === right.index) {
+    for (const neighbor of getOpenNeighbors(maze, current)) {
+      if (distances[neighbor] !== -1) {
         continue;
       }
 
-      const score = scorePair(left, right) + (normalizedSeparation(left, right, maze.width, maze.height) * 0.15);
-      if (score > bestScore) {
-        bestScore = score;
-        bestPair = [left, right];
-      }
+      distances[neighbor] = distances[current] + 1;
+      queue[tail] = neighbor;
+      tail += 1;
     }
   }
 
-  return bestPair;
+  return distances;
 };
 
-const pairToPlacement = (
-  pair: [PlacementCandidate, PlacementCandidate],
-  strategy: MazePlacementStrategy
-): PlacementResult => ({
-  start: { x: pair[0].x, y: pair[0].y },
-  goal: { x: pair[1].x, y: pair[1].y },
-  strategy
-});
+const buildDegreeMap = (maze: MazeCore): Uint8Array => {
+  const degrees = new Uint8Array(maze.cells.length);
+  for (let index = 0; index < maze.cells.length; index += 1) {
+    degrees[index] = countOpenNeighbors(maze, index);
+  }
+  return degrees;
+};
+
+const buildTurnOpportunityMap = (maze: MazeCore, degrees: Uint8Array): Uint8Array => {
+  const turnOpportunities = new Uint8Array(maze.cells.length);
+  for (let index = 0; index < maze.cells.length; index += 1) {
+    turnOpportunities[index] = degrees[index] >= 3 || hasTurnOpportunity(maze, index) ? 1 : 0;
+  }
+  return turnOpportunities;
+};
 
 const downsampleCandidates = (
   candidates: readonly PlacementCandidate[],
@@ -2006,13 +2665,14 @@ const isOpenBetween = (maze: MazeCore, from: number, to: number): boolean => {
   return false;
 };
 
-const measureLocalBranchReach = (maze: MazeCore, x: number, y: number): number => {
+const measureLocalBranchReach = (maze: MazeCore, x: number, y: number, degrees: Uint8Array): number => {
   let branching = 0;
-  let samples = 0;
+  let totalWeight = 0;
 
   for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
     for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
-      if (Math.abs(offsetX) + Math.abs(offsetY) > 3) {
+      const manhattanDistance = Math.abs(offsetX) + Math.abs(offsetY);
+      if (manhattanDistance > 3) {
         continue;
       }
       const nextX = x + offsetX;
@@ -2020,14 +2680,77 @@ const measureLocalBranchReach = (maze: MazeCore, x: number, y: number): number =
       if (!inBounds(nextX, nextY, maze.width, maze.height)) {
         continue;
       }
-      samples += 1;
-      if (countOpenNeighbors(maze, indexOf(maze.width, nextX, nextY)) >= 3) {
-        branching += 1;
+      const weight = 1 / (1 + (manhattanDistance * 0.72));
+      totalWeight += weight;
+      if (degrees[indexOf(maze.width, nextX, nextY)] >= 3) {
+        branching += weight;
       }
     }
   }
 
-  return branching / Math.max(1, samples);
+  return branching / Math.max(1, totalWeight);
+};
+
+const measureLocalTurnPotential = (
+  maze: MazeCore,
+  x: number,
+  y: number,
+  degrees: Uint8Array,
+  turnOpportunities: Uint8Array
+): number => {
+  let turnWeight = 0;
+  let totalWeight = 0;
+
+  for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+    for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
+      const manhattanDistance = Math.abs(offsetX) + Math.abs(offsetY);
+      if (manhattanDistance > 3) {
+        continue;
+      }
+
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (!inBounds(nextX, nextY, maze.width, maze.height)) {
+        continue;
+      }
+
+      const index = indexOf(maze.width, nextX, nextY);
+      const degree = degrees[index];
+      const weight = 1 / (1 + (manhattanDistance * 0.72));
+      totalWeight += weight;
+
+      if (degree >= 3) {
+        turnWeight += weight;
+        continue;
+      }
+
+      if (turnOpportunities[index] === 1) {
+        turnWeight += weight * 0.82;
+        continue;
+      }
+
+      if (degree === 1) {
+        turnWeight += weight * 0.14;
+      }
+    }
+  }
+
+  return turnWeight / Math.max(1, totalWeight);
+};
+
+const hasTurnOpportunity = (maze: MazeCore, index: number): boolean => {
+  const cell = maze.cells[index];
+  const x = xFromIndex(index, maze.width);
+  const y = yFromIndex(index, maze.width);
+  const hasVertical = (
+    (((cell & N) === 0) && inBounds(x, y - 1, maze.width, maze.height))
+    || (((cell & S) === 0) && inBounds(x, y + 1, maze.width, maze.height))
+  );
+  const hasHorizontal = (
+    (((cell & E) === 0) && inBounds(x + 1, y, maze.width, maze.height))
+    || (((cell & W) === 0) && inBounds(x - 1, y, maze.width, maze.height))
+  );
+  return hasVertical && hasHorizontal;
 };
 
 const pickRandomClosedNeighbor = (maze: MazeCore, idx: number, rng: () => number): number => {

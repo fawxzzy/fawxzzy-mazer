@@ -310,10 +310,18 @@ describe('demo-only build', () => {
         'wall-vs-player',
         'floor-vs-route',
         'floor-vs-trail',
+        'floor-vs-player',
+        'floor-vs-start',
+        'floor-vs-goal',
         'route-vs-trail',
         'trail-vs-player',
+        'start-vs-goal',
+        'start-vs-player',
+        'goal-vs-player',
         'goal-vs-background',
-        'metadata-vs-background'
+        'metadata-vs-panel',
+        'accent-vs-panel',
+        'flash-vs-panel'
       ]);
     }
   });

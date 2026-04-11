@@ -150,28 +150,28 @@ const DEFAULT_HUD_DEPLOYMENT_PROFILE: HudDeploymentProfile = {
 
 const HUD_DEPLOYMENT_PROFILES: Record<PresentationDeploymentProfile, HudDeploymentProfile> = {
   tv: {
-    railInset: 10,
-    baselineGap: 2,
+    railInset: 14,
+    baselineGap: 4,
     flashInsetX: 8,
-    flashInsetY: 0,
+    flashInsetY: 2,
     modeFontScale: 0.96,
     metaFontScale: 0.92,
     flashFontScale: 0.92
   },
   obs: {
-    railInset: 14,
-    baselineGap: 4,
-    flashInsetX: 10,
-    flashInsetY: 2,
+    railInset: 18,
+    baselineGap: 6,
+    flashInsetX: 12,
+    flashInsetY: 4,
     modeFontScale: 0.94,
     metaFontScale: 0.92,
     flashFontScale: 0.92
   },
   mobile: {
-    railInset: 10,
-    baselineGap: 10,
+    railInset: 14,
+    baselineGap: 12,
     flashInsetX: 8,
-    flashInsetY: 8,
+    flashInsetY: 10,
     modeFontScale: 1.08,
     metaFontScale: 1.08,
     flashFontScale: 1.04
@@ -290,15 +290,17 @@ export const createDemoStatusHud = (
   const boardWidth = Math.max(80, isFiniteNumber(layout.boardWidth) ? layout.boardWidth : 80);
   const boardHeight = Math.max(80, isFiniteNumber(layout.boardHeight) ? layout.boardHeight : 80);
   const compactMeta = compact || boardWidth <= 448;
-  const railInset = deploymentProfile.railInset + (compactMeta ? 2 : 4);
+  const railInset = deploymentProfile.railInset + (compactMeta ? 6 : 10);
   const leftX = boardX + railInset;
   const rightX = boardX + boardWidth - railInset;
   const baselineY = Math.min(
-    boardY + boardHeight + (compact ? 18 : 22) + deploymentProfile.baselineGap,
-    layout.safeBounds.bottom - (compact ? 10 : 12)
+    boardY + boardHeight + (compact ? 20 : 26) + deploymentProfile.baselineGap,
+    layout.safeBounds.bottom - (compact ? 12 : 14)
   );
   const flashX = boardX + boardWidth - deploymentProfile.flashInsetX;
-  const flashY = boardY + (compact ? 8 : 10) + deploymentProfile.flashInsetY;
+  const flashY = boardY + (compact ? 10 : 12) + deploymentProfile.flashInsetY;
+  const modeWidth = Math.max(80, Math.round(boardWidth * (compactMeta ? 0.26 : 0.28)));
+  const metaWidth = Math.max(124, Math.round(boardWidth * (compactMeta ? 0.4 : 0.48)));
   let lastModeLabel = '';
   let lastMeta = '';
   let lastFlash = '';
@@ -310,7 +312,7 @@ export const createDemoStatusHud = (
     baselineY - (compact ? 12 : 13),
     Math.max(24, boardWidth - (railInset * 2)),
     compact ? 7 : 8,
-    colors.board.panel,
+    colors.hud.panel,
     0.06
   ).setOrigin(0.5);
   const rail = scene.add.rectangle(
@@ -318,7 +320,7 @@ export const createDemoStatusHud = (
     baselineY - (compact ? 12 : 13),
     Math.max(24, boardWidth - (railInset * 2)),
     1,
-    colors.board.innerStroke,
+    colors.hud.panelStroke,
     0.18
   ).setOrigin(0.5);
   const modeText = scene.add.text(leftX, baselineY, '', {
@@ -326,14 +328,14 @@ export const createDemoStatusHud = (
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.modeFontScale)}px`,
     fontStyle: 'bold'
-  }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2);
+  }).setOrigin(0, 0.5).setLetterSpacing(compact ? 1 : 2).setFixedSize(modeWidth, 0);
   const metaText = scene.add.text(rightX, baselineY, '', {
     color: toCssColor(colors.hud.hintText),
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 7 : 8) * deploymentProfile.metaFontScale)}px`
-  }).setOrigin(1, 0.5).setLetterSpacing(compactMeta ? 0 : 1);
+  }).setOrigin(1, 0.5).setLetterSpacing(compactMeta ? 0 : 1).setFixedSize(metaWidth, 0).setAlign('right');
   const flashText = scene.add.text(flashX, flashY, '', {
-    color: toCssColor(colors.board.topHighlight),
+    color: toCssColor(colors.hud.accent),
     fontFamily: '"Courier New", monospace',
     fontSize: `${Math.round((compact ? 8 : 9) * deploymentProfile.flashFontScale)}px`,
     fontStyle: 'bold'

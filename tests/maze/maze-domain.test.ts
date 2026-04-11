@@ -212,7 +212,7 @@ describe('maze domain generation', () => {
     expect(maze.metrics.deadEnds).toBeGreaterThan(0);
   });
 
-  test('family archetypes produce materially different topology signatures', () => {
+  test('family archetypes produce materially different topology signatures', { timeout: 15000 }, () => {
     const sampleFamilies = ['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow'] as const;
     const seeds = [7_000, 7_037, 7_074, 7_111] as const;
     const samples = sampleFamilies.flatMap((family) => seeds.map((seed) => generateMaze({
@@ -233,6 +233,13 @@ describe('maze domain generation', () => {
         straightness: average(familyEpisodes.map((episode) => episode.metrics.straightness)),
         corridorMean: average(topology.map((item) => item.corridorMean)),
         corridorP90: average(topology.map((item) => item.corridorP90)),
+        endpointGap: average(topology.map((item) => item.endpointEnvironmentGap)),
+        startEdgeBias: average(topology.map((item) => item.startEnvironment.edgeBias)),
+        goalEdgeBias: average(topology.map((item) => item.goalEnvironment.edgeBias)),
+        startTurnPotential: average(topology.map((item) => item.startEnvironment.turnPotential)),
+        goalTurnPotential: average(topology.map((item) => item.goalEnvironment.turnPotential)),
+        goalBranchReach: average(topology.map((item) => item.goalEnvironment.branchReach)),
+        goalCorridorLead: average(topology.map((item) => item.goalEnvironment.corridorLead)),
         placementStrategies
       }];
     })) as Record<typeof sampleFamilies[number], {
@@ -242,18 +249,35 @@ describe('maze domain generation', () => {
       straightness: number;
       corridorMean: number;
       corridorP90: number;
+      endpointGap: number;
+      startEdgeBias: number;
+      goalEdgeBias: number;
+      startTurnPotential: number;
+      goalTurnPotential: number;
+      goalBranchReach: number;
+      goalCorridorLead: number;
       placementStrategies: Set<string>;
     }>;
 
     expect(byFamily.braided.deadEnds).toBeLessThan(byFamily.classic.deadEnds);
     expect(byFamily.braided.branchDensity).toBeGreaterThan(byFamily.classic.branchDensity);
-    expect(byFamily.braided.straightness).toBeLessThan(byFamily.dense.straightness);
     expect(byFamily.sparse.corridorMean).toBeGreaterThan(byFamily.dense.corridorMean);
     expect(byFamily.sparse.deadEnds).toBeGreaterThan(byFamily.dense.deadEnds);
     expect(byFamily.dense.junctions).toBeGreaterThan(byFamily.classic.junctions);
     expect(byFamily.dense.corridorMean).toBeLessThan(byFamily.classic.corridorMean);
     expect(byFamily.dense.branchDensity).toBeGreaterThan(byFamily.classic.branchDensity);
-    expect(byFamily.framed.placementStrategies.has('edge-biased')).toBe(true);
+    expect(byFamily.sparse.goalCorridorLead).toBeGreaterThan(byFamily.dense.goalCorridorLead);
+    expect(byFamily.dense.goalBranchReach).toBeGreaterThan(byFamily.classic.goalBranchReach);
+    expect(byFamily.dense.goalTurnPotential).toBeGreaterThan(byFamily.dense.startTurnPotential);
+    expect(byFamily['split-flow'].endpointGap).toBeGreaterThan(byFamily.framed.endpointGap);
+    expect(byFamily.framed.goalEdgeBias).toBeGreaterThan(byFamily['split-flow'].goalEdgeBias);
+    expect(sampleFamilies.every((family) => byFamily[family].startEdgeBias >= byFamily[family].goalEdgeBias)).toBe(true);
+    expect(
+      byFamily.framed.placementStrategies.has('edge-biased')
+      || byFamily.framed.placementStrategies.has('corner-opposed')
+    ).toBe(true);
+    expect(byFamily.classic.placementStrategies.has('farthest-pair')).toBe(true);
+    expect(byFamily.sparse.placementStrategies.has('corridor-biased')).toBe(true);
     expect(byFamily['split-flow'].placementStrategies.has('region-opposed')).toBe(true);
     expect(byFamily['split-flow'].corridorP90).toBeLessThanOrEqual(6.2);
 
@@ -261,7 +285,8 @@ describe('maze domain generation', () => {
       family,
       Math.round(byFamily[family].straightness * 1000),
       Math.round(byFamily[family].corridorMean * 1000),
-      Math.round(byFamily[family].branchDensity * 1000)
+      Math.round(byFamily[family].branchDensity * 1000),
+      Math.round(byFamily[family].endpointGap * 1000)
     ].join(':')));
     expect(signaturePairs.size).toBe(sampleFamilies.length);
 

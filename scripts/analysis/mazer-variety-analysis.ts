@@ -32,6 +32,14 @@ type CorridorStats = {
   max: number;
 };
 
+type EndpointEnvironment = {
+  edgeBias: number;
+  branchReach: number;
+  regionDepth: number;
+  turnPotential: number;
+  corridorLead: number;
+};
+
 type EpisodeSample = {
   seed: number;
   cycle: number;
@@ -53,6 +61,9 @@ type EpisodeSample = {
   floorTiles: number;
   meanBranchingFactor: number;
   corridorStats: CorridorStats;
+  startEnvironment: EndpointEnvironment;
+  goalEnvironment: EndpointEnvironment;
+  endpointEnvironmentGap: number;
   shapeSignature: string;
 };
 
@@ -78,6 +89,15 @@ type BucketSummary = {
   meanBranchingFactor: SummaryMetric;
   corridorMean: SummaryMetric;
   corridorP90: SummaryMetric;
+  endpointEnvironmentGap: SummaryMetric;
+  startBranchReach: SummaryMetric;
+  goalBranchReach: SummaryMetric;
+  startRegionDepth: SummaryMetric;
+  goalRegionDepth: SummaryMetric;
+  startTurnPotential: SummaryMetric;
+  goalTurnPotential: SummaryMetric;
+  startCorridorLead: SummaryMetric;
+  goalCorridorLead: SummaryMetric;
   placementStrategyCounts: Record<string, number>;
   placementStrategyDiversity: number;
 };
@@ -129,6 +149,7 @@ type VarietyReport = {
       meanBranchingFactor: number;
       corridorMean: number;
       corridorP90: number;
+      endpointEnvironmentGap: number;
     }>;
   };
   presetComparison: {
@@ -144,6 +165,7 @@ type VarietyReport = {
       meanBranchingFactor: number;
       corridorMean: number;
       corridorP90: number;
+      endpointEnvironmentGap: number;
     }>;
   };
   familyReview: {
@@ -249,6 +271,7 @@ const FAMILY_METRIC_AXES: readonly MetricAxis[] = [
   { label: 'meanBranchingFactor', weight: 0.7, get: (summary) => summary.meanBranchingFactor.mean },
   { label: 'corridorMean', weight: 1.1, get: (summary) => summary.corridorMean.mean },
   { label: 'corridorP90', weight: 0.9, get: (summary) => summary.corridorP90.mean },
+  { label: 'endpointEnvironmentGap', weight: 0.95, get: (summary) => summary.endpointEnvironmentGap.mean },
   { label: 'placementStrategyDiversity', weight: 0.75, get: (summary) => summary.placementStrategyDiversity }
 ] as const;
 const FAMILY_VISUAL_AXES: readonly MetricAxis[] = [
@@ -257,6 +280,7 @@ const FAMILY_VISUAL_AXES: readonly MetricAxis[] = [
   { label: 'coverage', weight: 0.7, get: (summary) => summary.coverage.mean },
   { label: 'corridorMean', weight: 1.2, get: (summary) => summary.corridorMean.mean },
   { label: 'corridorP90', weight: 1, get: (summary) => summary.corridorP90.mean },
+  { label: 'endpointEnvironmentGap', weight: 1.05, get: (summary) => summary.endpointEnvironmentGap.mean },
   { label: 'placementStrategyDiversity', weight: 0.9, get: (summary) => summary.placementStrategyDiversity }
 ] as const;
 const DIRECTION_STEPS = [
@@ -542,6 +566,20 @@ const toEpisodeSample = (
   actualSeed: number
 ): EpisodeSample => {
   const topology = analyzeRasterTopology(episode);
+  const startEnvironment = analyzeEndpointEnvironment(
+    episode,
+    topology.degrees,
+    topology.turnOpportunities,
+    topology.perimeterDistances,
+    episode.raster.startIndex
+  );
+  const goalEnvironment = analyzeEndpointEnvironment(
+    episode,
+    topology.degrees,
+    topology.turnOpportunities,
+    topology.perimeterDistances,
+    episode.raster.endIndex
+  );
   return {
     seed: episode.seed,
     cycle,
@@ -563,6 +601,9 @@ const toEpisodeSample = (
     floorTiles: topology.floorTiles,
     meanBranchingFactor: topology.meanBranchingFactor,
     corridorStats: topology.corridorStats,
+    startEnvironment,
+    goalEnvironment,
+    endpointEnvironmentGap: measureEndpointEnvironmentGap(startEnvironment, goalEnvironment),
     shapeSignature: buildShapeSignature(episode, topology)
   };
 };
@@ -571,6 +612,9 @@ const analyzeRasterTopology = (episode: MazeEpisode): {
   floorTiles: number;
   meanBranchingFactor: number;
   corridorStats: CorridorStats;
+  degrees: Uint8Array;
+  turnOpportunities: Uint8Array;
+  perimeterDistances: Int32Array;
 } => {
   const { tiles, width, height } = episode.raster;
   const degrees = new Uint8Array(tiles.length);
@@ -606,10 +650,15 @@ const analyzeRasterTopology = (episode: MazeEpisode): {
   }
 
   const corridorLengths = collectCorridorLengths(tiles, width, height, degrees);
+  const turnOpportunities = buildRasterTurnOpportunityMap(tiles, width, height, degrees);
+  const perimeterDistances = buildRasterPerimeterDistances(tiles, width, height);
   return {
     floorTiles,
     meanBranchingFactor: branchingCount === 0 ? 0 : branchingDegreeTotal / branchingCount,
-    corridorStats: summarizeList(corridorLengths)
+    corridorStats: summarizeList(corridorLengths),
+    degrees,
+    turnOpportunities,
+    perimeterDistances
   };
 };
 
@@ -710,6 +759,243 @@ const collectCorridorLengths = (
   return lengths;
 };
 
+const analyzeEndpointEnvironment = (
+  episode: MazeEpisode,
+  degrees: Uint8Array,
+  turnOpportunities: Uint8Array,
+  perimeterDistances: Int32Array,
+  index: number
+): EndpointEnvironment => {
+  const { width, height, tiles } = episode.raster;
+  const x = index % width;
+  const y = Math.floor(index / width);
+  const edgeDistance = Math.min(x, y, (width - 1) - x, (height - 1) - y);
+  const edgeBias = clamp(1 - (edgeDistance / Math.max(1, Math.floor(Math.min(width, height) / 2))), 0, 1);
+  const maxPerimeterDistance = Math.max(1, ...perimeterDistances);
+  return {
+    edgeBias,
+    branchReach: measureRasterBranchReach(width, height, degrees, x, y),
+    regionDepth: clamp(perimeterDistances[index] / maxPerimeterDistance, 0, 1),
+    turnPotential: measureRasterTurnPotential(width, height, degrees, turnOpportunities, x, y),
+    corridorLead: measureRasterCorridorLead(tiles, width, height, degrees, index) / Math.max(1, Math.max(width, height))
+  };
+};
+
+const measureEndpointEnvironmentGap = (start: EndpointEnvironment, goal: EndpointEnvironment): number => (
+  (Math.abs(start.edgeBias - goal.edgeBias) * 0.52)
+  + (Math.abs(start.branchReach - goal.branchReach) * 0.96)
+  + (Math.abs(start.regionDepth - goal.regionDepth) * 0.9)
+  + (Math.abs(start.turnPotential - goal.turnPotential) * 0.84)
+  + (Math.abs(start.corridorLead - goal.corridorLead) * 0.72)
+);
+
+const measureRasterBranchReach = (
+  width: number,
+  height: number,
+  degrees: Uint8Array,
+  originX: number,
+  originY: number
+): number => {
+  let branchWeight = 0;
+  let totalWeight = 0;
+
+  for (let offsetY = -3; offsetY <= 3; offsetY += 1) {
+    for (let offsetX = -3; offsetX <= 3; offsetX += 1) {
+      const manhattanDistance = Math.abs(offsetX) + Math.abs(offsetY);
+      if (manhattanDistance > 4) {
+        continue;
+      }
+
+      const x = originX + offsetX;
+      const y = originY + offsetY;
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        continue;
+      }
+
+      const weight = 1 / (1 + (manhattanDistance * 0.68));
+      totalWeight += weight;
+      if (degrees[(y * width) + x] >= 3) {
+        branchWeight += weight;
+      }
+    }
+  }
+
+  return branchWeight / Math.max(1, totalWeight);
+};
+
+const measureRasterTurnPotential = (
+  width: number,
+  height: number,
+  degrees: Uint8Array,
+  turnOpportunities: Uint8Array,
+  originX: number,
+  originY: number
+): number => {
+  let turnWeight = 0;
+  let totalWeight = 0;
+
+  for (let offsetY = -3; offsetY <= 3; offsetY += 1) {
+    for (let offsetX = -3; offsetX <= 3; offsetX += 1) {
+      const manhattanDistance = Math.abs(offsetX) + Math.abs(offsetY);
+      if (manhattanDistance > 4) {
+        continue;
+      }
+
+      const x = originX + offsetX;
+      const y = originY + offsetY;
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        continue;
+      }
+
+      const index = (y * width) + x;
+      const weight = 1 / (1 + (manhattanDistance * 0.68));
+      totalWeight += weight;
+
+      if (degrees[index] >= 3) {
+        turnWeight += weight;
+        continue;
+      }
+
+      if (turnOpportunities[index] === 1) {
+        turnWeight += weight * 0.82;
+        continue;
+      }
+
+      if (degrees[index] === 1) {
+        turnWeight += weight * 0.14;
+      }
+    }
+  }
+
+  return turnWeight / Math.max(1, totalWeight);
+};
+
+const measureRasterCorridorLead = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  degrees: Uint8Array,
+  startIndex: number
+): number => {
+  let length = 0;
+  let current = startIndex;
+  let previous = -1;
+
+  while (true) {
+    const next = getRasterOpenNeighbors(tiles, width, height, current).filter((candidate) => candidate !== previous);
+    if (next.length !== 1) {
+      return length;
+    }
+
+    previous = current;
+    current = next[0];
+    length += 1;
+
+    if (degrees[current] !== 2) {
+      return length;
+    }
+  }
+};
+
+const buildRasterTurnOpportunityMap = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  degrees: Uint8Array
+): Uint8Array => {
+  const opportunities = new Uint8Array(tiles.length);
+  for (let index = 0; index < tiles.length; index += 1) {
+    opportunities[index] = degrees[index] >= 3 || hasRasterTurnOpportunity(tiles, width, height, index) ? 1 : 0;
+  }
+  return opportunities;
+};
+
+const buildRasterPerimeterDistances = (
+  tiles: Uint8Array,
+  width: number,
+  height: number
+): Int32Array => {
+  const distances = new Int32Array(tiles.length);
+  distances.fill(-1);
+  const queue = new Int32Array(tiles.length);
+  let head = 0;
+  let tail = 0;
+
+  for (let index = 0; index < tiles.length; index += 1) {
+    const x = index % width;
+    const y = Math.floor(index / width);
+    if ((tiles[index] & 1) === 0 || (x !== 0 && y !== 0 && x !== width - 1 && y !== height - 1)) {
+      continue;
+    }
+
+    distances[index] = 0;
+    queue[tail] = index;
+    tail += 1;
+  }
+
+  while (head < tail) {
+    const current = queue[head];
+    head += 1;
+
+    for (const neighbor of getRasterOpenNeighbors(tiles, width, height, current)) {
+      if (distances[neighbor] !== -1) {
+        continue;
+      }
+
+      distances[neighbor] = distances[current] + 1;
+      queue[tail] = neighbor;
+      tail += 1;
+    }
+  }
+
+  return distances;
+};
+
+const getRasterOpenNeighbors = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  index: number
+): number[] => {
+  const neighbors: number[] = [];
+  const x = index % width;
+  const y = Math.floor(index / width);
+
+  for (const step of DIRECTION_STEPS) {
+    const neighborX = x + step.dx;
+    const neighborY = y + step.dy;
+    if (neighborX < 0 || neighborY < 0 || neighborX >= width || neighborY >= height) {
+      continue;
+    }
+
+    const neighbor = (neighborY * width) + neighborX;
+    if ((tiles[neighbor] & 1) !== 0) {
+      neighbors.push(neighbor);
+    }
+  }
+
+  return neighbors;
+};
+
+const hasRasterTurnOpportunity = (
+  tiles: Uint8Array,
+  width: number,
+  height: number,
+  index: number
+): boolean => {
+  if ((tiles[index] & 1) === 0) {
+    return false;
+  }
+
+  const x = index % width;
+  const y = Math.floor(index / width);
+  const openNorth = y > 0 && (tiles[((y - 1) * width) + x] & 1) !== 0;
+  const openSouth = y < height - 1 && (tiles[((y + 1) * width) + x] & 1) !== 0;
+  const openEast = x < width - 1 && (tiles[(y * width) + x + 1] & 1) !== 0;
+  const openWest = x > 0 && (tiles[(y * width) + x - 1] & 1) !== 0;
+  return (openNorth || openSouth) && (openEast || openWest);
+};
+
 const buildShapeSignature = (
   episode: MazeEpisode,
   topology: { floorTiles: number; meanBranchingFactor: number; corridorStats: CorridorStats }
@@ -777,6 +1063,15 @@ const summarizeSamples = (samples: readonly EpisodeSample[]): BucketSummary => (
   meanBranchingFactor: summarizeMetric(samples.map((sample) => sample.meanBranchingFactor)),
   corridorMean: summarizeMetric(samples.map((sample) => sample.corridorStats.mean)),
   corridorP90: summarizeMetric(samples.map((sample) => sample.corridorStats.p90)),
+  endpointEnvironmentGap: summarizeMetric(samples.map((sample) => sample.endpointEnvironmentGap)),
+  startBranchReach: summarizeMetric(samples.map((sample) => sample.startEnvironment.branchReach)),
+  goalBranchReach: summarizeMetric(samples.map((sample) => sample.goalEnvironment.branchReach)),
+  startRegionDepth: summarizeMetric(samples.map((sample) => sample.startEnvironment.regionDepth)),
+  goalRegionDepth: summarizeMetric(samples.map((sample) => sample.goalEnvironment.regionDepth)),
+  startTurnPotential: summarizeMetric(samples.map((sample) => sample.startEnvironment.turnPotential)),
+  goalTurnPotential: summarizeMetric(samples.map((sample) => sample.goalEnvironment.turnPotential)),
+  startCorridorLead: summarizeMetric(samples.map((sample) => sample.startEnvironment.corridorLead)),
+  goalCorridorLead: summarizeMetric(samples.map((sample) => sample.goalEnvironment.corridorLead)),
   placementStrategyCounts: countBy(samples, (sample) => sample.placementStrategy),
   placementStrategyDiversity: normalizedEntropy(samples.map((sample) => sample.placementStrategy))
 });
@@ -813,7 +1108,8 @@ const summarizeDelta = (base: BucketSummary, next: BucketSummary) => ({
   coverage: next.coverage.mean - base.coverage.mean,
   meanBranchingFactor: next.meanBranchingFactor.mean - base.meanBranchingFactor.mean,
   corridorMean: next.corridorMean.mean - base.corridorMean.mean,
-  corridorP90: next.corridorP90.mean - base.corridorP90.mean
+  corridorP90: next.corridorP90.mean - base.corridorP90.mean,
+  endpointEnvironmentGap: next.endpointEnvironmentGap.mean - base.endpointEnvironmentGap.mean
 });
 
 const countBy = <T>(items: readonly T[], keySelector: (item: T) => string): Record<string, number> => {
@@ -915,6 +1211,8 @@ const mean = (values: readonly number[]): number => {
 
   return total / values.length;
 };
+
+const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 const normalizedEntropy = (values: readonly string[]): number => {
   if (values.length === 0) {

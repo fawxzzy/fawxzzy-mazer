@@ -353,52 +353,52 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       },
       board: {
         glow: 0x0d1115,
-        panel: 0x090b0f,
-        panelStroke: 0x6e7886,
+        panel: 0x0b1015,
+        panelStroke: 0x74879f,
         well: 0x040608,
         shadow: 0x000000,
-        outer: 0x11151a,
-        outerStroke: 0xc8d0db,
-        innerStroke: 0x7a8494,
-        topHighlight: 0xe3e8ef,
-        wall: 0x13171d,
-        floor: 0xd2d9e0,
-        path: 0xa8b2bb,
-        route: 0x36cd84,
-        routeCore: 0xf5fff8,
-        routeGlow: 0x164f3d,
-        trail: 0x536ee2,
-        trailCore: 0xf2f5ff,
-        trailGlow: 0xa0abff,
-        start: 0xe0bc70,
-        startCore: 0xfff4d8,
-        startGlow: 0x8b6931,
-        goal: 0xba4a74,
-        goalCore: 0xfff2f6,
-        player: 0x37cbf4,
+        outer: 0x0f141b,
+        outerStroke: 0xdce8f4,
+        innerStroke: 0x8c9fb4,
+        topHighlight: 0xf2f7ff,
+        wall: 0x12171d,
+        floor: 0xd2dbe4,
+        path: 0x97a5b2,
+        route: 0x20c875,
+        routeCore: 0xf6fff9,
+        routeGlow: 0x124c37,
+        trail: 0x445ed8,
+        trailCore: 0xf2f6ff,
+        trailGlow: 0x95abff,
+        start: 0xc99b45,
+        startCore: 0xfff3d0,
+        startGlow: 0x7d5921,
+        goal: 0xb63d60,
+        goalCore: 0xfff0f4,
+        player: 0x16dcff,
         playerCore: 0xf8feff,
-        playerHalo: 0x90eaff,
+        playerHalo: 0x9eefff,
         playerShadow: 0x030303
       },
       hud: {
-        panelStroke: 0xa4adba,
-        accent: 0xe6ebf2,
-        hintText: 0x9ca6b4
+        panelStroke: 0xa2b7cd,
+        accent: 0xf4f8ff,
+        hintText: 0xb8cad9
       }
     }),
     boardTheme: {
       solutionPathGlowAlphaScale: 0.82,
       solutionPathCoreAlphaScale: 1.08,
-      trailFillAlphaScale: 0.92,
-      trailGlowAlphaScale: 0.88,
+      trailFillAlphaScale: 1.02,
+      trailGlowAlphaScale: 0.8,
       trailCoreAlphaScale: 1.04,
-      actorHaloAlphaScale: 0.86,
+      actorHaloAlphaScale: 0.94,
       goalGlowAlphaScale: 0.92
     },
     hudTheme: {
-      railAlphaScale: 0.82,
-      modeAlphaScale: 0.9,
-      metaAlphaScale: 0.84,
+      railAlphaScale: 0.76,
+      modeAlphaScale: 0.96,
+      metaAlphaScale: 0.78,
       flashAlphaScale: 0.88
     },
     background: {
@@ -412,15 +412,15 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       vignetteAlphaScale: 1.1
     },
     shell: {
-      auraColor: 0x9cb5b0,
-      haloColor: 0xf0f4f8,
-      shadeColor: 0x9da6b0,
+      auraColor: 0x6da6ff,
+      haloColor: 0xe5f3ff,
+      shadeColor: 0x7d8a99,
       veilColor: 0x050607,
-      auraAlphaBias: -0.014,
-      haloAlphaBias: -0.004,
-      shadeAlphaBias: -0.002,
-      veilAlphaBias: 0.008,
-      auraScaleBias: -0.006,
+      auraAlphaBias: -0.018,
+      haloAlphaBias: -0.008,
+      shadeAlphaBias: -0.012,
+      veilAlphaBias: -0.004,
+      auraScaleBias: -0.01,
       haloScaleBias: -0.003,
       motifPrimaryAlpha: 0.07,
       motifSecondaryAlpha: 0.03,
@@ -435,22 +435,22 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       actorPulseBias: 0.004
     },
     title: {
-      fontFamily: 'Optima, "Segoe UI", sans-serif',
+      fontFamily: '"Bahnschrift SemiCondensed", "Trebuchet MS", "Segoe UI", sans-serif',
       signatureFontFamily: '"Consolas", "Courier New", monospace',
       supportFontFamily: '"Consolas", "Courier New", monospace',
       titleColor: '#f2f4f8',
-      titleStroke: '#111418',
-      titleShadow: '#0d1318',
-      signatureColor: '#c4ccd6',
-      supportColor: '#d8dfe7',
+      titleStroke: '#0b1117',
+      titleShadow: '#0a1016',
+      signatureColor: '#b9cfe4',
+      supportColor: '#dce8f4',
       installColor: '#f2f4f8',
       pendingColor: '#c7d0db',
       plateShadowColor: 0x000000,
-      plateOuterColor: 0x050608,
-      plateInnerColor: 0x10141a,
-      plateLineColor: 0xe0e5ec,
-      buttonFillColor: 0x0c1015,
-      buttonStrokeColor: 0xb4c1cb
+      plateOuterColor: 0x060a10,
+      plateInnerColor: 0x0d1620,
+      plateLineColor: 0xd8e9ff,
+      buttonFillColor: 0x0a131c,
+      buttonStrokeColor: 0xb7d4f0
     }
   },
   ember: {
@@ -468,36 +468,36 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       board: {
         glow: 0x29140f,
         panel: 0x190d09,
-        panelStroke: 0xa86e49,
+        panelStroke: 0xae7550,
         well: 0x120907,
         shadow: 0x050201,
         outer: 0x301610,
         outerStroke: 0xd7a073,
         innerStroke: 0xc98557,
         topHighlight: 0xffd19d,
-        wall: 0x29130d,
-        floor: 0xf3d1b3,
-        path: 0xae6f49,
-        route: 0x47b977,
+        wall: 0x2d170e,
+        floor: 0xe8c7a8,
+        path: 0xb27653,
+        route: 0x29af6d,
         routeCore: 0xf4ffef,
-        routeGlow: 0x244d35,
-        trail: 0x5f70de,
+        routeGlow: 0x20472f,
+        trail: 0x4e61cf,
         trailCore: 0xf6f1ff,
-        trailGlow: 0xa3afff,
-        start: 0xf0ca76,
-        startCore: 0xfff0cf,
-        startGlow: 0x8e5e28,
-        goal: 0xff7485,
-        goalCore: 0xfff1ef,
-        player: 0x39c6dc,
+        trailGlow: 0x97a6ff,
+        start: 0xc99234,
+        startCore: 0xfff0ca,
+        startGlow: 0x794d1c,
+        goal: 0xbd3c54,
+        goalCore: 0xffefef,
+        player: 0x11c8ea,
         playerCore: 0xf0fdff,
-        playerHalo: 0x96ebf5,
+        playerHalo: 0x92ebff,
         playerShadow: 0x1b0c07
       },
       hud: {
-        panelStroke: 0xc98557,
-        accent: 0xffca98,
-        hintText: 0xe5b78f
+        panelStroke: 0xcd8f60,
+        accent: 0xffd1a5,
+        hintText: 0xeac59e
       }
     }),
     boardTheme: {
@@ -587,31 +587,31 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         shadow: 0x02050c,
         outer: 0x13233e,
         outerStroke: 0xb89cff,
-        innerStroke: 0x8dc8ff,
+        innerStroke: 0x90c2ef,
         topHighlight: 0xcffeff,
-        wall: 0x132744,
-        floor: 0xe0f6ff,
-        path: 0x5aa8cf,
-        route: 0x45c885,
+        wall: 0x112848,
+        floor: 0xd8f1ff,
+        path: 0x69a9cf,
+        route: 0x24c979,
         routeCore: 0xf0fff8,
-        routeGlow: 0x1d7054,
-        trail: 0x6d70ea,
+        routeGlow: 0x195f46,
+        trail: 0x5b5fe0,
         trailCore: 0xf0fbff,
-        trailGlow: 0xb8aeff,
-        start: 0xffcf7f,
-        startCore: 0xfff2d7,
-        startGlow: 0x8d6c32,
-        goal: 0xff84b2,
+        trailGlow: 0xa8a4ff,
+        start: 0xc99733,
+        startCore: 0xfff1d1,
+        startGlow: 0x7a5b22,
+        goal: 0xc84a7f,
         goalCore: 0xfff4fa,
-        player: 0x45d3ff,
+        player: 0x1adfff,
         playerCore: 0xf3ffff,
-        playerHalo: 0x9cf1ff,
+        playerHalo: 0x9aefff,
         playerShadow: 0x040916
       },
       hud: {
-        panelStroke: 0x7abfff,
-        accent: 0xcffbff,
-        hintText: 0xb0d4f0
+        panelStroke: 0x85c3f5,
+        accent: 0xd8fcff,
+        hintText: 0xbad7ef
       }
     }),
     boardTheme: {
@@ -703,39 +703,39 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         outerStroke: 0x5e7892,
         innerStroke: 0x879db3,
         topHighlight: 0x4f7298,
-        wall: 0x5c6d80,
-        floor: 0xfbfbf4,
-        path: 0xadc2d3,
-        route: 0x162715,
+        wall: 0x5e6f82,
+        floor: 0xf7f5ee,
+        path: 0xa6bccd,
+        route: 0x2c5a2a,
         routeCore: 0xf7fbf2,
-        routeGlow: 0x6e9469,
-        trail: 0x4f63c5,
+        routeGlow: 0x6a8b60,
+        trail: 0x4f61bf,
         trailCore: 0xfbfdff,
-        trailGlow: 0x9ba8e0,
-        start: 0xd4b36f,
-        startCore: 0xfff4dc,
-        startGlow: 0x8a6d3b,
-        goal: 0xaf586d,
+        trailGlow: 0x8896d7,
+        start: 0xa97827,
+        startCore: 0xfff2d6,
+        startGlow: 0x77551f,
+        goal: 0x91405b,
         goalCore: 0xfff6f9,
-        player: 0x102845,
+        player: 0x1f4c73,
         playerCore: 0xfafbff,
-        playerHalo: 0xa9c5e3,
+        playerHalo: 0x8eb7dc,
         playerShadow: 0xb4a487
       },
       hud: {
-        panelStroke: 0x6f89a4,
-        accent: 0xd6e4f1,
-        hintText: 0xe8f1fb
+        panelStroke: 0x7790ab,
+        accent: 0xdeebf7,
+        hintText: 0xeaf2fb
       }
     }),
     boardTheme: {
       solutionPathGlowAlphaScale: 0.94,
       solutionPathCoreAlphaScale: 1.08,
-      trailFillAlphaScale: 0.94,
+      trailFillAlphaScale: 1.02,
       trailGlowAlphaScale: 0.98,
       trailCoreAlphaScale: 1.08,
-      actorHaloAlphaScale: 0.92,
-      goalGlowAlphaScale: 1
+      actorHaloAlphaScale: 0.98,
+      goalGlowAlphaScale: 0.96
     },
     hudTheme: {
       railAlphaScale: 0.9,
@@ -810,45 +810,45 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
       board: {
         glow: 0x111317,
         panel: 0x0d0f13,
-        panelStroke: 0x7d828a,
+        panelStroke: 0x838991,
         well: 0x07080b,
         shadow: 0x000000,
         outer: 0x181a1f,
-        outerStroke: 0xbfc3c9,
-        innerStroke: 0x8c9199,
-        topHighlight: 0xe5e7ea,
+        outerStroke: 0xd4d9df,
+        innerStroke: 0x979ea8,
+        topHighlight: 0xf1f4f8,
         wall: 0x17191e,
-        floor: 0xe0e3e7,
-        path: 0x9da3aa,
-        route: 0x4acb7e,
+        floor: 0xcfd6dd,
+        path: 0x939aa3,
+        route: 0x21b36a,
         routeCore: 0xf7fff9,
-        routeGlow: 0x1d6546,
-        trail: 0x697fd1,
+        routeGlow: 0x164b33,
+        trail: 0x4d62cb,
         trailCore: 0xf7f9ff,
-        trailGlow: 0xaab8ff,
-        start: 0xd5bb78,
-        startCore: 0xfff6de,
-        startGlow: 0x8a7040,
-        goal: 0xff7f96,
-        goalCore: 0xfff4f7,
-        player: 0x49d1ff,
+        trailGlow: 0x90a1ff,
+        start: 0xb08433,
+        startCore: 0xfff2d1,
+        startGlow: 0x6e4f1f,
+        goal: 0xa83a57,
+        goalCore: 0xfff0f4,
+        player: 0x0aa8d8,
         playerCore: 0xfcffff,
-        playerHalo: 0xa6e5ff,
+        playerHalo: 0x92ebff,
         playerShadow: 0x020202
       },
       hud: {
-        panelStroke: 0x9ca1a8,
-        accent: 0xf0f2f4,
-        hintText: 0xaab0b8
+        panelStroke: 0xa3a8b0,
+        accent: 0xf4f6f8,
+        hintText: 0xc0c6ce
       }
     }),
     boardTheme: {
-      solutionPathGlowAlphaScale: 0.66,
+      solutionPathGlowAlphaScale: 0.76,
       solutionPathCoreAlphaScale: 1.02,
-      trailFillAlphaScale: 0.88,
-      trailGlowAlphaScale: 0.72,
+      trailFillAlphaScale: 1.08,
+      trailGlowAlphaScale: 0.8,
       trailCoreAlphaScale: 1.04,
-      actorHaloAlphaScale: 0.62,
+      actorHaloAlphaScale: 0.78,
       goalGlowAlphaScale: 0.82
     },
     hudTheme: {
@@ -1098,19 +1098,19 @@ const VARIANT_PROFILES: Record<AmbientPresentationVariant, VariantProfile> = {
     topReserveMinPx: 104,
     bottomPaddingPx: 34,
     sidePaddingPx: 14,
-    titleScale: 0.96,
-    titleAlpha: 0.9,
-    signatureAlpha: 0.7,
-    passiveAlpha: 0.34,
-    plateAlpha: 0.12,
-    panelAlpha: 0.18,
+    titleScale: 0.9,
+    titleAlpha: 0.82,
+    signatureAlpha: 0.62,
+    passiveAlpha: 0.42,
+    plateAlpha: 0.08,
+    panelAlpha: 0.11,
     titleYOffsetRatio: 0.18,
     titleAnchor: 'center',
     titleDriftX: 0,
     titleDriftY: 0,
     titleDriftMs: 4000,
-    titleLetterSpacingWide: 2,
-    titleLetterSpacingNarrow: 1,
+    titleLetterSpacingWide: 1,
+    titleLetterSpacingNarrow: 0,
     solutionPathScale: 1.04,
     metadataAlphaScale: 0.84,
     flashAlphaScale: 0.92,
@@ -1678,7 +1678,7 @@ export class MenuScene extends Phaser.Scene {
           boardAuraWidth,
           boardAuraHeight,
           themeProfile.shell.auraColor,
-          0.05
+          0.032
         ).setOrigin(0.5).setDepth(-2.5).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardHalo = this.add.ellipse(
           backdropFrame.centerX,
@@ -1686,7 +1686,7 @@ export class MenuScene extends Phaser.Scene {
           boardHaloWidth,
           boardHaloHeight,
           themeProfile.shell.haloColor,
-          0.018
+          0.012
         ).setOrigin(0.5).setDepth(-1.8).setBlendMode(Phaser.BlendModes.SCREEN);
         const boardShade = this.add.rectangle(
           backdropFrame.centerX,
@@ -1694,7 +1694,7 @@ export class MenuScene extends Phaser.Scene {
           boardShellWidth,
           boardShellHeight,
           themeProfile.shell.shadeColor,
-          0.02
+          0.012
         ).setOrigin(0.5).setDepth(-1.2);
         const boardVeil = this.add.rectangle(
           backdropFrame.centerX,
@@ -1914,29 +1914,29 @@ export class MenuScene extends Phaser.Scene {
         const passiveAlpha = variantProfile.passiveAlpha * chromeProfile.passiveAlpha * deploymentProfile.passiveAlphaScale;
         const plateAlpha = variantProfile.plateAlpha * chromeProfile.plateAlpha * deploymentProfile.plateAlphaScale;
         const panelAlpha = variantProfile.panelAlpha * chromeProfile.panelAlpha * deploymentProfile.panelAlphaScale;
-        const titleShadowAlpha = Math.min(0.1, 0.055 * titleAlpha);
+        const titleShadowAlpha = Math.min(0.038, 0.024 * titleAlpha);
         const titleFontSize = Phaser.Math.Clamp(
-          Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale),
+          Math.round(layout.boardSize * legacyTuning.menu.title.fontScaleToBoard * variantProfile.titleScale * chromeProfile.titleScale * 0.94),
           24,
-          78
+          72
         );
         const titleLetterSpacing = sceneLayout.isNarrow ? variantProfile.titleLetterSpacingNarrow : variantProfile.titleLetterSpacingWide;
-        const titleStrokeWidth = Phaser.Math.Clamp(Math.round(legacyTuning.menu.title.strokePx * 0.66), 1, 2);
-        const signatureY = Math.round(titlePlateHeight * 0.13 * deploymentProfile.titleLineSpacingScale);
-        const supportY = Math.round(titlePlateHeight * 0.34 * deploymentProfile.titleLineSpacingScale);
+        const titleStrokeWidth = 1;
+        const signatureY = Math.round(titlePlateHeight * 0.08 * deploymentProfile.titleLineSpacingScale);
+        const supportY = Math.round(titlePlateHeight * 0.28 * deploymentProfile.titleLineSpacingScale);
         titleContainer.add([
           this.add.rectangle(
             0,
-            Math.round(titlePlateHeight * 0.4),
-            Math.max(92, titlePlateWidth - 24),
-            Math.max(10, Math.round(titlePlateHeight * 0.34)),
+            Math.round(titlePlateHeight * 0.36),
+            Math.max(84, titlePlateWidth - 34),
+            Math.max(8, Math.round(titlePlateHeight * 0.24)),
             sceneThemeProfile.title.plateShadowColor,
-            0.14 * plateAlpha
-          ).setScale(0.94, 0.52),
+            0.08 * plateAlpha
+          ).setScale(0.92, 0.42),
           this.add.rectangle(0, 0, titlePlateWidth, titlePlateHeight, sceneThemeProfile.title.plateOuterColor, plateAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.14 * titleAlpha),
+            .setStrokeStyle(1, sceneThemeProfile.palette.board.innerStroke, 0.22 * titleAlpha),
           this.add.rectangle(0, 0, titlePlateWidth - 12, titlePlateHeight - 10, sceneThemeProfile.title.plateInnerColor, panelAlpha)
-            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.14 * titleAlpha),
+            .setStrokeStyle(1, sceneThemeProfile.title.plateLineColor, 0.22 * titleAlpha),
           this.add.rectangle(
             0,
             -(titlePlateHeight / 2) + 8,
@@ -1944,6 +1944,14 @@ export class MenuScene extends Phaser.Scene {
             1,
             sceneThemeProfile.title.plateLineColor,
             0.22 * titleAlpha
+          ),
+          this.add.rectangle(
+            0,
+            (titlePlateHeight / 2) - 7,
+            titlePlateWidth - 30,
+            1,
+            sceneThemeProfile.palette.board.innerStroke,
+            0.1 * titleAlpha
           )
         ]);
         titleShadowContainer.add([
@@ -1951,14 +1959,14 @@ export class MenuScene extends Phaser.Scene {
             color: sceneThemeProfile.title.titleShadow,
             fontFamily: sceneThemeProfile.title.fontFamily,
             fontSize: `${titleFontSize}px`,
-            fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
+            fontStyle: 'normal'
           }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing).setAlpha(titleShadowAlpha)
         ]);
         const title = this.add.text(0, -Math.round(titlePlateHeight * 0.12), legacyTuning.menu.title.text, {
           color: sceneThemeProfile.title.titleColor,
           fontFamily: sceneThemeProfile.title.fontFamily,
           fontSize: `${titleFontSize}px`,
-          fontStyle: chrome === 'minimal' ? 'normal' : 'bold'
+          fontStyle: 'normal'
         }).setOrigin(0.5).setLetterSpacing(titleLetterSpacing)
           .setAlpha(titleAlpha)
           .setStroke(sceneThemeProfile.title.titleStroke, titleStrokeWidth);
@@ -2810,7 +2818,7 @@ export const resolveMenuDemoPresentation = (
         + (atmosphereBias * 0.012)
         + themeProfile.shell.auraAlphaBias,
       0.06,
-      0.22
+      0.18
     ),
     boardHaloAlpha: clamp(
       boardHaloAlpha
@@ -2818,7 +2826,7 @@ export const resolveMenuDemoPresentation = (
         + (trailBias * 0.01)
         + themeProfile.shell.haloAlphaBias,
       0.018,
-      0.16
+      0.11
     ),
     boardShadeAlpha: clamp(
       boardShadeAlpha
@@ -2826,7 +2834,7 @@ export const resolveMenuDemoPresentation = (
         + (trailBias * 0.01)
         + themeProfile.shell.shadeAlphaBias,
       0.012,
-      0.18
+      0.1
     ),
     boardAuraScale: clamp(
       1
@@ -2835,7 +2843,7 @@ export const resolveMenuDemoPresentation = (
         + (atmosphereBias * 0.006)
         + themeProfile.shell.auraScaleBias,
       1,
-      1.05
+      1.035
     ),
     boardHaloScale: clamp(
       1
@@ -2844,7 +2852,7 @@ export const resolveMenuDemoPresentation = (
         + (trailBias * 0.004)
         + themeProfile.shell.haloScaleBias,
       1,
-      1.03
+      1.02
     ),
     motifPrimaryAlpha: clamp(themeProfile.shell.motifPrimaryAlpha * motifPrimarySequenceScale, 0, 0.2),
     motifSecondaryAlpha: clamp(themeProfile.shell.motifSecondaryAlpha * motifSecondarySequenceScale, 0, 0.16),
