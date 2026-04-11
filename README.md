@@ -25,10 +25,20 @@ npm run preview
 npm run lint
 npm run test
 npm run test:soak
+npm run visual:capture
+npm run visual:gate
 ```
 
 `npm run preview` serves the production build locally on port `4173`.
 `dist/` is generated build output and is ignored by git.
+
+## Current truth
+- Visual truth is owned by the screenshot gate first, then `tests/scenes/demo-build.test.ts`, then older prose.
+- The latest local baseline is only production truth after that visual pass is committed and deployed.
+- Trail attach plus no-future-preview is the active trail contract.
+- Desktop, TV, and OBS composition now targets the tight 5px board-fit between the title band and the bottom-center install CTA lane.
+- Generator-side endpoint strategy spread is improved but still unfinished; variety work is not closed.
+- See `docs/current-truth.md` when older notes or pasted diffs disagree.
 
 ## Launch profiles
 Use the production preview for freeze validation:
@@ -52,9 +62,9 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 `family=auto|classic|braided|sparse|dense|framed|split-flow` locks maze topology families for local comparison or deterministic captures without adding storage or a settings UI.
 
 ## Install Mazer
-- The install surface is a single top-right shell action when the browser actually exposes `beforeinstallprompt`.
+- The install surface lives in the bottom-center shell lane when the browser actually exposes `beforeinstallprompt`.
 - Installed or standalone launches hide the action cleanly and keep the ambient presentation running unchanged.
-- Unsupported/manual-install surfaces fail open. On iOS-style browsers the top-right shell chip swaps to `Use Share > Add to Home Screen`.
+- Unsupported/manual-install surfaces fail open. On iOS-style browsers the bottom-center lane swaps to `Use Share > Add to Home Screen`.
 - Install UX is optional by rule: if install APIs are unavailable or throw, the title/demo shell still renders normally.
 
 ## Testing surfaces

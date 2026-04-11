@@ -119,6 +119,14 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 const MIN_BOARD_SIZE = 24;
 const ANIMATION_TIME_WRAP_MS = 600_000;
 const TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX = 0.75;
+const MIDNIGHT_RAINBOW_STOPS = [
+  0x1e1238,
+  0x35206a,
+  0x6d2fb0,
+  0xb83f98,
+  0xf28d4c,
+  0x23b4ad
+] as const;
 const createEmptyTrailRenderDiagnostics = (): TrailRenderDiagnostics => ({
   cue: 'explore',
   trailStart: 0,
@@ -183,6 +191,39 @@ const normalizeAnimationTime = (value: number, periodMs = ANIMATION_TIME_WRAP_MS
 
   const wrapped = value % periodMs;
   return wrapped < 0 ? wrapped + periodMs : wrapped;
+};
+const toRgb = (value: number): { r: number; g: number; b: number } => ({
+  r: (value >> 16) & 0xff,
+  g: (value >> 8) & 0xff,
+  b: value & 0xff
+});
+const fromRgb = (r: number, g: number, b: number): number => (
+  ((Math.round(r) & 0xff) << 16)
+  | ((Math.round(g) & 0xff) << 8)
+  | (Math.round(b) & 0xff)
+);
+const mixHexColor = (from: number, to: number, amount: number): number => {
+  const safeAmount = Phaser.Math.Clamp(amount, 0, 1);
+  const start = toRgb(from);
+  const end = toRgb(to);
+  return fromRgb(
+    start.r + ((end.r - start.r) * safeAmount),
+    start.g + ((end.g - start.g) * safeAmount),
+    start.b + ((end.b - start.b) * safeAmount)
+  );
+};
+const resolveLoopingGradientColor = (stops: readonly number[], position: number): number => {
+  if (stops.length === 0) {
+    return 0;
+  }
+  if (stops.length === 1) {
+    return stops[0];
+  }
+
+  const wrapped = ((position % stops.length) + stops.length) % stops.length;
+  const startIndex = Math.floor(wrapped) % stops.length;
+  const endIndex = (startIndex + 1) % stops.length;
+  return mixHexColor(stops[startIndex], stops[endIndex], wrapped - Math.floor(wrapped));
 };
 const createBounds = (left: number, top: number, width: number, height: number): BoardBounds => ({
   left,
@@ -302,6 +343,7 @@ export class BoardRenderer {
   private readonly theme: BoardThemeStyle;
   private readonly chromeBack: Phaser.GameObjects.Graphics;
   private readonly base: Phaser.GameObjects.Graphics;
+  private readonly visitedFloor: Phaser.GameObjects.Graphics;
   private readonly grid: Phaser.GameObjects.Graphics;
   private readonly start: Phaser.GameObjects.Graphics;
   private readonly goal: Phaser.GameObjects.Graphics;
@@ -326,6 +368,7 @@ export class BoardRenderer {
     this.ambientContainer = this.scene.add.container(0, 0);
     this.chromeBack = this.scene.add.graphics();
     this.base = this.scene.add.graphics();
+    this.visitedFloor = this.scene.add.graphics();
     this.grid = this.scene.add.graphics();
     this.start = this.scene.add.graphics();
     this.goal = this.scene.add.graphics();
@@ -336,6 +379,7 @@ export class BoardRenderer {
     this.ambientContainer.add([
       this.chromeBack,
       this.base,
+      this.visitedFloor,
       this.grid,
       this.start,
       this.goal,
@@ -472,6 +516,88 @@ export class BoardRenderer {
       minY,
       width,
       Math.max(width, (maxY - minY) + width)
+    );
+  }
+
+  // Legacy path material read as a dark animated rainbow under the active trail.
+  private drawVisitedFloorTile(
+    index: number,
+    order: number,
+    visibleLength: number,
+    alpha: number,
+    isBacktrack: boolean,
+    now: number
+  ): void {
+    const tileSize = this.layout.tileSize;
+    const tileX = this.tileX(index);
+    const tileY = this.tileY(index);
+    const colors = this.colors;
+    const fillInset = Math.max(1, tileSize * 0.14);
+    const fillWidth = Math.max(1, tileSize - (fillInset * 2));
+    const fillHeight = Math.max(1, tileSize - (fillInset * 2));
+    const coreInset = Math.max(2, tileSize * 0.24);
+    const coreWidth = Math.max(1, tileSize - (coreInset * 2));
+    const coreHeight = Math.max(1, tileSize - (coreInset * 2));
+    const bandCount = 3;
+    const bandHeight = fillHeight / bandCount;
+    const progress = visibleLength <= 1 ? 1 : order / Math.max(1, visibleLength - 1);
+    const motionWave = 0.5 + (Math.sin((now * 0.0052) + (index * 0.31)) * 0.5);
+    const baseAlpha = Phaser.Math.Clamp(alpha * (isBacktrack ? 0.68 : 1), 0.06, 0.56);
+    const shellColor = mixHexColor(colors.board.shadow, colors.board.panel, 0.44);
+    const phase = (now / 1500) + (index * 0.33) + (order * 0.58);
+
+    this.visitedFloor.fillStyle(shellColor, baseAlpha * 0.36);
+    this.visitedFloor.fillRect(
+      tileX + (fillInset * 0.78),
+      tileY + (fillInset * 0.78),
+      Math.max(1, tileSize - (fillInset * 1.56)),
+      Math.max(1, tileSize - (fillInset * 1.56))
+    );
+
+    for (let band = 0; band < bandCount; band += 1) {
+      const bandTop = tileY + fillInset + (band * bandHeight);
+      const bandBottom = band === bandCount - 1
+        ? tileY + fillInset + fillHeight
+        : tileY + fillInset + ((band + 1) * bandHeight);
+      const bandColor = resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + (band * 0.84));
+      const fillColor = mixHexColor(bandColor, colors.board.shadow, 0.16);
+      const bandAlpha = Phaser.Math.Clamp(
+        baseAlpha * (0.54 + (progress * 0.16) + (motionWave * 0.14) - (band * 0.08)),
+        0.04,
+        0.44
+      );
+
+      this.visitedFloor.fillStyle(fillColor, bandAlpha);
+      this.visitedFloor.fillRect(tileX + fillInset, bandTop, fillWidth, Math.max(1, bandBottom - bandTop));
+    }
+
+    const coreColor = mixHexColor(
+      resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + 0.46),
+      colors.board.topHighlight,
+      0.16
+    );
+    this.visitedFloor.fillStyle(coreColor, Phaser.Math.Clamp(baseAlpha * (0.32 + (motionWave * 0.08)), 0.04, 0.24));
+    this.visitedFloor.fillRect(tileX + coreInset, tileY + coreInset, coreWidth, coreHeight);
+
+    const strokeColor = mixHexColor(
+      resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + 1.18),
+      colors.board.innerStroke,
+      0.32
+    );
+    this.visitedFloor.lineStyle(Math.max(1, tileSize * 0.034), strokeColor, Phaser.Math.Clamp(baseAlpha * 0.72, 0.08, 0.3));
+    this.visitedFloor.strokeRect(
+      tileX + fillInset + 0.5,
+      tileY + fillInset + 0.5,
+      Math.max(1, fillWidth - 1),
+      Math.max(1, fillHeight - 1)
+    );
+
+    this.visitedFloor.fillStyle(colors.board.topHighlight, Phaser.Math.Clamp(baseAlpha * 0.18, 0.03, 0.12));
+    this.visitedFloor.fillRect(
+      tileX + fillInset + 1,
+      tileY + fillInset + 1,
+      Math.max(1, fillWidth - 2),
+      Math.max(1, Math.round(tileSize * 0.1))
     );
   }
 
@@ -632,6 +758,7 @@ export class BoardRenderer {
   public drawBase(options: BaseRenderOptions = {}): void {
     if (!isRenderableLayout(this.layout)) {
       this.base.clear();
+      this.visitedFloor.clear();
       this.grid.clear();
       return;
     }
@@ -649,6 +776,7 @@ export class BoardRenderer {
     );
     const showSolutionPath = solutionPathAlpha > 0;
     this.base.clear();
+    this.visitedFloor.clear();
     this.grid.clear();
 
     this.base.fillStyle(colors.board.panel, 0.025);
@@ -919,6 +1047,7 @@ export class BoardRenderer {
   }
 
   public drawTrail(trail: ArrayLike<number | DemoTrailStep>, options: BoardCueOptions = {}): void {
+    this.visitedFloor.clear();
     if (!isRenderableLayout(this.layout)) {
       this.trail.clear();
       this.signal.clear();
@@ -938,6 +1067,7 @@ export class BoardRenderer {
     const demoEmphasis = options.emphasis === 'demo';
     const persistentTrail = options.persistentTrail === true || demoEmphasis;
     const persistentFadeFloor = Phaser.Math.Clamp(options.persistentFadeFloor ?? 0.22, 0, 0.92);
+    const drawVisitedFloor = persistentTrail || trailLength > 1;
     const pulseBoost = Phaser.Math.Clamp(options.pulseBoost ?? 0, -0.08, 0.18);
     const activeMotion = options.activeMotion;
     const hasActiveMotion = activeMotion !== undefined
@@ -1028,6 +1158,18 @@ export class BoardRenderer {
         0,
         1
       ) * alphaScale;
+      if (drawVisitedFloor) {
+        const floorMaterialAlpha = Phaser.Math.Clamp(
+          alpha * (
+            persistentTrail
+              ? 0.34 + (persistentFadeFloor * 0.34)
+              : 0.28 + (persistentFadeFloor * 0.12)
+          ),
+          0.08,
+          0.56
+        );
+        this.drawVisitedFloorTile(index, i - trailStart, visibleLength, floorMaterialAlpha, isBacktrack, now);
+      }
       const cellInset = tileSize * (
         isBacktrack
           ? legacyTuning.board.trail.backtrackInsetRatio
@@ -1500,6 +1642,7 @@ export class BoardRenderer {
     this.scene.tweens.killTweensOf(this.ambientContainer);
     this.chromeBack.destroy();
     this.base.destroy();
+    this.visitedFloor.destroy();
     this.grid.destroy();
     this.start.destroy();
     this.goal.destroy();
