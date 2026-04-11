@@ -104,6 +104,10 @@ export const getContrastRatio = (foreground: number, background: number): number
   return (lighter + 0.05) / (darker + 0.05);
 };
 
+export const getLuminanceDelta = (left: number, right: number): number => (
+  Math.abs(getRelativeLuminance(left) - getRelativeLuminance(right))
+);
+
 export interface PaletteReadabilityCheckpoint {
   key: string;
   foreground: number;
@@ -111,6 +115,7 @@ export interface PaletteReadabilityCheckpoint {
   ratio: number;
   minimum: number;
   passes: boolean;
+  metric?: 'contrast' | 'luminance-delta';
 }
 
 export interface PaletteReadabilityReport {
@@ -121,26 +126,48 @@ export interface PaletteReadabilityReport {
 type ContrastPreference = 'dark' | 'light' | 'auto';
 type SemanticRole = 'route' | 'trail' | 'player' | 'start' | 'goal';
 
+const BOARD_READABILITY_MINIMUMS = Object.freeze({
+  wallVsFloor: 3.5,
+  wallVsRoute: 1.8,
+  wallVsTrail: 1.95,
+  wallVsPlayer: 1.1,
+  floorVsRoute: 2.85,
+  floorVsTrail: 3.1,
+  floorVsPlayer: 2.8,
+  floorVsStart: 1.85,
+  floorVsGoal: 3,
+  routeVsTrail: 1.3,
+  trailVsPlayer: 1.55,
+  startVsGoal: 1.6,
+  startVsPlayer: 1.3,
+  goalVsPlayer: 1.8,
+  goalVsBackground: 2.1,
+  trailVsWallLuminance: 0.055,
+  trailVsPlayerLuminance: 0.05
+});
+
+const COLOR_REPAIR_STEPS = 18;
+
 const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number }> = {
-  route: { light: 0x89f0b0, dark: 0x1a7c4a },
-  trail: { light: 0xa9bdff, dark: 0x25356f },
-  player: { light: 0xd6fbff, dark: 0x0d739c },
-  start: { light: 0xffe2a2, dark: 0xad7418 },
-  goal: { light: 0xffb2c1, dark: 0x701634 }
+  route: { light: 0x9ae0b2, dark: 0x17492d },
+  trail: { light: 0xb4c7ff, dark: 0x1b2866 },
+  player: { light: 0xe6fdff, dark: 0x0a79ae },
+  start: { light: 0xffd27a, dark: 0x8d5b14 },
+  goal: { light: 0xff8cab, dark: 0x731632 }
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
-  route: 0x1fcb73,
-  trail: 0x263a7b,
-  player: 0x10b1e4,
-  start: 0xdba343,
-  goal: 0xd04e79
+  route: 0x2e9760,
+  trail: 0x4059ca,
+  player: 0x12b9f2,
+  start: 0xc98a21,
+  goal: 0xa52a53
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
-  route: 0.16,
+  route: 0.18,
   trail: 0.24,
-  player: 0.15,
+  player: 0.18,
   start: 0.22,
   goal: 0.22
 };
@@ -168,8 +195,8 @@ const ensureMinContrastToward = (
   }
 
   let best = foreground;
-  for (let step = 1; step <= 12; step += 1) {
-    const candidate = mixColor(foreground, target, step / 12);
+  for (let step = 1; step <= COLOR_REPAIR_STEPS; step += 1) {
+    const candidate = mixColor(foreground, target, step / COLOR_REPAIR_STEPS);
     if (getContrastRatio(candidate, background) >= minRatio) {
       return candidate;
     }
@@ -193,28 +220,26 @@ const ensureRoleContrast = (
   prefer: Exclude<ContrastPreference, 'auto'>
 ): number => ensureMinContrastToward(foreground, background, minRatio, ROLE_CONTRAST_TARGETS[role][prefer]);
 
-const ensurePairContrast = (
+const ensurePairContrastToward = (
   left: number,
   right: number,
   minRatio: number,
-  leftPrefer: ContrastPreference = 'auto',
-  rightPrefer: ContrastPreference = 'auto'
+  leftTarget: number,
+  rightTarget: number
 ): { left: number; right: number } => {
   const initialRatio = getContrastRatio(left, right);
   if (initialRatio >= minRatio) {
     return { left, right };
   }
 
-  const leftTarget = resolveContrastTarget(leftPrefer, right);
-  const rightTarget = resolveContrastTarget(rightPrefer, left);
   let best = {
     left,
     right,
     ratio: initialRatio
   };
 
-  for (let step = 1; step <= 12; step += 1) {
-    const amount = step / 12;
+  for (let step = 1; step <= COLOR_REPAIR_STEPS; step += 1) {
+    const amount = step / COLOR_REPAIR_STEPS;
     const leftOnly = {
       left: mixColor(left, leftTarget, amount),
       right
@@ -251,6 +276,129 @@ const ensurePairContrast = (
     right: best.right
   };
 };
+
+const ensureRolePairContrast = (
+  leftRole: SemanticRole,
+  left: number,
+  rightRole: SemanticRole,
+  right: number,
+  minRatio: number,
+  leftPrefer: Exclude<ContrastPreference, 'auto'>,
+  rightPrefer: Exclude<ContrastPreference, 'auto'>
+): { left: number; right: number } => ensurePairContrastToward(
+  left,
+  right,
+  minRatio,
+  ROLE_CONTRAST_TARGETS[leftRole][leftPrefer],
+  ROLE_CONTRAST_TARGETS[rightRole][rightPrefer]
+);
+
+const ensureMinLuminanceDeltaToward = (
+  foreground: number,
+  background: number,
+  minDelta: number,
+  target: number
+): number => {
+  if (getLuminanceDelta(foreground, background) >= minDelta) {
+    return foreground;
+  }
+
+  let best = foreground;
+  let bestDelta = getLuminanceDelta(foreground, background);
+  for (let step = 1; step <= COLOR_REPAIR_STEPS; step += 1) {
+    const candidate = mixColor(foreground, target, step / COLOR_REPAIR_STEPS);
+    const delta = getLuminanceDelta(candidate, background);
+    if (delta > bestDelta) {
+      best = candidate;
+      bestDelta = delta;
+    }
+    if (delta >= minDelta) {
+      return candidate;
+    }
+  }
+
+  return best;
+};
+
+const ensureMinLuminanceDelta = (
+  foreground: number,
+  background: number,
+  minDelta: number,
+  prefer: ContrastPreference = 'auto'
+): number => ensureMinLuminanceDeltaToward(foreground, background, minDelta, resolveContrastTarget(prefer, background));
+
+const ensurePairLuminanceDeltaToward = (
+  left: number,
+  right: number,
+  minDelta: number,
+  leftTarget: number,
+  rightTarget: number
+): { left: number; right: number } => {
+  const initialDelta = getLuminanceDelta(left, right);
+  if (initialDelta >= minDelta) {
+    return { left, right };
+  }
+
+  let best = {
+    left,
+    right,
+    delta: initialDelta
+  };
+
+  for (let step = 1; step <= COLOR_REPAIR_STEPS; step += 1) {
+    const amount = step / COLOR_REPAIR_STEPS;
+    const leftOnly = {
+      left: mixColor(left, leftTarget, amount),
+      right
+    };
+    const rightOnly = {
+      left,
+      right: mixColor(right, rightTarget, amount)
+    };
+    const both = {
+      left: mixColor(left, leftTarget, amount),
+      right: mixColor(right, rightTarget, amount)
+    };
+
+    for (const candidate of [leftOnly, rightOnly, both]) {
+      const delta = getLuminanceDelta(candidate.left, candidate.right);
+      if (delta > best.delta) {
+        best = {
+          left: candidate.left,
+          right: candidate.right,
+          delta
+        };
+      }
+      if (delta >= minDelta) {
+        return {
+          left: candidate.left,
+          right: candidate.right
+        };
+      }
+    }
+  }
+
+  return {
+    left: best.left,
+    right: best.right
+  };
+};
+
+const ensureRolePairLuminanceDelta = (
+  leftRole: SemanticRole,
+  left: number,
+  rightRole: SemanticRole,
+  right: number,
+  minDelta: number,
+  leftPrefer: Exclude<ContrastPreference, 'auto'>,
+  rightPrefer: Exclude<ContrastPreference, 'auto'>
+): { left: number; right: number } => ensurePairLuminanceDeltaToward(
+  left,
+  right,
+  minDelta,
+  ROLE_CONTRAST_TARGETS[leftRole][leftPrefer],
+  ROLE_CONTRAST_TARGETS[rightRole][rightPrefer]
+);
 
 const applySignalPaletteCleanup = (input: PresentationPalette): PresentationPalette => ({
   ...input,
@@ -344,43 +492,56 @@ const createReadabilityCheckpoint = (
     background,
     ratio,
     minimum,
-    passes: ratio >= minimum
+    passes: ratio >= minimum,
+    metric: 'contrast'
+  };
+};
+
+const createLuminanceDeltaCheckpoint = (
+  key: string,
+  foreground: number,
+  background: number,
+  minimum: number
+): PaletteReadabilityCheckpoint => {
+  const ratio = getLuminanceDelta(foreground, background);
+  return {
+    key,
+    foreground,
+    background,
+    ratio,
+    minimum,
+    passes: ratio >= minimum,
+    metric: 'luminance-delta'
   };
 };
 
 export const getPaletteReadabilityReport = (input: PresentationPalette): PaletteReadabilityReport => {
   const checkpoints = [
-    createReadabilityCheckpoint('wall-vs-floor', input.board.floor, input.board.wall, 3.5),
-    createReadabilityCheckpoint('wall-vs-route', input.board.route, input.board.wall, 2.9),
-    createReadabilityCheckpoint('wall-vs-player', input.board.player, input.board.wall, 2.8),
-    createReadabilityCheckpoint('floor-vs-route', input.board.route, input.board.floor, 3),
-    createReadabilityCheckpoint('floor-vs-trail', input.board.trail, input.board.floor, 3),
-    createReadabilityCheckpoint('floor-vs-player', input.board.player, input.board.floor, 3.1),
-    createReadabilityCheckpoint('floor-vs-start', input.board.start, input.board.floor, 3),
-    createReadabilityCheckpoint('floor-vs-goal', input.board.goal, input.board.floor, 3),
-    createReadabilityCheckpoint('route-vs-trail', input.board.route, input.board.trail, 2.1),
-    createReadabilityCheckpoint('trail-vs-player', input.board.player, input.board.trail, 2.1),
-    createReadabilityCheckpoint('start-vs-goal', input.board.start, input.board.goal, 2.1),
-    createReadabilityCheckpoint('start-vs-player', input.board.start, input.board.player, 2.1),
-    createReadabilityCheckpoint('goal-vs-player', input.board.goal, input.board.player, 2.1),
-    createReadabilityCheckpoint('goal-vs-background', input.board.goal, input.background.deepSpace, 3),
+    createReadabilityCheckpoint('wall-vs-floor', input.board.floor, input.board.wall, BOARD_READABILITY_MINIMUMS.wallVsFloor),
+    createReadabilityCheckpoint('wall-vs-route', input.board.route, input.board.wall, BOARD_READABILITY_MINIMUMS.wallVsRoute),
+    createReadabilityCheckpoint('wall-vs-trail', input.board.trail, input.board.wall, BOARD_READABILITY_MINIMUMS.wallVsTrail),
+    createReadabilityCheckpoint('wall-vs-player', input.board.player, input.board.wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer),
+    createReadabilityCheckpoint('floor-vs-route', input.board.route, input.board.floor, BOARD_READABILITY_MINIMUMS.floorVsRoute),
+    createReadabilityCheckpoint('floor-vs-trail', input.board.trail, input.board.floor, BOARD_READABILITY_MINIMUMS.floorVsTrail),
+    createReadabilityCheckpoint('floor-vs-player', input.board.player, input.board.floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer),
+    createReadabilityCheckpoint('floor-vs-start', input.board.start, input.board.floor, BOARD_READABILITY_MINIMUMS.floorVsStart),
+    createReadabilityCheckpoint('floor-vs-goal', input.board.goal, input.board.floor, BOARD_READABILITY_MINIMUMS.floorVsGoal),
+    createReadabilityCheckpoint('route-vs-trail', input.board.route, input.board.trail, BOARD_READABILITY_MINIMUMS.routeVsTrail),
+    createReadabilityCheckpoint('trail-vs-player', input.board.player, input.board.trail, BOARD_READABILITY_MINIMUMS.trailVsPlayer),
+    createReadabilityCheckpoint('start-vs-goal', input.board.start, input.board.goal, BOARD_READABILITY_MINIMUMS.startVsGoal),
+    createReadabilityCheckpoint('start-vs-player', input.board.start, input.board.player, BOARD_READABILITY_MINIMUMS.startVsPlayer),
+    createReadabilityCheckpoint('goal-vs-player', input.board.goal, input.board.player, BOARD_READABILITY_MINIMUMS.goalVsPlayer),
+    createReadabilityCheckpoint('goal-vs-background', input.board.goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground),
+    createLuminanceDeltaCheckpoint('trail-vs-wall-luminance', input.board.trail, input.board.wall, BOARD_READABILITY_MINIMUMS.trailVsWallLuminance),
+    createLuminanceDeltaCheckpoint('trail-vs-player-luminance', input.board.player, input.board.trail, BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance),
     createReadabilityCheckpoint('metadata-vs-panel', input.hud.hintText, input.hud.panel, 4.5),
     createReadabilityCheckpoint('accent-vs-panel', input.hud.accent, input.hud.panel, 4.5),
     createReadabilityCheckpoint('flash-vs-panel', input.board.topHighlight, input.hud.panel, 4.5)
   ];
-  const advisoryKeys = new Set([
-    'wall-vs-route',
-    'wall-vs-player',
-    'route-vs-trail',
-    'trail-vs-player',
-    'start-vs-goal',
-    'start-vs-player',
-    'goal-vs-player'
-  ]);
 
   return {
     checkpoints,
-    failures: checkpoints.filter((checkpoint) => !checkpoint.passes && !advisoryKeys.has(checkpoint.key))
+    failures: checkpoints.filter((checkpoint) => !checkpoint.passes)
   };
 };
 
@@ -391,47 +552,65 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
   const panel = input.board.panel;
   const hudPanel = input.hud.panel;
   const prefer = getRelativeLuminance(floor) >= 0.52 ? 'dark' : 'light';
+  const wallPrefer = getRelativeLuminance(wall) >= 0.52 ? 'dark' : 'light';
   const panelPrefer = getRelativeLuminance(hudPanel) >= 0.52 ? 'dark' : 'light';
   const backdropPrefer = getRelativeLuminance(input.background.deepSpace) >= 0.52 ? 'dark' : 'light';
   const roleCorePrefer = prefer === 'dark' ? 'light' : 'dark';
-  const routeBase = ensureRoleContrast('route', input.board.route, floor, 3.15, prefer);
-  const trailBase = ensureRoleContrast('trail', input.board.trail, floor, 3.2, prefer);
-  const playerBase = ensureRoleContrast('player', input.board.player, floor, 3.25, prefer);
-  const startBase = ensureRoleContrast('start', input.board.start, floor, 3.15, prefer);
-  const goalBase = ensureRoleContrast('goal', input.board.goal, floor, 3.15, prefer);
-  const routeTrail = ensurePairContrast(routeBase, trailBase, 2.2, 'light', 'dark');
-  const playerTrail = ensurePairContrast(playerBase, routeTrail.right, 2.25, 'light', 'dark');
-  const startGoal = ensurePairContrast(startBase, goalBase, 2.2, 'light', 'dark');
-  const playerStart = ensurePairContrast(playerTrail.left, startGoal.left, 2.15, 'light', 'dark');
-  const playerGoal = ensurePairContrast(playerStart.left, startGoal.right, 2.15, 'light', 'dark');
-  let route = ensureRoleContrast('route', routeTrail.left, floor, 3.15, prefer);
-  let trail = ensureRoleContrast('trail', playerTrail.right, floor, 3.2, prefer);
-  let player = ensureRoleContrast('player', playerGoal.left, floor, 3.25, prefer);
-  let start = ensureRoleContrast('start', playerStart.right, floor, 3.15, prefer);
-  let goal = ensureRoleContrast('goal', playerGoal.right, floor, 3.15, prefer);
+  const routeBase = ensureRoleContrast('route', input.board.route, floor, BOARD_READABILITY_MINIMUMS.floorVsRoute, prefer);
+  const trailBase = ensureRoleContrast('trail', input.board.trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+  const playerBase = ensureRoleContrast('player', input.board.player, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+  const startBase = ensureRoleContrast('start', input.board.start, floor, BOARD_READABILITY_MINIMUMS.floorVsStart, prefer);
+  const goalBase = ensureRoleContrast('goal', input.board.goal, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
+  let route = ensureRoleContrast('route', routeBase, wall, BOARD_READABILITY_MINIMUMS.wallVsRoute, wallPrefer);
+  let trail = ensureRoleContrast('trail', trailBase, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+  let player = ensureRoleContrast('player', playerBase, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+  let start = startBase;
+  let goal = goalBase;
 
-  for (let pass = 0; pass < 2; pass += 1) {
-    const routeTrailRepair = ensurePairContrast(route, trail, 2.2, 'light', 'dark');
-    route = ensureRoleContrast('route', routeTrailRepair.left, floor, 3.15, prefer);
-    trail = ensureRoleContrast('trail', routeTrailRepair.right, floor, 3.2, prefer);
+  for (let pass = 0; pass < 3; pass += 1) {
+    const routeTrailRepair = ensureRolePairContrast('route', route, 'trail', trail, BOARD_READABILITY_MINIMUMS.routeVsTrail, prefer, prefer);
+    route = ensureRoleContrast('route', routeTrailRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsRoute, prefer);
+    route = ensureRoleContrast('route', route, wall, BOARD_READABILITY_MINIMUMS.wallVsRoute, wallPrefer);
+    trail = ensureRoleContrast('trail', routeTrailRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+    trail = ensureMinLuminanceDelta(trail, wall, BOARD_READABILITY_MINIMUMS.trailVsWallLuminance, prefer);
+    trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
 
-    const playerTrailRepair = ensurePairContrast(player, trail, 2.25, 'light', 'dark');
-    player = ensureRoleContrast('player', playerTrailRepair.left, floor, 3.25, prefer);
-    trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, 3.2, prefer);
+    const playerTrailRepair = ensureRolePairContrast('player', player, 'trail', trail, BOARD_READABILITY_MINIMUMS.trailVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerTrailRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+    const playerTrailLuminanceRepair = ensureRolePairLuminanceDelta(
+      'player',
+      player,
+      'trail',
+      trail,
+      BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance,
+      prefer,
+      prefer
+    );
+    player = ensureRoleContrast('player', playerTrailLuminanceRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    trail = ensureRoleContrast('trail', playerTrailLuminanceRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
 
-    const startGoalRepair = ensurePairContrast(start, goal, 2.2, 'light', 'dark');
-    start = ensureRoleContrast('start', startGoalRepair.left, floor, 3.15, prefer);
-    goal = ensureRoleContrast('goal', startGoalRepair.right, floor, 3.15, prefer);
-    goal = ensureRoleContrast('goal', goal, input.background.deepSpace, 3, backdropPrefer);
+    const startGoalRepair = ensureRolePairContrast('start', start, 'goal', goal, BOARD_READABILITY_MINIMUMS.startVsGoal, prefer, prefer);
+    start = ensureRoleContrast('start', startGoalRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsStart, prefer);
+    goal = ensureRoleContrast('goal', startGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
+    goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);
 
-    const playerStartRepair = ensurePairContrast(player, start, 2.15, 'light', 'dark');
-    player = ensureRoleContrast('player', playerStartRepair.left, floor, 3.25, prefer);
-    start = ensureRoleContrast('start', playerStartRepair.right, floor, 3.15, prefer);
+    const playerStartRepair = ensureRolePairContrast('player', player, 'start', start, BOARD_READABILITY_MINIMUMS.startVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerStartRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    start = ensureRoleContrast('start', playerStartRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsStart, prefer);
 
-    const playerGoalRepair = ensurePairContrast(player, goal, 2.15, 'light', 'dark');
-    player = ensureRoleContrast('player', playerGoalRepair.left, floor, 3.25, prefer);
-    goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, 3.15, prefer);
-    goal = ensureRoleContrast('goal', goal, input.background.deepSpace, 3, backdropPrefer);
+    const playerGoalRepair = ensureRolePairContrast('player', player, 'goal', goal, BOARD_READABILITY_MINIMUMS.goalVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerGoalRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
+    goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);
   }
 
   const topHighlight = ensureMinContrast(
@@ -451,10 +630,10 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
       path: ensureMinContrast(input.board.path, floor, 2.05, prefer),
       route,
       routeCore: ensureMinContrast(input.board.routeCore, route, 1.35, roleCorePrefer),
-      routeGlow: ensureMinContrast(input.board.routeGlow, wall, 3.1, prefer),
+      routeGlow: ensureMinContrast(input.board.routeGlow, wall, 3.2, wallPrefer),
       trail,
       trailCore: ensureMinContrast(input.board.trailCore, trail, 2.3, roleCorePrefer),
-      trailGlow: ensureMinContrast(input.board.trailGlow, wall, 3.3, prefer),
+      trailGlow: ensureMinContrast(input.board.trailGlow, wall, 3.4, wallPrefer),
       start,
       startCore: ensureMinContrast(input.board.startCore, start, 2.2, roleCorePrefer),
       startGlow: ensureMinContrast(input.board.startGlow, wall, 3, prefer),

@@ -43,12 +43,14 @@ let resolveInstallChromeFrame: typeof import('../../src/scenes/MenuScene').resol
 let resolveMenuSceneInstallSurfaceState: typeof import('../../src/scenes/MenuScene').resolveMenuSceneInstallSurfaceState;
 let resolveMenuSceneVisualCaptureConfig: typeof import('../../src/scenes/MenuScene').resolveMenuSceneVisualCaptureConfig;
 let resolveTitleBandFrame: typeof import('../../src/scenes/MenuScene').resolveTitleBandFrame;
+let resolveTitleLockupLayout: typeof import('../../src/scenes/MenuScene').resolveTitleLockupLayout;
 let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
 let resolveAmbientSkyProfileTuning: typeof import('../../src/scenes/MenuScene').resolveAmbientSkyProfileTuning;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
 let MENU_SCENE_VISUAL_CAPTURE_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_CAPTURE_KEY;
 let MENU_SCENE_VISUAL_DIAGNOSTICS_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_DIAGNOSTICS_KEY;
+let TITLE_SIGNATURE_TEXT: typeof import('../../src/scenes/MenuScene').TITLE_SIGNATURE_TEXT;
 let resolveDemoWalkerViewFrame: typeof import('../../src/domain/ai').resolveDemoWalkerViewFrame;
 let shouldShowPresentationTitle: typeof import('../../src/boot/presentation').shouldShowPresentationTitle;
 let createBoardLayout: typeof import('../../src/render/boardRenderer').createBoardLayout;
@@ -89,10 +91,12 @@ beforeAll(async () => {
     resolveMenuSceneInstallSurfaceState,
     resolveMenuSceneVisualCaptureConfig,
     resolveTitleBandFrame,
+    resolveTitleLockupLayout,
     resolveAmbientThemeProfile,
     resolveAmbientSkyProfileTuning,
     resolvePresentationBackdropFrame,
-    resolveMenuResizeRecoveryDecision
+    resolveMenuResizeRecoveryDecision,
+    TITLE_SIGNATURE_TEXT
   } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
   ({ createBoardLayout, resolveBoardPresentationBounds } = await import('../../src/render/boardRenderer'));
@@ -327,6 +331,69 @@ describe('demo-only build', () => {
     expect(titleBand.right + titleBand.reservedRight).toBeLessThanOrEqual(presentationModel.viewport.width);
     expect(titleBand.centerX).toBeGreaterThan(titleBand.left);
     expect(titleBand.centerX).toBeLessThan(titleBand.right);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('title lockup keeps the subtitle clear of the plate across default, tv, and mobile layouts', () => {
+    expect(TITLE_SIGNATURE_TEXT).toBe('\u00b0 by fawxzzy');
+
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 6644,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const cases = [
+      { width: 1280, height: 720, variant: 'title' as const, chrome: 'full' as const, titleVisible: true },
+      { width: 1920, height: 1080, variant: 'ambient' as const, chrome: 'minimal' as const, titleVisible: true, profile: 'tv' as const },
+      { width: 390, height: 844, variant: 'ambient' as const, chrome: 'full' as const, titleVisible: true, profile: 'mobile' as const }
+    ];
+
+    for (const profileCase of cases) {
+      const presentationModel = resolveMenuPresentationModel(
+        profileCase.width,
+        profileCase.height,
+        profileCase.variant,
+        profileCase.chrome,
+        profileCase.titleVisible,
+        profileCase.profile
+      );
+      const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+        boardScale: presentationModel.layout.boardScale,
+        topReserve: presentationModel.layout.topReserve,
+        sidePadding: presentationModel.layout.sidePadding,
+        bottomPadding: presentationModel.layout.bottomPadding
+      });
+      const titleBand = resolveTitleBandFrame(
+        presentationModel.viewport.width,
+        presentationModel.layout,
+        layout,
+        undefined,
+        profileCase.profile
+      );
+      const lockup = resolveTitleLockupLayout(
+        layout,
+        presentationModel.layout,
+        titleBand,
+        profileCase.variant,
+        profileCase.chrome,
+        profileCase.profile
+      );
+      const plateTop = lockup.titleY - (lockup.plateHeight / 2);
+      const plateBottom = lockup.titleY + (lockup.plateHeight / 2);
+      const subtitleTop = lockup.titleY + lockup.subtitleTopOffsetY;
+      const subtitleBottom = subtitleTop + lockup.estimatedSubtitleHeight;
+
+      expect(plateTop).toBeGreaterThanOrEqual(titleBand.top);
+      expect(lockup.subtitleGap).toBeGreaterThanOrEqual(5);
+      expect(subtitleTop - plateBottom).toBeGreaterThanOrEqual(lockup.subtitleGap);
+      expect(subtitleBottom).toBeLessThanOrEqual(titleBand.bottom + 1);
+      expect(lockup.titleX - (lockup.plateWidth / 2)).toBeGreaterThanOrEqual(titleBand.left);
+      expect(lockup.titleX + (lockup.plateWidth / 2)).toBeLessThanOrEqual(titleBand.right);
+    }
 
     disposeMazeEpisode(episode);
   });
@@ -579,13 +646,14 @@ describe('demo-only build', () => {
     });
   });
 
-  test('theme palettes keep route, trail, player, goal, and metadata readable', () => {
+  test('theme palettes keep semantic roles and metadata readable', () => {
     for (const theme of ['noir', 'ember', 'aurora', 'vellum', 'monolith'] as const) {
       const report = getPaletteReadabilityReport(resolveAmbientThemeProfile(theme).palette);
       expect(report.failures, `${theme}: ${report.failures.map((failure) => failure.key).join(', ')}`).toEqual([]);
       expect(report.checkpoints.map((checkpoint) => checkpoint.key)).toEqual([
         'wall-vs-floor',
         'wall-vs-route',
+        'wall-vs-trail',
         'wall-vs-player',
         'floor-vs-route',
         'floor-vs-trail',
@@ -598,6 +666,8 @@ describe('demo-only build', () => {
         'start-vs-player',
         'goal-vs-player',
         'goal-vs-background',
+        'trail-vs-wall-luminance',
+        'trail-vs-player-luminance',
         'metadata-vs-panel',
         'accent-vs-panel',
         'flash-vs-panel'

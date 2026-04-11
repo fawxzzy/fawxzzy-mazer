@@ -23,6 +23,18 @@ const DIAGNOSTICS_KEY = '__MAZER_VISUAL_DIAGNOSTICS__';
 const CENTER_TOLERANCE_PX = 6;
 const FRAME_TOLERANCE_PX = 4;
 const TARGET_CAPTURE_RETRIES = 3;
+const CRITICAL_ROLE_KEYS = Object.freeze([
+  'wall-vs-route',
+  'wall-vs-trail',
+  'wall-vs-player',
+  'route-vs-trail',
+  'trail-vs-player',
+  'trail-vs-wall-luminance',
+  'trail-vs-player-luminance',
+  'start-vs-goal',
+  'start-vs-player',
+  'goal-vs-player'
+]);
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
@@ -40,6 +52,17 @@ const createCheck = (name, pass, details) => ({
   details
 });
 
+const resolveSubtitleGapPx = (frame, subtitle) => {
+  if (typeof subtitle?.minimumGapBelowTitle === 'number') {
+    return subtitle.minimumGapBelowTitle;
+  }
+
+  return Math.max(
+    4,
+    round((frame?.height ?? 0) * 0.08, 0)
+  );
+};
+
 const validateTitle = (diagnostics) => {
   if (!diagnostics.title.expected) {
     return [
@@ -53,7 +76,11 @@ const validateTitle = (diagnostics) => {
 
   const frame = diagnostics.title.frame;
   const bounds = diagnostics.title.bounds;
+  const plateBounds = diagnostics.title.plateBounds;
   const textBounds = diagnostics.title.textBounds;
+  const subtitle = diagnostics.title.subtitle;
+  const subtitleBounds = subtitle?.bounds;
+  const minSubtitleGapPx = resolveSubtitleGapPx(frame, subtitle);
   const centered = bounds && frame
     ? Math.abs(bounds.centerX - frame.centerX) <= Math.max(CENTER_TOLERANCE_PX, round(frame.width * 0.03, 2))
     : false;
@@ -68,6 +95,25 @@ const validateTitle = (diagnostics) => {
       && isWithinRange(textBounds.right, frame.left, frame.right, FRAME_TOLERANCE_PX)
       && isWithinRange(textBounds.top, frame.top, frame.bottom, FRAME_TOLERANCE_PX)
       && isWithinRange(textBounds.bottom, frame.top, frame.bottom, FRAME_TOLERANCE_PX)
+    : false;
+  const subtitleCentered = subtitleBounds && frame
+    ? Math.abs(subtitleBounds.centerX - frame.centerX) <= Math.max(CENTER_TOLERANCE_PX, round(frame.width * 0.03, 2))
+    : false;
+  const subtitleInside = subtitleBounds && frame
+    ? isWithinRange(subtitleBounds.left, frame.left, frame.right, FRAME_TOLERANCE_PX)
+      && isWithinRange(subtitleBounds.right, frame.left, frame.right, FRAME_TOLERANCE_PX)
+      && isWithinRange(subtitleBounds.top, frame.top, frame.bottom, FRAME_TOLERANCE_PX)
+      && isWithinRange(subtitleBounds.bottom, frame.top, frame.bottom, FRAME_TOLERANCE_PX)
+    : false;
+  const subtitleSingleLine = subtitle?.lineCount === 1;
+  const subtitleGapBelowTitle = typeof subtitle?.gapBelowTitle === 'number'
+    ? subtitle.gapBelowTitle >= minSubtitleGapPx
+    : false;
+  const subtitleGapBelowPlate = typeof subtitle?.gapBelowPlate === 'number'
+    ? subtitle.gapBelowPlate >= minSubtitleGapPx
+    : false;
+  const subtitleClearOfPlate = subtitleBounds && plateBounds
+    ? subtitleBounds.top >= (plateBounds.bottom + minSubtitleGapPx)
     : false;
 
   return [
@@ -89,6 +135,41 @@ const validateTitle = (diagnostics) => {
       containerInside && textInside
         ? 'Title lockup stays inside the helper title band.'
         : 'Title lockup overflowed the helper title band.'
+    ),
+    createCheck(
+      'subtitle-visible',
+      subtitle?.visible === true && Boolean(subtitleBounds),
+      subtitle?.visible
+        ? 'Subtitle diagnostics published with bounds.'
+        : 'Subtitle was expected but diagnostics did not mark it visible.'
+    ),
+    createCheck(
+      'subtitle-single-line',
+      subtitleSingleLine,
+      subtitleSingleLine
+        ? 'Subtitle renders as one centered line.'
+        : `Subtitle wrapped into ${subtitle?.lineCount ?? 0} lines.`
+    ),
+    createCheck(
+      'subtitle-within-band',
+      subtitleInside && subtitleCentered,
+      subtitleInside && subtitleCentered
+        ? 'Subtitle stays centered inside the safe title band.'
+        : 'Subtitle drifted outside the safe title band or lost center alignment.'
+    ),
+    createCheck(
+      'subtitle-gap-below-wordmark',
+      subtitleGapBelowTitle,
+      subtitleGapBelowTitle
+        ? `Subtitle leaves at least ${minSubtitleGapPx}px below the wordmark.`
+        : `Subtitle gap below the wordmark fell short of ${minSubtitleGapPx}px.`
+    ),
+    createCheck(
+      'subtitle-clear-of-plate',
+      subtitleGapBelowPlate && subtitleClearOfPlate,
+      subtitleGapBelowPlate && subtitleClearOfPlate
+        ? 'Subtitle sits in its own lane below the title plate.'
+        : `Subtitle is still visually stacked into the plate (gap=${round(subtitle?.gapBelowPlate ?? NaN, 2)}).`
     )
   ];
 };
@@ -180,6 +261,8 @@ const validateBoard = (diagnostics) => {
     && isWithinRange(bounds.top, safeBounds.top, safeBounds.bottom, FRAME_TOLERANCE_PX)
     && isWithinRange(bounds.bottom, safeBounds.top, safeBounds.bottom, FRAME_TOLERANCE_PX);
   const palettePasses = Array.isArray(diagnostics.paletteReadability.failures) && diagnostics.paletteReadability.failures.length === 0;
+  const checkpointMap = new Map((diagnostics.paletteReadability.checkpoints ?? []).map((checkpoint) => [checkpoint.key, checkpoint]));
+  const failedCriticalRoleChecks = CRITICAL_ROLE_KEYS.filter((key) => checkpointMap.get(key)?.passes !== true);
   const obsCentered = diagnostics.profile === 'obs'
     ? Math.abs(bounds.centerX - safeBounds.centerX) <= 1 && Math.abs(bounds.centerY - safeBounds.centerY) <= 1
     : true;
@@ -196,6 +279,13 @@ const validateBoard = (diagnostics) => {
       palettePasses
         ? 'Theme readability checkpoints passed.'
         : `Theme readability failures: ${diagnostics.paletteReadability.failures.map((failure) => failure.key).join(', ')}`
+    ),
+    createCheck(
+      'critical-role-separation',
+      failedCriticalRoleChecks.length === 0,
+      failedCriticalRoleChecks.length === 0
+        ? `Critical role checkpoints passed for ${diagnostics.theme}.`
+        : `Critical role checkpoints failed: ${failedCriticalRoleChecks.join(', ')}`
     ),
     createCheck(
       'obs-centered',
@@ -254,6 +344,10 @@ const isDiagnosticsReady = (diagnostics) => {
   }
 
   if (diagnostics.title.expected && diagnostics.title.visible !== true) {
+    return false;
+  }
+
+  if (diagnostics.title.expected && diagnostics.title.subtitle?.visible !== true) {
     return false;
   }
 
