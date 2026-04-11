@@ -900,18 +900,22 @@ describe('demo-only build', () => {
     const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, view);
 
     expect(view.currentIndex).not.toBe(view.nextIndex);
-    expect(view.trailLimit).toBeGreaterThan(renderedTrail.limit);
+    expect(view.progress).toBeGreaterThan(0);
     expect(renderedTrail.start).toBe(0);
-    expect(renderedTrail.limit).toBe(3);
-    expect(episode.raster.pathIndices[renderedTrail.limit - 1]).toBe(view.currentIndex);
+    expect(renderedTrail.limit).toBe(4);
+    expect(episode.raster.pathIndices[renderedTrail.limit - 1]).toBe(view.nextIndex);
 
-    const lateTraverseMs = config.cadence.spawnHoldMs + Math.max(1, Math.floor(config.cadence.exploreStepMs * 2.8));
-    const committedView = resolveDemoWalkerViewFrame(episode, lateTraverseMs, config, 6);
-    const committedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, committedView);
+    const spawnFrame = resolveDemoWalkerViewFrame(
+      episode,
+      Math.max(1, Math.floor(config.cadence.spawnHoldMs * 0.5)),
+      config,
+      6
+    );
+    const spawnTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, spawnFrame);
 
-    expect(committedView.progress).toBeGreaterThan(0.62);
-    expect(committedTrail.limit).toBe(4);
-    expect(episode.raster.pathIndices[committedTrail.limit - 1]).toBe(committedView.nextIndex);
+    expect(spawnFrame.progress).toBe(0);
+    expect(spawnTrail.limit).toBe(1);
+    expect(episode.raster.pathIndices[spawnTrail.limit - 1]).toBe(spawnFrame.currentIndex);
 
     disposeMazeEpisode(episode);
   });

@@ -123,24 +123,24 @@ type SemanticRole = 'route' | 'trail' | 'player' | 'start' | 'goal';
 
 const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number }> = {
   route: { light: 0x89f0b0, dark: 0x1a7c4a },
-  trail: { light: 0xa5bcff, dark: 0x1d377e },
-  player: { light: 0xa2f4ff, dark: 0x00566f },
+  trail: { light: 0xa9bdff, dark: 0x25356f },
+  player: { light: 0xd6fbff, dark: 0x0d739c },
   start: { light: 0xffe2a2, dark: 0xad7418 },
   goal: { light: 0xffb2c1, dark: 0x701634 }
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
   route: 0x1fcb73,
-  trail: 0x4f68eb,
-  player: 0x0fd2ff,
+  trail: 0x263a7b,
+  player: 0x10b1e4,
   start: 0xdba343,
   goal: 0xd04e79
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
   route: 0.16,
-  trail: 0.22,
-  player: 0.16,
+  trail: 0.24,
+  player: 0.15,
   start: 0.22,
   goal: 0.22
 };
@@ -395,42 +395,42 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
   const backdropPrefer = getRelativeLuminance(input.background.deepSpace) >= 0.52 ? 'dark' : 'light';
   const roleCorePrefer = prefer === 'dark' ? 'light' : 'dark';
   const routeBase = ensureRoleContrast('route', input.board.route, floor, 3.15, prefer);
-  const trailBase = ensureRoleContrast('trail', input.board.trail, floor, 3.15, prefer);
-  const playerBase = ensureRoleContrast('player', input.board.player, floor, 3.3, prefer);
-  const startBase = ensureRoleContrast('start', input.board.start, floor, 3.1, prefer);
-  const goalBase = ensureRoleContrast('goal', input.board.goal, floor, 3.1, prefer);
+  const trailBase = ensureRoleContrast('trail', input.board.trail, floor, 3.2, prefer);
+  const playerBase = ensureRoleContrast('player', input.board.player, floor, 3.25, prefer);
+  const startBase = ensureRoleContrast('start', input.board.start, floor, 3.15, prefer);
+  const goalBase = ensureRoleContrast('goal', input.board.goal, floor, 3.15, prefer);
   const routeTrail = ensurePairContrast(routeBase, trailBase, 2.2, 'light', 'dark');
-  const playerTrail = ensurePairContrast(playerBase, routeTrail.right, 2.2, 'light', 'dark');
-  const startGoal = ensurePairContrast(startBase, goalBase, 2.15, 'light', 'dark');
-  const playerStart = ensurePairContrast(playerTrail.left, startGoal.left, 2.1, 'light', 'dark');
-  const playerGoal = ensurePairContrast(playerStart.left, startGoal.right, 2.1, 'light', 'dark');
+  const playerTrail = ensurePairContrast(playerBase, routeTrail.right, 2.25, 'light', 'dark');
+  const startGoal = ensurePairContrast(startBase, goalBase, 2.2, 'light', 'dark');
+  const playerStart = ensurePairContrast(playerTrail.left, startGoal.left, 2.15, 'light', 'dark');
+  const playerGoal = ensurePairContrast(playerStart.left, startGoal.right, 2.15, 'light', 'dark');
   let route = ensureRoleContrast('route', routeTrail.left, floor, 3.15, prefer);
-  let trail = ensureRoleContrast('trail', playerTrail.right, floor, 3.15, prefer);
-  let player = ensureRoleContrast('player', playerGoal.left, floor, 3.3, prefer);
-  let start = ensureRoleContrast('start', playerStart.right, floor, 3.1, prefer);
-  let goal = ensureRoleContrast('goal', playerGoal.right, floor, 3.1, prefer);
+  let trail = ensureRoleContrast('trail', playerTrail.right, floor, 3.2, prefer);
+  let player = ensureRoleContrast('player', playerGoal.left, floor, 3.25, prefer);
+  let start = ensureRoleContrast('start', playerStart.right, floor, 3.15, prefer);
+  let goal = ensureRoleContrast('goal', playerGoal.right, floor, 3.15, prefer);
 
   for (let pass = 0; pass < 2; pass += 1) {
     const routeTrailRepair = ensurePairContrast(route, trail, 2.2, 'light', 'dark');
     route = ensureRoleContrast('route', routeTrailRepair.left, floor, 3.15, prefer);
-    trail = ensureRoleContrast('trail', routeTrailRepair.right, floor, 3.15, prefer);
+    trail = ensureRoleContrast('trail', routeTrailRepair.right, floor, 3.2, prefer);
 
-    const playerTrailRepair = ensurePairContrast(player, trail, 2.2, 'light', 'dark');
-    player = ensureRoleContrast('player', playerTrailRepair.left, floor, 3.3, prefer);
-    trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, 3.15, prefer);
+    const playerTrailRepair = ensurePairContrast(player, trail, 2.25, 'light', 'dark');
+    player = ensureRoleContrast('player', playerTrailRepair.left, floor, 3.25, prefer);
+    trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, 3.2, prefer);
 
-    const startGoalRepair = ensurePairContrast(start, goal, 2.15, 'light', 'dark');
-    start = ensureRoleContrast('start', startGoalRepair.left, floor, 3.1, prefer);
-    goal = ensureRoleContrast('goal', startGoalRepair.right, floor, 3.1, prefer);
+    const startGoalRepair = ensurePairContrast(start, goal, 2.2, 'light', 'dark');
+    start = ensureRoleContrast('start', startGoalRepair.left, floor, 3.15, prefer);
+    goal = ensureRoleContrast('goal', startGoalRepair.right, floor, 3.15, prefer);
     goal = ensureRoleContrast('goal', goal, input.background.deepSpace, 3, backdropPrefer);
 
-    const playerStartRepair = ensurePairContrast(player, start, 2.1, 'light', 'dark');
-    player = ensureRoleContrast('player', playerStartRepair.left, floor, 3.3, prefer);
-    start = ensureRoleContrast('start', playerStartRepair.right, floor, 3.1, prefer);
+    const playerStartRepair = ensurePairContrast(player, start, 2.15, 'light', 'dark');
+    player = ensureRoleContrast('player', playerStartRepair.left, floor, 3.25, prefer);
+    start = ensureRoleContrast('start', playerStartRepair.right, floor, 3.15, prefer);
 
-    const playerGoalRepair = ensurePairContrast(player, goal, 2.1, 'light', 'dark');
-    player = ensureRoleContrast('player', playerGoalRepair.left, floor, 3.3, prefer);
-    goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, 3.1, prefer);
+    const playerGoalRepair = ensurePairContrast(player, goal, 2.15, 'light', 'dark');
+    player = ensureRoleContrast('player', playerGoalRepair.left, floor, 3.25, prefer);
+    goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, 3.15, prefer);
     goal = ensureRoleContrast('goal', goal, input.background.deepSpace, 3, backdropPrefer);
   }
 
@@ -453,16 +453,16 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
       routeCore: ensureMinContrast(input.board.routeCore, route, 1.35, roleCorePrefer),
       routeGlow: ensureMinContrast(input.board.routeGlow, wall, 3.1, prefer),
       trail,
-      trailCore: ensureMinContrast(input.board.trailCore, trail, 2.2, roleCorePrefer),
-      trailGlow: ensureMinContrast(input.board.trailGlow, wall, 3.2, prefer),
+      trailCore: ensureMinContrast(input.board.trailCore, trail, 2.3, roleCorePrefer),
+      trailGlow: ensureMinContrast(input.board.trailGlow, wall, 3.3, prefer),
       start,
       startCore: ensureMinContrast(input.board.startCore, start, 2.2, roleCorePrefer),
       startGlow: ensureMinContrast(input.board.startGlow, wall, 3, prefer),
       goal,
       goalCore: ensureMinContrast(input.board.goalCore, goal, 2.2, roleCorePrefer),
       player,
-      playerCore: ensureMinContrast(input.board.playerCore, player, 2.2, roleCorePrefer),
-      playerHalo: ensureMinContrast(input.board.playerHalo, floor, 2.8, prefer),
+      playerCore: ensureMinContrast(input.board.playerCore, player, 2.3, roleCorePrefer),
+      playerHalo: ensureMinContrast(input.board.playerHalo, floor, 3.05, prefer),
     },
     hud: {
       ...input.hud,

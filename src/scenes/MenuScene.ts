@@ -1267,40 +1267,40 @@ export const resolveAmbientSkyProfileTuning = (
     case 'tv':
       tuning = {
         ...tuning,
-        densityScale: 1.18,
-        motionScale: 1.08,
-        eventIntervalScale: 0.82,
-        twinkleCount: 24,
-        driftMoteCount: 9,
+        densityScale: 1.32,
+        motionScale: 1.14,
+        eventIntervalScale: 0.74,
+        twinkleCount: 28,
+        driftMoteCount: 11,
         movingEventCap: 2,
         signatureEventCap: 1,
-        clearZoneScale: 0.96
+        clearZoneScale: 0.94
       };
       break;
     case 'obs':
       tuning = {
         ...tuning,
-        densityScale: 0.58,
-        motionScale: 0.72,
-        eventIntervalScale: 1.34,
-        twinkleCount: 10,
-        driftMoteCount: 3,
+        densityScale: 0.72,
+        motionScale: 0.82,
+        eventIntervalScale: 1.14,
+        twinkleCount: 12,
+        driftMoteCount: 4,
         movingEventCap: 1,
         signatureEventCap: 1,
-        clearZoneScale: 1.34
+        clearZoneScale: 1.28
       };
       break;
     case 'mobile':
       tuning = {
         ...tuning,
-        densityScale: 0.72,
-        motionScale: 0.78,
-        eventIntervalScale: 1.18,
-        twinkleCount: 12,
-        driftMoteCount: 4,
+        densityScale: 0.84,
+        motionScale: 0.86,
+        eventIntervalScale: 1.04,
+        twinkleCount: 15,
+        driftMoteCount: 5,
         movingEventCap: 1,
         signatureEventCap: 1,
-        clearZoneScale: 1.22
+        clearZoneScale: 1.18
       };
       break;
     default:
@@ -1311,16 +1311,16 @@ export const resolveAmbientSkyProfileTuning = (
     case 'title':
       tuning = {
         ...tuning,
-        densityScale: tuning.densityScale * 1.08,
-        eventIntervalScale: tuning.eventIntervalScale * 0.92
+        densityScale: tuning.densityScale * 1.14,
+        eventIntervalScale: tuning.eventIntervalScale * 0.82
       };
       break;
     case 'loading':
       tuning = {
         ...tuning,
-        densityScale: tuning.densityScale * 0.82,
-        motionScale: tuning.motionScale * 0.88,
-        eventIntervalScale: tuning.eventIntervalScale * 1.12
+        densityScale: tuning.densityScale * 0.9,
+        motionScale: tuning.motionScale * 0.92,
+        eventIntervalScale: tuning.eventIntervalScale * 1.06
       };
       break;
     case 'ambient':
@@ -1331,14 +1331,14 @@ export const resolveAmbientSkyProfileTuning = (
   if (reducedMotion) {
     tuning = {
       ...tuning,
-      densityScale: tuning.densityScale * 0.86,
-      motionScale: tuning.motionScale * 0.42,
-      eventIntervalScale: tuning.eventIntervalScale * 1.58,
-      twinkleCount: Math.max(6, Math.round(tuning.twinkleCount * 0.9)),
-      driftMoteCount: Math.max(1, Math.round(tuning.driftMoteCount * 0.72)),
+      densityScale: tuning.densityScale * 0.94,
+      motionScale: tuning.motionScale * 0.56,
+      eventIntervalScale: tuning.eventIntervalScale * 1.22,
+      twinkleCount: Math.max(6, Math.round(tuning.twinkleCount)),
+      driftMoteCount: Math.max(1, Math.round(tuning.driftMoteCount * 0.82)),
       movingEventCap: Math.min(tuning.movingEventCap, 1),
       signatureEventCap: 0,
-      clearZoneScale: tuning.clearZoneScale * 1.08
+      clearZoneScale: tuning.clearZoneScale * 1.06
     };
   }
 
@@ -1422,7 +1422,20 @@ export const resolvePresentationBackdropFrame = (
 
 const MENU_RESIZE_SETTLE_MS = 900;
 const MENU_RESIZE_BUCKET_PX = 4;
-const DEMO_TRAIL_COMMIT_PROGRESS = 0.62;
+const TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX = 0.75;
+
+const resolveLiveTrailHeadIndex = (view: DemoWalkerViewFrame): number => (
+  view.currentIndex !== view.nextIndex && view.progress > 0 ? view.nextIndex : view.currentIndex
+);
+
+const isTrailHeadAttachedToActor = (render: TrailRenderDiagnostics): boolean => {
+  if (!render.hasActiveMotion || render.motionHeadCenter === undefined || render.headCenter === undefined) {
+    return true;
+  }
+
+  return Math.abs(render.headCenter.x - render.motionHeadCenter.x) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX
+    && Math.abs(render.headCenter.y - render.motionHeadCenter.y) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX;
+};
 
 const buildViewportRestartKey = (viewport: ViewportSize): string => {
   const widthBucket = Math.round(sanitizePositive(viewport.width, DEFAULT_VIEWPORT_WIDTH, 0) / MENU_RESIZE_BUCKET_PX) * MENU_RESIZE_BUCKET_PX;
@@ -2358,8 +2371,8 @@ class AmbientSkyLayer {
   }
 
   private drawBackdropMotif(staticStarScale: number): void {
-    const motifAlpha = this.themeProfile.ambientSky.motifAlphaScale * Math.max(0.56, this.tuning.densityScale * 0.92);
-    const clusterCount = Math.max(6, Math.round(12 * staticStarScale));
+    const motifAlpha = this.themeProfile.ambientSky.motifAlphaScale * Math.max(0.72, this.tuning.densityScale);
+    const clusterCount = Math.max(8, Math.round(16 * staticStarScale));
     const lineHeight = Math.max(1, Math.round(this.height * 0.0024));
 
     switch (this.themeProfile.ambientSky.backdropMotif) {
@@ -2995,12 +3008,12 @@ class AmbientSkyLayer {
   }
 
   private resetSchedules(): void {
-    this.nextShootingAt = this.resolveEventInterval('shooting-star');
-    this.nextCometAt = this.resolveEventInterval('comet') * 0.88;
-    this.nextSatelliteAt = this.resolveEventInterval('satellite') * 0.9;
-    this.nextUfoAt = this.resolveEventInterval('ufo') * 0.92;
-    this.nextHeroWindowAt = this.resolveTierCooldown('hero') * 0.72;
-    this.nextSignatureWindowAt = this.resolveTierCooldown('signature') * 0.88;
+    this.nextShootingAt = this.resolveEventInterval('shooting-star') * 0.46;
+    this.nextCometAt = this.resolveEventInterval('comet') * 0.58;
+    this.nextSatelliteAt = this.resolveEventInterval('satellite') * 0.72;
+    this.nextUfoAt = this.resolveEventInterval('ufo') * 0.76;
+    this.nextHeroWindowAt = this.resolveTierCooldown('hero') * 0.52;
+    this.nextSignatureWindowAt = this.resolveTierCooldown('signature') * 0.62;
   }
 
   private resolveEventInterval(family: AmbientSkyMovingFamily): number {
@@ -3403,12 +3416,9 @@ export class MenuScene extends Phaser.Scene {
         const renderedHeadIndex = renderedTrail && activePath && renderedTrail.limit > 0
           ? activePath[renderedTrail.limit - 1] ?? null
           : null;
+        const trailHeadAttached = isTrailHeadAttachedToActor(trailRender);
         const expectedTrailHeadIndex = view
-          ? (
-            view.currentIndex === view.nextIndex || view.progress >= DEMO_TRAIL_COMMIT_PROGRESS
-              ? view.nextIndex
-              : view.currentIndex
-          )
+          ? resolveLiveTrailHeadIndex(view)
           : null;
         const titleBounds = activeTitleContainer ? toVisualSceneBounds(activeTitleContainer.getBounds()) : undefined;
         const titleTextBounds = activeTitleText ? toVisualSceneBounds(activeTitleText.getBounds()) : undefined;
@@ -3452,8 +3462,16 @@ export class MenuScene extends Phaser.Scene {
             nextIndex: view?.nextIndex ?? patternFrame?.episode.raster.startIndex ?? 0,
             progress: view?.progress ?? 0,
             cue: view?.cue ?? 'spawn',
-            suppressesFuturePreview: expectedTrailHeadIndex === null || renderedHeadIndex === expectedTrailHeadIndex,
-            attachedToActor: trailRender.attachedToActor,
+            suppressesFuturePreview: expectedTrailHeadIndex === null || (
+              renderedHeadIndex === expectedTrailHeadIndex
+              && (
+                !view
+                || view.currentIndex === view.nextIndex
+                || view.progress <= 0
+                || trailHeadAttached
+              )
+            ),
+            attachedToActor: trailRender.attachedToActor && trailHeadAttached,
             bridgeRendered: trailRender.bridgeRendered,
             render: trailRender
           },
@@ -3494,6 +3512,10 @@ export class MenuScene extends Phaser.Scene {
         const boardRenderer = new BoardRenderer(this, episode, layout, {
           theme: {
             ...themeProfile.boardTheme,
+            trailFillAlphaScale: (themeProfile.boardTheme.trailFillAlphaScale ?? 1) * 0.94,
+            trailGlowAlphaScale: (themeProfile.boardTheme.trailGlowAlphaScale ?? 1) * 0.96,
+            trailCoreAlphaScale: (themeProfile.boardTheme.trailCoreAlphaScale ?? 1) * 0.98,
+            actorHaloAlphaScale: (themeProfile.boardTheme.actorHaloAlphaScale ?? 1) * 1.12,
             palette: themeProfile.palette
           }
         });
@@ -4369,9 +4391,7 @@ export const resolveDemoTrailRenderBounds = (
     return { start: 0, limit: 0 };
   }
 
-  const headIndex = view.currentIndex === view.nextIndex || view.progress >= DEMO_TRAIL_COMMIT_PROGRESS
-    ? view.nextIndex
-    : view.currentIndex;
+  const headIndex = resolveLiveTrailHeadIndex(view);
   let headCursor = -1;
   for (let index = 0; index < path.length; index += 1) {
     if (path[index] === headIndex) {

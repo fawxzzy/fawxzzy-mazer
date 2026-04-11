@@ -117,6 +117,7 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 
 const MIN_BOARD_SIZE = 24;
 const ANIMATION_TIME_WRAP_MS = 600_000;
+const TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX = 0.75;
 const createEmptyTrailRenderDiagnostics = (): TrailRenderDiagnostics => ({
   cue: 'explore',
   trailStart: 0,
@@ -953,7 +954,9 @@ export class BoardRenderer {
     const headStep = trail[headIndex];
     const headStepIndex = typeof headStep === 'number' ? headStep : headStep.index;
     const headStepMode = typeof headStep === 'number' ? 'explore' : headStep.mode;
-    const bridgeHeadMotion = hasActiveMotion && headStepIndex === activeMotion?.fromIndex;
+    const liveHeadMotion = hasActiveMotion
+      && motionProgress > 0
+      && headStepIndex === activeMotion?.toIndex;
     const headPulse = 1 + (Math.sin(now * 0.008) * (legacyTuning.board.trail.headPulseAmplitude + pulseBoost));
     const targetPulse = 0.7 + (Math.sin(now * 0.01) * 0.3);
     const cueHeadBoost = cue === 'anticipate'
@@ -1012,17 +1015,13 @@ export class BoardRenderer {
               : legacyTuning.board.trail.nodeRadiusRatio
         )
       );
-      const renderCenterX = isHead && hasActiveMotion
-        ? bridgeHeadMotion
-          ? centerX
-          : motionHeadCenter?.x ?? centerX
+      const renderCenterX = isHead && liveHeadMotion
+        ? motionHeadCenter?.x ?? centerX
         : centerX;
-      const renderCenterY = isHead && hasActiveMotion
-        ? bridgeHeadMotion
-          ? centerY
-          : motionHeadCenter?.y ?? centerY
+      const renderCenterY = isHead && liveHeadMotion
+        ? motionHeadCenter?.y ?? centerY
         : centerY;
-      const movingHead = isHead && hasActiveMotion && !bridgeHeadMotion && !isGoalStep;
+      const movingHead = isHead && liveHeadMotion && !isGoalStep;
       const segmentCoreColor = isGoalStep
         ? colors.board.goalCore
         : isBacktrack
@@ -1056,7 +1055,7 @@ export class BoardRenderer {
           renderCenterY,
           bodyGlowWidth,
           segmentGlowColor,
-          glowAlpha * (movingHead ? 0.5 : isHead ? 0.74 : isBacktrack ? 0.42 : 0.36) * trailGlowScale
+          glowAlpha * (movingHead ? 0.62 : isHead ? 0.68 : isBacktrack ? 0.4 : 0.34) * trailGlowScale
         );
         this.fillAxisAlignedSegment(
           this.trail,
@@ -1097,9 +1096,9 @@ export class BoardRenderer {
         this.trail.lineStyle(Math.max(1, tileSize * 0.03), segmentCoreColor, alpha * 0.84 * trailCoreScale);
         this.trail.lineBetween(renderCenterX - nodeRadius, renderCenterY - nodeRadius, renderCenterX + nodeRadius, renderCenterY + nodeRadius);
       } else {
-        if (!isHead || !hasActiveMotion || isGoalStep || bridgeHeadMotion) {
-          const tileFillAlpha = alpha * (isGoalStep ? 0.72 : demoEmphasis ? 0.42 : 0.24) * trailFillScale;
-          const nodeCoreAlpha = Math.min(1, alpha * (isGoalStep ? 0.94 : demoEmphasis ? 0.74 : 0.5)) * trailCoreScale;
+        if (!movingHead || isGoalStep) {
+          const tileFillAlpha = alpha * (isGoalStep ? 0.72 : demoEmphasis ? 0.34 : 0.18) * trailFillScale;
+          const nodeCoreAlpha = Math.min(1, alpha * (isGoalStep ? 0.94 : demoEmphasis ? 0.64 : 0.42)) * trailCoreScale;
           this.trail.fillStyle(segmentFillColor, tileFillAlpha);
           this.trail.fillRect(
             tileX + cellInset,
@@ -1125,11 +1124,11 @@ export class BoardRenderer {
         this.trail.fillRect(renderCenterX - glowSize / 2, renderCenterY - glowSize / 2, glowSize, glowSize);
         this.trail.fillStyle(segmentCoreColor, Math.min(1, alpha + 0.22) * trailCoreScale);
         this.trail.fillRect(renderCenterX - coreSize / 2, renderCenterY - coreSize / 2, coreSize, coreSize);
-      } else if ((isHead && !bridgeHeadMotion) || isGoalStep) {
-        const headGlowRadius = movingHead ? nodeRadius * 1.04 : nodeRadius * (isHead ? 1.42 : 1.18);
-        const headCoreRadius = movingHead ? nodeRadius * 0.68 : nodeRadius * (isHead ? 0.92 : 0.78);
-        const headGlowAlpha = glowAlpha * (movingHead ? 0.34 : isHead ? 0.56 : 0.4) * trailGlowScale;
-        const headCoreAlpha = Math.min(1, alpha + (movingHead ? 0.12 : isGoalStep ? 0.28 : 0.2)) * trailCoreScale;
+      } else if (isHead || isGoalStep) {
+        const headGlowRadius = movingHead ? nodeRadius * 1.14 : nodeRadius * (isHead ? 1.42 : 1.18);
+        const headCoreRadius = movingHead ? nodeRadius * 0.74 : nodeRadius * (isHead ? 0.92 : 0.78);
+        const headGlowAlpha = glowAlpha * (movingHead ? 0.46 : isHead ? 0.56 : 0.4) * trailGlowScale;
+        const headCoreAlpha = Math.min(1, alpha + (movingHead ? 0.18 : isGoalStep ? 0.28 : 0.2)) * trailCoreScale;
         this.trail.fillStyle(segmentGlowColor, headGlowAlpha);
         this.trail.fillCircle(renderCenterX, renderCenterY, headGlowRadius);
         this.trail.fillStyle(segmentCoreColor, headCoreAlpha);
@@ -1145,50 +1144,13 @@ export class BoardRenderer {
       previousCenterY = renderCenterY;
     }
 
-    if (bridgeHeadMotion && motionHeadCenter) {
-      bridgeRendered = true;
-      const bridgeGlowWidth = Math.max(2, tileSize * legacyTuning.board.trail.glowLineWidthRatio);
-      const bridgeCoreWidth = Math.max(1, tileSize * legacyTuning.board.trail.lineWidthRatio);
-      const bridgeGlowAlpha = Phaser.Math.Clamp(
-        legacyTuning.board.trail.glowMinAlpha + glowBoost + (motionProgress * 0.22),
-        0,
-        1
-      ) * 0.68 * trailGlowScale;
-      const bridgeCoreAlpha = Phaser.Math.Clamp(
-        legacyTuning.board.trail.minLineAlpha + alphaBoost + (motionProgress * 0.2),
-        0,
-        1
-      ) * 0.82 * trailCoreScale;
-      const bridgeRadius = Math.max(
-        2,
-        tileSize * legacyTuning.board.trail.headRadiusRatio * (0.86 + (motionProgress * 0.32))
+    bridgeRendered = liveHeadMotion;
+    const attachedToActor = !hasActiveMotion
+      || !motionHeadCenter
+      || (
+        Math.abs(headCenterX - motionHeadCenter.x) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX
+        && Math.abs(headCenterY - motionHeadCenter.y) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX
       );
-
-      this.fillAxisAlignedSegment(
-        this.trail,
-        headCenterX,
-        headCenterY,
-        motionHeadCenter.x,
-        motionHeadCenter.y,
-        bridgeGlowWidth,
-        colors.board.trailGlow,
-        bridgeGlowAlpha
-      );
-      this.fillAxisAlignedSegment(
-        this.trail,
-        headCenterX,
-        headCenterY,
-        motionHeadCenter.x,
-        motionHeadCenter.y,
-        bridgeCoreWidth,
-        colors.board.trailCore,
-        bridgeCoreAlpha
-      );
-      this.trail.fillStyle(colors.board.trailGlow, bridgeGlowAlpha * 0.9);
-      this.trail.fillCircle(motionHeadCenter.x, motionHeadCenter.y, bridgeRadius * 0.72);
-      this.trail.fillStyle(colors.board.trailCore, bridgeCoreAlpha * 0.96);
-      this.trail.fillCircle(motionHeadCenter.x, motionHeadCenter.y, bridgeRadius * 0.4);
-    }
 
     this.lastTrailDiagnostics = {
       cue,
@@ -1199,7 +1161,7 @@ export class BoardRenderer {
       viewMotionProgress: motionProgress,
       hasActiveMotion,
       bridgeRendered,
-      attachedToActor: !hasActiveMotion || !bridgeHeadMotion || bridgeRendered,
+      attachedToActor,
       headCenter: {
         x: headCenterX,
         y: headCenterY
@@ -1407,11 +1369,21 @@ export class BoardRenderer {
       : cue === 'backtrack'
         ? colors.board.topHighlight
         : colors.board.playerCore;
+    const actorTileAlpha = cue === 'anticipate'
+      ? 0.22
+      : cue === 'goal'
+        ? 0.2
+        : 0.16;
+    const actorStrokeAlpha = cue === 'dead-end'
+      ? 0.82
+      : cue === 'backtrack'
+        ? 0.64
+        : 0.72;
 
     this.actor.clear();
-    this.actor.fillStyle(colors.board.player, cue === 'anticipate' ? 0.14 : 0.1);
+    this.actor.fillStyle(colors.board.player, actorTileAlpha);
     this.actor.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.05), colors.board.playerHalo, (cue === 'dead-end' ? 0.62 : 0.5) * actorHaloScale);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.05), colors.board.playerHalo, actorStrokeAlpha * actorHaloScale);
     this.actor.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
     this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha * 0.72);
     this.actor.fillCircle(
@@ -1420,7 +1392,7 @@ export class BoardRenderer {
       tileSize * actorTuning.shadowRadiusRatio
     );
 
-    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.82 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.94 * actorHaloScale);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.haloRadiusRatio * actorPulse);
 
     this.actor.fillStyle(colors.board.player, 1);
@@ -1428,12 +1400,12 @@ export class BoardRenderer {
     this.actor.fillStyle(colors.board.playerCore, 1);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio * 0.58);
 
-    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), colors.board.playerHalo, cue === 'backtrack' ? 0.74 : 0.88);
+    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), colors.board.playerHalo, cue === 'backtrack' ? 0.8 : 0.96);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.ringRadiusRatio);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.03), ringColor, outerRingAlpha * 0.72);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.03), ringColor, outerRingAlpha * 0.78);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
 
-    this.actor.fillStyle(colors.board.playerHalo, 0.62 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, 0.78 * actorHaloScale);
     this.actor.fillCircle(
       bodyCenterX - tileSize * actorTuning.highlightOffsetRatio,
       bodyCenterY - tileSize * actorTuning.highlightOffsetRatio,
