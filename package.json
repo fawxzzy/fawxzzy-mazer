@@ -8,6 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort",
     "test": "vitest run --exclude tests/maze/maze-soak.test.ts",
+    "test:architecture": "vitest run tests/architecture",
+    "architecture:check": "node ./scripts/check-architecture.mjs",
     "test:soak": "vitest run tests/maze/maze-soak.test.ts",
     "lint": "tsc --noEmit",
     "visual:capture": "node ./scripts/visual/capture.mjs",

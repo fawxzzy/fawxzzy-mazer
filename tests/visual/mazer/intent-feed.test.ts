@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { buildIntentBus, type IntentSourceState } from '../../../src/visual-proof/intent/IntentBus';
 import { buildIntentFeed, resolveVisibleIntentEntries } from '../../../src/visual-proof/intent/IntentFeed';
@@ -229,5 +230,18 @@ describe('intent bus', () => {
     const pings = feed.states.get(2)?.pings ?? [];
     expect(pings.some((ping) => ping.pingLabel === 'Trap inferred' && ping.anchor.kind === 'tile' && ping.speaker === 'TrapNet')).toBe(true);
     expect(pings.some((ping) => ping.pingLabel === 'Exit seen' && ping.anchor.kind === 'objective' && ping.speaker === 'Runner')).toBe(true);
+  });
+
+  test('keeps visual-proof intent contracts as thin adapters over mazer-core', () => {
+    const adapterFiles = [
+      '../../../src/visual-proof/intent/IntentBus.ts',
+      '../../../src/visual-proof/intent/IntentEvent.ts'
+    ];
+
+    for (const relativePath of adapterFiles) {
+      const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+      expect(source).toMatch(/mazer-core/);
+      expect(source).not.toMatch(/makeIntentRecord|INTENT_TTL_STEPS:\s*Record<IntentImportance/);
+    }
   });
 });

@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { ExplorerAgent } from '../../../src/visual-proof/agent/ExplorerAgent';
-import { EpisodicPolicyScorer } from '../../../src/visual-proof/agent/PolicyScorer';
-import type { ExplorerDecision, LocalObservation, TileId, VisibleLandmark } from '../../../src/visual-proof/agent/types';
+import { ExplorerAgent } from '../../src/mazer-core/agent/ExplorerAgent';
+import { EpisodicPolicyScorer } from '../../src/mazer-core/agent/PolicyScorer';
+import type { ExplorerDecision, LocalObservation, TileId, VisibleLandmark } from '../../src/mazer-core/agent/types';
 
 type TileSpec = {
   neighbors: TileId[];
@@ -133,7 +133,7 @@ const observeRoute = (agent: ExplorerAgent, route: Array<{ tileId: TileId; headi
   }
 };
 
-describe('ExplorerAgent', () => {
+describe('mazer-core ExplorerAgent', () => {
   test('produces deterministic action logs for the same seed', () => {
     const first = runAgent('seed-17');
     const second = runAgent('seed-17');
@@ -218,36 +218,21 @@ describe('ExplorerAgent', () => {
     expect(episodes[0].outcome).not.toBeNull();
   });
 
-  test('does not import full manifest truth directly', () => {
-    const coreFiles = [
-      '../../../src/mazer-core/agent/ExplorerAgent.ts',
-      '../../../src/mazer-core/agent/BeliefGraph.ts',
-      '../../../src/mazer-core/agent/FrontierPlanner.ts',
-      '../../../src/mazer-core/agent/PolicyScorer.ts',
-      '../../../src/mazer-core/agent/types.ts'
+  test('core files stay independent from visual-proof and manifest code', () => {
+    const sourceFiles = [
+      '../../src/mazer-core/agent/ExplorerAgent.ts',
+      '../../src/mazer-core/agent/BeliefGraph.ts',
+      '../../src/mazer-core/agent/FrontierPlanner.ts',
+      '../../src/mazer-core/agent/PolicyScorer.ts',
+      '../../src/mazer-core/agent/types.ts',
+      '../../src/mazer-core/intent/IntentBus.ts',
+      '../../src/mazer-core/intent/IntentEvent.ts'
     ];
 
-    for (const relativePath of coreFiles) {
+    for (const relativePath of sourceFiles) {
       const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-      expect(source).not.toMatch(/from\s+['"][^'"]*topology-proof/);
-      expect(source).not.toMatch(/from\s+['"][^'"]*scenarioLibrary/);
-      expect(source).not.toMatch(/from\s+['"][^'"]*manifestLoader/);
-    }
-  });
-
-  test('keeps visual-proof planner files as thin adapters over mazer-core', () => {
-    const adapterFiles = [
-      '../../../src/visual-proof/agent/ExplorerAgent.ts',
-      '../../../src/visual-proof/agent/BeliefGraph.ts',
-      '../../../src/visual-proof/agent/FrontierPlanner.ts',
-      '../../../src/visual-proof/agent/PolicyScorer.ts',
-      '../../../src/visual-proof/agent/types.ts'
-    ];
-
-    for (const relativePath of adapterFiles) {
-      const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-      expect(source).toMatch(/mazer-core/);
-      expect(source).not.toMatch(/class\s+ExplorerAgent|class\s+BeliefGraph|class\s+FrontierPlanner/);
+      expect(source).not.toMatch(/from\s+['"][^'"]*visual-proof/);
+      expect(source).not.toMatch(/\bdocument\b|\bwindow\b|\bHTMLElement\b/);
     }
   });
 });
