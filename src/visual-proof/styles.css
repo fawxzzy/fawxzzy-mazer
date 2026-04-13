@@ -1,0 +1,293 @@
+:root {
+  color-scheme: dark;
+  --proof-bg-top: #07131b;
+  --proof-bg-bottom: #071e2b;
+  --proof-ink: #eff8ff;
+  --proof-muted: rgba(222, 240, 255, 0.74);
+  --proof-border: rgba(143, 214, 255, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(104, 221, 255, 0.14), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(255, 201, 110, 0.12), transparent 32%),
+    linear-gradient(180deg, var(--proof-bg-top), var(--proof-bg-bottom));
+  color: var(--proof-ink);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+#visual-proof-root {
+  width: 100vw;
+  height: 100dvh;
+  padding: 18px;
+}
+
+.proof-app {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+}
+
+.proof-header,
+.proof-stage-card,
+.proof-rail {
+  border: 1px solid var(--proof-border);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(10, 25, 38, 0.94), rgba(8, 19, 29, 0.94));
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+.proof-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.proof-title {
+  margin: 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.8rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.proof-subtitle {
+  margin: 8px 0 0;
+  color: var(--proof-muted);
+  line-height: 1.35;
+  font-size: clamp(0.85rem, 1.4vw, 1rem);
+  max-width: 68ch;
+}
+
+.proof-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.proof-chip {
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(122, 211, 255, 0.22);
+  background: rgba(12, 28, 41, 0.78);
+  font: 600 0.78rem/1 "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.proof-chip[data-tone="motion"] {
+  border-color: rgba(255, 215, 135, 0.34);
+  color: #ffd787;
+}
+
+.proof-content {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 2.05fr) minmax(18rem, 1fr);
+  gap: 16px;
+}
+
+.proof-stage-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 14px;
+  gap: 12px;
+}
+
+.proof-stage-header,
+.proof-focus-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.proof-stage-label,
+.proof-focus-title,
+.proof-panel-heading {
+  margin: 0;
+  font-size: 0.84rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(221, 239, 255, 0.8);
+}
+
+.proof-stage-caption,
+.proof-status-text,
+.proof-focus-note,
+.proof-human-text {
+  margin: 8px 0 0;
+  color: var(--proof-muted);
+  line-height: 1.4;
+  font-size: 0.92rem;
+}
+
+.proof-stage-wrap,
+.proof-focus-wrap {
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(126, 205, 255, 0.16);
+  background:
+    radial-gradient(circle at top, rgba(111, 220, 255, 0.08), transparent 45%),
+    linear-gradient(180deg, rgba(8, 18, 28, 0.94), rgba(6, 13, 21, 0.92));
+}
+
+.proof-stage-wrap {
+  min-height: clamp(240px, 42vh, 420px);
+}
+
+.proof-stage {
+  width: 100%;
+  height: 100%;
+}
+
+.proof-stage svg,
+.proof-focus svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.proof-stage-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.95fr);
+  gap: 14px;
+}
+
+.proof-status-card,
+.proof-cues,
+.proof-panel {
+  min-height: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(122, 205, 255, 0.16);
+  background: rgba(8, 21, 31, 0.88);
+  padding: 12px 14px;
+}
+
+.proof-cues ul,
+.proof-evidence ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.proof-cues li,
+.proof-evidence li {
+  color: var(--proof-muted);
+  line-height: 1.42;
+}
+
+.proof-rail {
+  display: grid;
+  grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.proof-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.proof-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.proof-summary-item {
+  border-radius: 14px;
+  border: 1px solid rgba(122, 205, 255, 0.14);
+  background: rgba(10, 27, 40, 0.74);
+  padding: 10px 12px;
+}
+
+.proof-summary-term {
+  display: block;
+  font: 600 0.7rem/1 "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(201, 232, 255, 0.72);
+}
+
+.proof-summary-value {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.92rem;
+  line-height: 1.32;
+}
+
+@media (max-width: 1120px) {
+  .proof-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1.2fr) minmax(0, 0.95fr);
+  }
+
+  .proof-rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  #visual-proof-root {
+    padding: 12px;
+  }
+
+  .proof-app {
+    gap: 12px;
+  }
+
+  .proof-header {
+    padding: 12px;
+    gap: 10px;
+    flex-direction: column;
+  }
+
+  .proof-meta {
+    justify-content: flex-start;
+  }
+
+  .proof-stage-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .proof-rail {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.8fr);
+  }
+
+  .proof-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proof-contract-grid {
+    grid-template-columns: 1fr;
+  }
+}

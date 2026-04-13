@@ -1,0 +1,173 @@
+{
+  "basePath": "/visual-proof.html",
+  "artifactRoot": "tmp/captures/mazer-visual-proof",
+  "selectors": {
+    "stage": "#proof-stage",
+    "focus": "#focus-panel"
+  },
+  "viewports": [
+    {
+      "id": "mobile-portrait",
+      "label": "Mobile portrait",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "id": "tablet-portrait",
+      "label": "Tablet portrait",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "id": "laptop",
+      "label": "Laptop",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "id": "desktop-wide",
+      "label": "Desktop wide",
+      "width": 1728,
+      "height": 972
+    },
+    {
+      "id": "square",
+      "label": "Square",
+      "width": 1080,
+      "height": 1080
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "dense-route-player-visibility",
+      "label": "Dense route player visibility",
+      "motion": false,
+      "seed": "dense-visibility-v1",
+      "authFixture": "none",
+      "route": "/visual-proof.html?scenario=dense-route-player-visibility",
+      "beforeState": "before",
+      "afterState": "after",
+      "keyframes": [
+        "before",
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "after"
+      ],
+      "report": {
+        "changed": "The proof pack walks a crowded outer-shell route and keeps the player marker brighter than every branch line at each keyframe.",
+        "regressed": "No regression is expected in the isolated harness; this is a new evidence lane rather than a replacement of shipping runtime visuals.",
+        "better": "Player-vs-route separation now has a repeatable screenshot packet across five viewports instead of one-off ad hoc captures.",
+        "worse": "Square and narrow portrait frames intentionally show less peripheral route context to keep the active tile readable.",
+        "humanJudgment": "Confirm that the player glyph is still glance-readable when route density spikes near the branch fan."
+      }
+    },
+    {
+      "id": "discrete-rotation-readability",
+      "label": "Discrete rotation readability",
+      "motion": true,
+      "seed": "rotation-readability-v1",
+      "authFixture": "none",
+      "route": "/visual-proof.html?scenario=discrete-rotation-readability",
+      "beforeState": "before",
+      "afterState": "after",
+      "keyframes": [
+        "before",
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "frame-05",
+        "frame-06",
+        "after"
+      ],
+      "report": {
+        "changed": "The proof pack records a stepped shell rotation where the connector state changes only on discrete, named angles.",
+        "regressed": "No free-spin path is shown; the harness intentionally rejects analog camera drift as proof.",
+        "better": "Before and after consequences are now locked to screenshots, motion keyframes, and a short review video in the same packet.",
+        "worse": "Intermediate frames stay schematic and do not attempt production lighting or post effects.",
+        "humanJudgment": "Confirm that the rotation video reads as a learnable state change instead of a disorienting camera move."
+      }
+    },
+    {
+      "id": "shell-connector-alignment",
+      "label": "Shell connector alignment",
+      "motion": false,
+      "seed": "connector-alignment-v1",
+      "authFixture": "none",
+      "route": "/visual-proof.html?scenario=shell-connector-alignment",
+      "beforeState": "before",
+      "afterState": "after",
+      "keyframes": [
+        "before",
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "after"
+      ],
+      "report": {
+        "changed": "The proof pack isolates one connector cluster and shows misaligned, cueing, and aligned states as a fixed local packet.",
+        "regressed": "The harness drops decorative shell noise around the focus crop so connector legibility remains the only question.",
+        "better": "Connector readability now has a stable focus crop instead of relying on a full-frame screenshot and memory.",
+        "worse": "The local focus crop hides unrelated shell context by design to keep the alignment test bounded.",
+        "humanJudgment": "Confirm that the aligned bridge reads as open without needing the text legend or debug labels."
+      }
+    },
+    {
+      "id": "observatory-reorientation",
+      "label": "Observatory re-orientation",
+      "motion": true,
+      "seed": "observatory-reorientation-v1",
+      "authFixture": "none",
+      "route": "/visual-proof.html?scenario=observatory-reorientation",
+      "beforeState": "before",
+      "afterState": "after",
+      "keyframes": [
+        "before",
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "frame-05",
+        "frame-06",
+        "after"
+      ],
+      "report": {
+        "changed": "The proof pack opens from a local shell view into a vantage frame that re-establishes shell and landmark relationships.",
+        "regressed": "The observatory sequence uses hard-held frames rather than cinematic camera easing so orientation remains inspectable.",
+        "better": "Orientation recovery now has a repeatable motion packet with stills, focus crop, and contact sheet across the viewport matrix.",
+        "worse": "The mobile and square passes compress side legend space to keep the planet centered and the shell labels on screen.",
+        "humanJudgment": "Confirm that the after frame genuinely restores bearings instead of just looking wider."
+      }
+    },
+    {
+      "id": "bounded-progression-slice",
+      "label": "Bounded progression slice",
+      "motion": true,
+      "seed": "bounded-progression-v1",
+      "authFixture": "none",
+      "route": "/visual-proof.html?scenario=bounded-progression-slice",
+      "beforeState": "before",
+      "afterState": "after",
+      "keyframes": [
+        "before",
+        "frame-01",
+        "frame-02",
+        "frame-03",
+        "frame-04",
+        "frame-05",
+        "frame-06",
+        "after"
+      ],
+      "report": {
+        "changed": "The proof pack shows one short progression loop from locked checkpoint to cleared checkpoint with the next proxy becoming legible.",
+        "regressed": "The sequence stays bounded to a single regional slice; it does not attempt to prove the entire planet in one artifact.",
+        "better": "Checkpoint readability, proxy visibility, and local objective handoff now share the same packet contract as rotation and vantage proofs.",
+        "worse": "Because the slice is bounded, long-route spectacle is intentionally absent from this scenario.",
+        "humanJudgment": "Confirm that the checkpoint completion feels satisfying before the next target proxy appears."
+      }
+    }
+  ]
+}

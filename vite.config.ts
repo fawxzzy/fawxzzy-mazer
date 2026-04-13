@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -6,6 +7,10 @@ export default defineConfig({
     chunkSizeWarningLimit: 1300,
     reportCompressedSize: false,
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        'visual-proof': resolve(__dirname, 'visual-proof.html')
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/phaser')) {
