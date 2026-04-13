@@ -159,6 +159,7 @@ const evaluateSceneContracts = async (page, diagnostics) => {
   const objective = await getLocatorSnapshot(page.getByTestId('stage-objective'));
   const landmark = await getLocatorSnapshot(page.getByTestId('stage-landmark'), 'data-landmark-id');
   const connector = await getLocatorSnapshot(page.getByTestId('stage-connector'), 'data-connector-id');
+  const solutionOverlay = await getLocatorSnapshot(page.getByTestId('stage-solution-overlay'));
   const focus = await evaluateFocusContract(page, diagnostics);
   const failures = [];
 
@@ -178,6 +179,14 @@ const evaluateSceneContracts = async (page, diagnostics) => {
     failures.push('connector-visible');
   }
 
+  if (!diagnostics.trailHeadMatchesPlayer) {
+    failures.push('trail-head-sync');
+  }
+
+  if (solutionOverlay.present || diagnostics.solutionOverlayVisible) {
+    failures.push('solution-overlay-hidden');
+  }
+
   if (!focus.matched) {
     failures.push(`focus-${focus.target}`);
   }
@@ -190,6 +199,8 @@ const evaluateSceneContracts = async (page, diagnostics) => {
     objectiveVisible: diagnostics.objectiveVisible ? objective.visible : true,
     landmarkVisible: landmark.visible && landmark.value === diagnostics.semanticGate.landmarkId,
     connectorVisible: connector.visible && connector.value === diagnostics.semanticGate.connectorId,
+    trailHeadMatchesPlayer: diagnostics.trailHeadMatchesPlayer,
+    solutionOverlayHidden: !solutionOverlay.present && !diagnostics.solutionOverlayVisible,
     focus,
     failures,
     passed: failures.length === 0
@@ -227,13 +238,21 @@ const evaluateRecoveryFrame = async ({ page, config, setState, recoveryStateId }
   };
 };
 
-const buildSemanticScore = ({ metadataSeed, sceneScores, recovery }) => {
+const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnostics, afterDiagnostics }) => {
   const gates = {
     playerVisibleEveryScene: sceneScores.every((scene) => scene.playerVisible),
     objectiveVisibleEveryScene: sceneScores.every((scene) => scene.objectiveVisible),
     landmarkVisibleEveryScene: sceneScores.every((scene) => scene.landmarkVisible),
     connectorVisibleEveryScene: sceneScores.every((scene) => scene.connectorVisible),
+    trailHeadMatchesPlayerEveryScene: sceneScores.every((scene) => scene.trailHeadMatchesPlayer),
+    noSolutionOverlayEveryScene: sceneScores.every((scene) => scene.solutionOverlayHidden),
     focusContractMatchedEveryScene: sceneScores.every((scene) => scene.focus.matched),
+    nonOmniscientStartTarget: !beforeDiagnostics
+      || beforeDiagnostics.currentTargetTileId !== beforeDiagnostics.goalTileId
+      || beforeDiagnostics.goalObservedStep === 0,
+    goalObservedAfterStart: !afterDiagnostics
+      || afterDiagnostics.totalSteps <= 1
+      || (afterDiagnostics.goalObservedStep !== null && afterDiagnostics.goalObservedStep > 0),
     recoveryFramePresent: recovery.present,
     recoveryFrameStable: recovery.stable
   };
@@ -243,6 +262,14 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery }) => {
     for (const failure of scene.failures) {
       failures.push(`${scene.stateId}: ${failure}`);
     }
+  }
+
+  if (!gates.nonOmniscientStartTarget) {
+    failures.push('before: start-target-limited');
+  }
+
+  if (!gates.goalObservedAfterStart) {
+    failures.push('after: goal-observed-after-start');
   }
 
   if (!recovery.present) {
@@ -274,6 +301,10 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery }) => {
       'objective-visible': 'Objective visibility',
       'landmark-visible': 'Landmark salience',
       'connector-visible': 'Connector readability',
+      'trail-head-sync': 'Trail head sync',
+      'solution-overlay-hidden': 'No solution overlay',
+      'start-target-limited': 'Non-omniscient start target',
+      'goal-observed-after-start': 'Goal observation after step 0',
       'focus-player': 'Player focus contract',
       'focus-objective': 'Objective focus contract',
       'focus-landmark': 'Landmark focus contract',
@@ -418,7 +449,9 @@ const captureScenarioPacket = async ({
   const semanticScore = buildSemanticScore({
     metadataSeed,
     sceneScores,
-    recovery
+    recovery,
+    beforeDiagnostics,
+    afterDiagnostics
   });
 
   const video = page.video();
@@ -473,6 +506,14 @@ const captureScenarioPacket = async ({
       passed: semanticScore.summary.passed,
       passRatio: semanticScore.summary.passRatio,
       failureCount: semanticScore.failures.length
+    },
+    explorer: {
+      goalObservedStep: afterDiagnostics?.goalObservedStep ?? null,
+      replanCount: afterDiagnostics?.replanCount ?? null,
+      backtrackCount: afterDiagnostics?.backtrackCount ?? null,
+      frontierCount: afterDiagnostics?.frontierCount ?? null,
+      tilesDiscovered: afterDiagnostics?.tilesDiscovered ?? null,
+      trailHeadMatchesPlayer: afterDiagnostics?.trailHeadMatchesPlayer ?? null
     }
   };
 

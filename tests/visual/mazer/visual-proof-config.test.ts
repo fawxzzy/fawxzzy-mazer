@@ -20,6 +20,7 @@ describe('visual proof config', () => {
   test('config scenarios load manifest-driven proof routes', () => {
     for (const scenario of visualConfig.scenarios) {
       expect(scenario.route).toContain(`/topology-proof/manifests/${scenario.id}.json`);
+      expect(scenario.route).not.toContain('debugSolution=true');
     }
   });
 
@@ -51,6 +52,13 @@ describe('visual proof config', () => {
       } else {
         expect(definition.semanticGate.recoveryStateId ?? null).toBeNull();
       }
+    }
+  });
+
+  test('proof config does not opt into solved-route overlays', () => {
+    for (const scenario of visualConfig.scenarios) {
+      expect(scenario.route).not.toContain('show-solution-overlay');
+      expect(scenario.route).not.toContain('omniscient-goal-target');
     }
   });
 });

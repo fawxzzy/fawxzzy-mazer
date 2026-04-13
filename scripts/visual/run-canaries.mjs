@@ -15,14 +15,15 @@ const buildCanaryConfig = async (mutated) => {
   const baseConfig = await readVisualProofConfig(REPO_ROOT);
   const viewport = baseConfig.viewports.find((entry) => entry.id === 'desktop-wide') ?? baseConfig.viewports[0];
   const scenarios = CANARY_SCENARIOS.map((scenario) => {
-    const baseScenario = baseConfig.scenarios.find((entry) => entry.id === scenario.id);
+    const baseScenario = baseConfig.scenarios.find((entry) => entry.id === scenario.scenarioId);
     if (!baseScenario) {
-      throw new Error(`Missing base visual proof scenario ${scenario.id}.`);
+      throw new Error(`Missing base visual proof scenario ${scenario.scenarioId}.`);
     }
 
-    const manifestRoute = `/visual-proof.html?manifest=/topology-proof/manifests/${scenario.id}.json${mutated ? `&canary=${scenario.mutation}` : ''}`;
+    const manifestRoute = `/visual-proof.html?manifest=/topology-proof/manifests/${scenario.scenarioId}.json${mutated ? `&canary=${scenario.mutation}` : ''}`;
     return {
       ...baseScenario,
+      id: scenario.id,
       label: scenario.label,
       route: manifestRoute,
       expectedFailures: mutated ? scenario.expectedFailures : []

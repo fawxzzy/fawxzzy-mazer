@@ -15,6 +15,14 @@ Rule:
 - the proof harness consumes architecture truth
 - the proof harness does not define architecture truth
 
+Belief graph separation:
+
+- the environment projects truth into local observations before the agent sees anything
+- the agent may path only over the discovered graph, not the full manifest graph
+- goal promotion happens only after the goal is observed or discovered locally
+- trail is derived only from committed occupancy history
+- failure mode: full-manifest shortest path masquerading as smart AI
+
 ## Output Contract
 
 The sandbox exports one JSON manifest per proof seed to `public/topology-proof/manifests/`.
@@ -128,5 +136,8 @@ Required canary targets:
 - objective visibility
 - landmark salience
 - connector readability after rotation
+- solved-route overlay paint
+- trail-head mismatch
+- omniscient goal targeting at start
 
 Canaries do not update or depend on the blessed visual baseline pointer.

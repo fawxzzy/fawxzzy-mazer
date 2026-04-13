@@ -21,6 +21,23 @@ Manifest-driven proof:
 - `src/visual-proof/scenarioLibrary.ts` remains available only as fallback smoke data when no manifest is supplied.
 - Packet metadata records manifest source, seed, district type, and rotation state label.
 
+Anti-cheat guarantees:
+
+- Normal proof, baseline, and canary runs do not paint a solved route overlay.
+- The explorer may path only over the discovered graph; A* to the exit on the full manifest is treated as cheating.
+- The active goal is promoted only after local observation; before that the planner targets a frontier.
+- The rendered trail is derived only from committed occupancy history, and `trailHeadTileId` must match `playerTileId`.
+- Canary mutations explicitly fail on solution-overlay paint, trail-head mismatch, and omniscient start targeting.
+
+Explorer packet metrics:
+
+- `goalObservedStep`
+- `replanCount`
+- `backtrackCount`
+- `frontierCount`
+- `tilesDiscovered`
+- `trailHeadMatchesPlayer`
+
 The committed baseline pointer lives at `artifacts/visual/baseline.json`. It points at the current baseline run inside `tmp/captures/mazer-visual-proof/` and is updated explicitly by `npm run visual:promote-baseline`.
 
 Comparison workflow:
