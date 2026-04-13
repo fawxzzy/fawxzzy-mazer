@@ -34,6 +34,17 @@ describe('visual proof config', () => {
     ]);
   });
 
+  test('config defines concrete readability gates for trail, dominance, and cue separation', () => {
+    expect(visualConfig.readabilityGates).toEqual({
+      trailHeadGapPx: 0.75,
+      minimumNonTextContrast: 3,
+      minimumPlayerDominance: 1.15,
+      minimumObjectiveHueDelta: 40,
+      minimumTrailActiveVsOldContrast: 1.25,
+      minimumTrailActiveWidthRatio: 1.25
+    });
+  });
+
   test('semantic gates resolve to declared landmarks, connectors, and recovery states', () => {
     const focusTargets = new Set(['player', 'objective', 'landmark', 'connector']);
 

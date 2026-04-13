@@ -60,12 +60,92 @@ export interface BeliefGraphSnapshot {
 }
 
 export interface FrontierCandidate {
+  id: string;
+  targetKind: ExplorerTargetKind;
   tileId: TileId;
   path: TileId[];
   score: number;
   visitCount: number;
   unexploredNeighborCount: number;
   tieBreak: number;
+}
+
+export interface PolicyObservationFeatures {
+  traversableCount: number;
+  landmarkCount: number;
+  localCueCount: number;
+  dangerCueCount: number;
+  enemyCueCount: number;
+  itemCueCount: number;
+  puzzleCueCount: number;
+  goalVisible: boolean;
+}
+
+export interface PolicyCandidateFeatures {
+  pathCost: number;
+  visitCount: number;
+  unexploredNeighborCount: number;
+  frontierCount: number;
+  goalVisible: boolean;
+}
+
+export interface PolicyActionCandidate {
+  id: string;
+  targetKind: ExplorerTargetKind;
+  targetTileId: TileId | null;
+  path: TileId[];
+  nextTileId: TileId | null;
+  reason: string;
+  heuristicScore: number;
+  policyScore: number | null;
+  features: PolicyCandidateFeatures;
+}
+
+export interface PolicyEpisodeOutcome {
+  arrivedTileId: TileId;
+  discoveredTilesDelta: number;
+  frontierDelta: number;
+  replanDelta: number;
+  backtrackDelta: number;
+  goalVisible: boolean;
+  goalObservedStep: number | null;
+  trapCueCount: number;
+  enemyCueCount: number;
+  itemCueCount: number;
+  puzzleCueCount: number;
+  localCues: string[];
+}
+
+export interface PolicyEpisode {
+  step: number;
+  seed: string;
+  scorerId: string;
+  currentTileId: TileId;
+  heading: HeadingToken;
+  observation: PolicyObservationFeatures;
+  candidates: PolicyActionCandidate[];
+  chosenCandidateId: string | null;
+  chosenAction: {
+    targetKind: ExplorerTargetKind;
+    targetTileId: TileId | null;
+    nextTileId: TileId | null;
+    reason: string;
+  };
+  outcome: PolicyEpisodeOutcome | null;
+}
+
+export interface PolicyScorerInput {
+  seed: string;
+  step: number;
+  observation: LocalObservation;
+  snapshot: ExplorerSnapshot;
+  candidates: readonly PolicyActionCandidate[];
+}
+
+export interface PolicyScorer {
+  readonly id: string;
+  scoreCandidates(input: PolicyScorerInput): ReadonlyMap<string, number>;
+  recordEpisode?(episode: PolicyEpisode): void;
 }
 
 export interface ExplorerDecision {
@@ -108,6 +188,7 @@ export interface ExplorerAgentOptions {
   seed: string;
   startTileId: TileId;
   startHeading?: HeadingToken;
+  policyScorer?: PolicyScorer | null;
 }
 
 export const edgeKey = (from: TileId, to: TileId): string => [from, to].sort().join('::');
@@ -147,4 +228,3 @@ export const cloneNode = (node: BeliefNode): BeliefNode => ({
   landmarkIds: [...node.landmarkIds],
   neighbors: [...node.neighbors]
 });
-

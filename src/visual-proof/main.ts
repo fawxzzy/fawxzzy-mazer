@@ -12,7 +12,26 @@ import {
   type ShellDefinition
 } from './scenarioLibrary';
 import { buildProofPlayback, type ProofCanaryMutation, type RuntimeProofState } from './proofRuntime';
-import { renderTrailMarkup } from './trail/TrailRenderer';
+import { buildTrailGeometry, renderTrailMarkup, type TrailGeometry, type TrailPoint } from './trail/TrailRenderer';
+import {
+  accumulateMotionReadability,
+  createMotionReadabilitySummary,
+  DEFAULT_READABILITY_GATES,
+  evaluateReadabilityMetrics,
+  lerpAngle,
+  resolveCueSystem,
+  resolveReadabilityGates,
+  type CuePalette,
+  type CueSystem,
+  type MotionReadabilitySummary,
+  type ReadabilityMetrics
+} from './readability';
+import type {
+  IntentFeedLayoutMetrics,
+  IntentFeedState,
+  IntentVisiblePing
+} from './intent/IntentEvent';
+import { renderIntentFeedMarkup, renderIntentPingMarkup } from './intent/IntentRenderer';
 import './styles.css';
 
 interface ProofDiagnostics {
@@ -46,6 +65,20 @@ interface ProofDiagnostics {
   goalReached: boolean;
   solutionOverlayVisible: boolean;
   actionLog: string[];
+  intentFeed: IntentFeedState;
+  policyScorerId: string;
+  policyEpisodeCount: number;
+  policyEpisodes: RuntimeProofState['diagnostics']['policyEpisodes'];
+  readability: ReadabilityMetrics;
+  readabilityGates: {
+    trailHeadGapPx: number;
+    minimumNonTextContrast: number;
+    minimumPlayerDominance: number;
+    minimumObjectiveHueDelta: number;
+    minimumTrailActiveVsOldContrast: number;
+    minimumTrailActiveWidthRatio: number;
+  };
+  motionSummary: MotionReadabilitySummary | null;
   semanticGate: {
     focusTarget: FocusTarget;
     landmarkId: string;
@@ -97,8 +130,22 @@ const ALLOWED_CANARIES = new Set<ProofCanaryMutation>([
   'hide-connector',
   'omniscient-goal-target',
   'trail-head-mismatch',
+  'collapse-cue-channels',
+  'intent-feed-spam',
   'show-solution-overlay'
 ]);
+
+const STAGE_BACKGROUND = '#061018';
+const TOKEN_VARIABLES: Record<keyof CuePalette, string> = {
+  playerCore: '--cue-player-core',
+  playerHalo: '--cue-player-halo',
+  trailHead: '--cue-trail-head',
+  trailBody: '--cue-trail-body',
+  trailOld: '--cue-trail-old',
+  cueOutline: '--cue-outline',
+  objective: '--cue-objective',
+  enemy: '--cue-enemy'
+};
 
 const proofRoot = document.querySelector<HTMLDivElement>('#visual-proof-root');
 if (!proofRoot) {
@@ -114,6 +161,7 @@ if (canary && !ALLOWED_CANARIES.has(canary as ProofCanaryMutation)) {
 }
 
 const debugSolution = params.get('debugSolution') === 'true' || params.get('debug') === 'solution';
+const readabilityGates = resolveReadabilityGates(visualConfig.readabilityGates ?? DEFAULT_READABILITY_GATES);
 const loadedScenario = await loadProofScenario({
   search: window.location.search,
   fallbackScenarioId: requestedScenarioId
@@ -170,6 +218,7 @@ proofRoot.innerHTML = `
         </div>
         <div class="proof-stage-wrap">
           <div id="proof-stage" class="proof-stage"></div>
+          <div id="proof-intent-feed" class="proof-intent-feed"></div>
         </div>
         <div class="proof-stage-footer">
           <section class="proof-status-card">
@@ -256,6 +305,7 @@ const rotationChip = document.querySelector<HTMLSpanElement>('#proof-rotation-ch
 const statusText = document.querySelector<HTMLParagraphElement>('#proof-status-text');
 const cuesList = document.querySelector<HTMLUListElement>('#proof-cues-list');
 const stageElement = document.querySelector<HTMLDivElement>('#proof-stage');
+const intentFeedElement = document.querySelector<HTMLDivElement>('#proof-intent-feed');
 const focusElement = document.querySelector<HTMLDivElement>('#proof-focus');
 const focusTitle = document.querySelector<HTMLHeadingElement>('#proof-focus-title');
 const focusZoom = document.querySelector<HTMLSpanElement>('#proof-focus-zoom');
@@ -279,6 +329,7 @@ if (
   !statusText ||
   !cuesList ||
   !stageElement ||
+  !intentFeedElement ||
   !focusElement ||
   !focusTitle ||
   !focusZoom ||
@@ -306,6 +357,23 @@ const nodeById = new Map(manifest.nodes.map((node) => [node.id, node]));
 const connectorById = new Map(manifest.connectors.map((connector) => [connector.id, connector]));
 const edgeById = new Map(manifest.edges.map((edge) => [edge.id, edge]));
 const discoveredNodeSet = (state: RuntimeProofState): Set<string> => new Set(state.diagnostics.discoveredNodeIds);
+const readCueToken = (tokenName: keyof CuePalette): string => (
+  getComputedStyle(document.documentElement).getPropertyValue(TOKEN_VARIABLES[tokenName]).trim()
+);
+const cueSystem = resolveCueSystem({
+  canary,
+  readToken: (tokenName) => readCueToken(tokenName)
+});
+let currentReadability: ReadabilityMetrics = evaluateReadabilityMetrics({
+  cueSystem,
+  gates: readabilityGates,
+  backgroundColor: STAGE_BACKGROUND,
+  playerPoint: null,
+  objectivePoint: null,
+  trailVisibleHeadPoint: null,
+  clutterCount: 0
+});
+let lastMotionSummary: MotionReadabilitySummary | null = null;
 
 const resolveShell = (shellId: ShellDefinition['id']): ShellDefinition => {
   const shell = manifest.shells.find((entry) => entry.id === shellId);
@@ -345,6 +413,128 @@ const resolveNodePoint = (state: RuntimeProofState, tileId: string) => {
   return toPolarPoint(shell, rotatedAngle);
 };
 
+const resolveMarkerPoint = (
+  shellId: ShellDefinition['id'],
+  angle: number,
+  state: RuntimeProofState
+): TrailPoint => {
+  const shell = resolveShell(shellId);
+  return toPolarPoint(shell, angle + state.shellRotations[shellId]);
+};
+
+const resolveLandmarkPoint = (landmark: LandmarkDefinition, state: RuntimeProofState): TrailPoint => {
+  const worldAngle = landmark.shellId === 'orbit'
+    ? landmark.angle
+    : landmark.angle + state.shellRotations[landmark.shellId];
+  const radiusSource = landmark.shellId === 'orbit'
+    ? { ...manifest.shells[0], radius: 350 }
+    : resolveShell(landmark.shellId);
+  return toPolarPoint({ ...manifest.shells[0], radius: radiusSource.radius }, worldAngle, landmark.offset);
+};
+
+const pointToSegmentDistance = (point: TrailPoint, start: TrailPoint, end: TrailPoint): number => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const projection = (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) / ((dx ** 2) + (dy ** 2));
+  const ratio = Math.min(1, Math.max(0, projection));
+  const closest = {
+    x: start.x + (dx * ratio),
+    y: start.y + (dy * ratio)
+  };
+  return Math.hypot(point.x - closest.x, point.y - closest.y);
+};
+
+const countLocalClutter = (state: RuntimeProofState, playerPoint: TrailPoint): number => {
+  const connectorClutter = manifest.connectors.reduce((count, connector) => {
+    const point = resolveConnectorPoint(connector, state);
+    return count + (Math.hypot(point.x - playerPoint.x, point.y - playerPoint.y) < 120 ? 1 : 0);
+  }, 0);
+  const landmarkClutter = manifest.landmarks.reduce((count, landmark) => {
+    const point = resolveLandmarkPoint(landmark, state);
+    return count + (Math.hypot(point.x - playerPoint.x, point.y - playerPoint.y) < 132 ? 0.5 : 0);
+  }, 0);
+  const edgeClutter = manifest.edges.reduce((count, edge) => {
+    if (edge.shellTransition) {
+      const connector = connectorById.get(edge.id);
+      if (!connector) {
+        return count;
+      }
+
+      const point = resolveConnectorPoint(connector, state);
+      return count + (Math.hypot(point.x - playerPoint.x, point.y - playerPoint.y) < 112 ? 1 : 0);
+    }
+
+    const fromPoint = resolveNodePoint(state, edge.from);
+    const toPoint = resolveNodePoint(state, edge.to);
+    if (!fromPoint || !toPoint) {
+      return count;
+    }
+
+    return count + (pointToSegmentDistance(playerPoint, fromPoint, toPoint) < 68 ? 1 : 0);
+  }, 0);
+
+  return connectorClutter + landmarkClutter + edgeClutter;
+};
+
+interface RenderContext {
+  cueSystem: CueSystem;
+  playerPoint: TrailPoint;
+  objectivePoint: TrailPoint | null;
+  trailSource: RuntimeProofState['trail'];
+  trailGeometry: TrailGeometry;
+  readability: ReadabilityMetrics;
+  motionActive: boolean;
+  pings: IntentVisiblePing[];
+}
+
+type IntentDock = 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left';
+
+const buildRenderContext = (
+  state: RuntimeProofState,
+  {
+    motionActive = false,
+    trailSource = state.trail,
+    intentFeedState = state.diagnostics.intentFeed
+  }: {
+    motionActive?: boolean;
+    trailSource?: RuntimeProofState['trail'];
+    intentFeedState?: IntentFeedState;
+  } = {}
+): RenderContext => {
+  const playerPoint = resolveMarkerPoint(state.player.shellId, state.player.angle, state);
+  const objectivePoint = state.objective.visible && state.objective.tileId
+    ? resolveMarkerPoint(state.objective.shellId, state.objective.angle, state)
+    : null;
+  const trailGeometry = buildTrailGeometry(trailSource, (tileId) => resolveNodePoint(state, tileId), {
+    liveHeadPoint: canary === 'trail-head-mismatch' ? null : playerPoint,
+    activeLookback: cueSystem.trail.activeLookback
+  });
+  const readability = evaluateReadabilityMetrics({
+    cueSystem,
+    gates: readabilityGates,
+    backgroundColor: STAGE_BACKGROUND,
+    playerPoint,
+    objectivePoint,
+    trailVisibleHeadPoint: trailGeometry.visibleHeadPoint,
+    clutterCount: countLocalClutter(state, playerPoint)
+  });
+
+  return {
+    cueSystem,
+    playerPoint,
+    objectivePoint,
+    trailSource,
+    trailGeometry,
+    readability,
+    motionActive,
+    pings: intentFeedState.pings
+  };
+};
+
 const renderShellMarkup = (shell: ShellDefinition, state: RuntimeProofState): string => `
   <g>
     <circle cx="${STAGE_CENTER.x}" cy="${STAGE_CENTER.y}" r="${shell.radius}" fill="none" stroke="${shell.fill}" stroke-width="${shell.thickness}" opacity="0.92" />
@@ -377,8 +567,8 @@ const renderEdgeMarkup = (edge: PlanetEdge, state: RuntimeProofState): string =>
   const start = fromNode.angle + state.shellRotations[fromNode.shellId];
   const end = toNode.angle + state.shellRotations[toNode.shellId];
   const discovered = discoveredNodeSet(state).has(edge.from) && discoveredNodeSet(state).has(edge.to);
-  const stroke = discovered ? 'rgba(127, 216, 255, 0.78)' : 'rgba(106, 152, 183, 0.26)';
-  const strokeWidth = discovered ? 7 : 4;
+  const stroke = discovered ? 'rgba(82, 164, 191, 0.52)' : 'rgba(58, 92, 108, 0.22)';
+  const strokeWidth = discovered ? 6 : 3;
 
   return `
     <path
@@ -466,13 +656,7 @@ const renderLandmarkMarkup = (
     return '';
   }
 
-  const worldAngle = landmark.shellId === 'orbit'
-    ? landmark.angle
-    : landmark.angle + state.shellRotations[landmark.shellId];
-  const radiusSource = landmark.shellId === 'orbit'
-    ? { ...manifest.shells[0], radius: 350 }
-    : resolveShell(landmark.shellId);
-  const point = toPolarPoint({ ...manifest.shells[0], radius: radiusSource.radius }, worldAngle, landmark.offset);
+  const point = resolveLandmarkPoint(landmark, state);
   const labelWidth = Math.max(92, landmark.label.length * 7.8);
   const fill = LANDMARK_COLORS[landmark.tone];
   const tracked = landmark.id === manifest.proof.semanticGate.landmarkId;
@@ -562,63 +746,124 @@ const renderConnectorMarkup = (
 
 const renderPlayerMarkup = (
   state: RuntimeProofState,
-  surfaceId: 'stage' | 'focus'
+  surfaceId: 'stage' | 'focus',
+  context: RenderContext
 ): string => {
   if (canary === 'hide-player') {
     return '';
   }
 
-  const shell = resolveShell(state.player.shellId);
-  const angle = state.player.angle + state.shellRotations[state.player.shellId];
-  const point = toPolarPoint(shell, angle);
-  const nextPoint = toPolarPoint(shell, angle + 6);
+  const point = context.playerPoint;
+  const nextPoint = resolveMarkerPoint(state.player.shellId, state.player.angle + 6, state);
   const tangentAngle = Math.atan2(nextPoint.y - point.y, nextPoint.x - point.x) * (180 / Math.PI);
-  const outerGlow = 24 + (state.player.emphasis * 6);
-  const innerGlow = 13 + (state.player.emphasis * 4);
+  const outerGlow = context.cueSystem.player.haloRadius + (state.player.emphasis * 4);
+  const innerGlow = context.cueSystem.player.coreRadius + (state.player.emphasis * 2);
+  const outlineWidth = context.cueSystem.player.outlineWidth;
 
   return `
     <g
       data-testid="${surfaceId}-player"
       data-player-tile-id="${state.player.tileId}"
+      data-cue-channel="player"
+      data-cue-shape="${context.cueSystem.player.shape}"
       aria-label="Player anchor"
       transform="translate(${point.x.toFixed(2)} ${point.y.toFixed(2)}) rotate(${tangentAngle.toFixed(2)})"
     >
-      <circle cx="0" cy="0" r="${outerGlow}" fill="rgba(105, 226, 255, 0.18)" />
-      <circle cx="0" cy="0" r="${innerGlow}" fill="rgba(145, 255, 226, 0.22)" />
-      <polygon points="0,-20 16,0 0,20 -16,0" fill="#f8fbff" stroke="#71ebff" stroke-width="3" />
-      <polygon points="18,0 36,-8 36,8" fill="#ffd88d" opacity="0.95" />
+      <circle cx="0" cy="0" r="${outerGlow + 6}" fill="${context.cueSystem.palette.playerHalo}" opacity="${context.motionActive ? 0.18 : 0.14}" />
+      <circle cx="0" cy="0" r="${outerGlow}" fill="${context.cueSystem.palette.playerHalo}" opacity="${context.motionActive ? 0.28 : 0.22}" />
+      <circle cx="0" cy="0" r="${innerGlow + outlineWidth}" fill="none" stroke="${context.cueSystem.palette.cueOutline}" stroke-width="${outlineWidth + 2}" opacity="0.94" />
+      <polygon
+        points="0,-22 18,0 0,22 -18,0"
+        fill="${context.cueSystem.palette.playerCore}"
+        stroke="${context.cueSystem.palette.cueOutline}"
+        stroke-width="${outlineWidth}"
+      />
+      <polyline
+        points="-7,-2 0,-12 7,-2"
+        fill="none"
+        stroke="${context.cueSystem.palette.playerHalo}"
+        stroke-width="4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+      <polygon points="18,0 34,-8 34,8" fill="${context.cueSystem.palette.playerHalo}" opacity="0.9" />
     </g>
   `;
 };
 
 const renderObjectiveMarkup = (
   state: RuntimeProofState,
-  surfaceId: 'stage' | 'focus'
+  surfaceId: 'stage' | 'focus',
+  context: RenderContext
 ): string => {
   if (canary === 'hide-objective' || !state.objective.visible || !state.objective.tileId) {
     return '';
   }
 
-  const shell = resolveShell(state.objective.shellId);
-  const angle = state.objective.angle + state.shellRotations[state.objective.shellId];
-  const point = toPolarPoint(shell, angle);
-  const fill = state.objective.kind === 'goal' ? '#ffd98a' : '#9ef7be';
-  const stroke = state.objective.kind === 'goal' ? '#fff3d7' : '#e7fff0';
+  const point = context.objectivePoint;
+  if (!point) {
+    return '';
+  }
+
+  const dash = state.objective.kind === 'goal' ? '' : '8 10';
+  const glowOpacity = state.objective.kind === 'goal' ? 0.28 : 0.18;
+  const fillOpacity = state.objective.kind === 'goal' ? 1 : 0.92;
 
   return `
     <g
       data-testid="${surfaceId}-objective"
       data-objective-tile-id="${state.objective.tileId}"
       data-objective-kind="${state.objective.kind}"
+      data-cue-channel="objective"
+      data-cue-shape="${context.cueSystem.objective.shape}"
       aria-label="Active objective ${state.objective.label}"
     >
-      <line x1="${point.x.toFixed(2)}" y1="${(point.y - 34).toFixed(2)}" x2="${point.x.toFixed(2)}" y2="${(point.y - 8).toFixed(2)}" stroke="${fill}" stroke-width="4" stroke-linecap="round" opacity="0.94" />
-      <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="18" fill="${state.objective.kind === 'goal' ? 'rgba(255, 216, 142, 0.22)' : 'rgba(158, 247, 190, 0.22)'}" />
+      <line
+        x1="${point.x.toFixed(2)}"
+        y1="${(point.y - 38).toFixed(2)}"
+        x2="${point.x.toFixed(2)}"
+        y2="${(point.y - 8).toFixed(2)}"
+        stroke="${context.cueSystem.palette.cueOutline}"
+        stroke-width="${context.cueSystem.objective.stalkWidth + 4}"
+        stroke-linecap="round"
+        opacity="0.92"
+      />
+      <line
+        x1="${point.x.toFixed(2)}"
+        y1="${(point.y - 38).toFixed(2)}"
+        x2="${point.x.toFixed(2)}"
+        y2="${(point.y - 8).toFixed(2)}"
+        stroke="${context.cueSystem.palette.objective}"
+        stroke-width="${context.cueSystem.objective.stalkWidth}"
+        stroke-linecap="round"
+        opacity="0.96"
+      />
+      <circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${context.cueSystem.objective.outerRadius}" fill="${context.cueSystem.palette.objective}" opacity="${glowOpacity}" />
+      <circle
+        cx="${point.x.toFixed(2)}"
+        cy="${point.y.toFixed(2)}"
+        r="${context.cueSystem.objective.outerRadius - 2}"
+        fill="none"
+        stroke="${context.cueSystem.palette.cueOutline}"
+        stroke-width="${context.cueSystem.objective.outlineWidth + 2}"
+        opacity="0.9"
+      />
+      <circle
+        cx="${point.x.toFixed(2)}"
+        cy="${point.y.toFixed(2)}"
+        r="${context.cueSystem.objective.outerRadius - 2}"
+        fill="none"
+        stroke="${context.cueSystem.palette.objective}"
+        stroke-width="${context.cueSystem.objective.outlineWidth}"
+        stroke-dasharray="${dash}"
+        opacity="0.96"
+      />
       <polygon
-        points="${point.x.toFixed(2)},${(point.y - 18).toFixed(2)} ${(point.x + 16).toFixed(2)},${point.y.toFixed(2)} ${point.x.toFixed(2)},${(point.y + 18).toFixed(2)} ${(point.x - 16).toFixed(2)},${point.y.toFixed(2)}"
-        fill="${fill}"
-        stroke="${stroke}"
-        stroke-width="3"
+        points="${point.x.toFixed(2)},${(point.y - context.cueSystem.objective.coreRadius).toFixed(2)} ${(point.x + context.cueSystem.objective.coreRadius).toFixed(2)},${point.y.toFixed(2)} ${point.x.toFixed(2)},${(point.y + context.cueSystem.objective.coreRadius).toFixed(2)} ${(point.x - context.cueSystem.objective.coreRadius).toFixed(2)},${point.y.toFixed(2)}"
+        fill="${context.cueSystem.palette.objective}"
+        fill-opacity="${fillOpacity}"
+        stroke="${context.cueSystem.palette.cueOutline}"
+        stroke-width="${context.cueSystem.objective.outlineWidth + 1}"
       />
     </g>
   `;
@@ -639,20 +884,105 @@ const resolveConnectorPoint = (connector: ConnectorDefinition, state: RuntimePro
   };
 };
 
+const resolveIntentPingPoint = (
+  ping: IntentVisiblePing,
+  state: RuntimeProofState,
+  context: RenderContext
+): TrailPoint | null => {
+  if (ping.anchor.kind === 'player') {
+    return context.playerPoint;
+  }
+
+  if (ping.anchor.kind === 'objective') {
+    return context.objectivePoint ?? (ping.anchor.tileId ? resolveNodePoint(state, ping.anchor.tileId) : null);
+  }
+
+  if (ping.anchor.kind === 'tile') {
+    return ping.anchor.tileId ? resolveNodePoint(state, ping.anchor.tileId) : null;
+  }
+
+  if (ping.anchor.kind === 'landmark') {
+    const landmark = manifest.landmarks.find((entry) => entry.id === ping.anchor.landmarkId);
+    return landmark ? resolveLandmarkPoint(landmark, state) : null;
+  }
+
+  if (ping.anchor.kind === 'connector') {
+    const connector = manifest.connectors.find((entry) => entry.id === ping.anchor.connectorId);
+    return connector ? resolveConnectorPoint(connector, state) : null;
+  }
+
+  return null;
+};
+
+const toSerializableRect = (rect: DOMRect | null) => (
+  rect
+    ? {
+        left: Number(rect.left.toFixed(2)),
+        top: Number(rect.top.toFixed(2)),
+        width: Number(rect.width.toFixed(2)),
+        height: Number(rect.height.toFixed(2))
+      }
+    : null
+);
+
+const expandRect = (rect: DOMRect, padding: number): DOMRect => new DOMRect(
+  rect.left - padding,
+  rect.top - padding,
+  rect.width + (padding * 2),
+  rect.height + (padding * 2)
+);
+
+const rectsIntersect = (left: DOMRect, right: DOMRect): boolean => !(
+  left.right <= right.left
+  || left.left >= right.right
+  || left.bottom <= right.top
+  || left.top >= right.bottom
+);
+
+const readIntentLayoutMetrics = (): IntentFeedLayoutMetrics => {
+  const feedShell = intentFeedElement.querySelector<HTMLElement>('.proof-intent-shell');
+  const feedRect = feedShell?.getBoundingClientRect() ?? null;
+  const criticalTargets: Array<{ key: string; rect: DOMRect | null }> = [
+    {
+      key: 'player',
+      rect: stageElement.querySelector<SVGGraphicsElement>('[data-testid="stage-player"]')?.getBoundingClientRect() ?? null
+    },
+    {
+      key: 'objective',
+      rect: stageElement.querySelector<SVGGraphicsElement>('[data-testid="stage-objective"]')?.getBoundingClientRect() ?? null
+    }
+  ];
+  const criticalRects = criticalTargets
+    .filter((entry) => entry.rect && entry.rect.width > 0 && entry.rect.height > 0)
+    .map((entry) => ({
+      key: entry.key,
+      rect: expandRect(entry.rect as DOMRect, 18)
+    }));
+  const overlapTargets = feedRect
+    ? criticalRects.filter((entry) => rectsIntersect(feedRect, entry.rect)).map((entry) => entry.key)
+    : [];
+
+  return {
+    feedRect: toSerializableRect(feedRect),
+    criticalRects: criticalRects.map((entry) => ({
+      key: entry.key,
+      left: Number(entry.rect.left.toFixed(2)),
+      top: Number(entry.rect.top.toFixed(2)),
+      width: Number(entry.rect.width.toFixed(2)),
+      height: Number(entry.rect.height.toFixed(2))
+    })),
+    overlapTargets,
+    intentStackOverlapPass: overlapTargets.length === 0
+  };
+};
+
 const resolveFocusCenter = (state: RuntimeProofState) => {
   if (state.focus.target === 'objective' && state.objective.tileId) {
-    return resolveNodePoint(state, state.objective.tileId) ?? resolveNodePoint(state, state.player.tileId) ?? STAGE_CENTER;
+    return resolveMarkerPoint(state.objective.shellId, state.objective.angle, state);
   }
 
   if (state.focus.target === 'landmark') {
-    const landmark = activeLandmark;
-    const worldAngle = landmark.shellId === 'orbit'
-      ? landmark.angle
-      : landmark.angle + state.shellRotations[landmark.shellId];
-    const radiusSource = landmark.shellId === 'orbit'
-      ? { ...manifest.shells[0], radius: 350 }
-      : resolveShell(landmark.shellId);
-    return toPolarPoint({ ...manifest.shells[0], radius: radiusSource.radius }, worldAngle, landmark.offset);
+    return resolveLandmarkPoint(activeLandmark, state);
   }
 
   if (state.focus.target === 'connector') {
@@ -671,12 +1001,47 @@ const resolveViewBox = (state: RuntimeProofState): string => {
   return `${left.toFixed(2)} ${top.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)}`;
 };
 
+const resolveRenderablePings = (
+  state: RuntimeProofState,
+  context: RenderContext
+): IntentVisiblePing[] => {
+  const maxVisible = context.motionActive ? 1 : 2;
+  return [...context.pings]
+    .map((ping) => ({
+      ping,
+      point: resolveIntentPingPoint(ping, state, context)
+    }))
+    .filter((entry): entry is { ping: IntentVisiblePing; point: TrailPoint } => Boolean(entry.point))
+    .filter((entry) => {
+      const distance = Math.hypot(entry.point.x - context.playerPoint.x, entry.point.y - context.playerPoint.y);
+      return context.motionActive ? distance <= 180 : distance <= 240;
+    })
+    .sort((left, right) => {
+      const importanceWeight = { high: 3, medium: 2, low: 1 };
+      const leftWeight = importanceWeight[left.ping.importance];
+      const rightWeight = importanceWeight[right.ping.importance];
+      if (leftWeight !== rightWeight) {
+        return rightWeight - leftWeight;
+      }
+
+      const leftDistance = Math.hypot(left.point.x - context.playerPoint.x, left.point.y - context.playerPoint.y);
+      const rightDistance = Math.hypot(right.point.x - context.playerPoint.x, right.point.y - context.playerPoint.y);
+      return leftDistance - rightDistance;
+    })
+    .slice(0, maxVisible)
+    .map((entry) => entry.ping);
+};
+
 const renderSvg = (
   state: RuntimeProofState,
-  surfaceId: 'stage' | 'focus'
-): string => `
+  surfaceId: 'stage' | 'focus',
+  context: RenderContext
+): string => {
+  const renderablePings = surfaceId === 'stage' ? resolveRenderablePings(state, context) : [];
+
+  return `
   <svg viewBox="${surfaceId === 'focus' ? resolveViewBox(state) : `0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`}" role="img" aria-label="${manifest.title} ${state.caption}">
-    <rect x="0" y="0" width="${STAGE_WIDTH}" height="${STAGE_HEIGHT}" fill="rgba(6, 15, 24, 0.94)" />
+    <rect x="0" y="0" width="${STAGE_WIDTH}" height="${STAGE_HEIGHT}" fill="${STAGE_BACKGROUND}" />
     <circle cx="${STAGE_CENTER.x}" cy="${STAGE_CENTER.y}" r="372" fill="rgba(129, 237, 255, 0.08)" />
     <circle cx="${STAGE_CENTER.x}" cy="${STAGE_CENTER.y}" r="154" fill="rgba(255, 215, 135, 0.14)" />
     <g opacity="0.2">
@@ -691,33 +1056,136 @@ const renderSvg = (
     ${renderSolutionOverlayMarkup(state, surfaceId)}
     ${renderConnectorMarkup(state, surfaceId)}
     ${manifest.landmarks.map((landmark) => renderLandmarkMarkup(landmark, state, surfaceId)).join('')}
-    ${renderTrailMarkup(state.trail, (tileId) => resolveNodePoint(state, tileId), {
-      stroke: '#9de8ff',
-      strokeWidth: 7,
-      tailFill: 'rgba(129, 237, 255, 0.34)',
-      headFill: '#f8fbff',
+    ${renderTrailMarkup(context.trailSource, (tileId) => resolveNodePoint(state, tileId), {
+      testId: surfaceId === 'stage' ? 'stage-trail' : undefined,
+      liveHeadPoint: canary === 'trail-head-mismatch' ? null : context.playerPoint,
+      activeLookback: context.cueSystem.trail.activeLookback,
+      outlineStroke: context.cueSystem.palette.cueOutline,
+      outlineWidth: context.cueSystem.trail.outlineWidth,
+      activeStroke: context.cueSystem.palette.trailBody,
+      oldStroke: context.cueSystem.palette.trailOld,
+      activeStrokeWidth: context.cueSystem.trail.activeWidth,
+      oldStrokeWidth: context.cueSystem.trail.oldWidth,
+      headFill: context.cueSystem.palette.trailHead,
+      headStroke: context.cueSystem.palette.cueOutline,
+      headStrokeWidth: context.cueSystem.trail.outlineWidth,
+      anchorFill: context.cueSystem.palette.trailBody,
+      headRadius: context.cueSystem.trail.headRadius,
+      oldNodeRadius: context.cueSystem.trail.oldNodeRadius,
+      anchorRadius: context.cueSystem.trail.anchorRadius,
       opacity: 0.94
     })}
-    ${renderObjectiveMarkup(state, surfaceId)}
-    ${renderPlayerMarkup(state, surfaceId)}
+    ${surfaceId === 'stage' && renderablePings.length > 0 ? `
+      <g data-testid="stage-intent-pings">
+        ${renderIntentPingMarkup(renderablePings, (ping) => resolveIntentPingPoint(ping, state, context))}
+      </g>
+    ` : ''}
+    ${renderObjectiveMarkup(state, surfaceId, context)}
+    ${renderPlayerMarkup(state, surfaceId, context)}
     <g>
       <rect x="60" y="64" width="352" height="104" rx="18" fill="rgba(7, 22, 34, 0.84)" stroke="rgba(135, 214, 255, 0.16)" />
       <text x="84" y="96" fill="#f2fbff" font-size="17" font-family="'Trebuchet MS', 'Segoe UI', sans-serif">Camera :: ${state.cameraLabel}</text>
       <text x="84" y="126" fill="#d1f0ff" font-size="15" font-family="Consolas, 'Lucida Console', monospace">${state.rotationLabel}</text>
-      <text x="84" y="152" fill="#d1f0ff" font-size="15" font-family="Consolas, 'Lucida Console', monospace">Trail :: ${state.diagnostics.trailHeadMatchesPlayer ? 'locked' : 'mismatch'}</text>
+      <text x="84" y="152" fill="#d1f0ff" font-size="15" font-family="Consolas, 'Lucida Console', monospace">Trail :: ${context.readability.trailHeadGapPx <= readabilityGates.trailHeadGapPx ? 'tethered' : 'gap'}</text>
     </g>
   </svg>
 `;
+};
 
-const renderState = (state: RuntimeProofState): void => {
+const resolveIntentDock = (context: RenderContext): IntentDock => {
+  const criticalPoints = [context.playerPoint, context.objectivePoint].filter((point): point is TrailPoint => Boolean(point));
+  return criticalPoints.some((point) => point.y >= (STAGE_HEIGHT * 0.56))
+    ? 'top-right'
+    : 'bottom-right';
+};
+
+const interpolateRuntimeState = (fromState: RuntimeProofState, toState: RuntimeProofState, progress: number): RuntimeProofState => ({
+  ...toState,
+  trail: fromState.trail,
+  shellRotations: {
+    outer: fromState.shellRotations.outer + ((toState.shellRotations.outer - fromState.shellRotations.outer) * progress),
+    middle: fromState.shellRotations.middle + ((toState.shellRotations.middle - fromState.shellRotations.middle) * progress),
+    core: fromState.shellRotations.core + ((toState.shellRotations.core - fromState.shellRotations.core) * progress)
+  },
+  player: {
+    ...toState.player,
+    angle: lerpAngle(fromState.player.angle, toState.player.angle, progress),
+    shellId: progress < 1 ? fromState.player.shellId : toState.player.shellId,
+    tileId: progress < 1 ? fromState.player.tileId : toState.player.tileId,
+    label: progress < 1 ? fromState.player.label : toState.player.label,
+    emphasis: fromState.player.emphasis + ((toState.player.emphasis - fromState.player.emphasis) * progress)
+  },
+  objective: {
+    ...toState.objective,
+    angle: lerpAngle(fromState.objective.angle, toState.objective.angle, progress),
+    shellId: progress < 0.5 ? fromState.objective.shellId : toState.objective.shellId,
+    tileId: progress < 1 ? fromState.objective.tileId : toState.objective.tileId,
+    kind: progress < 0.5 ? fromState.objective.kind : toState.objective.kind,
+    label: progress < 0.5 ? fromState.objective.label : toState.objective.label
+  },
+  focus: {
+    ...toState.focus,
+    zoom: fromState.focus.zoom + ((toState.focus.zoom - fromState.focus.zoom) * progress)
+  }
+});
+
+const renderState = (
+  state: RuntimeProofState,
+  {
+    motionActive = false,
+    trailSource = state.trail,
+    intentFeedState = state.diagnostics.intentFeed
+  }: {
+    motionActive?: boolean;
+    trailSource?: RuntimeProofState['trail'];
+    intentFeedState?: IntentFeedState;
+  } = {}
+): void => {
   currentState = state;
+  const stageContext = buildRenderContext(state, { motionActive, trailSource, intentFeedState });
+  const focusContext = buildRenderContext(state, { motionActive, trailSource, intentFeedState });
+  const mountIntentFeed = (dock: IntentDock, compact = false): IntentFeedLayoutMetrics => {
+    intentFeedElement.dataset.dock = dock;
+    intentFeedElement.dataset.compact = compact ? 'true' : 'false';
+    intentFeedElement.innerHTML = renderIntentFeedMarkup(intentFeedState, {
+      compact
+    });
+    return readIntentLayoutMetrics();
+  };
+  const tryIntentDockSequence = (): void => {
+    const preferredDock = resolveIntentDock(stageContext);
+    const dockAttempts: IntentDock[] = [
+      preferredDock,
+      'top-right',
+      'top-left',
+      'bottom-left',
+      'bottom-right'
+    ].filter((dock, index, all): dock is IntentDock => all.indexOf(dock) === index);
+    let layout: IntentFeedLayoutMetrics | null = null;
+
+    for (const dock of dockAttempts) {
+      layout = mountIntentFeed(dock);
+      if (layout.overlapTargets.length === 0) {
+        return;
+      }
+    }
+
+    for (const dock of dockAttempts) {
+      layout = mountIntentFeed(dock, true);
+      if (layout.overlapTargets.length === 0) {
+        return;
+      }
+    }
+  };
+  currentReadability = stageContext.readability;
   stageCaption.textContent = state.caption;
   cameraChip.textContent = state.cameraLabel;
   rotationChip.textContent = state.rotationLabel;
   statusText.textContent = state.status;
   cuesList.innerHTML = state.diagnostics.actionLog.map((cue) => `<li>${cue}</li>`).join('');
-  stageElement.innerHTML = renderSvg(state, 'stage');
-  focusElement.innerHTML = renderSvg(state, 'focus');
+  stageElement.innerHTML = renderSvg(state, 'stage', stageContext);
+  tryIntentDockSequence();
+  focusElement.innerHTML = renderSvg(state, 'focus', focusContext);
   focusTitle.textContent = state.focus.title;
   focusZoom.textContent = `${state.focus.zoom.toFixed(2)}x`;
   focusNote.textContent = state.focus.note;
@@ -725,7 +1193,7 @@ const renderState = (state: RuntimeProofState): void => {
   objectiveValue.textContent = state.objective.visible
     ? `${state.objective.kind}: ${state.objective.label}`
     : 'No current target';
-  trailValue.textContent = `${state.diagnostics.trailHeadTileId ?? 'none'} / ${state.trail.committedTileCount} commits`;
+  trailValue.textContent = `${trailSource.trailHeadTileId ?? state.diagnostics.trailHeadTileId ?? 'none'} / ${trailSource.committedTileCount} commits / ${currentReadability.trailHeadGapPx.toFixed(1)}px gap`;
   goalValue.textContent = state.diagnostics.goalObservedStep === null
     ? 'Not yet observed'
     : `Step ${state.diagnostics.goalObservedStep}`;
@@ -738,47 +1206,81 @@ const renderState = (state: RuntimeProofState): void => {
   focusTargetValue.textContent = FOCUS_TARGET_LABELS[manifest.proof.semanticGate.focusTarget];
 };
 
-const getDiagnostics = (): ProofDiagnostics => ({
-  scenarioId: manifest.scenarioId,
-  stateId: currentState.id,
-  sourceKind: loadedScenario.source.kind,
-  manifestPath: loadedScenario.source.manifestPath,
-  seed: manifest.seed,
-  districtType: manifest.districtType,
-  canary,
-  caption: currentState.caption,
-  status: currentState.status,
-  cameraLabel: currentState.cameraLabel,
-  rotationLabel: currentState.rotationLabel,
-  focusTitle: currentState.focus.title,
-  focusNote: currentState.focus.note,
-  cues: [...currentState.cues],
-  activeConnectorIds: [...currentState.activeConnectorIds],
-  objectiveVisible: currentState.objective.visible,
-  playerTileId: currentState.player.tileId,
-  trailHeadTileId: currentState.diagnostics.trailHeadTileId,
-  trailHeadMatchesPlayer: currentState.diagnostics.trailHeadMatchesPlayer,
-  currentTargetTileId: currentState.diagnostics.currentTargetTileId,
-  goalTileId: currentState.diagnostics.goalTileId,
-  goalObservedStep: currentState.diagnostics.goalObservedStep,
-  replanCount: currentState.diagnostics.replanCount,
-  backtrackCount: currentState.diagnostics.backtrackCount,
-  frontierCount: currentState.diagnostics.frontierCount,
-  tilesDiscovered: currentState.diagnostics.tilesDiscovered,
-  totalSteps: playback.totalSteps,
-  goalReached: playback.goalReached,
-  solutionOverlayVisible: currentState.diagnostics.solutionOverlayVisible,
-  actionLog: [...currentState.diagnostics.actionLog],
-  semanticGate: {
-    focusTarget: manifest.proof.semanticGate.focusTarget,
-    landmarkId: activeLandmark.id,
-    landmarkLabel: activeLandmark.label,
-    connectorId: activeConnector.id,
-    connectorLabel: activeConnector.label,
-    connectorState: currentState.activeConnectorIds.includes(activeConnector.id) ? 'active' : 'inactive',
-    recoveryStateId: manifest.proof.semanticGate.recoveryStateId ?? null
-  }
-});
+const getDiagnostics = (): ProofDiagnostics => {
+  const layout = readIntentLayoutMetrics();
+  const intentFeed: IntentFeedState = {
+    ...currentState.diagnostics.intentFeed,
+    metrics: {
+      ...currentState.diagnostics.intentFeed.metrics,
+      intentStackOverlapPass: layout.intentStackOverlapPass
+    },
+    layout
+  };
+
+  return {
+    scenarioId: manifest.scenarioId,
+    stateId: currentState.id,
+    sourceKind: loadedScenario.source.kind,
+    manifestPath: loadedScenario.source.manifestPath,
+    seed: manifest.seed,
+    districtType: manifest.districtType,
+    canary,
+    caption: currentState.caption,
+    status: currentState.status,
+    cameraLabel: currentState.cameraLabel,
+    rotationLabel: currentState.rotationLabel,
+    focusTitle: currentState.focus.title,
+    focusNote: currentState.focus.note,
+    cues: [...currentState.cues],
+    activeConnectorIds: [...currentState.activeConnectorIds],
+    objectiveVisible: currentState.objective.visible,
+    playerTileId: currentState.player.tileId,
+    trailHeadTileId: currentState.diagnostics.trailHeadTileId,
+    trailHeadMatchesPlayer: currentState.diagnostics.trailHeadMatchesPlayer,
+    currentTargetTileId: currentState.diagnostics.currentTargetTileId,
+    goalTileId: currentState.diagnostics.goalTileId,
+    goalObservedStep: currentState.diagnostics.goalObservedStep,
+    replanCount: currentState.diagnostics.replanCount,
+    backtrackCount: currentState.diagnostics.backtrackCount,
+    frontierCount: currentState.diagnostics.frontierCount,
+    tilesDiscovered: currentState.diagnostics.tilesDiscovered,
+    totalSteps: playback.totalSteps,
+    goalReached: playback.goalReached,
+    solutionOverlayVisible: currentState.diagnostics.solutionOverlayVisible,
+    actionLog: [...currentState.diagnostics.actionLog],
+    intentFeed,
+    policyScorerId: currentState.diagnostics.policyScorerId,
+    policyEpisodeCount: currentState.diagnostics.policyEpisodeCount,
+    policyEpisodes: currentState.diagnostics.policyEpisodes.map((episode) => ({
+      ...episode,
+      observation: { ...episode.observation },
+      candidates: episode.candidates.map((candidate) => ({
+        ...candidate,
+        path: [...candidate.path],
+        features: { ...candidate.features }
+      })),
+      chosenAction: { ...episode.chosenAction },
+      outcome: episode.outcome
+        ? {
+            ...episode.outcome,
+            localCues: [...episode.outcome.localCues]
+          }
+        : null
+    })),
+    readability: currentReadability,
+    readabilityGates,
+    motionSummary: lastMotionSummary,
+    semanticGate: {
+      focusTarget: manifest.proof.semanticGate.focusTarget,
+      landmarkId: activeLandmark.id,
+      landmarkLabel: activeLandmark.label,
+      connectorId: activeConnector.id,
+      connectorLabel: activeConnector.label,
+      connectorState: currentState.activeConnectorIds.includes(activeConnector.id) ? 'active' : 'inactive',
+      recoveryStateId: manifest.proof.semanticGate.recoveryStateId ?? null
+    }
+  };
+};
 
 const setState = async (stateId: string): Promise<ProofDiagnostics> => {
   renderState(playback.stateMap.get(stateId) ?? playback.states[0]);
@@ -786,11 +1288,59 @@ const setState = async (stateId: string): Promise<ProofDiagnostics> => {
   return getDiagnostics();
 };
 
+const animateTransition = async (fromState: RuntimeProofState, toState: RuntimeProofState): Promise<void> => {
+  await new Promise<void>((resolvePromise) => {
+    let startedAt = 0;
+
+    const step = (timestamp: number) => {
+      if (startedAt === 0) {
+        startedAt = timestamp;
+      }
+
+      const progress = Math.min(1, (timestamp - startedAt) / 180);
+      const transientState = interpolateRuntimeState(fromState, toState, progress);
+      renderState(transientState, {
+        motionActive: true,
+        trailSource: fromState.trail,
+        intentFeedState: fromState.diagnostics.intentFeed
+      });
+      if (lastMotionSummary) {
+        lastMotionSummary = accumulateMotionReadability(lastMotionSummary, currentReadability, readabilityGates);
+      }
+
+      if (progress >= 1) {
+        resolvePromise();
+        return;
+      }
+
+      window.requestAnimationFrame(step);
+    };
+
+    window.requestAnimationFrame(step);
+  });
+
+  renderState(toState);
+  await wait(90);
+};
+
 const playMotion = async (): Promise<void> => {
   const keyframes = captureConfig?.keyframes ?? playback.stateIds;
-  for (const [index, stateId] of keyframes.entries()) {
-    await setState(stateId);
-    await wait(index === 0 || index === keyframes.length - 1 ? 180 : 140);
+  if (keyframes.length === 0) {
+    return;
+  }
+
+  lastMotionSummary = createMotionReadabilitySummary();
+  await setState(keyframes[0]);
+
+  for (let index = 1; index < keyframes.length; index += 1) {
+    const fromState = playback.stateMap.get(keyframes[index - 1]);
+    const toState = playback.stateMap.get(keyframes[index]);
+    if (!fromState || !toState) {
+      continue;
+    }
+
+    await animateTransition(fromState, toState);
+    await wait(index === keyframes.length - 1 ? 160 : 110);
   }
 };
 

@@ -10,7 +10,9 @@ describe('visual canaries', () => {
       'connector-readability-canary',
       'solution-overlay-canary',
       'trail-head-canary',
-      'omniscient-target-canary'
+      'omniscient-target-canary',
+      'cue-channel-collapse-canary',
+      'intent-feed-spam-canary'
     ]);
 
     expect(CANARY_SCENARIOS.map((scenario) => scenario.scenarioId)).toEqual([
@@ -20,6 +22,8 @@ describe('visual canaries', () => {
       'discrete-rotation-readability',
       'dense-route-player-visibility',
       'shell-connector-alignment',
+      'bounded-progression-slice',
+      'dense-route-player-visibility',
       'bounded-progression-slice'
     ]);
 
@@ -30,7 +34,9 @@ describe('visual canaries', () => {
       'hide-connector',
       'show-solution-overlay',
       'trail-head-mismatch',
-      'omniscient-goal-target'
+      'omniscient-goal-target',
+      'collapse-cue-channels',
+      'intent-feed-spam'
     ]);
   });
 

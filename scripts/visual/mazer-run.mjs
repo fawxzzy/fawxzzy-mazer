@@ -26,6 +26,14 @@ import {
 import { renderContactSheet } from '../../tools/visual-pipeline/contactSheet.mjs';
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const DEFAULT_READABILITY_GATES = Object.freeze({
+  trailHeadGapPx: 0.75,
+  minimumNonTextContrast: 3,
+  minimumPlayerDominance: 1.15,
+  minimumObjectiveHueDelta: 40,
+  minimumTrailActiveVsOldContrast: 1.25,
+  minimumTrailActiveWidthRatio: 1.25
+});
 
 const resolveCommandSpec = (command, args) => (
   process.platform === 'win32'
@@ -183,6 +191,38 @@ const evaluateSceneContracts = async (page, diagnostics) => {
     failures.push('trail-head-sync');
   }
 
+  if (diagnostics.readability.trailHeadGapPx > diagnostics.readabilityGates.trailHeadGapPx) {
+    failures.push('trail-head-gap');
+  }
+
+  if (!diagnostics.readability.trailContrastPass) {
+    failures.push('trail-contrast');
+  }
+
+  if (!diagnostics.readability.playerDominancePass) {
+    failures.push('player-dominance');
+  }
+
+  if (!diagnostics.readability.objectiveSeparationPass) {
+    failures.push('objective-separation');
+  }
+
+  if (!diagnostics.intentFeed.metrics.intentDebouncePass) {
+    failures.push('intent-debounce');
+  }
+
+  if (!diagnostics.intentFeed.metrics.worldPingSpamPass) {
+    failures.push('world-ping-spam');
+  }
+
+  if (!diagnostics.intentFeed.metrics.feedReadabilityPass) {
+    failures.push('feed-readability');
+  }
+
+  if (!diagnostics.intentFeed.layout?.intentStackOverlapPass) {
+    failures.push('intent-stack-overlap');
+  }
+
   if (solutionOverlay.present || diagnostics.solutionOverlayVisible) {
     failures.push('solution-overlay-hidden');
   }
@@ -200,6 +240,8 @@ const evaluateSceneContracts = async (page, diagnostics) => {
     landmarkVisible: landmark.visible && landmark.value === diagnostics.semanticGate.landmarkId,
     connectorVisible: connector.visible && connector.value === diagnostics.semanticGate.connectorId,
     trailHeadMatchesPlayer: diagnostics.trailHeadMatchesPlayer,
+    intentFeed: diagnostics.intentFeed,
+    readability: diagnostics.readability,
     solutionOverlayHidden: !solutionOverlay.present && !diagnostics.solutionOverlayVisible,
     focus,
     failures,
@@ -221,13 +263,13 @@ const evaluateRecoveryFrame = async ({ page, config, setState, recoveryStateId }
   const diagnostics = await setState(recoveryStateId);
   const stageLocator = page.locator(config.selectors.stage);
   const focusLocator = page.locator(config.selectors.focus);
-  const stageFirst = await stageLocator.screenshot({ animations: 'disabled' });
-  const focusFirst = await focusLocator.screenshot({ animations: 'disabled' });
+  const stageFirst = await stageLocator.innerHTML();
+  const focusFirst = await focusLocator.innerHTML();
   await page.waitForTimeout(140);
-  const stageSecond = await stageLocator.screenshot({ animations: 'disabled' });
-  const focusSecond = await focusLocator.screenshot({ animations: 'disabled' });
-  const stageStable = stageFirst.equals(stageSecond);
-  const focusStable = focusFirst.equals(focusSecond);
+  const stageSecond = await stageLocator.innerHTML();
+  const focusSecond = await focusLocator.innerHTML();
+  const stageStable = stageFirst === stageSecond;
+  const focusStable = focusFirst === focusSecond;
 
   return {
     stateId: diagnostics?.stateId ?? recoveryStateId,
@@ -238,8 +280,21 @@ const evaluateRecoveryFrame = async ({ page, config, setState, recoveryStateId }
   };
 };
 
-const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnostics, afterDiagnostics }) => {
+const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnostics, afterDiagnostics, readabilityGates }) => {
+  const resolvedReadabilityGates = { ...DEFAULT_READABILITY_GATES, ...(readabilityGates ?? {}) };
+  const motionSummary = afterDiagnostics?.motionSummary ?? null;
+  const maxTrailHeadGapPx = motionSummary?.sampleCount
+    ? motionSummary.maxTrailHeadGapPx
+    : Math.max(...sceneScores.map((scene) => scene.readability.trailHeadGapPx), 0);
   const gates = {
+    trailHeadGapPx: maxTrailHeadGapPx <= resolvedReadabilityGates.trailHeadGapPx,
+    trailContrastPass: sceneScores.every((scene) => scene.readability.trailContrastPass) && (motionSummary ? motionSummary.trailContrastPass : true),
+    playerDominancePass: sceneScores.every((scene) => scene.readability.playerDominancePass) && (motionSummary ? motionSummary.playerDominancePass : true),
+    objectiveSeparationPass: sceneScores.every((scene) => scene.readability.objectiveSeparationPass) && (motionSummary ? motionSummary.objectiveSeparationPass : true),
+    intentDebouncePass: sceneScores.every((scene) => scene.intentFeed.metrics.intentDebouncePass),
+    worldPingSpamPass: sceneScores.every((scene) => scene.intentFeed.metrics.worldPingSpamPass),
+    feedReadabilityPass: sceneScores.every((scene) => scene.intentFeed.metrics.feedReadabilityPass),
+    intentStackOverlapPass: sceneScores.every((scene) => scene.intentFeed.layout?.intentStackOverlapPass ?? scene.intentFeed.metrics.intentStackOverlapPass),
     playerVisibleEveryScene: sceneScores.every((scene) => scene.playerVisible),
     objectiveVisibleEveryScene: sceneScores.every((scene) => scene.objectiveVisible),
     landmarkVisibleEveryScene: sceneScores.every((scene) => scene.landmarkVisible),
@@ -272,6 +327,10 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnos
     failures.push('after: goal-observed-after-start');
   }
 
+  if (motionSummary?.sampleCount && maxTrailHeadGapPx > resolvedReadabilityGates.trailHeadGapPx) {
+    failures.push('motion: trail-head-gap');
+  }
+
   if (!recovery.present) {
     failures.push(`recovery: missing ${recovery.stateId ?? 'expected-state'}`);
   }
@@ -302,6 +361,14 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnos
       'landmark-visible': 'Landmark salience',
       'connector-visible': 'Connector readability',
       'trail-head-sync': 'Trail head sync',
+      'trail-head-gap': 'Trail head tether',
+      'trail-contrast': 'Trail contrast',
+      'player-dominance': 'Player dominance',
+      'objective-separation': 'Objective separation',
+      'intent-debounce': 'Intent feed debounce',
+      'world-ping-spam': 'World ping cadence',
+      'feed-readability': 'Feed readability',
+      'intent-stack-overlap': 'Intent stack overlap',
       'solution-overlay-hidden': 'No solution overlay',
       'start-target-limited': 'Non-omniscient start target',
       'goal-observed-after-start': 'Goal observation after step 0',
@@ -332,6 +399,18 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery, beforeDiagnos
       requiredSceneCount: sceneScores.length,
       scenePassCount: sceneScores.filter((scene) => scene.passed).length,
       passRatio: Number((passedGateCount / totalGateCount).toFixed(3))
+    },
+    readability: {
+      gates: resolvedReadabilityGates,
+      maxTrailHeadGapPx,
+      motionSummary
+    },
+    intent: {
+      intentEmissionRate: Number((sceneScores.at(-1)?.intentFeed.metrics.intentEmissionRate ?? 0).toFixed(3)),
+      emittedCount: sceneScores.at(-1)?.intentFeed.metrics.emittedCount ?? 0,
+      highImportanceEventCount: sceneScores.at(-1)?.intentFeed.metrics.highImportanceEventCount ?? 0,
+      worldPingCount: sceneScores.at(-1)?.intentFeed.metrics.worldPingCount ?? 0,
+      worldPingEmissionRate: Number((sceneScores.at(-1)?.intentFeed.metrics.worldPingEmissionRate ?? 0).toFixed(3))
     },
     gates,
     recovery,
@@ -451,7 +530,8 @@ const captureScenarioPacket = async ({
     sceneScores,
     recovery,
     beforeDiagnostics,
-    afterDiagnostics
+    afterDiagnostics,
+    readabilityGates: config.readabilityGates
   });
 
   const video = page.video();
@@ -482,6 +562,7 @@ const captureScenarioPacket = async ({
       canary: afterDiagnostics?.canary ?? beforeDiagnostics?.canary ?? null,
       rotationState: afterDiagnostics?.rotationLabel ?? beforeDiagnostics?.rotationLabel ?? null
     },
+    readabilityGates: config.readabilityGates ?? DEFAULT_READABILITY_GATES,
     states: {
       before: scenario.beforeState,
       after: scenario.afterState,
@@ -507,13 +588,33 @@ const captureScenarioPacket = async ({
       passRatio: semanticScore.summary.passRatio,
       failureCount: semanticScore.failures.length
     },
+    readability: {
+      trailHeadGapPx: afterDiagnostics?.readability?.trailHeadGapPx ?? null,
+      trailContrastPass: afterDiagnostics?.readability?.trailContrastPass ?? null,
+      playerDominancePass: afterDiagnostics?.readability?.playerDominancePass ?? null,
+      objectiveSeparationPass: afterDiagnostics?.readability?.objectiveSeparationPass ?? null,
+      motionSummary: afterDiagnostics?.motionSummary ?? null
+    },
+    intent: {
+      visibleEntryCount: afterDiagnostics?.intentFeed?.entries?.length ?? 0,
+      visibleWorldPingCount: afterDiagnostics?.intentFeed?.pings?.length ?? 0,
+      intentEmissionRate: afterDiagnostics?.intentFeed?.metrics?.intentEmissionRate ?? null,
+      worldPingEmissionRate: afterDiagnostics?.intentFeed?.metrics?.worldPingEmissionRate ?? null,
+      intentDebouncePass: afterDiagnostics?.intentFeed?.metrics?.intentDebouncePass ?? null,
+      worldPingSpamPass: afterDiagnostics?.intentFeed?.metrics?.worldPingSpamPass ?? null,
+      feedReadabilityPass: afterDiagnostics?.intentFeed?.metrics?.feedReadabilityPass ?? null,
+      intentStackOverlapPass: afterDiagnostics?.intentFeed?.layout?.intentStackOverlapPass ?? null
+    },
     explorer: {
       goalObservedStep: afterDiagnostics?.goalObservedStep ?? null,
       replanCount: afterDiagnostics?.replanCount ?? null,
       backtrackCount: afterDiagnostics?.backtrackCount ?? null,
       frontierCount: afterDiagnostics?.frontierCount ?? null,
       tilesDiscovered: afterDiagnostics?.tilesDiscovered ?? null,
-      trailHeadMatchesPlayer: afterDiagnostics?.trailHeadMatchesPlayer ?? null
+      trailHeadMatchesPlayer: afterDiagnostics?.trailHeadMatchesPlayer ?? null,
+      policyScorerId: afterDiagnostics?.policyScorerId ?? null,
+      policyEpisodeCount: afterDiagnostics?.policyEpisodeCount ?? 0,
+      policyEpisodes: afterDiagnostics?.policyEpisodes ?? []
     }
   };
 

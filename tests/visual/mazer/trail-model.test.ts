@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { TrailModel } from '../../../src/visual-proof/trail/TrailModel';
-import { buildTrailPoints, renderTrailMarkup } from '../../../src/visual-proof/trail/TrailRenderer';
+import { buildTrailGeometry, buildTrailPoints, renderTrailMarkup } from '../../../src/visual-proof/trail/TrailRenderer';
 
 describe('trail model', () => {
   test('keeps trail head synced to the current player tile on every committed move', () => {
@@ -73,5 +73,38 @@ describe('trail renderer', () => {
     expect(markup).toContain('data-trail-head-tile-id="tile-c"');
     expect(markup).toContain('data-trail-length="3"');
     expect(markup).not.toContain('tile-future');
+  });
+
+  test('renders a live head tether without mutating committed breadcrumb history', () => {
+    const model = new TrailModel({ initialTileId: 'tile-a' });
+    model.tileCommitted('tile-b');
+    const snapshot = model.snapshot();
+
+    const geometry = buildTrailGeometry(snapshot, (tileId) => {
+      const points = {
+        'tile-a': { x: 10, y: 10 },
+        'tile-b': { x: 30, y: 10 }
+      };
+      return points[tileId as keyof typeof points] ?? null;
+    }, {
+      liveHeadPoint: { x: 44, y: 22 }
+    });
+    const markup = renderTrailMarkup(snapshot, (tileId) => {
+      const points = {
+        'tile-a': { x: 10, y: 10 },
+        'tile-b': { x: 30, y: 10 }
+      };
+      return points[tileId as keyof typeof points] ?? null;
+    }, {
+      testId: 'stage-trail',
+      liveHeadPoint: { x: 44, y: 22 }
+    });
+
+    expect(geometry.committedHeadPoint).toEqual({ x: 30, y: 10 });
+    expect(geometry.visibleHeadPoint).toEqual({ x: 44, y: 22 });
+    expect(geometry.tetherPoints).toEqual([{ x: 30, y: 10 }, { x: 44, y: 22 }]);
+    expect(snapshot.occupancyHistory).toEqual(['tile-a', 'tile-b']);
+    expect(markup).toContain('data-testid="stage-trail"');
+    expect(markup).toContain('data-trail-visible-head-x="44.00"');
   });
 });

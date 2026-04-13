@@ -5,6 +5,14 @@
   --proof-ink: #eff8ff;
   --proof-muted: rgba(222, 240, 255, 0.74);
   --proof-border: rgba(143, 214, 255, 0.18);
+  --cue-player-core: #ffffff;
+  --cue-player-halo: #53e6ff;
+  --cue-trail-head: #53e6ff;
+  --cue-trail-body: rgba(27, 207, 234, 0.7);
+  --cue-trail-old: rgba(27, 207, 234, 0.28);
+  --cue-outline: #03141a;
+  --cue-objective: #ffd166;
+  --cue-enemy: #ff5c8a;
 }
 
 * {
@@ -147,6 +155,7 @@ body::before {
 
 .proof-stage-wrap,
 .proof-focus-wrap {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   border-radius: 18px;
@@ -163,6 +172,247 @@ body::before {
 .proof-stage {
   width: 100%;
   height: 100%;
+}
+
+.proof-intent-feed {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: min(23rem, calc(100% - 32px));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.proof-intent-feed[data-dock="top-right"] {
+  top: 18px;
+  bottom: auto;
+}
+
+.proof-intent-feed[data-dock="top-left"] {
+  left: 18px;
+  right: auto;
+  top: 18px;
+  bottom: auto;
+}
+
+.proof-intent-feed[data-dock="bottom-left"] {
+  left: 18px;
+  right: auto;
+  top: auto;
+  bottom: 18px;
+}
+
+.proof-intent-feed[data-compact="true"] {
+  width: min(23rem, calc(100% - 32px));
+}
+
+.proof-intent-feed[data-compact="true"] .proof-intent-shell {
+  padding: 8px 10px 10px;
+}
+
+.proof-intent-feed[data-compact="true"] .proof-intent-entry {
+  padding: 7px 8px;
+}
+
+.proof-intent-feed[data-compact="true"] .proof-intent-text {
+  font-size: 0.76rem;
+  line-height: 1.22;
+}
+
+.proof-intent-shell {
+  padding: 10px 12px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 242, 255, 0.14);
+  background: linear-gradient(180deg, rgba(10, 17, 24, 0.82), rgba(8, 13, 18, 0.7));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+}
+
+.proof-intent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.proof-intent-title,
+.proof-intent-meta,
+.proof-intent-tag {
+  font-family: "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.proof-intent-title {
+  font-size: 0.68rem;
+  color: rgba(237, 246, 255, 0.88);
+}
+
+.proof-intent-meta {
+  font-size: 0.66rem;
+  color: rgba(193, 214, 230, 0.56);
+}
+
+.proof-intent-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proof-intent-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(226, 239, 255, 0.08);
+  background: rgba(236, 244, 255, 0.05);
+  opacity: var(--intent-opacity, 1);
+  transform: translateY(calc(var(--intent-raise, 0px) * -1));
+}
+
+.proof-intent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.proof-intent-entry[data-intent-category="observe"] {
+  border-color: rgba(120, 230, 255, 0.16);
+  background: linear-gradient(90deg, rgba(83, 230, 255, 0.12), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-entry[data-intent-category="replan"] {
+  border-color: rgba(143, 186, 255, 0.16);
+  background: linear-gradient(90deg, rgba(104, 156, 255, 0.12), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-entry[data-intent-category="danger"] {
+  border-color: rgba(255, 111, 150, 0.18);
+  background: linear-gradient(90deg, rgba(255, 92, 138, 0.14), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-entry[data-intent-category="item"] {
+  border-color: rgba(255, 209, 102, 0.18);
+  background: linear-gradient(90deg, rgba(255, 209, 102, 0.14), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-entry[data-intent-category="goal"] {
+  border-color: rgba(165, 255, 180, 0.18);
+  background: linear-gradient(90deg, rgba(153, 255, 173, 0.14), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-entry[data-intent-category="infer"] {
+  border-color: rgba(213, 232, 255, 0.14);
+  background: linear-gradient(90deg, rgba(207, 228, 255, 0.1), rgba(236, 244, 255, 0.04));
+}
+
+.proof-intent-tag {
+  min-width: 3.6rem;
+  padding: 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(223, 238, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.62rem;
+  color: rgba(229, 241, 255, 0.8);
+  text-align: center;
+}
+
+.proof-intent-speaker,
+.proof-intent-confidence {
+  font-family: "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.proof-intent-speaker {
+  font-size: 0.66rem;
+  color: rgba(245, 249, 255, 0.92);
+}
+
+.proof-intent-confidence {
+  margin-left: auto;
+  font-size: 0.62rem;
+  color: rgba(201, 222, 239, 0.7);
+}
+
+.proof-intent-entry[data-intent-speaker="Runner"] .proof-intent-speaker {
+  color: rgba(245, 249, 255, 0.96);
+}
+
+.proof-intent-entry[data-intent-speaker="Maze"] .proof-intent-speaker {
+  color: rgba(123, 232, 255, 0.94);
+}
+
+.proof-intent-entry[data-intent-speaker="TrapNet"] .proof-intent-speaker {
+  color: rgba(255, 140, 176, 0.94);
+}
+
+.proof-intent-entry[data-intent-speaker="Warden"] .proof-intent-speaker {
+  color: rgba(255, 103, 146, 0.94);
+}
+
+.proof-intent-entry[data-intent-speaker="Inventory"] .proof-intent-speaker {
+  color: rgba(255, 219, 132, 0.96);
+}
+
+.proof-intent-entry[data-intent-speaker="Puzzle"] .proof-intent-speaker {
+  color: rgba(216, 228, 255, 0.94);
+}
+
+.proof-intent-text {
+  color: rgba(245, 249, 255, 0.94);
+  font-size: 0.82rem;
+  line-height: 1.28;
+}
+
+.proof-world-ping-pill {
+  fill: rgba(6, 13, 20, 0.9);
+  stroke: rgba(228, 240, 255, 0.18);
+  stroke-width: 1;
+}
+
+.proof-world-ping[data-ping-category="observe"] .proof-world-ping-pill {
+  fill: rgba(10, 32, 40, 0.9);
+  stroke: rgba(83, 230, 255, 0.28);
+}
+
+.proof-world-ping[data-ping-category="replan"] .proof-world-ping-pill {
+  fill: rgba(13, 23, 42, 0.9);
+  stroke: rgba(104, 156, 255, 0.28);
+}
+
+.proof-world-ping[data-ping-category="danger"] .proof-world-ping-pill {
+  fill: rgba(39, 14, 22, 0.92);
+  stroke: rgba(255, 92, 138, 0.3);
+}
+
+.proof-world-ping[data-ping-category="item"] .proof-world-ping-pill {
+  fill: rgba(39, 28, 10, 0.92);
+  stroke: rgba(255, 209, 102, 0.3);
+}
+
+.proof-world-ping[data-ping-category="goal"] .proof-world-ping-pill {
+  fill: rgba(17, 35, 19, 0.92);
+  stroke: rgba(153, 255, 173, 0.28);
+}
+
+.proof-world-ping[data-ping-category="infer"] .proof-world-ping-pill {
+  fill: rgba(18, 25, 34, 0.92);
+  stroke: rgba(207, 228, 255, 0.22);
+}
+
+.proof-world-ping-text {
+  fill: rgba(244, 249, 255, 0.96);
+  font: 700 10.5px/1 "Consolas", "Lucida Console", monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .proof-stage svg,
@@ -276,6 +526,39 @@ body::before {
 
   .proof-stage-footer {
     grid-template-columns: 1fr;
+  }
+
+  .proof-intent-feed {
+    right: 12px;
+    bottom: 12px;
+    width: min(21rem, calc(100% - 24px));
+  }
+
+  .proof-intent-text {
+    font-size: 0.79rem;
+  }
+
+  .proof-intent-feed[data-dock="top-right"] {
+    top: 12px;
+    bottom: auto;
+  }
+
+  .proof-intent-feed[data-dock="top-left"] {
+    left: 12px;
+    right: auto;
+    top: 12px;
+    bottom: auto;
+  }
+
+  .proof-intent-feed[data-dock="bottom-left"] {
+    left: 12px;
+    right: auto;
+    top: auto;
+    bottom: 12px;
+  }
+
+  .proof-intent-feed[data-compact="true"] {
+    width: min(21rem, calc(100% - 24px));
   }
 
   .proof-rail {

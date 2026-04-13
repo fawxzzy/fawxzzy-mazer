@@ -1,8 +1,12 @@
 import type { PlanetNode, PlanetProofManifest, RotationState } from './manifestTypes';
 import type { FocusTarget, ProofStateDefinition } from './scenarioLibrary';
+import { EpisodicPolicyScorer } from './agent/PolicyScorer';
 import { ProofMazeEnvironment } from './agent/ProofMazeEnvironment';
 import { ExplorerAgent } from './agent/ExplorerAgent';
-import type { ExplorerDecision, ExplorerSnapshot, LocalObservation } from './agent/types';
+import type { ExplorerDecision, ExplorerSnapshot, LocalObservation, PolicyEpisode } from './agent/types';
+import type { IntentFeedState } from './intent/IntentEvent';
+import { buildIntentBus, type IntentSourceState } from './intent/IntentBus';
+import { buildIntentFeed } from './intent/IntentFeed';
 import { TrailModel, type TrailSnapshot } from './trail/TrailModel';
 
 export type ProofCanaryMutation =
@@ -12,6 +16,8 @@ export type ProofCanaryMutation =
   | 'hide-connector'
   | 'omniscient-goal-target'
   | 'trail-head-mismatch'
+  | 'collapse-cue-channels'
+  | 'intent-feed-spam'
   | 'show-solution-overlay';
 
 export interface RuntimeProofState {
@@ -51,6 +57,10 @@ export interface RuntimeProofState {
     targetKind: ExplorerDecision['targetKind'];
     solutionOverlayVisible: boolean;
     actionLog: string[];
+    intentFeed: IntentFeedState;
+    policyScorerId: string;
+    policyEpisodeCount: number;
+    policyEpisodes: PolicyEpisode[];
   };
 }
 
@@ -73,6 +83,8 @@ interface RawStepState {
   trail: TrailSnapshot;
   observation: LocalObservation;
   traversedConnectorId: string | null;
+  policyScorerId: string;
+  policyEpisodes: PolicyEpisode[];
 }
 
 const FOCUS_ZOOM: Record<FocusTarget, number> = {
@@ -222,12 +234,13 @@ const buildCaption = (state: RawStepState, goalReached: boolean): string => {
 
 const buildStatus = (state: RawStepState, goalReached: boolean): string => {
   if (goalReached && state.decision.targetKind === 'idle') {
-    return 'Committed path complete. Trail head and player tile stay locked together.';
+    return 'Committed path complete. Breadcrumb truth stays committed while the live trail head remains welded to the player.';
   }
 
   return [
     `Mode ${state.explorer.mode}.`,
     `Target ${state.decision.targetTileId ?? 'none'}.`,
+    'Trail render uses a live player tether over committed breadcrumbs.',
     `Replans ${state.explorer.counters.replanCount}.`,
     `Backtracks ${state.explorer.counters.backtrackCount}.`
   ].join(' ');
@@ -274,7 +287,7 @@ const buildFocusNote = (target: FocusTarget, state: RawStepState): string => {
     return 'Landmarks stay readable while the explorer remains information-limited.';
   }
 
-  return 'The trail head must always coincide with the committed player tile.';
+  return 'Committed breadcrumbs remain tile-true while the visible trail head stays attached to the live player transform.';
 };
 
 export const buildProofPlayback = ({
@@ -290,13 +303,16 @@ export const buildProofPlayback = ({
 }): ProofPlayback => {
   const nodeById = new Map(manifest.nodes.map((node) => [node.id, node]));
   const edgeByPair = new Map(manifest.edges.map((edge) => [edgePairKey(edge.from, edge.to), edge]));
+  const connectorById = new Map(manifest.connectors.map((connector) => [connector.id, connector]));
   const env = new ProofMazeEnvironment(manifest);
   const startTileId = env.getCurrentTileId();
   const trail = new TrailModel({ initialTileId: startTileId });
+  const policyScorer = new EpisodicPolicyScorer();
   const agent = new ExplorerAgent({
     seed: manifest.seed,
     startTileId,
-    startHeading: 'start'
+    startHeading: 'start',
+    policyScorer
   });
   const rawStates: RawStepState[] = [];
   let heading = 'start';
@@ -315,7 +331,9 @@ export const buildProofPlayback = ({
       explorer,
       trail: trailSnapshot,
       observation,
-      traversedConnectorId: null
+      traversedConnectorId: null,
+      policyScorerId: policyScorer.id,
+      policyEpisodes: [...agent.getEpisodeLog()]
     });
 
     if (!decision.nextTileId) {
@@ -344,6 +362,44 @@ export const buildProofPlayback = ({
     `step ${entry.step}: ${entry.targetKind} -> ${entry.targetTileId ?? 'none'} (${entry.reason})`
   ));
   const goalReached = rawStates.at(-1)?.currentTileId === manifest.graph.objectiveNodeId;
+  const intentSourceStates = rawStates.map<IntentSourceState>((rawState) => {
+    const currentNode = nodeById.get(rawState.currentTileId);
+    const targetNode = rawState.decision.targetTileId ? nodeById.get(rawState.decision.targetTileId) ?? null : null;
+    const traversedConnector = rawState.traversedConnectorId
+      ? connectorById.get(rawState.traversedConnectorId) ?? null
+      : null;
+
+    return {
+      step: rawState.step,
+      currentTileId: rawState.currentTileId,
+      currentTileLabel: currentNode ? labelForNode(currentNode) : rawState.currentTileId,
+      targetTileId: rawState.decision.targetTileId,
+      targetTileLabel: targetNode ? labelForNode(targetNode) : rawState.decision.targetTileId,
+      targetKind: rawState.decision.targetKind,
+      nextTileId: rawState.decision.nextTileId,
+      reason: rawState.decision.reason,
+      frontierCount: rawState.explorer.frontierIds.length,
+      replanCount: rawState.explorer.counters.replanCount,
+      backtrackCount: rawState.explorer.counters.backtrackCount,
+      goalVisible: rawState.observation.goal.visible,
+      goalObservedStep: rawState.explorer.counters.goalObservedStep,
+      visibleLandmarks: rawState.observation.visibleLandmarks.map((landmark) => ({
+        id: landmark.id,
+        label: landmark.label
+      })),
+      observedLandmarkIds: [...rawState.explorer.observedLandmarkIds],
+      localCues: [...rawState.observation.localCues],
+      traversableTileIds: [...rawState.observation.traversableTileIds],
+      traversedConnectorId: rawState.traversedConnectorId,
+      traversedConnectorLabel: traversedConnector?.label ?? null
+    };
+  });
+  const intentBus = buildIntentBus(intentSourceStates, {
+    canary
+  });
+  const intentFeed = buildIntentFeed(intentBus, intentSourceStates.map((state) => state.step), {
+    canary
+  });
   const states = sampledIds.map((stateId, index) => {
     const rawState = rawStates[sampledIndices[index]];
     const rotationState = rotationStates[sampledIndices[index]] ?? manifest.rotationStates.at(-1);
@@ -368,6 +424,12 @@ export const buildProofPlayback = ({
         ? 'idle'
         : 'frontier';
     const targetLabel = targetNode ? labelForNode(targetNode) : 'No target';
+    const intentFeedState = intentFeed.states.get(rawState.step) ?? {
+      step: rawState.step,
+      entries: [],
+      pings: [],
+      metrics: intentFeed.metrics
+    };
 
     return {
       id: stateId,
@@ -424,7 +486,26 @@ export const buildProofPlayback = ({
         actionReason: rawState.decision.reason,
         targetKind,
         solutionOverlayVisible: debugSolution || canary === 'show-solution-overlay',
-        actionLog: actionLog.slice(Math.max(0, actionLog.length - 6))
+        actionLog: actionLog.slice(Math.max(0, actionLog.length - 6)),
+        intentFeed: intentFeedState,
+        policyScorerId: rawState.policyScorerId,
+        policyEpisodeCount: rawState.policyEpisodes.length,
+        policyEpisodes: rawState.policyEpisodes.map((episode) => ({
+          ...episode,
+          observation: { ...episode.observation },
+          candidates: episode.candidates.map((candidate) => ({
+            ...candidate,
+            path: [...candidate.path],
+            features: { ...candidate.features }
+          })),
+          chosenAction: { ...episode.chosenAction },
+          outcome: episode.outcome
+            ? {
+                ...episode.outcome,
+                localCues: [...episode.outcome.localCues]
+              }
+            : null
+        }))
       }
     };
   });

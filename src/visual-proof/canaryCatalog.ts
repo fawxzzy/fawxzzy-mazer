@@ -3,7 +3,7 @@ export interface CanaryScenario {
   scenarioId: string;
   label: string;
   expectedFailures: string[];
-  mutation: 'hide-player' | 'hide-objective' | 'hide-landmark' | 'hide-connector' | 'omniscient-goal-target' | 'trail-head-mismatch' | 'show-solution-overlay';
+  mutation: 'hide-player' | 'hide-objective' | 'hide-landmark' | 'hide-connector' | 'omniscient-goal-target' | 'trail-head-mismatch' | 'collapse-cue-channels' | 'intent-feed-spam' | 'show-solution-overlay';
 }
 
 export const CANARY_SCENARIOS: readonly CanaryScenario[] = [
@@ -55,5 +55,19 @@ export const CANARY_SCENARIOS: readonly CanaryScenario[] = [
     label: 'Omniscient target canary',
     expectedFailures: ['Non-omniscient start target'],
     mutation: 'omniscient-goal-target'
+  },
+  {
+    id: 'cue-channel-collapse-canary',
+    scenarioId: 'dense-route-player-visibility',
+    label: 'Cue channel collapse canary',
+    expectedFailures: ['Trail contrast', 'Player dominance', 'Objective separation'],
+    mutation: 'collapse-cue-channels'
+  },
+  {
+    id: 'intent-feed-spam-canary',
+    scenarioId: 'bounded-progression-slice',
+    label: 'Intent feed spam canary',
+    expectedFailures: ['Intent feed debounce', 'World ping cadence', 'Feed readability'],
+    mutation: 'intent-feed-spam'
   }
 ];

@@ -1,5 +1,6 @@
 import { BeliefGraph } from './BeliefGraph';
 import { FrontierPlanner } from './FrontierPlanner';
+import { summarizeObservationFeatures } from './PolicyScorer';
 import {
   type ExplorerActionLogEntry,
   type ExplorerAgentOptions,
@@ -7,8 +8,35 @@ import {
   type ExplorerDecision,
   type ExplorerMode,
   type ExplorerSnapshot,
-  type LocalObservation
+  type LocalObservation,
+  type PolicyActionCandidate,
+  type PolicyEpisode,
+  type PolicyObservationFeatures
 } from './types';
+
+interface PendingEpisode {
+  episode: PolicyEpisode;
+  baseline: {
+    tilesDiscovered: number;
+    frontierCount: number;
+    replanCount: number;
+    backtrackCount: number;
+  };
+}
+
+const buildObservationFeatures = (observation: LocalObservation): PolicyObservationFeatures => {
+  const cueSummary = summarizeObservationFeatures(observation.localCues);
+  return {
+    traversableCount: observation.traversableTileIds.length,
+    landmarkCount: observation.visibleLandmarks.length,
+    localCueCount: observation.localCues.length,
+    dangerCueCount: cueSummary.dangerCueCount,
+    enemyCueCount: cueSummary.enemyCueCount,
+    itemCueCount: cueSummary.itemCueCount,
+    puzzleCueCount: cueSummary.puzzleCueCount,
+    goalVisible: observation.goal.visible
+  };
+};
 
 export class ExplorerAgent {
   private readonly graph: BeliefGraph;
@@ -16,6 +44,8 @@ export class ExplorerAgent {
   private readonly planner: FrontierPlanner;
 
   private readonly actionLog: ExplorerActionLogEntry[] = [];
+
+  private readonly episodeLog: PolicyEpisode[] = [];
 
   private readonly counters: ExplorerCounters = {
     replanCount: 0,
@@ -31,9 +61,11 @@ export class ExplorerAgent {
 
   private currentMode: ExplorerMode = 'explore';
 
+  private pendingEpisode: PendingEpisode | null = null;
+
   constructor(private readonly options: ExplorerAgentOptions) {
     this.graph = new BeliefGraph();
-    this.planner = new FrontierPlanner(options.seed);
+    this.planner = new FrontierPlanner(options.seed, options.policyScorer ?? null);
   }
 
   observe(observation: LocalObservation): ExplorerDecision {
@@ -55,7 +87,13 @@ export class ExplorerAgent {
       this.counters.backtrackCount += 1;
     }
 
-    const plan = this.planner.plan(this.graph, observation.currentTileId, observation.heading);
+    this.finalizePendingEpisode(observation);
+
+    const snapshotBeforeDecision = this.buildSnapshot();
+    const plan = this.planner.plan(this.graph, observation.currentTileId, observation.heading, {
+      observation,
+      snapshot: snapshotBeforeDecision
+    });
     const nextTileId = plan.path.length > 1 ? plan.path[1] : null;
     const targetKind = nextTileId && this.graph.getNodeVisitCount(nextTileId) > 0 && plan.targetKind !== 'goal'
       ? 'backtrack'
@@ -83,10 +121,119 @@ export class ExplorerAgent {
     this.actionLog.push(logEntry);
     this.lastObservation = observation;
     this.lastDecision = decision;
+    this.beginEpisode(observation, decision, plan.selectedCandidateId, plan.candidates);
     return decision;
   }
 
   getDiagnostics(): ExplorerSnapshot {
+    return this.buildSnapshot();
+  }
+
+  getActionLog(): readonly ExplorerActionLogEntry[] {
+    return [...this.actionLog];
+  }
+
+  getEpisodeLog(): readonly PolicyEpisode[] {
+    return this.episodeLog.map((episode) => ({
+      ...episode,
+      observation: { ...episode.observation },
+      candidates: episode.candidates.map((candidate) => ({
+        ...candidate,
+        path: [...candidate.path],
+        features: { ...candidate.features }
+      })),
+      chosenAction: { ...episode.chosenAction },
+      outcome: episode.outcome
+        ? {
+            ...episode.outcome,
+            localCues: [...episode.outcome.localCues]
+          }
+        : null
+    }));
+  }
+
+  getCurrentDecision(): ExplorerDecision | null {
+    return this.lastDecision;
+  }
+
+  getBeliefGraph(): BeliefGraph {
+    return this.graph;
+  }
+
+  private beginEpisode(
+    observation: LocalObservation,
+    decision: ExplorerDecision,
+    selectedCandidateId: string | null,
+    candidates: PolicyActionCandidate[]
+  ): void {
+    this.pendingEpisode = {
+      episode: {
+        step: observation.step,
+        seed: this.options.seed,
+        scorerId: this.options.policyScorer?.id ?? 'disabled',
+        currentTileId: observation.currentTileId,
+        heading: observation.heading,
+        observation: buildObservationFeatures(observation),
+        candidates: candidates.map((candidate) => ({
+          ...candidate,
+          path: [...candidate.path],
+          features: { ...candidate.features }
+        })),
+        chosenCandidateId: selectedCandidateId,
+        chosenAction: {
+          targetKind: decision.targetKind,
+          targetTileId: decision.targetTileId,
+          nextTileId: decision.nextTileId,
+          reason: decision.reason
+        },
+        outcome: null
+      },
+      baseline: {
+        tilesDiscovered: this.counters.tilesDiscovered,
+        frontierCount: this.graph.getFrontierCount(),
+        replanCount: this.counters.replanCount,
+        backtrackCount: this.counters.backtrackCount
+      }
+    };
+  }
+
+  private finalizePendingEpisode(observation: LocalObservation): void {
+    if (!this.pendingEpisode) {
+      return;
+    }
+
+    const cueSummary = summarizeObservationFeatures(observation.localCues);
+    const finalizedEpisode: PolicyEpisode = {
+      ...this.pendingEpisode.episode,
+      observation: { ...this.pendingEpisode.episode.observation },
+      candidates: this.pendingEpisode.episode.candidates.map((candidate) => ({
+        ...candidate,
+        path: [...candidate.path],
+        features: { ...candidate.features }
+      })),
+      chosenAction: { ...this.pendingEpisode.episode.chosenAction },
+      outcome: {
+        arrivedTileId: observation.currentTileId,
+        discoveredTilesDelta: this.counters.tilesDiscovered - this.pendingEpisode.baseline.tilesDiscovered,
+        frontierDelta: this.graph.getFrontierCount() - this.pendingEpisode.baseline.frontierCount,
+        replanDelta: this.counters.replanCount - this.pendingEpisode.baseline.replanCount,
+        backtrackDelta: this.counters.backtrackCount - this.pendingEpisode.baseline.backtrackCount,
+        goalVisible: observation.goal.visible,
+        goalObservedStep: this.counters.goalObservedStep,
+        trapCueCount: cueSummary.dangerCueCount,
+        enemyCueCount: cueSummary.enemyCueCount,
+        itemCueCount: cueSummary.itemCueCount,
+        puzzleCueCount: cueSummary.puzzleCueCount,
+        localCues: [...observation.localCues]
+      }
+    };
+
+    this.episodeLog.push(finalizedEpisode);
+    this.options.policyScorer?.recordEpisode?.(finalizedEpisode);
+    this.pendingEpisode = null;
+  }
+
+  private buildSnapshot(): ExplorerSnapshot {
     return {
       seed: this.options.seed,
       currentTileId: this.graph.getCurrentTileId(),
@@ -99,17 +246,5 @@ export class ExplorerAgent {
       observedLandmarkIds: this.graph.getObservedLandmarkIds(),
       observedCues: this.graph.getObservedCues()
     };
-  }
-
-  getActionLog(): readonly ExplorerActionLogEntry[] {
-    return [...this.actionLog];
-  }
-
-  getCurrentDecision(): ExplorerDecision | null {
-    return this.lastDecision;
-  }
-
-  getBeliefGraph(): BeliefGraph {
-    return this.graph;
   }
 }

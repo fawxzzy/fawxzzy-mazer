@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { ExplorerAgent } from '../../../src/visual-proof/agent/ExplorerAgent';
+import { EpisodicPolicyScorer } from '../../../src/visual-proof/agent/PolicyScorer';
 import type { ExplorerDecision, LocalObservation, TileId, VisibleLandmark } from '../../../src/visual-proof/agent/types';
 
 type TileSpec = {
@@ -105,8 +106,8 @@ const makeObservation = (step: number, tileId: TileId, heading: string): LocalOb
 
 const nextHeading = (from: TileId, to: TileId): string => directionByEdge[`${from}::${to}`] ?? 'north';
 
-const runAgent = (seed: string) => {
-  const agent = new ExplorerAgent({ seed, startTileId: 'start', startHeading: 'east' });
+const runAgent = (seed: string, scorer: EpisodicPolicyScorer | null = null) => {
+  const agent = new ExplorerAgent({ seed, startTileId: 'start', startHeading: 'east', policyScorer: scorer });
   const log: ExplorerDecision[] = [];
   let tileId: TileId = 'start';
   let heading = 'east';
@@ -141,6 +142,14 @@ describe('ExplorerAgent', () => {
     expect(first.agent.getDiagnostics()).toEqual(second.agent.getDiagnostics());
   });
 
+  test('keeps the deterministic explorer path unchanged when the scorer is disabled', () => {
+    const defaultRun = runAgent('seed-17');
+    const explicitDisabledRun = runAgent('seed-17', null);
+
+    expect(defaultRun.log).toEqual(explicitDisabledRun.log);
+    expect(defaultRun.agent.getEpisodeLog()).toEqual(explicitDisabledRun.agent.getEpisodeLog());
+  });
+
   test('does not target the exit before the goal is observed', () => {
     const agent = new ExplorerAgent({ seed: 'seed-17', startTileId: 'start', startHeading: 'east' });
     const decision = agent.observe(makeObservation(0, 'start', 'east'));
@@ -164,11 +173,57 @@ describe('ExplorerAgent', () => {
     expect(counters.tilesDiscovered).toBeGreaterThan(0);
   });
 
+  test('scores only legal candidates and never targets the goal omnisciently', () => {
+    const agent = new ExplorerAgent({
+      seed: 'seed-29',
+      startTileId: 'start',
+      startHeading: 'east',
+      policyScorer: new EpisodicPolicyScorer()
+    });
+    let tileId: TileId = 'start';
+    let heading = 'east';
+
+    for (let step = 0; step < 6; step += 1) {
+      const observation = makeObservation(step, tileId, heading);
+      const decision = agent.observe(observation);
+
+      if (decision.nextTileId) {
+        expect(observation.traversableTileIds).toContain(decision.nextTileId);
+      }
+
+      if (step === 0) {
+        expect(decision.targetKind).toBe('frontier');
+        expect(decision.targetTileId).not.toBe('goal');
+      }
+
+      if (!decision.nextTileId) {
+        break;
+      }
+
+      heading = nextHeading(tileId, decision.nextTileId);
+      tileId = decision.nextTileId;
+    }
+  });
+
+  test('records stable, replayable policy episodes when the scorer is enabled', () => {
+    const first = runAgent('seed-41', new EpisodicPolicyScorer());
+    const second = runAgent('seed-41', new EpisodicPolicyScorer());
+    const episodes = first.agent.getEpisodeLog();
+
+    expect(episodes.length).toBeGreaterThan(0);
+    expect(episodes).toEqual(second.agent.getEpisodeLog());
+    expect(episodes[0].scorerId).toBe('episode-priors');
+    expect(episodes[0].candidates.length).toBeGreaterThan(0);
+    expect(episodes[0].chosenCandidateId).not.toBeNull();
+    expect(episodes[0].outcome).not.toBeNull();
+  });
+
   test('does not import full manifest truth directly', () => {
     const sourceFiles = [
       '../../../src/visual-proof/agent/ExplorerAgent.ts',
       '../../../src/visual-proof/agent/BeliefGraph.ts',
       '../../../src/visual-proof/agent/FrontierPlanner.ts',
+      '../../../src/visual-proof/agent/PolicyScorer.ts',
       '../../../src/visual-proof/agent/types.ts'
     ];
 

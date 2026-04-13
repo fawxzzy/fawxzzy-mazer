@@ -33,6 +33,7 @@ const buildCanaryConfig = async (mutated) => {
   return {
     artifactRoot: CANARY_ARTIFACT_ROOT,
     selectors: baseConfig.selectors,
+    readabilityGates: baseConfig.readabilityGates,
     viewports: [viewport],
     scenarios
   };

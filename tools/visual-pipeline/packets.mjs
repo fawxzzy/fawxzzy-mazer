@@ -128,7 +128,7 @@ const summarizeRuns = (packets) => {
 
 const buildPacketDirectory = (repoRoot, packet) => dirname(resolve(repoRoot, packet.artifacts.metadata));
 
-const buildComparison = async (repoRoot, latestPacket, baselinePacket) => {
+export const comparePacketArtifacts = async (repoRoot, latestPacket, baselinePacket) => {
   const details = [];
   let changedArtifactCount = 0;
   let changedWeight = 0;
@@ -494,7 +494,7 @@ export const compareLatestRunToBaseline = async (repoRoot, artifactRootRelative,
     const baselinePacket = baselinePointer
       ? baselineMap.get(makePacketKey(latestPacket.scenario.id, latestPacket.viewport.id, baselinePointer.runId))
       : null;
-    const comparison = await buildComparison(repoRoot, latestPacket, baselinePacket);
+    const comparison = await comparePacketArtifacts(repoRoot, latestPacket, baselinePacket);
     const packetDir = buildPacketDirectory(repoRoot, latestPacket);
     const scorePath = resolve(packetDir, 'score.json');
     const diffSummaryPath = resolve(packetDir, 'diff-summary.json');
@@ -684,5 +684,322 @@ export const compareLatestRunToBaseline = async (repoRoot, artifactRootRelative,
     aggregateScore,
     aggregateDiffSummary,
     packetSummaries
+  };
+};
+
+const pairPacketsByKey = (leftPackets, rightPackets) => {
+  const rightByKey = new Map(
+    rightPackets.map((packet) => [
+      `${packet.scenario.id}::${packet.viewport.id}`,
+      packet
+    ])
+  );
+
+  const paired = [];
+  const usedRightPackets = new Set();
+
+  leftPackets.forEach((leftPacket, index) => {
+    const key = `${leftPacket.scenario.id}::${leftPacket.viewport.id}`;
+    const rightPacket = rightByKey.get(key)
+      ?? (rightPackets.length > 0 ? rightPackets[index % rightPackets.length] : null);
+    if (rightPacket) {
+      usedRightPackets.add(rightPacket);
+    }
+
+    paired.push({
+      leftPacket,
+      rightPacket
+    });
+  });
+
+  for (const rightPacket of rightPackets) {
+    if (!usedRightPackets.has(rightPacket)) {
+      paired.push({
+        leftPacket: null,
+        rightPacket
+      });
+    }
+  }
+
+  return paired;
+};
+
+export const compareLatestRunToArtifactRoot = async (repoRoot, artifactRootRelative, referenceArtifactRootRelative, options = {}) => {
+  const currentIndexResult = await loadArtifactIndex(repoRoot, artifactRootRelative);
+  if (!currentIndexResult) {
+    throw new Error(`Missing artifact index for ${artifactRootRelative}. Run visual:index first.`);
+  }
+
+  const referenceIndexResult = await loadArtifactIndex(repoRoot, referenceArtifactRootRelative);
+  if (!referenceIndexResult) {
+    throw new Error(`Missing artifact index for ${referenceArtifactRootRelative}. Run the reference lane first.`);
+  }
+
+  const currentPackets = flattenIndex(currentIndexResult.index);
+  const referencePackets = flattenIndex(referenceIndexResult.index);
+  const currentSummary = summarizeRuns(currentPackets);
+  const referenceSummary = summarizeRuns(referencePackets);
+  const currentRunId = options.runId ?? currentSummary.latestRunId;
+  const referenceRunId = options.referenceRunId ?? referenceSummary.latestRunId;
+
+  if (!currentRunId) {
+    throw new Error('Could not determine the latest run id from the current visual index.');
+  }
+
+  if (!referenceRunId) {
+    throw new Error('Could not determine the latest run id from the reference visual index.');
+  }
+
+  const currentRunPackets = currentPackets.filter((packet) => packet.runId === currentRunId);
+  const referenceRunPackets = referencePackets.filter((packet) => packet.runId === referenceRunId);
+
+  if (currentRunPackets.length === 0) {
+    throw new Error(`Latest run ${currentRunId} is missing from the current visual index.`);
+  }
+
+  if (referenceRunPackets.length === 0) {
+    throw new Error(`Latest run ${referenceRunId} is missing from the reference visual index.`);
+  }
+
+  const pairings = pairPacketsByKey(currentRunPackets, referenceRunPackets);
+  const packetSummaries = [];
+  for (const pair of pairings) {
+    if (!pair.leftPacket) {
+      continue;
+    }
+
+    const comparison = await comparePacketArtifacts(repoRoot, pair.leftPacket, pair.rightPacket);
+    const packetDir = buildPacketDirectory(repoRoot, pair.leftPacket);
+    const comparisonScorePath = resolve(packetDir, 'comparison-score.json');
+    const comparisonDiffSummaryPath = resolve(packetDir, 'comparison-diff-summary.json');
+    const comparisonIndexPath = resolve(packetDir, 'comparison-index.json');
+    const comparisonScore = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      current: {
+        scenario: pair.leftPacket.scenario,
+        viewport: pair.leftPacket.viewport,
+        runId: pair.leftPacket.runId
+      },
+      reference: pair.rightPacket
+        ? {
+            scenario: pair.rightPacket.scenario,
+            viewport: pair.rightPacket.viewport,
+            runId: pair.rightPacket.runId
+          }
+        : null,
+      comparison: {
+        changedArtifactCount: comparison.changedArtifactCount,
+        changedWeight: comparison.changedWeight,
+        missingArtifactCount: comparison.missingArtifactCount,
+        totalWeight: comparison.totalWeight,
+        stability: comparison.stability
+      },
+      artifacts: comparison.details
+    };
+    const comparisonDiffSummary = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      current: {
+        scenario: pair.leftPacket.scenario,
+        viewport: pair.leftPacket.viewport,
+        runId: pair.leftPacket.runId
+      },
+      reference: pair.rightPacket
+        ? {
+            scenario: pair.rightPacket.scenario,
+            viewport: pair.rightPacket.viewport,
+            runId: pair.rightPacket.runId
+          }
+        : null,
+      packetPath: relativeFromRepo(repoRoot, packetDir),
+      referencePacketPath: pair.rightPacket ? relativeFromRepo(repoRoot, buildPacketDirectory(repoRoot, pair.rightPacket)) : null,
+      changedArtifactCount: comparison.changedArtifactCount,
+      changedWeight: comparison.changedWeight,
+      missingArtifactCount: comparison.missingArtifactCount,
+      stability: comparison.stability,
+      artifacts: comparison.details,
+      changedArtifacts: comparison.details.filter((entry) => entry.changed)
+    };
+    const comparisonIndex = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      current: {
+        scenario: pair.leftPacket.scenario,
+        viewport: pair.leftPacket.viewport,
+        runId: pair.leftPacket.runId
+      },
+      reference: pair.rightPacket
+        ? {
+            scenario: pair.rightPacket.scenario,
+            viewport: pair.rightPacket.viewport,
+            runId: pair.rightPacket.runId
+          }
+        : null,
+      comparison: {
+        changedArtifactCount: comparison.changedArtifactCount,
+        changedWeight: comparison.changedWeight,
+        missingArtifactCount: comparison.missingArtifactCount,
+        totalWeight: comparison.totalWeight,
+        stability: comparison.stability
+      }
+    };
+
+    await writeJsonFile(comparisonScorePath, comparisonScore);
+    await writeJsonFile(comparisonDiffSummaryPath, comparisonDiffSummary);
+    await writeJsonFile(comparisonIndexPath, comparisonIndex);
+
+    packetSummaries.push({
+      current: pair.leftPacket,
+      reference: pair.rightPacket,
+      packetPath: relativeFromRepo(repoRoot, packetDir),
+      referencePacketPath: pair.rightPacket ? relativeFromRepo(repoRoot, buildPacketDirectory(repoRoot, pair.rightPacket)) : null,
+      comparisonScorePath: relativeFromRepo(repoRoot, comparisonScorePath),
+      comparisonDiffSummaryPath: relativeFromRepo(repoRoot, comparisonDiffSummaryPath),
+      comparisonIndexPath: relativeFromRepo(repoRoot, comparisonIndexPath),
+      comparison
+    });
+  }
+
+  const totalChangedArtifactCount = packetSummaries.reduce((sum, packet) => sum + packet.comparison.changedArtifactCount, 0);
+  const totalChangedWeight = packetSummaries.reduce((sum, packet) => sum + packet.comparison.changedWeight, 0);
+  const totalWeight = packetSummaries.reduce((sum, packet) => sum + packet.comparison.totalWeight, 0);
+  const cleanCount = packetSummaries.filter((packet) => packet.comparison.changedArtifactCount === 0).length;
+  const averageStability = packetSummaries.length > 0
+    ? Number((packetSummaries.reduce((sum, packet) => sum + packet.comparison.stability, 0) / packetSummaries.length).toFixed(3))
+    : 1;
+
+  const comparisonScore = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    current: {
+      latestRunId: currentRunId,
+      indexPath: currentIndexResult.indexPath,
+      artifactRoot: currentIndexResult.index.artifactRoot,
+      packetCount: currentRunPackets.length
+    },
+    reference: {
+      latestRunId: referenceRunId,
+      indexPath: referenceIndexResult.indexPath,
+      artifactRoot: referenceIndexResult.index.artifactRoot,
+      packetCount: referenceRunPackets.length
+    },
+    totals: {
+      packetCount: packetSummaries.length,
+      cleanCount,
+      changedCount: packetSummaries.length - cleanCount,
+      changedArtifactCount: totalChangedArtifactCount,
+      changedWeight: totalChangedWeight,
+      totalWeight,
+      averageStability
+    },
+    packets: packetSummaries.map((packet) => ({
+      current: {
+        scenario: packet.current.scenario,
+        viewport: packet.current.viewport,
+        runId: packet.current.runId
+      },
+      reference: packet.reference
+        ? {
+            scenario: packet.reference.scenario,
+            viewport: packet.reference.viewport,
+            runId: packet.reference.runId
+          }
+        : null,
+      packetPath: packet.packetPath,
+      referencePacketPath: packet.referencePacketPath,
+      comparisonScorePath: packet.comparisonScorePath,
+      comparisonDiffSummaryPath: packet.comparisonDiffSummaryPath,
+      comparisonIndexPath: packet.comparisonIndexPath,
+      changedArtifactCount: packet.comparison.changedArtifactCount,
+      changedWeight: packet.comparison.changedWeight,
+      stability: packet.comparison.stability
+    }))
+  };
+
+  const comparisonDiffSummary = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    current: {
+      latestRunId: currentRunId,
+      indexPath: currentIndexResult.indexPath,
+      artifactRoot: currentIndexResult.index.artifactRoot
+    },
+    reference: {
+      latestRunId: referenceRunId,
+      indexPath: referenceIndexResult.indexPath,
+      artifactRoot: referenceIndexResult.index.artifactRoot
+    },
+    regressions: packetSummaries
+      .filter((packet) => packet.comparison.changedWeight > 0)
+      .sort((left, right) => {
+        if (right.comparison.changedWeight !== left.comparison.changedWeight) {
+          return right.comparison.changedWeight - left.comparison.changedWeight;
+        }
+
+        return left.current.scenario.id.localeCompare(right.current.scenario.id);
+      })
+      .map((packet, index) => ({
+        rank: index + 1,
+        current: {
+          scenario: packet.current.scenario,
+          viewport: packet.current.viewport,
+          runId: packet.current.runId
+        },
+        reference: packet.reference
+          ? {
+              scenario: packet.reference.scenario,
+              viewport: packet.reference.viewport,
+              runId: packet.reference.runId
+            }
+          : null,
+        packetPath: packet.packetPath,
+        referencePacketPath: packet.referencePacketPath,
+        comparisonScorePath: packet.comparisonScorePath,
+        comparisonDiffSummaryPath: packet.comparisonDiffSummaryPath,
+        comparisonIndexPath: packet.comparisonIndexPath,
+        changedArtifactCount: packet.comparison.changedArtifactCount,
+        changedWeight: packet.comparison.changedWeight,
+        stability: packet.comparison.stability,
+        changedArtifacts: packet.comparison.details.filter((entry) => entry.changed)
+      }))
+  };
+
+  const currentArtifactRoot = resolve(repoRoot, artifactRootRelative);
+  await mkdir(currentArtifactRoot, { recursive: true });
+  const comparisonScorePath = resolve(currentArtifactRoot, 'comparison-score.json');
+  const comparisonDiffSummaryPath = resolve(currentArtifactRoot, 'comparison-diff-summary.json');
+  const comparisonIndexPath = resolve(currentArtifactRoot, 'comparison-index.json');
+
+  await writeJsonFile(comparisonScorePath, comparisonScore);
+  await writeJsonFile(comparisonDiffSummaryPath, comparisonDiffSummary);
+  await writeJsonFile(comparisonIndexPath, {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    current: comparisonScore.current,
+    reference: comparisonScore.reference,
+    totals: comparisonScore.totals,
+    packets: comparisonScore.packets
+  });
+
+  return {
+    current: {
+      latestRunId: currentRunId,
+      indexPath: currentIndexResult.indexPath,
+      artifactRoot: currentIndexResult.index.artifactRoot,
+      packetCount: currentRunPackets.length
+    },
+    reference: {
+      latestRunId: referenceRunId,
+      indexPath: referenceIndexResult.indexPath,
+      artifactRoot: referenceIndexResult.index.artifactRoot,
+      packetCount: referenceRunPackets.length
+    },
+    comparisonScore,
+    comparisonDiffSummary,
+    packetSummaries,
+    comparisonScorePath,
+    comparisonDiffSummaryPath,
+    comparisonIndexPath
   };
 };
