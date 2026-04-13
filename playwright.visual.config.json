@@ -44,7 +44,7 @@
       "motion": false,
       "seed": "dense-visibility-v1",
       "authFixture": "none",
-      "route": "/visual-proof.html?scenario=dense-route-player-visibility",
+      "route": "/visual-proof.html?manifest=/topology-proof/manifests/dense-route-player-visibility.json",
       "beforeState": "before",
       "afterState": "after",
       "keyframes": [
@@ -69,7 +69,7 @@
       "motion": true,
       "seed": "rotation-readability-v1",
       "authFixture": "none",
-      "route": "/visual-proof.html?scenario=discrete-rotation-readability",
+      "route": "/visual-proof.html?manifest=/topology-proof/manifests/discrete-rotation-readability.json",
       "beforeState": "before",
       "afterState": "after",
       "keyframes": [
@@ -96,7 +96,7 @@
       "motion": false,
       "seed": "connector-alignment-v1",
       "authFixture": "none",
-      "route": "/visual-proof.html?scenario=shell-connector-alignment",
+      "route": "/visual-proof.html?manifest=/topology-proof/manifests/shell-connector-alignment.json",
       "beforeState": "before",
       "afterState": "after",
       "keyframes": [
@@ -121,7 +121,7 @@
       "motion": true,
       "seed": "observatory-reorientation-v1",
       "authFixture": "none",
-      "route": "/visual-proof.html?scenario=observatory-reorientation",
+      "route": "/visual-proof.html?manifest=/topology-proof/manifests/observatory-reorientation.json",
       "beforeState": "before",
       "afterState": "after",
       "keyframes": [
@@ -148,7 +148,7 @@
       "motion": true,
       "seed": "bounded-progression-v1",
       "authFixture": "none",
-      "route": "/visual-proof.html?scenario=bounded-progression-slice",
+      "route": "/visual-proof.html?manifest=/topology-proof/manifests/bounded-progression-slice.json",
       "beforeState": "before",
       "afterState": "after",
       "keyframes": [

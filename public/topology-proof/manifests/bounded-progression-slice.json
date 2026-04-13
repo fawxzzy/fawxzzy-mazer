@@ -1,0 +1,884 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "bounded-progression-slice-bounded-progression-v1",
+  "scenarioId": "bounded-progression-slice",
+  "title": "Bounded Progression Slice",
+  "subtitle": "Scavenger checkpoint district proof where one regional goal resolves before the next proxy takes over.",
+  "seed": "bounded-progression-v1",
+  "districtType": "scavenger-checkpoint",
+  "graph": {
+    "nodeIds": [
+      "outer-start",
+      "outer-lane",
+      "outer-bridge",
+      "middle-checkpoint",
+      "middle-solved",
+      "middle-turn",
+      "middle-branch",
+      "core-proxy",
+      "core-after"
+    ],
+    "edgeIds": [
+      "prog-main-01",
+      "prog-main-02",
+      "prog-main-03",
+      "prog-main-04",
+      "prog-main-05",
+      "prog-branch-01",
+      "west-spoke",
+      "south-lock"
+    ],
+    "shellIds": [
+      "outer",
+      "middle",
+      "core"
+    ],
+    "districtIds": [
+      "bounded-progression-slice"
+    ],
+    "landmarkIds": [
+      "checkpoint-node",
+      "signal-post",
+      "next-proxy"
+    ],
+    "gateIds": [
+      "west-spoke",
+      "south-lock"
+    ],
+    "entryNodeId": "outer-start",
+    "objectiveNodeId": "core-after",
+    "solutionNodeIds": [
+      "outer-start",
+      "outer-lane",
+      "outer-bridge",
+      "middle-checkpoint",
+      "middle-solved",
+      "middle-turn",
+      "core-proxy",
+      "core-after"
+    ],
+    "solutionEdgeIds": [
+      "prog-main-01",
+      "prog-main-02",
+      "prog-main-03",
+      "prog-main-04",
+      "prog-main-05",
+      "west-spoke",
+      "south-lock"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "outer-start",
+      "label": "player",
+      "shellId": "outer",
+      "angle": 238.0347406808287,
+      "kind": "entry",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "outer-lane",
+      "label": "lane",
+      "shellId": "outer",
+      "angle": 249.21010986156762,
+      "kind": "path",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "outer-bridge",
+      "label": "bridge",
+      "shellId": "outer",
+      "angle": 263.32332895789295,
+      "kind": "connector",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "middle-checkpoint",
+      "label": "checkpoint",
+      "shellId": "middle",
+      "angle": 269.5563092902303,
+      "kind": "checkpoint",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "middle-solved",
+      "label": "solved lane",
+      "shellId": "middle",
+      "angle": 291.68454120960087,
+      "kind": "junction",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "middle-turn",
+      "label": "turn",
+      "shellId": "middle",
+      "angle": 299.12299168575555,
+      "kind": "path",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "middle-branch",
+      "label": "branch",
+      "shellId": "middle",
+      "angle": 276.72111720312387,
+      "kind": "dead-end",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "core-proxy",
+      "label": "proxy beacon",
+      "shellId": "core",
+      "angle": 325.3058333862573,
+      "kind": "objective",
+      "districtId": "bounded-progression-slice"
+    },
+    {
+      "id": "core-after",
+      "label": "after proxy",
+      "shellId": "core",
+      "angle": 332.0449051326141,
+      "kind": "path",
+      "districtId": "bounded-progression-slice"
+    }
+  ],
+  "edges": [
+    {
+      "id": "prog-main-01",
+      "from": "outer-start",
+      "to": "outer-lane",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "prog-main-02",
+      "from": "outer-lane",
+      "to": "outer-bridge",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "prog-main-03",
+      "from": "middle-checkpoint",
+      "to": "middle-solved",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "prog-main-04",
+      "from": "middle-solved",
+      "to": "middle-turn",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "prog-main-05",
+      "from": "core-proxy",
+      "to": "core-after",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "prog-branch-01",
+      "from": "middle-checkpoint",
+      "to": "middle-branch",
+      "purpose": "branch",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "west-spoke",
+      "from": "outer-bridge",
+      "to": "middle-checkpoint",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "objective-locked",
+        "objective-cleared",
+        "handoff-stable"
+      ]
+    },
+    {
+      "id": "south-lock",
+      "from": "middle-turn",
+      "to": "core-proxy",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "objective-cleared",
+        "handoff-stable"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "id": "outer",
+      "label": "Outer shell",
+      "radius": 286,
+      "thickness": 34,
+      "accent": "#5fe3ff",
+      "fill": "rgba(23, 57, 74, 0.88)"
+    },
+    {
+      "id": "middle",
+      "label": "Middle shell",
+      "radius": 204,
+      "thickness": 30,
+      "accent": "#84ffbe",
+      "fill": "rgba(18, 49, 43, 0.84)"
+    },
+    {
+      "id": "core",
+      "label": "Core ring",
+      "radius": 126,
+      "thickness": 28,
+      "accent": "#ffd678",
+      "fill": "rgba(67, 43, 18, 0.88)"
+    }
+  ],
+  "districts": [
+    {
+      "id": "bounded-progression-slice",
+      "name": "Checkpoint district",
+      "districtType": "scavenger-checkpoint",
+      "shellIds": [
+        "outer",
+        "middle",
+        "core"
+      ],
+      "nodeIds": [
+        "outer-start",
+        "outer-lane",
+        "outer-bridge",
+        "middle-checkpoint",
+        "middle-solved",
+        "middle-turn",
+        "middle-branch",
+        "core-proxy",
+        "core-after"
+      ],
+      "landmarkIds": [
+        "checkpoint-node",
+        "signal-post",
+        "next-proxy"
+      ],
+      "topologyTargets": {
+        "solutionLengthBand": [
+          7,
+          14
+        ],
+        "deadEndBand": [
+          2,
+          4
+        ],
+        "loopBand": [
+          0,
+          2
+        ],
+        "shellTransitionBand": [
+          2,
+          3
+        ]
+      },
+      "readabilityTargets": {
+        "landmarkSpacingBand": [
+          20,
+          120
+        ],
+        "objectiveVisibilityBand": [
+          0.85,
+          1
+        ],
+        "vantageFrequencyBand": [
+          0,
+          0.25
+        ]
+      },
+      "mechanicHooks": [
+        "checkpoint satisfaction",
+        "proxy handoff",
+        "bounded regional objective"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "checkpoint-node",
+      "label": "Checkpoint",
+      "shellId": "middle",
+      "angle": 263.7480740426108,
+      "offset": 52,
+      "tone": "solve"
+    },
+    {
+      "id": "signal-post",
+      "label": "Signal post",
+      "shellId": "outer",
+      "angle": 243.13308641128242,
+      "offset": 60,
+      "tone": "gate"
+    },
+    {
+      "id": "next-proxy",
+      "label": "Proxy beacon",
+      "shellId": "core",
+      "angle": 326.13051022030413,
+      "offset": 48,
+      "tone": "core"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "west-spoke",
+      "label": "West spoke",
+      "from": "outer",
+      "to": "middle",
+      "angle": 262.33042225055397
+    },
+    {
+      "id": "south-lock",
+      "label": "South lock",
+      "from": "middle",
+      "to": "core",
+      "angle": 327.6973359435797
+    }
+  ],
+  "rotationStates": [
+    {
+      "id": "objective-locked",
+      "label": "objective locked",
+      "currentAlignment": "checkpoint live",
+      "allowedMoves": [
+        "objective-cleared"
+      ],
+      "unlockedGates": [
+        "west-spoke"
+      ],
+      "affectedDistricts": [
+        "bounded-progression-slice"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -8,
+        "core": -10
+      },
+      "activeConnectorIds": [
+        "west-spoke"
+      ]
+    },
+    {
+      "id": "objective-cleared",
+      "label": "objective cleared",
+      "currentAlignment": "proxy emerging",
+      "allowedMoves": [
+        "objective-locked",
+        "handoff-stable"
+      ],
+      "unlockedGates": [
+        "west-spoke",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "bounded-progression-slice"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -2,
+        "core": -6
+      },
+      "activeConnectorIds": [
+        "west-spoke",
+        "south-lock"
+      ]
+    },
+    {
+      "id": "handoff-stable",
+      "label": "handoff stable",
+      "currentAlignment": "proxy dominant",
+      "allowedMoves": [
+        "objective-cleared"
+      ],
+      "unlockedGates": [
+        "west-spoke",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "bounded-progression-slice"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 0,
+        "core": 0
+      },
+      "activeConnectorIds": [
+        "west-spoke",
+        "south-lock"
+      ]
+    }
+  ],
+  "wayfindingCues": [
+    {
+      "id": "bounded-progression-slice-player-cue",
+      "cueType": "player",
+      "trigger": "always-visible",
+      "priority": 1,
+      "visualTreatment": "hot player silhouette with halo",
+      "targetId": "player"
+    },
+    {
+      "id": "bounded-progression-slice-objective-cue",
+      "cueType": "objective",
+      "trigger": "active-goal",
+      "priority": 2,
+      "visualTreatment": "bright proxy rhombus with stalk",
+      "targetId": "objective"
+    },
+    {
+      "id": "bounded-progression-slice-landmark-cue",
+      "cueType": "landmark",
+      "trigger": "decision-point",
+      "priority": 3,
+      "visualTreatment": "named landmark plate with orbit anchor",
+      "targetId": "checkpoint-node"
+    },
+    {
+      "id": "bounded-progression-slice-connector-cue",
+      "cueType": "connector",
+      "trigger": "rotation-state-change",
+      "priority": 4,
+      "visualTreatment": "solid or dashed shell bridge",
+      "targetId": "west-spoke"
+    }
+  ],
+  "metrics": {
+    "solutionLength": 7,
+    "deadEndCount": 3,
+    "junctionDegreeHistogram": {
+      "3": 1
+    },
+    "corridorRunLength": {
+      "minimum": 1,
+      "maximum": 2,
+      "average": 1.5
+    },
+    "loopCount": 0,
+    "shellTransitionCount": 2,
+    "landmarkSpacing": {
+      "minimum": 20.61,
+      "average": 120
+    },
+    "objectiveVisibilityUptime": 1,
+    "vantageFrequency": 0
+  },
+  "proof": {
+    "motion": true,
+    "evidence": [
+      "checkpoint feels complete before handoff",
+      "completion is visible in-world",
+      "the regional slice stays bounded across viewports"
+    ],
+    "routes": [
+      {
+        "shellId": "outer",
+        "start": 238.0347406808287,
+        "end": 249.21010986156762,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 249.21010986156762,
+        "end": 263.32332895789295,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 269.5563092902303,
+        "end": 291.68454120960087,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 291.68454120960087,
+        "end": 299.12299168575555,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "core",
+        "start": 325.3058333862573,
+        "end": 332.0449051326141,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 269.5563092902303,
+        "end": 276.72111720312387,
+        "width": 7,
+        "tone": "branch",
+        "opacity": 0.72
+      }
+    ],
+    "states": [
+      {
+        "id": "before",
+        "caption": "Checkpoint slice before the regional objective clears.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "objective locked",
+        "status": "The slice should read as one bounded task.",
+        "cues": [
+          "checkpoint present",
+          "signal points inward",
+          "player on handoff"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -10
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 238.0347406808287,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 269.5563092902303,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 598.21,
+            "y": 499.95
+          },
+          "zoom": 2.6,
+          "title": "Checkpoint locked",
+          "note": "One clear local goal should dominate the slice."
+        }
+      },
+      {
+        "id": "frame-01",
+        "caption": "Player commits to the checkpoint lane.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "objective locked",
+        "status": "The lane should still feel bounded.",
+        "cues": [
+          "player enters lane",
+          "signal stays visible",
+          "proxy remains muted"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -10
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 249.21010986156762,
+          "label": "lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 269.5563092902303,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 598.21,
+            "y": 499.95
+          },
+          "zoom": 2.6,
+          "title": "Checkpoint lane",
+          "note": "The slice should stay focused on one short objective."
+        }
+      },
+      {
+        "id": "frame-02",
+        "caption": "Checkpoint brightens as the player reaches it.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "objective resolving",
+        "status": "Completion should be visible in-world.",
+        "cues": [
+          "checkpoint brightens",
+          "player stays centered",
+          "proxy still secondary"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -10
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 269.5563092902303,
+          "label": "checkpoint",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 269.5563092902303,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 598.21,
+            "y": 499.95
+          },
+          "zoom": 2.7,
+          "title": "Objective resolve",
+          "note": "Clear completion needs an in-world signal."
+        }
+      },
+      {
+        "id": "frame-03",
+        "caption": "Checkpoint clears and the next proxy starts to appear.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "objective cleared",
+        "status": "Completion should hand off cleanly to the next cue.",
+        "cues": [
+          "checkpoint clears",
+          "proxy begins",
+          "player stays near solved node"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -2,
+          "core": -6
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 291.68454120960087,
+          "label": "solved lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 717.85,
+            "y": 374.47
+          },
+          "zoom": 2.65,
+          "title": "Solved node",
+          "note": "The handoff should not stack too many cues at once."
+        }
+      },
+      {
+        "id": "frame-04",
+        "caption": "Proxy beacon becomes the dominant next-step cue.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "handoff live",
+        "status": "Next target should rise only after the solve is clear.",
+        "cues": [
+          "proxy dominates",
+          "checkpoint stays secondary",
+          "player remains local"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 299.12299168575555,
+          "label": "turn",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 728.28,
+            "y": 366.4
+          },
+          "zoom": 2.55,
+          "title": "Next proxy",
+          "note": "The slice should now point clearly to the next cue."
+        }
+      },
+      {
+        "id": "frame-05",
+        "caption": "Player turns from the solved node toward the proxy.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "handoff live",
+        "status": "The new target should be the obvious next move.",
+        "cues": [
+          "player turns",
+          "checkpoint remains solved",
+          "slice stays bounded"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 299.12299168575555,
+          "label": "turn",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 728.28,
+            "y": 366.4
+          },
+          "zoom": 2.55,
+          "title": "Turn to proxy",
+          "note": "The next move should feel inevitable."
+        }
+      },
+      {
+        "id": "frame-06",
+        "caption": "Solved slice holds long enough to feel finished.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "handoff stable",
+        "status": "Satisfaction depends on a short readable hold.",
+        "cues": [
+          "solved state holds",
+          "proxy remains next",
+          "player can pause"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 728.28,
+            "y": 366.4
+          },
+          "zoom": 2.55,
+          "title": "Solved hold",
+          "note": "The player should feel a bounded win before moving on."
+        }
+      },
+      {
+        "id": "after",
+        "caption": "After frame with the slice cleared and the proxy live.",
+        "cameraLabel": "bounded slice",
+        "rotationLabel": "handoff stable",
+        "status": "One region should feel complete before the next takes over.",
+        "cues": [
+          "checkpoint solved",
+          "proxy obvious",
+          "bearings remain intact"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "core",
+          "angle": 332.0449051326141,
+          "label": "after proxy",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 325.3058333862573,
+          "label": "proxy beacon",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 728.28,
+            "y": 366.4
+          },
+          "zoom": 2.55,
+          "title": "After slice",
+          "note": "The slice should feel done before the next cue wins."
+        }
+      }
+    ],
+    "humanJudgment": "Does the slice feel finished before the proxy takes over?",
+    "semanticGate": {
+      "landmarkId": "checkpoint-node",
+      "connectorId": "west-spoke",
+      "focusTarget": "objective",
+      "recoveryStateId": "after"
+    },
+    "report": {
+      "changed": "The checkpoint slice now derives from a seeded scavenger district graph with bounded goals and proxy handoff metrics.",
+      "regressed": "The lane still proves one region at a time instead of pretending to solve the whole planet at once.",
+      "better": "Checkpoint visibility, connector scarcity, and next-proxy emergence now share one manifest and one score packet.",
+      "worse": "Because the slice is intentionally bounded, long-route spectacle remains absent.",
+      "humanJudgment": "Confirm that checkpoint completion feels satisfying before the proxy beacon becomes dominant."
+    }
+  }
+}

@@ -1,10 +1,10 @@
 import visualConfig from '../../playwright.visual.config.json';
+import { loadProofScenario } from './manifestLoader';
 import {
   STAGE_CENTER,
   STAGE_HEIGHT,
   STAGE_WIDTH,
   type FocusTarget,
-  getScenarioDefinition,
   type FocusDefinition,
   type LandmarkDefinition,
   type ProofStateDefinition,
@@ -17,6 +17,11 @@ import './styles.css';
 interface ProofDiagnostics {
   scenarioId: string;
   stateId: string;
+  sourceKind: 'manifest' | 'fallback';
+  manifestPath: string | null;
+  seed: string | null;
+  districtType: string | null;
+  canary: string | null;
   caption: string;
   status: string;
   cameraLabel: string;
@@ -76,6 +81,13 @@ const FOCUS_TARGET_LABELS: Record<FocusTarget, string> = {
   connector: 'Shell connector'
 };
 
+const ALLOWED_CANARIES = new Set([
+  'hide-player',
+  'hide-objective',
+  'hide-landmark',
+  'hide-connector'
+]);
+
 const proofRoot = document.querySelector<HTMLDivElement>('#visual-proof-root');
 if (!proofRoot) {
   throw new Error('Expected #visual-proof-root to exist.');
@@ -84,7 +96,15 @@ if (!proofRoot) {
 const params = new URLSearchParams(window.location.search);
 const requestedScenarioId = params.get('scenario') ?? visualConfig.scenarios[0]?.id ?? 'dense-route-player-visibility';
 const viewportId = params.get('viewport') ?? 'adhoc';
-const scenario = getScenarioDefinition(requestedScenarioId);
+const canary = params.get('canary');
+if (canary && !ALLOWED_CANARIES.has(canary)) {
+  throw new Error(`Unknown canary mutation: ${canary}`);
+}
+const loadedScenario = await loadProofScenario({
+  search: window.location.search,
+  fallbackScenarioId: requestedScenarioId
+});
+const scenario = loadedScenario.definition;
 const captureConfig = visualConfig.scenarios.find((entry) => entry.id === scenario.id) ?? visualConfig.scenarios[0];
 const stateMap = new Map(scenario.states.map((state) => [state.id, state]));
 let currentState = stateMap.get(captureConfig?.beforeState ?? scenario.states[0]?.id ?? 'before') ?? scenario.states[0];
@@ -108,7 +128,8 @@ proofRoot.innerHTML = `
       </div>
       <div class="proof-meta">
         <span class="proof-chip">${viewportId}</span>
-        <span class="proof-chip">${captureConfig?.seed ?? 'seedless'}</span>
+        <span class="proof-chip">${loadedScenario.source.seed ?? captureConfig?.seed ?? 'seedless'}</span>
+        ${loadedScenario.source.districtType ? `<span class="proof-chip">${loadedScenario.source.districtType}</span>` : ''}
         <span class="proof-chip" data-tone="${scenario.motion ? 'motion' : 'still'}">${scenario.motion ? 'motion' : 'still'}</span>
       </div>
     </header>
@@ -295,6 +316,10 @@ const renderLandmarkMarkup = (
   state: ProofStateDefinition,
   surfaceId: 'stage' | 'focus'
 ): string => {
+  if (canary === 'hide-landmark' && landmark.id === definition.semanticGate.landmarkId) {
+    return '';
+  }
+
   const worldAngle = landmark.shellId === 'orbit'
     ? landmark.angle
     : landmark.angle + state.shellRotations[landmark.shellId];
@@ -342,6 +367,10 @@ const renderConnectorMarkup = (
   state: ProofStateDefinition,
   surfaceId: 'stage' | 'focus'
 ): string => definition.connectors.map((connector) => {
+  if (canary === 'hide-connector' && connector.id === definition.semanticGate.connectorId) {
+    return '';
+  }
+
   const fromShell = resolveShell(definition, connector.from);
   const toShell = resolveShell(definition, connector.to);
   const fromAngle = connector.angle + state.shellRotations[connector.from];
@@ -391,6 +420,10 @@ const renderPlayerMarkup = (
   state: ProofStateDefinition,
   surfaceId: 'stage' | 'focus'
 ): string => {
+  if (canary === 'hide-player') {
+    return '';
+  }
+
   const shell = resolveShell(definition, state.player.shellId);
   const angle = state.player.angle + state.shellRotations[state.player.shellId];
   const point = toPolarPoint(shell, angle);
@@ -419,6 +452,10 @@ const renderObjectiveMarkup = (
   state: ProofStateDefinition,
   surfaceId: 'stage' | 'focus'
 ): string => {
+  if (canary === 'hide-objective') {
+    return '';
+  }
+
   if (!state.objective.visible) {
     return '';
   }
@@ -533,6 +570,11 @@ const renderState = (state: ProofStateDefinition): void => {
 const getDiagnostics = (): ProofDiagnostics => ({
   scenarioId: scenario.id,
   stateId: currentState.id,
+  sourceKind: loadedScenario.source.kind,
+  manifestPath: loadedScenario.source.manifestPath,
+  seed: loadedScenario.source.seed ?? captureConfig?.seed ?? null,
+  districtType: loadedScenario.source.districtType,
+  canary,
   caption: currentState.caption,
   status: currentState.status,
   cameraLabel: currentState.cameraLabel,

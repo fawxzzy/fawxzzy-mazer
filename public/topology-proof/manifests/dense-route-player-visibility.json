@@ -1,0 +1,765 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "dense-route-player-visibility-dense-visibility-v1",
+  "scenarioId": "dense-route-player-visibility",
+  "title": "Dense Route Player Visibility",
+  "subtitle": "Labyrinth tutorial slice proving that the player survives dense outer-shell branch clutter.",
+  "seed": "dense-visibility-v1",
+  "districtType": "labyrinth-tutorial",
+  "graph": {
+    "nodeIds": [
+      "outer-entry",
+      "outer-knot-a",
+      "outer-knot-b",
+      "outer-knot-c",
+      "outer-lane-open",
+      "outer-lane-clear",
+      "outer-branch",
+      "outer-west-anchor",
+      "middle-echo",
+      "middle-checkpoint"
+    ],
+    "edgeIds": [
+      "dense-main-01",
+      "dense-main-02",
+      "dense-main-03",
+      "dense-main-04",
+      "dense-main-05",
+      "dense-main-06",
+      "dense-branch-01",
+      "dense-branch-02",
+      "west-spoke"
+    ],
+    "shellIds": [
+      "outer",
+      "middle"
+    ],
+    "districtIds": [
+      "dense-route-player-visibility"
+    ],
+    "landmarkIds": [
+      "north-arch",
+      "branch-fan",
+      "echo-well"
+    ],
+    "gateIds": [
+      "west-spoke"
+    ],
+    "entryNodeId": "outer-entry",
+    "objectiveNodeId": "middle-checkpoint",
+    "solutionNodeIds": [
+      "outer-entry",
+      "outer-knot-a",
+      "outer-knot-b",
+      "outer-knot-c",
+      "outer-lane-open",
+      "outer-lane-clear",
+      "outer-west-anchor",
+      "middle-checkpoint"
+    ],
+    "solutionEdgeIds": [
+      "dense-main-01",
+      "dense-main-02",
+      "dense-main-03",
+      "dense-main-04",
+      "dense-main-05",
+      "dense-main-06",
+      "west-spoke"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "outer-entry",
+      "label": "player",
+      "shellId": "outer",
+      "angle": 51.056468601338565,
+      "kind": "entry",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-knot-a",
+      "label": "knot A",
+      "shellId": "outer",
+      "angle": 66.31797330826521,
+      "kind": "path",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-knot-b",
+      "label": "knot B",
+      "shellId": "outer",
+      "angle": 86.95357389375567,
+      "kind": "junction",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-knot-c",
+      "label": "knot C",
+      "shellId": "outer",
+      "angle": 102.67459139134735,
+      "kind": "junction",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-lane-open",
+      "label": "open lane",
+      "shellId": "outer",
+      "angle": 114.76373917702585,
+      "kind": "path",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-lane-clear",
+      "label": "clear lane",
+      "shellId": "outer",
+      "angle": 132.2069730591029,
+      "kind": "path",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-branch",
+      "label": "branch stub",
+      "shellId": "outer",
+      "angle": 152.63045123033226,
+      "kind": "dead-end",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "outer-west-anchor",
+      "label": "west anchor",
+      "shellId": "outer",
+      "angle": 295.2809831555933,
+      "kind": "connector",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "middle-echo",
+      "label": "echo lane",
+      "shellId": "middle",
+      "angle": 264.7057063244283,
+      "kind": "path",
+      "districtId": "dense-route-player-visibility"
+    },
+    {
+      "id": "middle-checkpoint",
+      "label": "checkpoint",
+      "shellId": "middle",
+      "angle": 295.30567903164774,
+      "kind": "checkpoint",
+      "districtId": "dense-route-player-visibility"
+    }
+  ],
+  "edges": [
+    {
+      "id": "dense-main-01",
+      "from": "outer-entry",
+      "to": "outer-knot-a",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-main-02",
+      "from": "outer-knot-a",
+      "to": "outer-knot-b",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-main-03",
+      "from": "outer-knot-b",
+      "to": "outer-knot-c",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-main-04",
+      "from": "outer-knot-c",
+      "to": "outer-lane-open",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-main-05",
+      "from": "outer-lane-open",
+      "to": "outer-lane-clear",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-main-06",
+      "from": "outer-lane-clear",
+      "to": "outer-west-anchor",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-branch-01",
+      "from": "outer-knot-b",
+      "to": "outer-branch",
+      "purpose": "branch",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "dense-branch-02",
+      "from": "middle-echo",
+      "to": "middle-checkpoint",
+      "purpose": "branch",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "west-spoke",
+      "from": "outer-west-anchor",
+      "to": "middle-checkpoint",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "held"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "id": "outer",
+      "label": "Outer shell",
+      "radius": 286,
+      "thickness": 34,
+      "accent": "#5fe3ff",
+      "fill": "rgba(23, 57, 74, 0.88)"
+    },
+    {
+      "id": "middle",
+      "label": "Middle shell",
+      "radius": 204,
+      "thickness": 30,
+      "accent": "#84ffbe",
+      "fill": "rgba(18, 49, 43, 0.84)"
+    },
+    {
+      "id": "core",
+      "label": "Core ring",
+      "radius": 126,
+      "thickness": 28,
+      "accent": "#ffd678",
+      "fill": "rgba(67, 43, 18, 0.88)"
+    }
+  ],
+  "districts": [
+    {
+      "id": "dense-route-player-visibility",
+      "name": "Outer tutorial knot",
+      "districtType": "labyrinth-tutorial",
+      "shellIds": [
+        "outer",
+        "middle"
+      ],
+      "nodeIds": [
+        "outer-entry",
+        "outer-knot-a",
+        "outer-knot-b",
+        "outer-knot-c",
+        "outer-lane-open",
+        "outer-lane-clear",
+        "outer-branch",
+        "outer-west-anchor",
+        "middle-echo",
+        "middle-checkpoint"
+      ],
+      "landmarkIds": [
+        "north-arch",
+        "branch-fan",
+        "echo-well"
+      ],
+      "topologyTargets": {
+        "solutionLengthBand": [
+          7,
+          10
+        ],
+        "deadEndBand": [
+          1,
+          3
+        ],
+        "loopBand": [
+          0,
+          0
+        ],
+        "shellTransitionBand": [
+          1,
+          2
+        ]
+      },
+      "readabilityTargets": {
+        "landmarkSpacingBand": [
+          70,
+          150
+        ],
+        "objectiveVisibilityBand": [
+          1,
+          1
+        ],
+        "vantageFrequencyBand": [
+          0,
+          0.15
+        ]
+      },
+      "mechanicHooks": [
+        "movement onboarding",
+        "landmark teaching",
+        "route readability"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "north-arch",
+      "label": "North arch",
+      "shellId": "orbit",
+      "angle": 10.1522461832501,
+      "offset": 100,
+      "tone": "north"
+    },
+    {
+      "id": "branch-fan",
+      "label": "Branch fan",
+      "shellId": "outer",
+      "angle": 86.93990558665246,
+      "offset": 60,
+      "tone": "solve"
+    },
+    {
+      "id": "echo-well",
+      "label": "Echo well",
+      "shellId": "middle",
+      "angle": 265.17452782811597,
+      "offset": 48,
+      "tone": "gate"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "west-spoke",
+      "label": "West spoke",
+      "from": "outer",
+      "to": "middle",
+      "angle": 294.6459592990577
+    }
+  ],
+  "rotationStates": [
+    {
+      "id": "held",
+      "label": "rotation held",
+      "currentAlignment": "tutorial held",
+      "allowedMoves": [],
+      "unlockedGates": [
+        "west-spoke"
+      ],
+      "affectedDistricts": [
+        "dense-route-player-visibility"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 0,
+        "core": 0
+      },
+      "activeConnectorIds": [
+        "west-spoke"
+      ]
+    }
+  ],
+  "wayfindingCues": [
+    {
+      "id": "dense-route-player-visibility-player-cue",
+      "cueType": "player",
+      "trigger": "always-visible",
+      "priority": 1,
+      "visualTreatment": "hot player silhouette with halo",
+      "targetId": "player"
+    },
+    {
+      "id": "dense-route-player-visibility-objective-cue",
+      "cueType": "objective",
+      "trigger": "active-goal",
+      "priority": 2,
+      "visualTreatment": "bright proxy rhombus with stalk",
+      "targetId": "objective"
+    },
+    {
+      "id": "dense-route-player-visibility-landmark-cue",
+      "cueType": "landmark",
+      "trigger": "decision-point",
+      "priority": 3,
+      "visualTreatment": "named landmark plate with orbit anchor",
+      "targetId": "north-arch"
+    },
+    {
+      "id": "dense-route-player-visibility-connector-cue",
+      "cueType": "connector",
+      "trigger": "rotation-state-change",
+      "priority": 4,
+      "visualTreatment": "solid or dashed shell bridge",
+      "targetId": "west-spoke"
+    }
+  ],
+  "metrics": {
+    "solutionLength": 7,
+    "deadEndCount": 3,
+    "junctionDegreeHistogram": {
+      "3": 1
+    },
+    "corridorRunLength": {
+      "minimum": 1,
+      "maximum": 4,
+      "average": 1.8
+    },
+    "loopCount": 0,
+    "shellTransitionCount": 1,
+    "landmarkSpacing": {
+      "minimum": 76.79,
+      "average": 120
+    },
+    "objectiveVisibilityUptime": 1,
+    "vantageFrequency": 0
+  },
+  "proof": {
+    "motion": false,
+    "evidence": [
+      "player glyph beats branch clutter",
+      "active route reads without hiding options",
+      "north anchor and checkpoint proxy stay legible"
+    ],
+    "routes": [
+      {
+        "shellId": "outer",
+        "start": 51.056468601338565,
+        "end": 66.31797330826521,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 66.31797330826521,
+        "end": 86.95357389375567,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 86.95357389375567,
+        "end": 102.67459139134735,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 102.67459139134735,
+        "end": 114.76373917702585,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 114.76373917702585,
+        "end": 132.2069730591029,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 132.2069730591029,
+        "end": 295.2809831555933,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 86.95357389375567,
+        "end": 152.63045123033226,
+        "width": 7,
+        "tone": "branch",
+        "opacity": 0.72
+      },
+      {
+        "shellId": "middle",
+        "start": 264.7057063244283,
+        "end": 295.30567903164774,
+        "width": 7,
+        "tone": "branch",
+        "opacity": 0.72
+      }
+    ],
+    "states": [
+      {
+        "id": "before",
+        "caption": "Dense branch fan before the player exits the knot.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Player should beat the branch clutter.",
+        "cues": [
+          "player halo wins",
+          "north arch anchors",
+          "checkpoint proxy survives"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 51.056468601338565,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1022.44,
+            "y": 290.23
+          },
+          "zoom": 2.8,
+          "title": "Dense cluster",
+          "note": "Player must survive the branch knot."
+        }
+      },
+      {
+        "id": "frame-01",
+        "caption": "Player advances into the highest-density branch fan.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Active route should guide without erasing options.",
+        "cues": [
+          "branch fan widens",
+          "player stays hotter",
+          "objective stays visible"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 66.31797330826521,
+          "label": "knot A",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1061.92,
+            "y": 355.13
+          },
+          "zoom": 2.8,
+          "title": "Player vs route",
+          "note": "Focus crop checks silhouette against clutter."
+        }
+      },
+      {
+        "id": "frame-02",
+        "caption": "Route knot turns while alternate branches remain visible.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Current path should stay dominant but not exclusive.",
+        "cues": [
+          "active route brightens",
+          "branches stay secondary",
+          "north arch remains fixed"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 86.95357389375567,
+          "label": "knot B",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1085.6,
+            "y": 454.8
+          },
+          "zoom": 2.8,
+          "title": "Route knot",
+          "note": "The knot should still read as a route choice."
+        }
+      },
+      {
+        "id": "frame-03",
+        "caption": "Player clears the knot and the lane opens up.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Readability should improve once the knot is cleared.",
+        "cues": [
+          "player exits knot",
+          "outer shell relaxes",
+          "checkpoint proxy holds"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 102.67459139134735,
+          "label": "knot C",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1079.03,
+            "y": 532.75
+          },
+          "zoom": 2.8,
+          "title": "Exit lane",
+          "note": "The clearer lane should feel easier at a glance."
+        }
+      },
+      {
+        "id": "frame-04",
+        "caption": "Checkpoint proxy takes over once local clutter drops.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Next target should rise as clutter falls.",
+        "cues": [
+          "proxy brightens",
+          "player remains primary",
+          "landmarks still triangulate"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 114.76373917702585,
+          "label": "open lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1059.7,
+            "y": 589.8
+          },
+          "zoom": 2.75,
+          "title": "Exit + proxy",
+          "note": "Player and proxy should coexist cleanly."
+        }
+      },
+      {
+        "id": "after",
+        "caption": "After frame with the player clear of the dense knot.",
+        "cameraLabel": "surface-first",
+        "rotationLabel": "rotation held",
+        "status": "Player must still be the fastest read.",
+        "cues": [
+          "player remains fastest",
+          "proxy remains next",
+          "landmarks never disappear"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 132.2069730591029,
+          "label": "clear lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 295.30567903164774,
+          "label": "checkpoint",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke"
+        ],
+        "focus": {
+          "center": {
+            "x": 1011.85,
+            "y": 662.14
+          },
+          "zoom": 2.7,
+          "title": "After frame",
+          "note": "The resolved lane should still read instantly."
+        }
+      }
+    ],
+    "humanJudgment": "Does the player remain the fastest read while branch density peaks?",
+    "semanticGate": {
+      "landmarkId": "north-arch",
+      "connectorId": "west-spoke",
+      "focusTarget": "player"
+    },
+    "report": {
+      "changed": "The graph-first proof pack now derives the dense tutorial knot from a seeded shell graph instead of a handwritten scene.",
+      "regressed": "The fallback smoke fixture still exists, but it is no longer the canonical source for dense-route evidence.",
+      "better": "Player readability, checkpoint proxy visibility, and branch density now share the same manifest and metrics packet.",
+      "worse": "The tutorial slice stays schematic; it does not attempt production lighting or polish.",
+      "humanJudgment": "Confirm that the player marker still wins at a glance when the branch knot is busiest."
+    }
+  }
+}

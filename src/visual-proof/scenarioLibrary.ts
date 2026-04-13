@@ -1,5 +1,7 @@
 type ShellId = 'outer' | 'middle' | 'core';
 
+// Fallback smoke fixtures only. Canonical proof truth lives in src/topology-proof.
+
 export interface ShellDefinition {
   id: ShellId;
   label: string;

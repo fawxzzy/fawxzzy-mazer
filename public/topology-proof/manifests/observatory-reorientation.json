@@ -1,0 +1,899 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "observatory-reorientation-observatory-reorientation-v1",
+  "scenarioId": "observatory-reorientation",
+  "title": "Observatory Re-Orientation",
+  "subtitle": "Vantage district proof where an observatory reveal restores bearings after local confusion.",
+  "seed": "observatory-reorientation-v1",
+  "districtType": "vantage-observatory",
+  "graph": {
+    "nodeIds": [
+      "outer-start",
+      "outer-climb",
+      "outer-pre-vantage",
+      "outer-after",
+      "middle-landing",
+      "middle-observatory",
+      "middle-bearing",
+      "core-vault-node"
+    ],
+    "edgeIds": [
+      "obs-main-01",
+      "obs-main-02",
+      "obs-main-03",
+      "obs-main-04",
+      "obs-main-05",
+      "obs-loop-01",
+      "north-lift",
+      "east-bridge",
+      "south-lock"
+    ],
+    "shellIds": [
+      "outer",
+      "middle",
+      "core"
+    ],
+    "districtIds": [
+      "observatory-reorientation"
+    ],
+    "landmarkIds": [
+      "obs-spire",
+      "north-flare",
+      "core-vault"
+    ],
+    "gateIds": [
+      "north-lift",
+      "east-bridge",
+      "south-lock"
+    ],
+    "entryNodeId": "outer-start",
+    "objectiveNodeId": "core-vault-node",
+    "solutionNodeIds": [
+      "outer-start",
+      "outer-climb",
+      "middle-landing",
+      "middle-observatory",
+      "middle-bearing",
+      "core-vault-node"
+    ],
+    "solutionEdgeIds": [
+      "obs-main-01",
+      "obs-main-04",
+      "obs-main-05"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "outer-start",
+      "label": "player",
+      "shellId": "outer",
+      "angle": 27.31420764606446,
+      "kind": "entry",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "outer-climb",
+      "label": "climb",
+      "shellId": "outer",
+      "angle": 15.993432149291039,
+      "kind": "path",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "outer-pre-vantage",
+      "label": "pre-vantage",
+      "shellId": "outer",
+      "angle": 1.0990805309265852,
+      "kind": "path",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "outer-after",
+      "label": "after climb",
+      "shellId": "outer",
+      "angle": 345.6507375650108,
+      "kind": "path",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "middle-landing",
+      "label": "landing",
+      "shellId": "middle",
+      "angle": 82.25484693143517,
+      "kind": "connector",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "middle-observatory",
+      "label": "observatory",
+      "shellId": "middle",
+      "angle": 112.08881687000394,
+      "kind": "vantage",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "middle-bearing",
+      "label": "bearing lane",
+      "shellId": "middle",
+      "angle": 93.20644169021398,
+      "kind": "path",
+      "districtId": "observatory-reorientation"
+    },
+    {
+      "id": "core-vault-node",
+      "label": "core vault",
+      "shellId": "core",
+      "angle": 195.94825593195856,
+      "kind": "objective",
+      "districtId": "observatory-reorientation"
+    }
+  ],
+  "edges": [
+    {
+      "id": "obs-main-01",
+      "from": "outer-start",
+      "to": "outer-climb",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "obs-main-02",
+      "from": "outer-climb",
+      "to": "outer-pre-vantage",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "obs-main-03",
+      "from": "outer-pre-vantage",
+      "to": "outer-after",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "obs-main-04",
+      "from": "middle-landing",
+      "to": "middle-observatory",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "obs-main-05",
+      "from": "middle-observatory",
+      "to": "middle-bearing",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "obs-loop-01",
+      "from": "middle-landing",
+      "to": "middle-bearing",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "north-lift",
+      "from": "outer-start",
+      "to": "middle-landing",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "bearing-partial",
+        "bearing-widening",
+        "bearing-restored"
+      ]
+    },
+    {
+      "id": "east-bridge",
+      "from": "outer-after",
+      "to": "middle-bearing",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "bearing-restored"
+      ]
+    },
+    {
+      "id": "south-lock",
+      "from": "middle-observatory",
+      "to": "core-vault-node",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "bearing-restored"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "id": "outer",
+      "label": "Outer shell",
+      "radius": 286,
+      "thickness": 34,
+      "accent": "#5fe3ff",
+      "fill": "rgba(23, 57, 74, 0.88)"
+    },
+    {
+      "id": "middle",
+      "label": "Middle shell",
+      "radius": 204,
+      "thickness": 30,
+      "accent": "#84ffbe",
+      "fill": "rgba(18, 49, 43, 0.84)"
+    },
+    {
+      "id": "core",
+      "label": "Core ring",
+      "radius": 126,
+      "thickness": 28,
+      "accent": "#ffd678",
+      "fill": "rgba(67, 43, 18, 0.88)"
+    }
+  ],
+  "districts": [
+    {
+      "id": "observatory-reorientation",
+      "name": "Observatory district",
+      "districtType": "vantage-observatory",
+      "shellIds": [
+        "outer",
+        "middle",
+        "core"
+      ],
+      "nodeIds": [
+        "outer-start",
+        "outer-climb",
+        "outer-pre-vantage",
+        "outer-after",
+        "middle-landing",
+        "middle-observatory",
+        "middle-bearing",
+        "core-vault-node"
+      ],
+      "landmarkIds": [
+        "obs-spire",
+        "north-flare",
+        "core-vault"
+      ],
+      "topologyTargets": {
+        "solutionLengthBand": [
+          5,
+          12
+        ],
+        "deadEndBand": [
+          0,
+          2
+        ],
+        "loopBand": [
+          1,
+          2
+        ],
+        "shellTransitionBand": [
+          2,
+          3
+        ]
+      },
+      "readabilityTargets": {
+        "landmarkSpacingBand": [
+          25,
+          180
+        ],
+        "objectiveVisibilityBand": [
+          0.85,
+          1
+        ],
+        "vantageFrequencyBand": [
+          0.08,
+          0.4
+        ]
+      },
+      "mechanicHooks": [
+        "vantage reward",
+        "orientation recovery",
+        "macro shell preview"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "obs-spire",
+      "label": "Observatory",
+      "shellId": "outer",
+      "angle": 23.780381492804736,
+      "offset": 74,
+      "tone": "vantage"
+    },
+    {
+      "id": "north-flare",
+      "label": "North flare",
+      "shellId": "orbit",
+      "angle": 352.40790216159075,
+      "offset": 104,
+      "tone": "north"
+    },
+    {
+      "id": "core-vault",
+      "label": "Core vault",
+      "shellId": "core",
+      "angle": 195.77966292435303,
+      "offset": 50,
+      "tone": "core"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "north-lift",
+      "label": "North lift",
+      "from": "outer",
+      "to": "middle",
+      "angle": 19.84743370488286
+    },
+    {
+      "id": "east-bridge",
+      "label": "East bridge",
+      "from": "outer",
+      "to": "middle",
+      "angle": 354.598285516724
+    },
+    {
+      "id": "south-lock",
+      "label": "South lock",
+      "from": "middle",
+      "to": "core",
+      "angle": 193.11730962991714
+    }
+  ],
+  "rotationStates": [
+    {
+      "id": "bearing-partial",
+      "label": "bearing partial",
+      "currentAlignment": "local only",
+      "allowedMoves": [
+        "bearing-widening"
+      ],
+      "unlockedGates": [
+        "north-lift"
+      ],
+      "affectedDistricts": [
+        "observatory-reorientation"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -12,
+        "core": -8
+      },
+      "activeConnectorIds": [
+        "north-lift"
+      ]
+    },
+    {
+      "id": "bearing-widening",
+      "label": "bearing widening",
+      "currentAlignment": "macro anchors entering",
+      "allowedMoves": [
+        "bearing-partial",
+        "bearing-restored"
+      ],
+      "unlockedGates": [
+        "north-lift"
+      ],
+      "affectedDistricts": [
+        "observatory-reorientation"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -6,
+        "core": -4
+      },
+      "activeConnectorIds": [
+        "north-lift"
+      ]
+    },
+    {
+      "id": "bearing-restored",
+      "label": "bearing restored",
+      "currentAlignment": "observatory hold",
+      "allowedMoves": [
+        "bearing-widening"
+      ],
+      "unlockedGates": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "observatory-reorientation"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 2,
+        "core": 2
+      },
+      "activeConnectorIds": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ]
+    }
+  ],
+  "wayfindingCues": [
+    {
+      "id": "observatory-reorientation-player-cue",
+      "cueType": "player",
+      "trigger": "always-visible",
+      "priority": 1,
+      "visualTreatment": "hot player silhouette with halo",
+      "targetId": "player"
+    },
+    {
+      "id": "observatory-reorientation-objective-cue",
+      "cueType": "objective",
+      "trigger": "active-goal",
+      "priority": 2,
+      "visualTreatment": "bright proxy rhombus with stalk",
+      "targetId": "objective"
+    },
+    {
+      "id": "observatory-reorientation-landmark-cue",
+      "cueType": "landmark",
+      "trigger": "decision-point",
+      "priority": 3,
+      "visualTreatment": "named landmark plate with orbit anchor",
+      "targetId": "north-flare"
+    },
+    {
+      "id": "observatory-reorientation-connector-cue",
+      "cueType": "connector",
+      "trigger": "rotation-state-change",
+      "priority": 4,
+      "visualTreatment": "solid or dashed shell bridge",
+      "targetId": "north-lift"
+    },
+    {
+      "id": "observatory-reorientation-vantage-cue",
+      "cueType": "vantage",
+      "trigger": "orientation-recovery",
+      "priority": 2,
+      "visualTreatment": "wide observatory reveal with held frame",
+      "targetId": "obs-spire"
+    }
+  ],
+  "metrics": {
+    "solutionLength": 5,
+    "deadEndCount": 1,
+    "junctionDegreeHistogram": {
+      "3": 3
+    },
+    "corridorRunLength": {
+      "minimum": 1,
+      "maximum": 1,
+      "average": 1
+    },
+    "loopCount": 2,
+    "shellTransitionCount": 3,
+    "landmarkSpacing": {
+      "minimum": 31.37,
+      "average": 120
+    },
+    "objectiveVisibilityUptime": 1,
+    "vantageFrequency": 0.25
+  },
+  "proof": {
+    "motion": true,
+    "evidence": [
+      "observatory restores bearings",
+      "landmarks re-enter in a stable order",
+      "player and next target share one mental map"
+    ],
+    "routes": [
+      {
+        "shellId": "outer",
+        "start": 27.31420764606446,
+        "end": 15.993432149291039,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 15.993432149291039,
+        "end": 1.0990805309265852,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 1.0990805309265852,
+        "end": 345.6507375650108,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 82.25484693143517,
+        "end": 112.08881687000394,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 112.08881687000394,
+        "end": 93.20644169021398,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 82.25484693143517,
+        "end": 93.20644169021398,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      }
+    ],
+    "states": [
+      {
+        "id": "before",
+        "caption": "Local view before the observatory reveal.",
+        "cameraLabel": "close surface view",
+        "rotationLabel": "bearing partial",
+        "status": "Bearings are intentionally local here.",
+        "cues": [
+          "observatory ahead",
+          "north flare off-axis",
+          "core not yet resolved"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -12,
+          "core": -8
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 27.31420764606446,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 112.08881687000394,
+          "label": "observatory stair",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 945.16,
+            "y": 140.56
+          },
+          "zoom": 2.45,
+          "title": "Pre-vantage",
+          "note": "The player knows the local shell, not the full stack."
+        }
+      },
+      {
+        "id": "frame-01",
+        "caption": "Player climbs and the frame starts to widen.",
+        "cameraLabel": "surface -> vantage",
+        "rotationLabel": "bearing widening",
+        "status": "Widening should not lose the player anchor.",
+        "cues": [
+          "observatory grows",
+          "north flare enters",
+          "player stays visible"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -6,
+          "core": -4
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 15.993432149291039,
+          "label": "climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 112.08881687000394,
+          "label": "observatory stair",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 945.16,
+            "y": 140.56
+          },
+          "zoom": 2.35,
+          "title": "Climb",
+          "note": "Vantage can widen without losing the local anchor."
+        }
+      },
+      {
+        "id": "frame-02",
+        "caption": "Macro landmark pairs with the observatory.",
+        "cameraLabel": "surface -> vantage",
+        "rotationLabel": "bearing widening",
+        "status": "A stable landmark should arrive before the full reveal.",
+        "cues": [
+          "north flare arrives",
+          "observatory stays goal",
+          "core is hinted"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -6,
+          "core": -4
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 1.0990805309265852,
+          "label": "pre-vantage",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 112.08881687000394,
+          "label": "observatory stair",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 2.15,
+          "title": "Anchor pair",
+          "note": "A macro anchor should enter before the full shell map."
+        }
+      },
+      {
+        "id": "frame-03",
+        "caption": "Shell relationships start to make sense again.",
+        "cameraLabel": "vantage entering",
+        "rotationLabel": "bearing restored",
+        "status": "Ordinary play view should begin restoring orientation now.",
+        "cues": [
+          "middle shell clears",
+          "anchors triangulate",
+          "core enters frame"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 2,
+          "core": 2
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 345.6507375650108,
+          "label": "after climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 195.94825593195856,
+          "label": "core vault",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 1.85,
+          "title": "Bearing restore",
+          "note": "This is the first real orientation handoff."
+        }
+      },
+      {
+        "id": "frame-04",
+        "caption": "Full observatory frame restores all shell relationships.",
+        "cameraLabel": "observatory",
+        "rotationLabel": "bearing restored",
+        "status": "Outer, middle, and core should read together.",
+        "cues": [
+          "all shells readable",
+          "anchors hold north",
+          "core vault becomes next target"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 2,
+          "core": 2
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 345.6507375650108,
+          "label": "after climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 195.94825593195856,
+          "label": "core vault",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 1.55,
+          "title": "Vantage frame",
+          "note": "All shell relationships should be readable at once."
+        }
+      },
+      {
+        "id": "frame-05",
+        "caption": "Hold frame long enough to recover bearings.",
+        "cameraLabel": "observatory hold",
+        "rotationLabel": "bearing restored",
+        "status": "Orientation recovery needs a readable hold.",
+        "cues": [
+          "frame holds",
+          "core stays visible",
+          "landmarks keep order"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 2,
+          "core": 2
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 345.6507375650108,
+          "label": "after climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 195.94825593195856,
+          "label": "core vault",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 1.55,
+          "title": "Orientation hold",
+          "note": "The hold is what actually restores bearings."
+        }
+      },
+      {
+        "id": "frame-06",
+        "caption": "Next target proxy persists after the reveal settles.",
+        "cameraLabel": "observatory hold",
+        "rotationLabel": "bearing restored",
+        "status": "Recovered bearings should survive the reveal.",
+        "cues": [
+          "next target persists",
+          "player stays visible",
+          "orientation holds"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 2,
+          "core": 2
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 345.6507375650108,
+          "label": "after climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 195.94825593195856,
+          "label": "core vault",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 1.55,
+          "title": "Recovered bearings",
+          "note": "After the reveal, the next target should still be obvious."
+        }
+      },
+      {
+        "id": "after",
+        "caption": "After frame with bearings restored and held.",
+        "cameraLabel": "observatory hold",
+        "rotationLabel": "bearing restored",
+        "status": "Player should recover bearings from ordinary play view.",
+        "cues": [
+          "shell map holds",
+          "player + target coexist",
+          "recovery lasts past the reveal"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 2,
+          "core": 2
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 345.6507375650108,
+          "label": "after climb",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 195.94825593195856,
+          "label": "core vault",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 740.02,
+            "y": 19.98
+          },
+          "zoom": 1.55,
+          "title": "After observatory",
+          "note": "The after frame should keep the regained map intact."
+        }
+      }
+    ],
+    "humanJudgment": "Does the reveal genuinely restore bearings rather than just widening the frame?",
+    "semanticGate": {
+      "landmarkId": "north-flare",
+      "connectorId": "north-lift",
+      "focusTarget": "landmark",
+      "recoveryStateId": "after"
+    },
+    "report": {
+      "changed": "The observatory sequence is now generated from a seeded vantage district manifest with explicit re-orientation metrics.",
+      "regressed": "The reveal still uses held frames instead of cinematic easing so orientation remains inspectable.",
+      "better": "Vantage frequency, shell relationships, and orientation recovery now come from the same topology source.",
+      "worse": "Mobile and square passes still compress side context to keep the shell map readable.",
+      "humanJudgment": "Confirm that the after frame genuinely restores bearings instead of only looking wider."
+    }
+  }
+}

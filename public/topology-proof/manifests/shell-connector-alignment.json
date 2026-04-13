@@ -1,0 +1,829 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "shell-connector-alignment-connector-alignment-v1",
+  "scenarioId": "shell-connector-alignment",
+  "title": "Shell Connector Alignment",
+  "subtitle": "Loopy combat-capable district slice proving that local bridge state remains readable after rotation.",
+  "seed": "connector-alignment-v1",
+  "districtType": "loopy-combat-capable",
+  "graph": {
+    "nodeIds": [
+      "outer-entry",
+      "outer-cue",
+      "outer-open",
+      "outer-loop",
+      "outer-bypass",
+      "middle-target",
+      "middle-open",
+      "middle-after",
+      "core-next"
+    ],
+    "edgeIds": [
+      "align-main-01",
+      "align-main-02",
+      "align-main-03",
+      "align-main-04",
+      "align-loop-01",
+      "align-loop-02",
+      "align-loop-03",
+      "align-loop-04",
+      "north-lift",
+      "west-spoke",
+      "south-lock"
+    ],
+    "shellIds": [
+      "outer",
+      "middle",
+      "core"
+    ],
+    "districtIds": [
+      "shell-connector-alignment"
+    ],
+    "landmarkIds": [
+      "alignment-rib",
+      "bridge-lantern",
+      "bearing-notch"
+    ],
+    "gateIds": [
+      "north-lift",
+      "west-spoke",
+      "south-lock"
+    ],
+    "entryNodeId": "outer-entry",
+    "objectiveNodeId": "core-next",
+    "solutionNodeIds": [
+      "outer-entry",
+      "outer-cue",
+      "outer-open",
+      "middle-target",
+      "middle-open",
+      "middle-after",
+      "core-next"
+    ],
+    "solutionEdgeIds": [
+      "align-main-01",
+      "align-main-02",
+      "align-main-03",
+      "align-main-04",
+      "west-spoke",
+      "south-lock"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "outer-entry",
+      "label": "player",
+      "shellId": "outer",
+      "angle": 304.48320069070905,
+      "kind": "entry",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "outer-cue",
+      "label": "cue lane",
+      "shellId": "outer",
+      "angle": 323.409221380949,
+      "kind": "path",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "outer-open",
+      "label": "open seam",
+      "shellId": "outer",
+      "angle": 323.624207187444,
+      "kind": "connector",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "outer-loop",
+      "label": "loop lane",
+      "shellId": "outer",
+      "angle": 333.95515532884747,
+      "kind": "junction",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "outer-bypass",
+      "label": "bypass",
+      "shellId": "outer",
+      "angle": 342.1391944196075,
+      "kind": "junction",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "middle-target",
+      "label": "bridge target",
+      "shellId": "middle",
+      "angle": 330.33151610568166,
+      "kind": "objective",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "middle-open",
+      "label": "aligned lane",
+      "shellId": "middle",
+      "angle": 324.84991576336324,
+      "kind": "path",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "middle-after",
+      "label": "post bridge",
+      "shellId": "middle",
+      "angle": 339.42006466910243,
+      "kind": "path",
+      "districtId": "shell-connector-alignment"
+    },
+    {
+      "id": "core-next",
+      "label": "next target",
+      "shellId": "core",
+      "angle": 348.5444337474182,
+      "kind": "objective",
+      "districtId": "shell-connector-alignment"
+    }
+  ],
+  "edges": [
+    {
+      "id": "align-main-01",
+      "from": "outer-entry",
+      "to": "outer-cue",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-main-02",
+      "from": "outer-cue",
+      "to": "outer-open",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-main-03",
+      "from": "middle-target",
+      "to": "middle-open",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-main-04",
+      "from": "middle-open",
+      "to": "middle-after",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-loop-01",
+      "from": "outer-open",
+      "to": "outer-loop",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-loop-02",
+      "from": "outer-loop",
+      "to": "outer-bypass",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-loop-03",
+      "from": "outer-bypass",
+      "to": "outer-cue",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "align-loop-04",
+      "from": "middle-target",
+      "to": "middle-after",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "north-lift",
+      "from": "outer-loop",
+      "to": "middle-open",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "west-spoke",
+      "from": "outer-open",
+      "to": "middle-target",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "open"
+      ]
+    },
+    {
+      "id": "south-lock",
+      "from": "middle-after",
+      "to": "core-next",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "open"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "id": "outer",
+      "label": "Outer shell",
+      "radius": 286,
+      "thickness": 34,
+      "accent": "#5fe3ff",
+      "fill": "rgba(23, 57, 74, 0.88)"
+    },
+    {
+      "id": "middle",
+      "label": "Middle shell",
+      "radius": 204,
+      "thickness": 30,
+      "accent": "#84ffbe",
+      "fill": "rgba(18, 49, 43, 0.84)"
+    },
+    {
+      "id": "core",
+      "label": "Core ring",
+      "radius": 126,
+      "thickness": 28,
+      "accent": "#ffd678",
+      "fill": "rgba(67, 43, 18, 0.88)"
+    }
+  ],
+  "districts": [
+    {
+      "id": "shell-connector-alignment",
+      "name": "Bridge loop district",
+      "districtType": "loopy-combat-capable",
+      "shellIds": [
+        "outer",
+        "middle",
+        "core"
+      ],
+      "nodeIds": [
+        "outer-entry",
+        "outer-cue",
+        "outer-open",
+        "outer-loop",
+        "outer-bypass",
+        "middle-target",
+        "middle-open",
+        "middle-after",
+        "core-next"
+      ],
+      "landmarkIds": [
+        "alignment-rib",
+        "bridge-lantern",
+        "bearing-notch"
+      ],
+      "topologyTargets": {
+        "solutionLengthBand": [
+          6,
+          10
+        ],
+        "deadEndBand": [
+          0,
+          2
+        ],
+        "loopBand": [
+          2,
+          4
+        ],
+        "shellTransitionBand": [
+          2,
+          3
+        ]
+      },
+      "readabilityTargets": {
+        "landmarkSpacingBand": [
+          10,
+          120
+        ],
+        "objectiveVisibilityBand": [
+          1,
+          1
+        ],
+        "vantageFrequencyBand": [
+          0,
+          0.2
+        ]
+      },
+      "mechanicHooks": [
+        "loopy circulation",
+        "connector readability",
+        "combat-capable escape loops"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "alignment-rib",
+      "label": "Alignment rib",
+      "shellId": "outer",
+      "angle": 317.7484342386015,
+      "offset": 52,
+      "tone": "gate"
+    },
+    {
+      "id": "bridge-lantern",
+      "label": "Bridge lantern",
+      "shellId": "middle",
+      "angle": 331.97089438373223,
+      "offset": 48,
+      "tone": "solve"
+    },
+    {
+      "id": "bearing-notch",
+      "label": "Bearing notch",
+      "shellId": "orbit",
+      "angle": 295.17211068887264,
+      "offset": 96,
+      "tone": "north"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "north-lift",
+      "label": "North lift",
+      "from": "outer",
+      "to": "middle",
+      "angle": 36.55342016555369
+    },
+    {
+      "id": "west-spoke",
+      "label": "West spoke",
+      "from": "outer",
+      "to": "middle",
+      "angle": 318.0788766685873
+    },
+    {
+      "id": "south-lock",
+      "label": "South lock",
+      "from": "middle",
+      "to": "core",
+      "angle": 344.6321862488985
+    }
+  ],
+  "rotationStates": [
+    {
+      "id": "misaligned",
+      "label": "misaligned",
+      "currentAlignment": "bridge closed",
+      "allowedMoves": [
+        "cueing"
+      ],
+      "unlockedGates": [],
+      "affectedDistricts": [
+        "shell-connector-alignment"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -18,
+        "core": 0
+      },
+      "activeConnectorIds": []
+    },
+    {
+      "id": "cueing",
+      "label": "cueing",
+      "currentAlignment": "readiness rising",
+      "allowedMoves": [
+        "misaligned",
+        "open"
+      ],
+      "unlockedGates": [],
+      "affectedDistricts": [
+        "shell-connector-alignment"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -10,
+        "core": 0
+      },
+      "activeConnectorIds": []
+    },
+    {
+      "id": "open",
+      "label": "open hold",
+      "currentAlignment": "bridge open",
+      "allowedMoves": [
+        "cueing"
+      ],
+      "unlockedGates": [
+        "west-spoke",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "shell-connector-alignment"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 0,
+        "core": 0
+      },
+      "activeConnectorIds": [
+        "west-spoke",
+        "south-lock"
+      ]
+    }
+  ],
+  "wayfindingCues": [
+    {
+      "id": "shell-connector-alignment-player-cue",
+      "cueType": "player",
+      "trigger": "always-visible",
+      "priority": 1,
+      "visualTreatment": "hot player silhouette with halo",
+      "targetId": "player"
+    },
+    {
+      "id": "shell-connector-alignment-objective-cue",
+      "cueType": "objective",
+      "trigger": "active-goal",
+      "priority": 2,
+      "visualTreatment": "bright proxy rhombus with stalk",
+      "targetId": "objective"
+    },
+    {
+      "id": "shell-connector-alignment-landmark-cue",
+      "cueType": "landmark",
+      "trigger": "decision-point",
+      "priority": 3,
+      "visualTreatment": "named landmark plate with orbit anchor",
+      "targetId": "alignment-rib"
+    },
+    {
+      "id": "shell-connector-alignment-connector-cue",
+      "cueType": "connector",
+      "trigger": "rotation-state-change",
+      "priority": 4,
+      "visualTreatment": "solid or dashed shell bridge",
+      "targetId": "west-spoke"
+    }
+  ],
+  "metrics": {
+    "solutionLength": 6,
+    "deadEndCount": 2,
+    "junctionDegreeHistogram": {
+      "3": 6
+    },
+    "corridorRunLength": {
+      "minimum": 1,
+      "maximum": 2,
+      "average": 1.125
+    },
+    "loopCount": 3,
+    "shellTransitionCount": 3,
+    "landmarkSpacing": {
+      "minimum": 14.22,
+      "average": 120
+    },
+    "objectiveVisibilityUptime": 1,
+    "vantageFrequency": 0
+  },
+  "proof": {
+    "motion": false,
+    "evidence": [
+      "closed and open states differ without text",
+      "the focus crop matches the full frame",
+      "the aligned bridge still reads as actionable in a loopy route set"
+    ],
+    "routes": [
+      {
+        "shellId": "outer",
+        "start": 304.48320069070905,
+        "end": 323.409221380949,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 323.409221380949,
+        "end": 323.624207187444,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 330.33151610568166,
+        "end": 324.84991576336324,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 324.84991576336324,
+        "end": 339.42006466910243,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "outer",
+        "start": 323.624207187444,
+        "end": 333.95515532884747,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      },
+      {
+        "shellId": "outer",
+        "start": 333.95515532884747,
+        "end": 342.1391944196075,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      },
+      {
+        "shellId": "outer",
+        "start": 342.1391944196075,
+        "end": 323.409221380949,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      },
+      {
+        "shellId": "middle",
+        "start": 330.33151610568166,
+        "end": 339.42006466910243,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      }
+    ],
+    "states": [
+      {
+        "id": "before",
+        "caption": "Misaligned west spoke before the bridge opens.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "misaligned",
+        "status": "Local bridge should look closed without text.",
+        "cues": [
+          "bridge broken",
+          "lantern misses rib",
+          "player waits outside"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -18,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 304.48320069070905,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 330.33151610568166,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [],
+        "focus": {
+          "center": {
+            "x": 614.82,
+            "y": 314.18
+          },
+          "zoom": 3,
+          "title": "Misaligned bridge",
+          "note": "Closed should look obviously closed."
+        }
+      },
+      {
+        "id": "frame-01",
+        "caption": "Readiness cue rises before alignment.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "cueing",
+        "status": "Cue can rise without pretending the bridge is open.",
+        "cues": [
+          "cue brightens",
+          "bridge still broken",
+          "player does not move"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -10,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 323.409221380949,
+          "label": "cue lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 330.33151610568166,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [],
+        "focus": {
+          "center": {
+            "x": 623.34,
+            "y": 301.58
+          },
+          "zoom": 3,
+          "title": "Cueing state",
+          "note": "Readiness must not collapse open vs closed."
+        }
+      },
+      {
+        "id": "frame-02",
+        "caption": "Near-open state before the final notch lands.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "cueing",
+        "status": "Player should predict the result before it lands.",
+        "cues": [
+          "bridge nearly meets",
+          "player still waits",
+          "next move remains predictable"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -10,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 323.624207187444,
+          "label": "open seam",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 330.33151610568166,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [],
+        "focus": {
+          "center": {
+            "x": 623.34,
+            "y": 301.58
+          },
+          "zoom": 3,
+          "title": "Near-open",
+          "note": "The last step should feel anticipated."
+        }
+      },
+      {
+        "id": "frame-03",
+        "caption": "Bridge lands into a clearly open state.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "open",
+        "status": "Open must read in one glance.",
+        "cues": [
+          "bridge goes solid",
+          "lantern meets rib",
+          "player can trust the opening"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 323.624207187444,
+          "label": "open seam",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 330.33151610568166,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 636.31,
+            "y": 287.7
+          },
+          "zoom": 3,
+          "title": "Open bridge",
+          "note": "The local crop should prove legibility."
+        }
+      },
+      {
+        "id": "frame-04",
+        "caption": "Player steps into the aligned bridge.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "open + actionable",
+        "status": "Aligned bridge should support immediate action.",
+        "cues": [
+          "player commits",
+          "bridge stays bright",
+          "next step fits in crop"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 324.84991576336324,
+          "label": "aligned lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 348.5444337474182,
+          "label": "next target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 636.31,
+            "y": 287.7
+          },
+          "zoom": 3,
+          "title": "Actionable alignment",
+          "note": "The open bridge should stay obvious in use."
+        }
+      },
+      {
+        "id": "after",
+        "caption": "After frame with the bridge held open.",
+        "cameraLabel": "connector focus",
+        "rotationLabel": "open hold",
+        "status": "Open state should remain obvious during the hold.",
+        "cues": [
+          "bridge holds open",
+          "player + target fit locally",
+          "compare closed vs open instantly"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 0,
+          "core": 0
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 339.42006466910243,
+          "label": "post bridge",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 348.5444337474182,
+          "label": "next target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "west-spoke",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 636.31,
+            "y": 287.7
+          },
+          "zoom": 3,
+          "title": "Open hold",
+          "note": "Human review should not need the legend."
+        }
+      }
+    ],
+    "humanJudgment": "Can the bridge state be understood without the legend?",
+    "semanticGate": {
+      "landmarkId": "alignment-rib",
+      "connectorId": "west-spoke",
+      "focusTarget": "connector"
+    },
+    "report": {
+      "changed": "The local bridge proof is now driven by a seeded loopy district graph instead of a hand-authored alignment vignette.",
+      "regressed": "Decorative route noise stays secondary so the bridge signal remains the point of the proof.",
+      "better": "Loop count, connector state, and the local focus crop now all derive from one topology manifest.",
+      "worse": "Because the lane is intentionally bounded, broader shell context is reduced in the focus crop.",
+      "humanJudgment": "Confirm that the aligned bridge reads as open without leaning on legend text."
+    }
+  }
+}

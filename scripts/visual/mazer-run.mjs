@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import {
   DEFAULT_BASE_URL,
@@ -23,6 +24,8 @@ import {
   writeReport
 } from '../../tools/visual-pipeline/packets.mjs';
 import { renderContactSheet } from '../../tools/visual-pipeline/contactSheet.mjs';
+
+const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 const resolveCommandSpec = (command, args) => (
   process.platform === 'win32'
@@ -253,6 +256,37 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery }) => {
   const gateValues = Object.values(gates);
   const passedGateCount = gateValues.filter(Boolean).length;
   const totalGateCount = gateValues.length;
+  const failingGates = failures.map((failure) => {
+    if (failure.startsWith('recovery:')) {
+      return {
+        gateId: 'recovery-stability',
+        label: 'Recovery frame stability',
+        stateId: 'recovery',
+        detail: failure
+      };
+    }
+
+    const separator = failure.indexOf(': ');
+    const stateId = separator >= 0 ? failure.slice(0, separator) : null;
+    const gateId = separator >= 0 ? failure.slice(separator + 2) : failure;
+    const labels = {
+      'player-visible': 'Player visibility',
+      'objective-visible': 'Objective visibility',
+      'landmark-visible': 'Landmark salience',
+      'connector-visible': 'Connector readability',
+      'focus-player': 'Player focus contract',
+      'focus-objective': 'Objective focus contract',
+      'focus-landmark': 'Landmark focus contract',
+      'focus-connector': 'Connector focus contract'
+    };
+
+    return {
+      gateId,
+      label: labels[gateId] ?? gateId,
+      stateId,
+      detail: failure
+    };
+  });
 
   return {
     schemaVersion: 1,
@@ -271,6 +305,7 @@ const buildSemanticScore = ({ metadataSeed, sceneScores, recovery }) => {
     gates,
     recovery,
     failures,
+    failingGates,
     scenes: sceneScores
   };
 };
@@ -394,7 +429,10 @@ const captureScenarioPacket = async ({
     videoPath = await finalizeVideo(rawVideoPath, packet.videoPath);
   }
 
-  await writeReport(packet.reportPath, scenario.report);
+  await writeReport(packet.reportPath, scenario.report, {
+    semanticScore,
+    expectedFailures: scenario.expectedFailures ?? []
+  });
 
   const metadata = {
     schemaVersion: 2,
@@ -403,6 +441,14 @@ const captureScenarioPacket = async ({
     commitSha,
     scenario: metadataSeed.scenario,
     viewport,
+    source: {
+      kind: afterDiagnostics?.sourceKind ?? beforeDiagnostics?.sourceKind ?? 'fallback',
+      manifestPath: afterDiagnostics?.manifestPath ?? beforeDiagnostics?.manifestPath ?? null,
+      seed: afterDiagnostics?.seed ?? beforeDiagnostics?.seed ?? metadataSeed.scenario.seed ?? null,
+      districtType: afterDiagnostics?.districtType ?? beforeDiagnostics?.districtType ?? null,
+      canary: afterDiagnostics?.canary ?? beforeDiagnostics?.canary ?? null,
+      rotationState: afterDiagnostics?.rotationLabel ?? beforeDiagnostics?.rotationLabel ?? null
+    },
     states: {
       before: scenario.beforeState,
       after: scenario.afterState,
@@ -435,19 +481,25 @@ const captureScenarioPacket = async ({
   return { metadata, semanticScore };
 };
 
-const main = async () => {
-  const args = parseCliArgs();
-  const config = await readVisualProofConfig(REPO_ROOT);
-  const normalizedBaseUrl = normalizeBaseUrl(args['base-url'] ?? process.env.MAZER_VISUAL_BASE_URL ?? DEFAULT_BASE_URL);
-  const artifactRoot = typeof args['artifact-root'] === 'string' ? args['artifact-root'] : config.artifactRoot;
-  const previewTimeoutMs = parseIntegerArg(args['preview-timeout'], DEFAULT_PREVIEW_TIMEOUT_MS);
-  const captureTimeoutMs = parseIntegerArg(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS);
-  const skipBuild = args['skip-build'] === true || args['skip-build'] === 'true';
+export const runVisualProofSuite = async ({
+  baseUrl = DEFAULT_BASE_URL,
+  config,
+  configPath = 'playwright.visual.config.json',
+  artifactRoot,
+  previewTimeoutMs = DEFAULT_PREVIEW_TIMEOUT_MS,
+  captureTimeoutMs = DEFAULT_CAPTURE_TIMEOUT_MS,
+  skipBuild = false,
+  runId,
+  allowFailures = false
+} = {}) => {
+  const resolvedConfig = config ?? await readVisualProofConfig(REPO_ROOT, configPath);
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const resolvedArtifactRoot = typeof artifactRoot === 'string' ? artifactRoot : resolvedConfig.artifactRoot;
   const commitSha = getCommitSha();
-  const runId = resolveRunId(commitSha, typeof args.run === 'string' ? args.run : undefined);
-  const previewLogPath = resolve(REPO_ROOT, artifactRoot, '_preview.log');
+  const resolvedRunId = resolveRunId(commitSha, runId);
+  const previewLogPath = resolve(REPO_ROOT, resolvedArtifactRoot, '_preview.log');
 
-  await ensureDir(resolve(REPO_ROOT, artifactRoot));
+  await ensureDir(resolve(REPO_ROOT, resolvedArtifactRoot));
   const previewLog = createWriteStream(previewLogPath, { flags: 'a' });
 
   if (!skipBuild) {
@@ -477,20 +529,20 @@ const main = async () => {
 
     const packets = [];
     const failures = [];
-    for (const scenario of config.scenarios) {
-      for (const viewport of config.viewports) {
+    for (const scenario of resolvedConfig.scenarios) {
+      for (const viewport of resolvedConfig.viewports) {
         const packetResult = await captureScenarioPacket({
           browser,
           baseUrl: normalizedBaseUrl,
-          config,
-          artifactRoot,
+          config: resolvedConfig,
+          artifactRoot: resolvedArtifactRoot,
           scenario,
           viewport,
-          runId,
+          runId: resolvedRunId,
           commitSha,
           timeoutMs: captureTimeoutMs
         });
-        packets.push(packetResult.metadata);
+        packets.push(packetResult);
         if (!packetResult.semanticScore.summary.passed) {
           failures.push({
             scenarioId: scenario.id,
@@ -501,8 +553,17 @@ const main = async () => {
       }
     }
 
-    const { indexPath } = await writeArtifactIndex(REPO_ROOT, artifactRoot);
-    if (failures.length > 0) {
+    const { indexPath } = await writeArtifactIndex(REPO_ROOT, resolvedArtifactRoot);
+    const summary = {
+      runId: resolvedRunId,
+      artifactRoot: resolvedArtifactRoot,
+      packetCount: packets.length,
+      indexPath: relativeFromRepo(REPO_ROOT, indexPath),
+      failures,
+      packets
+    };
+
+    if (failures.length > 0 && !allowFailures) {
       throw new Error(
         `Semantic visual gates failed: ${failures
           .map((entry) => `${entry.scenarioId}/${entry.viewportId}: ${entry.failures.join(', ')}`)
@@ -510,12 +571,7 @@ const main = async () => {
       );
     }
 
-    process.stdout.write(`${JSON.stringify({
-      runId,
-      artifactRoot,
-      packetCount: packets.length,
-      indexPath: relativeFromRepo(REPO_ROOT, indexPath)
-    }, null, 2)}\n`);
+    return summary;
   } finally {
     await browser.close();
     await stopPreview(previewChild);
@@ -523,8 +579,32 @@ const main = async () => {
   }
 };
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
-});
+const main = async () => {
+  const args = parseCliArgs();
+  const summary = await runVisualProofSuite({
+    baseUrl: args['base-url'] ?? process.env.MAZER_VISUAL_BASE_URL ?? DEFAULT_BASE_URL,
+    configPath: typeof args.config === 'string' ? args.config : 'playwright.visual.config.json',
+    artifactRoot: typeof args['artifact-root'] === 'string' ? args['artifact-root'] : undefined,
+    previewTimeoutMs: parseIntegerArg(args['preview-timeout'], DEFAULT_PREVIEW_TIMEOUT_MS),
+    captureTimeoutMs: parseIntegerArg(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
+    skipBuild: args['skip-build'] === true || args['skip-build'] === 'true',
+    runId: typeof args.run === 'string' ? args.run : undefined,
+    allowFailures: args['allow-failures'] === true || args['allow-failures'] === 'true'
+  });
+
+  process.stdout.write(`${JSON.stringify({
+    runId: summary.runId,
+    artifactRoot: summary.artifactRoot,
+    packetCount: summary.packetCount,
+    indexPath: summary.indexPath,
+    failureCount: summary.failures.length
+  }, null, 2)}\n`);
+};
+
+if (isDirectRun) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  });
+}

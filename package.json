@@ -16,7 +16,9 @@
     "visual:compare": "node ./scripts/visual/index-artifacts.mjs --compare",
     "visual:promote-baseline": "node ./scripts/visual/index-artifacts.mjs --promote-baseline",
     "visual:regressions": "node ./scripts/visual/index-artifacts.mjs --regressions",
-    "visual:proof": "node ./scripts/visual/mazer-run.mjs"
+    "visual:proof": "node ./scripts/visual/mazer-run.mjs",
+    "visual:canaries": "node ./scripts/visual/run-canaries.mjs",
+    "topology:export": "node ./scripts/topology/export-proof-manifests.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

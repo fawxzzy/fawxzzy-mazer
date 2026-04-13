@@ -17,6 +17,12 @@ describe('visual proof config', () => {
     }
   });
 
+  test('config scenarios load manifest-driven proof routes', () => {
+    for (const scenario of visualConfig.scenarios) {
+      expect(scenario.route).toContain(`/topology-proof/manifests/${scenario.id}.json`);
+    }
+  });
+
   test('viewport matrix includes the required readability frames', () => {
     expect(visualConfig.viewports.map((viewport) => viewport.id)).toEqual([
       'mobile-portrait',

@@ -1,0 +1,961 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "discrete-rotation-readability-rotation-readability-v1",
+  "scenarioId": "discrete-rotation-readability",
+  "title": "Discrete Rotation Readability",
+  "subtitle": "Puzzle district proof where shell rotation is discrete, learnable, and bridge consequences are named.",
+  "seed": "rotation-readability-v1",
+  "districtType": "puzzle",
+  "graph": {
+    "nodeIds": [
+      "outer-anchor",
+      "outer-approach",
+      "middle-bridge",
+      "middle-phase",
+      "middle-threshold",
+      "middle-action",
+      "middle-hold",
+      "middle-after",
+      "middle-branch",
+      "core-next"
+    ],
+    "edgeIds": [
+      "rotation-main-01",
+      "rotation-main-02",
+      "rotation-main-03",
+      "rotation-main-04",
+      "rotation-main-05",
+      "rotation-loop-01",
+      "rotation-branch-01",
+      "north-lift",
+      "east-bridge",
+      "south-lock"
+    ],
+    "shellIds": [
+      "outer",
+      "middle",
+      "core"
+    ],
+    "districtIds": [
+      "discrete-rotation-readability"
+    ],
+    "landmarkIds": [
+      "hinge-beacon",
+      "phase-gate",
+      "core-slit"
+    ],
+    "gateIds": [
+      "north-lift",
+      "east-bridge",
+      "south-lock"
+    ],
+    "entryNodeId": "outer-anchor",
+    "objectiveNodeId": "core-next",
+    "solutionNodeIds": [
+      "outer-anchor",
+      "outer-approach",
+      "middle-phase",
+      "middle-threshold",
+      "middle-action",
+      "middle-hold",
+      "middle-after",
+      "core-next"
+    ],
+    "solutionEdgeIds": [
+      "rotation-main-01",
+      "rotation-main-02",
+      "rotation-main-03",
+      "rotation-main-04",
+      "rotation-main-05",
+      "south-lock"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "outer-anchor",
+      "label": "player",
+      "shellId": "outer",
+      "angle": 95.80785996187478,
+      "kind": "entry",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "outer-approach",
+      "label": "approach",
+      "shellId": "outer",
+      "angle": 108.11615950800478,
+      "kind": "connector",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-bridge",
+      "label": "bridge target",
+      "shellId": "middle",
+      "angle": 64.09148660302162,
+      "kind": "objective",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-phase",
+      "label": "phase lane",
+      "shellId": "middle",
+      "angle": 70.11212712712586,
+      "kind": "path",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-threshold",
+      "label": "threshold",
+      "shellId": "middle",
+      "angle": 95.61994775012136,
+      "kind": "junction",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-action",
+      "label": "opened lane",
+      "shellId": "middle",
+      "angle": 102.58554253634065,
+      "kind": "junction",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-hold",
+      "label": "hold lane",
+      "shellId": "middle",
+      "angle": 87.10830268729478,
+      "kind": "path",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-after",
+      "label": "after lane",
+      "shellId": "middle",
+      "angle": 99.31883797701448,
+      "kind": "path",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "middle-branch",
+      "label": "side branch",
+      "shellId": "middle",
+      "angle": 123.26151978038251,
+      "kind": "dead-end",
+      "districtId": "discrete-rotation-readability"
+    },
+    {
+      "id": "core-next",
+      "label": "next shell",
+      "shellId": "core",
+      "angle": 155.81531365495175,
+      "kind": "objective",
+      "districtId": "discrete-rotation-readability"
+    }
+  ],
+  "edges": [
+    {
+      "id": "rotation-main-01",
+      "from": "outer-anchor",
+      "to": "outer-approach",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-main-02",
+      "from": "middle-phase",
+      "to": "middle-threshold",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-main-03",
+      "from": "middle-threshold",
+      "to": "middle-action",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-main-04",
+      "from": "middle-action",
+      "to": "middle-hold",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-main-05",
+      "from": "middle-hold",
+      "to": "middle-after",
+      "purpose": "main",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-loop-01",
+      "from": "middle-bridge",
+      "to": "middle-threshold",
+      "purpose": "loop",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "rotation-branch-01",
+      "from": "middle-phase",
+      "to": "middle-branch",
+      "purpose": "branch",
+      "shellTransition": false,
+      "activeRotationStateIds": []
+    },
+    {
+      "id": "north-lift",
+      "from": "outer-anchor",
+      "to": "middle-phase",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "phase-a",
+        "phase-b",
+        "phase-c",
+        "phase-c-locked"
+      ]
+    },
+    {
+      "id": "east-bridge",
+      "from": "outer-approach",
+      "to": "middle-bridge",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "phase-c",
+        "phase-c-locked"
+      ]
+    },
+    {
+      "id": "south-lock",
+      "from": "middle-after",
+      "to": "core-next",
+      "purpose": "connector",
+      "shellTransition": true,
+      "activeRotationStateIds": [
+        "phase-c",
+        "phase-c-locked"
+      ]
+    }
+  ],
+  "shells": [
+    {
+      "id": "outer",
+      "label": "Outer shell",
+      "radius": 286,
+      "thickness": 34,
+      "accent": "#5fe3ff",
+      "fill": "rgba(23, 57, 74, 0.88)"
+    },
+    {
+      "id": "middle",
+      "label": "Middle shell",
+      "radius": 204,
+      "thickness": 30,
+      "accent": "#84ffbe",
+      "fill": "rgba(18, 49, 43, 0.84)"
+    },
+    {
+      "id": "core",
+      "label": "Core ring",
+      "radius": 126,
+      "thickness": 28,
+      "accent": "#ffd678",
+      "fill": "rgba(67, 43, 18, 0.88)"
+    }
+  ],
+  "districts": [
+    {
+      "id": "discrete-rotation-readability",
+      "name": "Bridge puzzle district",
+      "districtType": "puzzle",
+      "shellIds": [
+        "outer",
+        "middle",
+        "core"
+      ],
+      "nodeIds": [
+        "outer-anchor",
+        "outer-approach",
+        "middle-bridge",
+        "middle-phase",
+        "middle-threshold",
+        "middle-action",
+        "middle-hold",
+        "middle-after",
+        "middle-branch",
+        "core-next"
+      ],
+      "landmarkIds": [
+        "hinge-beacon",
+        "phase-gate",
+        "core-slit"
+      ],
+      "topologyTargets": {
+        "solutionLengthBand": [
+          6,
+          10
+        ],
+        "deadEndBand": [
+          1,
+          3
+        ],
+        "loopBand": [
+          1,
+          2
+        ],
+        "shellTransitionBand": [
+          2,
+          3
+        ]
+      },
+      "readabilityTargets": {
+        "landmarkSpacingBand": [
+          20,
+          140
+        ],
+        "objectiveVisibilityBand": [
+          1,
+          1
+        ],
+        "vantageFrequencyBand": [
+          0,
+          0.2
+        ]
+      },
+      "mechanicHooks": [
+        "rotation puzzle",
+        "predictive bridge states",
+        "readable before/after consequences"
+      ]
+    }
+  ],
+  "landmarks": [
+    {
+      "id": "hinge-beacon",
+      "label": "Hinge beacon",
+      "shellId": "orbit",
+      "angle": 105.4210043605417,
+      "offset": 94,
+      "tone": "north"
+    },
+    {
+      "id": "phase-gate",
+      "label": "Phase gate",
+      "shellId": "middle",
+      "angle": 77.29313774593174,
+      "offset": 54,
+      "tone": "gate"
+    },
+    {
+      "id": "core-slit",
+      "label": "Core slit",
+      "shellId": "core",
+      "angle": 146.64430455910042,
+      "offset": 44,
+      "tone": "core"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "north-lift",
+      "label": "North lift",
+      "from": "outer",
+      "to": "middle",
+      "angle": 93.24571026675403
+    },
+    {
+      "id": "east-bridge",
+      "label": "East bridge",
+      "from": "outer",
+      "to": "middle",
+      "angle": 102.9655068255961
+    },
+    {
+      "id": "south-lock",
+      "label": "South lock",
+      "from": "middle",
+      "to": "core",
+      "angle": 144.27027936652303
+    }
+  ],
+  "rotationStates": [
+    {
+      "id": "phase-a",
+      "label": "phase A",
+      "currentAlignment": "bridge closed",
+      "allowedMoves": [
+        "phase-b"
+      ],
+      "unlockedGates": [
+        "north-lift"
+      ],
+      "affectedDistricts": [
+        "discrete-rotation-readability"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -32,
+        "core": -18
+      },
+      "activeConnectorIds": [
+        "north-lift"
+      ]
+    },
+    {
+      "id": "phase-b",
+      "label": "phase B",
+      "currentAlignment": "approaching alignment",
+      "allowedMoves": [
+        "phase-a",
+        "phase-c"
+      ],
+      "unlockedGates": [
+        "north-lift"
+      ],
+      "affectedDistricts": [
+        "discrete-rotation-readability"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": -8,
+        "core": -6
+      },
+      "activeConnectorIds": [
+        "north-lift"
+      ]
+    },
+    {
+      "id": "phase-c",
+      "label": "phase C",
+      "currentAlignment": "bridge open",
+      "allowedMoves": [
+        "phase-b",
+        "phase-c-locked"
+      ],
+      "unlockedGates": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "discrete-rotation-readability"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 18,
+        "core": 8
+      },
+      "activeConnectorIds": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ]
+    },
+    {
+      "id": "phase-c-locked",
+      "label": "phase C locked",
+      "currentAlignment": "stable hold",
+      "allowedMoves": [
+        "phase-c"
+      ],
+      "unlockedGates": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ],
+      "affectedDistricts": [
+        "discrete-rotation-readability"
+      ],
+      "shellRotations": {
+        "outer": 0,
+        "middle": 18,
+        "core": 8
+      },
+      "activeConnectorIds": [
+        "north-lift",
+        "east-bridge",
+        "south-lock"
+      ]
+    }
+  ],
+  "wayfindingCues": [
+    {
+      "id": "discrete-rotation-readability-player-cue",
+      "cueType": "player",
+      "trigger": "always-visible",
+      "priority": 1,
+      "visualTreatment": "hot player silhouette with halo",
+      "targetId": "player"
+    },
+    {
+      "id": "discrete-rotation-readability-objective-cue",
+      "cueType": "objective",
+      "trigger": "active-goal",
+      "priority": 2,
+      "visualTreatment": "bright proxy rhombus with stalk",
+      "targetId": "objective"
+    },
+    {
+      "id": "discrete-rotation-readability-landmark-cue",
+      "cueType": "landmark",
+      "trigger": "decision-point",
+      "priority": 3,
+      "visualTreatment": "named landmark plate with orbit anchor",
+      "targetId": "hinge-beacon"
+    },
+    {
+      "id": "discrete-rotation-readability-connector-cue",
+      "cueType": "connector",
+      "trigger": "rotation-state-change",
+      "priority": 4,
+      "visualTreatment": "solid or dashed shell bridge",
+      "targetId": "east-bridge"
+    }
+  ],
+  "metrics": {
+    "solutionLength": 7,
+    "deadEndCount": 2,
+    "junctionDegreeHistogram": {
+      "3": 2
+    },
+    "corridorRunLength": {
+      "minimum": 1,
+      "maximum": 3,
+      "average": 1.5
+    },
+    "loopCount": 1,
+    "shellTransitionCount": 3,
+    "landmarkSpacing": {
+      "minimum": 28.13,
+      "average": 120
+    },
+    "objectiveVisibilityUptime": 1,
+    "vantageFrequency": 0
+  },
+  "proof": {
+    "motion": true,
+    "evidence": [
+      "rotation reads as stepped state",
+      "player anchor survives motion",
+      "bridge consequence is obvious before and after the step"
+    ],
+    "routes": [
+      {
+        "shellId": "outer",
+        "start": 95.80785996187478,
+        "end": 108.11615950800478,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 70.11212712712586,
+        "end": 95.61994775012136,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 95.61994775012136,
+        "end": 102.58554253634065,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 102.58554253634065,
+        "end": 87.10830268729478,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 87.10830268729478,
+        "end": 99.31883797701448,
+        "width": 9,
+        "tone": "main",
+        "opacity": 0.9
+      },
+      {
+        "shellId": "middle",
+        "start": 64.09148660302162,
+        "end": 95.61994775012136,
+        "width": 8,
+        "tone": "guide",
+        "opacity": 0.66
+      },
+      {
+        "shellId": "middle",
+        "start": 70.11212712712586,
+        "end": 123.26151978038251,
+        "width": 7,
+        "tone": "branch",
+        "opacity": 0.72
+      }
+    ],
+    "states": [
+      {
+        "id": "before",
+        "caption": "Before rotation with the east bridge still closed.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase A",
+        "status": "No bridge should look usable yet.",
+        "cues": [
+          "bridge closed",
+          "hinge beacon fixed",
+          "player stays anchored"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -32,
+          "core": -18
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 95.80785996187478,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 1035.57,
+            "y": 464.96
+          },
+          "zoom": 2.7,
+          "title": "Closed bridge",
+          "note": "Closed should read as closed."
+        }
+      },
+      {
+        "id": "frame-01",
+        "caption": "First rotation step toward alignment.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase A -> B",
+        "status": "Shell motion should read as a step change.",
+        "cues": [
+          "middle shell steps",
+          "outer shell anchors",
+          "bridge cue begins"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -6
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 95.80785996187478,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 1041.12,
+            "y": 509.95
+          },
+          "zoom": 2.7,
+          "title": "Step one",
+          "note": "The move should stay predictable."
+        }
+      },
+      {
+        "id": "frame-02",
+        "caption": "Second step with bridge readiness increasing.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase B",
+        "status": "Player should see that alignment is approaching.",
+        "cues": [
+          "bridge cue grows",
+          "phase gate stays visible",
+          "player still fixed"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -6
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 95.80785996187478,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 1041.12,
+            "y": 509.95
+          },
+          "zoom": 2.75,
+          "title": "Phase B",
+          "note": "Before and after should already be guessable."
+        }
+      },
+      {
+        "id": "frame-03",
+        "caption": "Threshold frame before the bridge snaps open.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase B -> C",
+        "status": "Outcome should be obvious before the last step.",
+        "cues": [
+          "bridge nearly meets",
+          "player still anchored",
+          "core slit lines up"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": -8,
+          "core": -6
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 95.80785996187478,
+          "label": "player",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift"
+        ],
+        "focus": {
+          "center": {
+            "x": 1041.12,
+            "y": 509.95
+          },
+          "zoom": 2.75,
+          "title": "Threshold",
+          "note": "The last step should feel earned, not random."
+        }
+      },
+      {
+        "id": "frame-04",
+        "caption": "Discrete step lands and the east bridge opens.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase C",
+        "status": "Alignment must read as open in one glance.",
+        "cues": [
+          "bridge opens",
+          "player stays readable",
+          "handoff becomes clear"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 18,
+          "core": 8
+        },
+        "player": {
+          "shellId": "outer",
+          "angle": 108.11615950800478,
+          "label": "approach",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 1026,
+            "y": 556.6
+          },
+          "zoom": 2.8,
+          "title": "Opened bridge",
+          "note": "Open should read without debug text."
+        }
+      },
+      {
+        "id": "frame-05",
+        "caption": "Player starts using the newly aligned bridge.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase C",
+        "status": "Aligned state should be actionable right away.",
+        "cues": [
+          "player commits",
+          "bridge stays bright",
+          "phase label holds"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 18,
+          "core": 8
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 102.58554253634065,
+          "label": "opened lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "middle",
+          "angle": 64.09148660302162,
+          "label": "bridge target",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 1026,
+            "y": 556.6
+          },
+          "zoom": 2.7,
+          "title": "Actionable state",
+          "note": "The player should know the next move instantly."
+        }
+      },
+      {
+        "id": "frame-06",
+        "caption": "Aligned hold with a stable next-shell route.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase C locked",
+        "status": "A discrete move needs a readable hold.",
+        "cues": [
+          "bridge stays open",
+          "next route simplifies",
+          "player remains central"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 18,
+          "core": 8
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 87.10830268729478,
+          "label": "hold lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 155.81531365495175,
+          "label": "next shell",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 1026,
+            "y": 556.6
+          },
+          "zoom": 2.7,
+          "title": "Stable hold",
+          "note": "The learned outcome should have time to land."
+        }
+      },
+      {
+        "id": "after",
+        "caption": "After frame with the bridge open and usable.",
+        "cameraLabel": "rotation lane",
+        "rotationLabel": "phase C locked",
+        "status": "Result should stay learnable after motion stops.",
+        "cues": [
+          "outcome is explicit",
+          "player + target coexist",
+          "no free spin required"
+        ],
+        "shellRotations": {
+          "outer": 0,
+          "middle": 18,
+          "core": 8
+        },
+        "player": {
+          "shellId": "middle",
+          "angle": 99.31883797701448,
+          "label": "after lane",
+          "emphasis": 1
+        },
+        "objective": {
+          "shellId": "core",
+          "angle": 155.81531365495175,
+          "label": "next shell",
+          "visible": true
+        },
+        "activeConnectorIds": [
+          "north-lift",
+          "east-bridge",
+          "south-lock"
+        ],
+        "focus": {
+          "center": {
+            "x": 1026,
+            "y": 556.6
+          },
+          "zoom": 2.7,
+          "title": "After state",
+          "note": "The player should recover bearings immediately."
+        }
+      }
+    ],
+    "humanJudgment": "Does the stepped move feel learnable instead of disorienting?",
+    "semanticGate": {
+      "landmarkId": "hinge-beacon",
+      "connectorId": "east-bridge",
+      "focusTarget": "connector",
+      "recoveryStateId": "after"
+    },
+    "report": {
+      "changed": "The rotation proof now comes from a seeded puzzle graph with explicit bridge gates and named rotation states.",
+      "regressed": "No free-spin path is treated as valid proof; only discrete state changes count.",
+      "better": "Rotation metrics, connector activation, and visual evidence now all resolve from the same manifest.",
+      "worse": "Intermediate frames remain schematic and do not attempt cinematic camera work.",
+      "humanJudgment": "Confirm that the step change reads as a puzzle rule rather than a camera trick."
+    }
+  }
+}

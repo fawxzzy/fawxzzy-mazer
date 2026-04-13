@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { describeSemanticFailures } from './canaryReport.mjs';
 
 const toPosixPath = (value) => value.split(sep).join('/');
 const ARTIFACT_KEYS = ['before', 'after', 'focus', 'contactSheet', 'video', 'metadata', 'report'];
@@ -233,7 +234,7 @@ export const writeMetadata = async (metadataPath, value) => {
   await writeJsonFile(metadataPath, value);
 };
 
-export const writeReport = async (reportPath, report) => {
+export const writeReport = async (reportPath, report, options = {}) => {
   const lines = [
     `what changed: ${report.changed}`,
     `what regressed: ${report.regressed}`,
@@ -241,6 +242,23 @@ export const writeReport = async (reportPath, report) => {
     `what looked worse: ${report.worse}`,
     `what needs human judgment: ${report.humanJudgment}`
   ];
+
+  if (options.semanticScore) {
+    lines.push('');
+    lines.push(`semantic pass: ${options.semanticScore.summary?.passed === true ? 'yes' : 'no'}`);
+    lines.push(`semantic gates: ${options.semanticScore.summary?.passedGateCount ?? 0}/${options.semanticScore.summary?.totalGateCount ?? 0}`);
+    const failingGates = describeSemanticFailures(options.semanticScore.failures ?? []);
+    lines.push(
+      `failing gates: ${failingGates.length > 0
+        ? failingGates.map((gate) => `${gate.label}${gate.stateId ? ` @ ${gate.stateId}` : ''}`).join(', ')
+        : 'none'}`
+    );
+  }
+
+  if (Array.isArray(options.expectedFailures) && options.expectedFailures.length > 0) {
+    lines.push(`expected canary failures: ${options.expectedFailures.join(', ')}`);
+  }
+
   await writeFile(reportPath, `${lines.join('\n')}\n`, 'utf8');
 };
 
