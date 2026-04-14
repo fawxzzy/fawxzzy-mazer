@@ -9,6 +9,7 @@ import type {
   RuntimeTrailDelivery
 } from '../../mazer-core/adapters';
 import type { LocalObservation, TileId, VisibleLandmark } from '../../mazer-core/agent/types';
+import type { IntentImportance, IntentSpeaker } from '../../mazer-core/intent';
 
 export type Planet3DShellId = 'outer-shell' | 'inner-shell';
 export type Planet3DRotationStateId = 'north' | 'east' | 'south' | 'west';
@@ -71,9 +72,9 @@ export interface Planet3DTrailPoint {
 
 export interface Planet3DIntentFeedEntry {
   step: number;
-  speaker: string;
+  speaker: IntentSpeaker;
   summary: string;
-  importance: string;
+  importance: IntentImportance;
 }
 
 export interface Planet3DMicroPing {

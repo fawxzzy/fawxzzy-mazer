@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { formatIntentSpeakerHandle, type IntentSpeaker } from '../../mazer-core/intent';
 import { FUTURE_PHASER_ROUTE, FUTURE_PHASER_TOPOLOGY, resolveFutureTile } from './topology';
 import { createFuturePhaserRuntimeSession, type FuturePhaserRuntimeSession } from './runtime';
 
@@ -201,12 +202,12 @@ export class FuturePhaserScene extends Phaser.Scene {
     this.nodeLabels = [];
   }
 
-  private formatIntentLines(deliveries: readonly { bus: { records: readonly { speaker: string; summary: string; kind: string }[] } }[]): string {
+  private formatIntentLines(deliveries: readonly { bus: { records: readonly { speaker: IntentSpeaker; summary: string; kind: string }[] } }[]): string {
     if (deliveries.length === 0) {
       return 'intent feed: pending';
     }
 
-    const lines = deliveries.at(-1)?.bus.records.slice(-3).map((record) => `${record.speaker} :: ${record.kind} :: ${record.summary}`) ?? [];
+    const lines = deliveries.at(-1)?.bus.records.slice(-4).map((record) => `${formatIntentSpeakerHandle(record.speaker)} ${record.summary}`) ?? [];
     return [
       'intent feed:',
       ...lines.map((line) => `- ${line}`)

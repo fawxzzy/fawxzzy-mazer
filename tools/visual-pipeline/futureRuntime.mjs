@@ -75,7 +75,7 @@ const collectFutureRuntimeContentProof = (records, episodeDeliveries, visibleInt
 
 const collectFuturePhaserContentProof = (snapshot) => {
   const latestIntentDelivery = snapshot?.intentDeliveries?.at(-1) ?? null;
-  const visibleIntentRecordCount = latestIntentDelivery?.bus?.records?.slice(-3).length ?? 0;
+  const visibleIntentRecordCount = latestIntentDelivery?.bus?.records?.slice(-4).length ?? 0;
   const worldPingCount = latestIntentDelivery?.bus?.debouncedWorldPingCount ?? 0;
   const records = snapshot?.intentDeliveries?.flatMap((delivery) => delivery?.bus?.records ?? []) ?? [];
   return collectFutureRuntimeContentProof(
@@ -160,7 +160,7 @@ export const evaluateFuturePhaserSnapshot = (snapshot) => {
   const trailHeadTileId = latestResult?.trail?.trailHeadTileId ?? null;
   const contentProof = collectFuturePhaserContentProof(snapshot);
   const intentHistoryRecords = visibleIntentDelivery?.bus?.records ?? [];
-  const visibleIntentRecords = intentHistoryRecords.slice(-3);
+  const visibleIntentRecords = intentHistoryRecords.slice(-4);
   const intentHistoryCount = intentHistoryRecords.length;
   const visibleIntentRecordCount = visibleIntentRecords.length;
   const worldPingCount = visibleIntentDelivery?.bus?.debouncedWorldPingCount ?? 0;
@@ -170,7 +170,7 @@ export const evaluateFuturePhaserSnapshot = (snapshot) => {
     ?? latestResult?.observation?.observation?.goal?.visible
   );
   const intentFeedReadable = visibleIntentRecordCount > 0
-    && visibleIntentRecordCount <= 3
+    && visibleIntentRecordCount <= 4
     && visibleIntentRecords.every((record) => typeof record.summary === 'string' && record.summary.trim().length > 0);
   const worldPingSubordinate = worldPingCount <= Math.max(1, visibleIntentRecordCount);
   const trapInferencePass = contentProof.trapInferencePass;

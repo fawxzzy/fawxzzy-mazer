@@ -1,4 +1,4 @@
-export type IntentSpeaker = 'Runner' | 'Maze' | 'TrapNet' | 'Warden' | 'Inventory' | 'Puzzle';
+export type IntentSpeaker = 'Runner' | 'Warden' | 'TrapNet' | 'Puzzle' | 'Inventory';
 export type IntentCategory = 'observe' | 'replan' | 'danger' | 'item' | 'goal' | 'infer';
 export type IntentImportance = 'low' | 'medium' | 'high';
 export type IntentKind =
@@ -97,6 +97,37 @@ export interface IntentFeedState {
 
 export const MAX_INTENT_VISIBLE_ENTRIES = 4;
 export const MAX_WORLD_PINGS = 2;
+export const INTENT_PING_LABELS: Record<IntentKind, string> = Object.freeze({
+  'goal-observed': 'Exit seen',
+  'enemy-seen': 'Warden seen',
+  'trap-inferred': 'Trap inferred',
+  'item-spotted': 'Item spotted',
+  'landmark-spotted': 'Landmark seen',
+  'gate-aligned': 'Gate aligned',
+  'puzzle-state-observed': 'Puzzle state',
+  'frontier-chosen': 'Route marked',
+  'dead-end-confirmed': 'Dead end',
+  'replan-triggered': 'Route shifted',
+  'route-commitment-changed': 'Route locked'
+});
+export const INTENT_SUMMARY_VERB_FIRST_WORDS = Object.freeze([
+  'scanning',
+  'screening',
+  'reading',
+  'valuing',
+  'parsing',
+  'marking',
+  'noting',
+  'replanning',
+  'tracking',
+  'locking',
+  'timing',
+  'aligning',
+  'observing',
+  'avoiding',
+  'learning',
+  'prioritizing'
+]);
 export const INTENT_SLOT_OPACITIES = Object.freeze([1, 0.7, 0.4, 0.15]);
 export const WORLD_PING_OPACITIES = Object.freeze([1, 0.72]);
 export const INTENT_TTL_STEPS: Record<IntentImportance, number> = Object.freeze({
@@ -109,3 +140,9 @@ export const WORLD_PING_TTL_STEPS: Record<IntentImportance, number> = Object.fre
   medium: 2,
   high: 3
 });
+
+export const formatIntentSpeakerHandle = (speaker: IntentSpeaker): string => `@${speaker}`;
+
+export const getIntentPingLabel = (record: Pick<IntentBusRecord, 'kind' | 'summary'>): string => (
+  INTENT_PING_LABELS[record.kind] ?? record.summary
+);

@@ -1,4 +1,5 @@
 import {
+  INTENT_SUMMARY_VERB_FIRST_WORDS,
   INTENT_TTL_STEPS,
   INTENT_SLOT_OPACITIES,
   MAX_INTENT_VISIBLE_ENTRIES,
@@ -12,6 +13,7 @@ import {
   type IntentVisiblePing
 } from './IntentEvent';
 import type { IntentBusBuildResult } from './IntentBus';
+import { getIntentPingLabel } from '../../mazer-core/intent';
 
 interface IntentFeedBuildResult {
   records: IntentBusRecord[];
@@ -23,19 +25,7 @@ interface IntentFeedBuildOptions {
   canary?: string | null;
 }
 
-const VERB_FIRST_WORDS = new Set([
-  'scanning',
-  'marking',
-  'replanning',
-  'tracking',
-  'learning',
-  'avoiding',
-  'prioritizing',
-  'observing',
-  'locking',
-  'aligning',
-  'parsing'
-]);
+const VERB_FIRST_WORDS = new Set(INTENT_SUMMARY_VERB_FIRST_WORDS);
 const INTENT_SPAM_RATE_LIMIT = 0.75;
 const INTENT_MAX_STREAK = 3;
 const WORLD_PING_RATE_LIMIT = 1.05;
@@ -51,27 +41,6 @@ const isVerbFirst = (summary: string): boolean => {
 const getWorldPingTtl = (record: IntentBusRecord): number => (
   Math.min(record.ttlSteps, WORLD_PING_TTL_STEPS[record.importance])
 );
-
-const getPingLabel = (record: IntentBusRecord): string => {
-  switch (record.kind) {
-    case 'goal-observed':
-      return 'Exit seen';
-    case 'enemy-seen':
-      return 'Enemy seen';
-    case 'trap-inferred':
-      return 'Trap inferred';
-    case 'item-spotted':
-      return 'Item spotted';
-    case 'landmark-spotted':
-      return 'Landmark seen';
-    case 'gate-aligned':
-      return 'Gate aligned';
-    case 'puzzle-state-observed':
-      return 'Puzzle state';
-    default:
-      return record.summary;
-  }
-};
 
 export const resolveVisibleIntentEntries = (
   records: readonly IntentBusRecord[],
@@ -109,7 +78,7 @@ export const resolveVisibleWorldPings = (
     anchor: record.anchor,
     ageSteps: step - record.step,
     opacity: WORLD_PING_OPACITIES[index] ?? WORLD_PING_OPACITIES[WORLD_PING_OPACITIES.length - 1] ?? 0.68,
-    pingLabel: getPingLabel(record)
+    pingLabel: getIntentPingLabel(record)
   }));
 };
 

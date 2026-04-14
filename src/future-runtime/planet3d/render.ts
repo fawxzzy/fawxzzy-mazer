@@ -1,5 +1,5 @@
 import type { RuntimeIntentDelivery, RuntimeTrailDelivery } from '../../mazer-core/adapters';
-import type { IntentBusRecord } from '../../mazer-core/intent/IntentEvent';
+import { formatIntentSpeakerHandle, getIntentPingLabel, type IntentBusRecord } from '../../mazer-core/intent';
 import { oneShellPlanet3DWorld, resolveShellRelationship, type OneShellPlanet3DHost } from './world';
 import type {
   FutureRuntimeContentProof,
@@ -59,7 +59,7 @@ const projectWorldPoint = (
 ): Planet3DPoint2D & { depth: number } => projectPoint(point, rotationState);
 
 const resolveRecordLabel = (record: IntentBusRecord): string => (
-  `${record.speaker} :: ${record.summary}`
+  `${formatIntentSpeakerHandle(record.speaker)} ${getIntentPingLabel(record)}`
 );
 
 const resolvePingPoint = (
@@ -340,7 +340,7 @@ export const drawPlanet3DPrototypeFrame = (
   context.font = '13px Consolas, monospace';
   frame.intentFeed.entries.forEach((entry, index) => {
     context.fillStyle = index === 0 ? '#eefbff' : index === 1 ? '#cdefff' : '#a8c9d8';
-    context.fillText(`${entry.speaker}: ${entry.summary}`, intentX, intentY + 28 + (index * 24));
+    context.fillText(`${formatIntentSpeakerHandle(entry.speaker)} ${entry.summary}`, intentX, intentY + 28 + (index * 24));
   });
 
   const pingBaseX = 72;

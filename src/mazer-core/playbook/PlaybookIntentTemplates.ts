@@ -106,7 +106,7 @@ export class PlaybookIntentTemplates {
           kind: 'enemy-seen',
           category: 'danger',
           importance: 'high',
-          summary: `Avoiding ${input.cue ?? 'enemy'} pressure.`,
+          summary: `Screening ${input.cue ?? 'warden'} pressure.`,
           confidence: 0.86,
           anchor: {
             kind: 'tile',
@@ -119,7 +119,7 @@ export class PlaybookIntentTemplates {
           kind: 'trap-inferred',
           category: 'danger',
           importance: 'high',
-          summary: `Learning ${input.cue ?? 'hazard'} at ${currentLabel}.`,
+          summary: `Reading ${input.cue ?? 'trap'} rhythm.`,
           confidence: 0.78,
           anchor: {
             kind: 'tile',
@@ -132,7 +132,7 @@ export class PlaybookIntentTemplates {
           kind: 'item-spotted',
           category: 'item',
           importance: 'medium',
-          summary: `Prioritizing ${input.cue ?? 'item'}.`,
+          summary: `Valuing ${input.cue ?? 'item'} detour.`,
           confidence: 0.74,
           anchor: {
             kind: 'tile',
@@ -163,11 +163,11 @@ export class PlaybookIntentTemplates {
         };
       case 'landmark-spotted':
         return {
-          speaker: 'Maze',
+          speaker: 'Runner',
           kind: 'landmark-spotted',
           category: 'observe',
           importance: 'medium',
-          summary: `Tracking ${input.landmark?.label ?? 'landmark'}.`,
+          summary: `Noting ${input.landmark?.label ?? 'landmark'}.`,
           confidence: 0.68,
           anchor: {
             kind: 'landmark',
@@ -200,11 +200,11 @@ export class PlaybookIntentTemplates {
       }
       case 'gate-aligned':
         return {
-          speaker: 'Maze',
+          speaker: 'Puzzle',
           kind: 'gate-aligned',
           category: 'observe',
           importance: 'medium',
-          summary: `Aligning ${connectorLabel}.`,
+          summary: `Timing ${connectorLabel}.`,
           confidence: 0.83,
           anchor: {
             kind: 'connector',

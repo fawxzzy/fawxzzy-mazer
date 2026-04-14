@@ -94,7 +94,8 @@ describe('intent bus', () => {
         targetTileId: 'north-spoke',
         targetTileLabel: 'North spoke',
         visibleLandmarks: [{ id: 'signal-post', label: 'Signal post' }],
-        observedLandmarkIds: ['signal-post']
+        observedLandmarkIds: ['signal-post'],
+        localCues: ['enemy patrol']
       }),
       makeState({
         step: 3,
@@ -102,7 +103,7 @@ describe('intent bus', () => {
         targetKind: 'backtrack',
         targetTileId: 'junction-a',
         targetTileLabel: 'Junction A',
-        localCues: ['dead-end'],
+        localCues: ['dead-end', 'switch state'],
         traversableTileIds: ['junction-a']
       }),
       makeState({
@@ -120,13 +121,15 @@ describe('intent bus', () => {
 
     expect(visible).toHaveLength(4);
     expect(visible.map((entry) => entry.opacity)).toEqual(INTENT_SLOT_OPACITIES);
-    expect(stepOneSpeakers.size).toBe(2);
-    expect(feed.metrics.speakerCount).toBeGreaterThanOrEqual(3);
+    expect(stepOneSpeakers).toEqual(new Set(['TrapNet', 'Inventory']));
+    expect(feed.metrics.speakerCount).toBe(5);
     expect(feed.states.get(4)?.pings.length).toBeLessThanOrEqual(2);
 
     const markup = renderIntentFeedMarkup(feed.states.get(4)!);
     expect(markup).toContain('Intent Bus');
     expect(markup).toContain('@Runner');
+    expect(markup).toContain('@Warden');
+    expect(markup).not.toContain('@Maze');
     expect(markup).toContain('data-intent-speaker-count="');
   });
 

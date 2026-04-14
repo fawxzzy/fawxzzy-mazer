@@ -59,7 +59,7 @@ Intent bus overlay:
 - The spectator/debug overlay is hybrid: a HUD-space `Intent Bus` stack on neutral glass in a safe corner plus brief world-space micro pings for concrete local events.
 - The bus is planner-owned. The feed consumes shared bus records instead of narrating raw runtime state or per-frame thought text.
 - Each record carries `speaker`, `category`, `importance`, `summary`, `confidence`, optional `anchor`, `step`, and `ttlSteps`.
-- Speakers are `Runner`, `Maze`, `TrapNet`, `Warden`, `Inventory`, and `Puzzle`.
+- Speakers are `@Runner`, `@Warden`, `@TrapNet`, `@Puzzle`, and `@Inventory`.
 - Entries emit only on meaningful policy deltas such as frontier choice, dead-end confirmation, landmark observation, replans, and goal observation.
 - The queue is capped at four visible entries with newest-to-oldest opacity slots of `100 / 70 / 40 / 15`.
 - The persistent stack stays in screen space; world-space text is reserved for short anchored pings only and must never rotate with the planet as persistent UI.
@@ -67,7 +67,7 @@ Intent bus overlay:
 - During large camera motion the healthy lane collapses ping density so anchored callouts do not fight orientation recovery.
 - High-importance intent stays visible longer than low-importance chatter so the overlay reads like commentary, not per-frame thought spam.
 - Feed categories are `observe`, `replan`, `danger`, `item`, `goal`, and `infer`.
-- Feed lines stay verb-first and debounce duplicate chatter within a short step window.
+- Feed lines stay verb-first, keep speaker handles visible, and debounce duplicate chatter within a short step window.
 
 Intent proof gates:
 

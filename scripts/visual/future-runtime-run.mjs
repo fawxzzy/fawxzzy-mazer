@@ -414,79 +414,88 @@ const buildPacketMetadata = ({
   keyframePaths,
   proofGates,
   semanticScore
-}) => ({
-  schemaVersion: 2,
-  generatedAt: new Date().toISOString(),
-  runId,
-  commitSha,
-  scenario: {
-    id: scenario.id,
-    label: scenario.label,
-    kind: scenario.kind,
-    motion: scenario.motion,
-    route: scenario.route
-  },
-  benchmark: {
-    packId: runtimeBenchmarkPack.packId,
-    scenarioIds: runtimeBenchmarkPack.scenarios.map((entry) => entry.id)
-  },
-  proofGates,
-  viewport,
-  source: {
-    kind: scenario.kind,
-    stateId: resolveDiagnosticStep(afterDiagnostics),
-    currentStep: afterDiagnostics?.diagnostics?.currentStep ?? afterDiagnostics?.diagnostics?.step ?? afterDiagnostics?.step ?? null,
-    rotationState: afterDiagnostics?.diagnostics?.rotationState ?? afterDiagnostics?.rotationState ?? null
-  },
-  readabilityGates: DEFAULT_FUTURE_RUNTIME_GATES,
-  states: {
-    before: resolveDiagnosticStep(beforeDiagnostics) ?? 'before',
-    after: resolveDiagnosticStep(afterDiagnostics) ?? 'after',
-    keyframes: keyframeDiagnostics.map((diagnostics, index) => resolveDiagnosticStep(diagnostics) ?? `keyframe-${index + 1}`)
-  },
-  diagnostics: {
-    before: beforeDiagnostics,
-    after: afterDiagnostics,
-    keyframes: keyframeDiagnostics
-  },
-  artifacts: {
-    before: relativeFromRepo(REPO_ROOT, packet.beforePath),
-    after: relativeFromRepo(REPO_ROOT, packet.afterPath),
-    focus: relativeFromRepo(REPO_ROOT, packet.focusPath),
-    contactSheet: relativeFromRepo(REPO_ROOT, packet.contactSheetPath),
-    keyframes: keyframePaths.map((entry) => relativeFromRepo(REPO_ROOT, entry.path)),
-    video: null,
-    metadata: relativeFromRepo(REPO_ROOT, packet.metadataPath),
-    report: relativeFromRepo(REPO_ROOT, packet.reportPath),
-    score: relativeFromRepo(REPO_ROOT, packet.scorePath)
-  },
-  semanticScore: {
-    passed: semanticScore.summary.passed,
-    passRatio: semanticScore.summary.passRatio,
-    failureCount: semanticScore.failures.length
-  },
-  runtime: {
-    stepCount: afterDiagnostics?.currentStep
-      ?? afterDiagnostics?.diagnostics?.currentStep
-      ?? afterDiagnostics?.diagnostics?.step
-      ?? afterDiagnostics?.step
-      ?? afterDiagnostics?.results?.length
-      ?? null,
-    playerReadable: semanticScore.contract.playerReadableEveryScene,
-    objectiveProxyVisible: semanticScore.contract.objectiveProxyVisibleEveryScene,
-    intentFeedReadable: semanticScore.contract.intentFeedReadableEveryScene,
-    worldPingSubordinate: semanticScore.contract.worldPingSubordinateEveryScene,
-    rotationRecovered: semanticScore.contract.rotationRecoveredEveryScene,
-    trapInferencePass: semanticScore.contract.trapInferencePassEveryScene,
-    wardenReadabilityPass: semanticScore.contract.wardenReadabilityPassEveryScene,
-    itemProxyPass: semanticScore.contract.itemProxyPassEveryScene,
-    puzzleProxyPass: semanticScore.contract.puzzleProxyPassEveryScene,
-    shellRelationshipUnderstanding: afterDiagnostics?.contentProof?.shellRelationshipPass ?? false,
-    connectorReadability: afterDiagnostics?.contentProof?.connectorReadabilityPass ?? false,
-    rotationRecovery: afterDiagnostics?.contentProof?.rotationRecoveryPass ?? false,
-    signalOverloadPass: semanticScore.contract.signalOverloadPassEveryScene
-  }
-});
+}) => {
+  const latestIntentEntries = scenario.kind === 'future-phaser'
+    ? (afterDiagnostics?.intentDeliveries?.at(-1)?.bus?.records ?? []).slice(-4)
+    : (afterDiagnostics?.intentFeed?.entries ?? []).slice(-4);
+  const intentSpeakers = [...new Set(latestIntentEntries.map((entry) => entry.speaker).filter(Boolean))];
+
+  return {
+    schemaVersion: 2,
+    generatedAt: new Date().toISOString(),
+    runId,
+    commitSha,
+    scenario: {
+      id: scenario.id,
+      label: scenario.label,
+      kind: scenario.kind,
+      motion: scenario.motion,
+      route: scenario.route
+    },
+    benchmark: {
+      packId: runtimeBenchmarkPack.packId,
+      scenarioIds: runtimeBenchmarkPack.scenarios.map((entry) => entry.id)
+    },
+    proofGates,
+    viewport,
+    source: {
+      kind: scenario.kind,
+      stateId: resolveDiagnosticStep(afterDiagnostics),
+      currentStep: afterDiagnostics?.diagnostics?.currentStep ?? afterDiagnostics?.diagnostics?.step ?? afterDiagnostics?.step ?? null,
+      rotationState: afterDiagnostics?.diagnostics?.rotationState ?? afterDiagnostics?.rotationState ?? null
+    },
+    readabilityGates: DEFAULT_FUTURE_RUNTIME_GATES,
+    states: {
+      before: resolveDiagnosticStep(beforeDiagnostics) ?? 'before',
+      after: resolveDiagnosticStep(afterDiagnostics) ?? 'after',
+      keyframes: keyframeDiagnostics.map((diagnostics, index) => resolveDiagnosticStep(diagnostics) ?? `keyframe-${index + 1}`)
+    },
+    diagnostics: {
+      before: beforeDiagnostics,
+      after: afterDiagnostics,
+      keyframes: keyframeDiagnostics
+    },
+    artifacts: {
+      before: relativeFromRepo(REPO_ROOT, packet.beforePath),
+      after: relativeFromRepo(REPO_ROOT, packet.afterPath),
+      focus: relativeFromRepo(REPO_ROOT, packet.focusPath),
+      contactSheet: relativeFromRepo(REPO_ROOT, packet.contactSheetPath),
+      keyframes: keyframePaths.map((entry) => relativeFromRepo(REPO_ROOT, entry.path)),
+      video: null,
+      metadata: relativeFromRepo(REPO_ROOT, packet.metadataPath),
+      report: relativeFromRepo(REPO_ROOT, packet.reportPath),
+      score: relativeFromRepo(REPO_ROOT, packet.scorePath)
+    },
+    semanticScore: {
+      passed: semanticScore.summary.passed,
+      passRatio: semanticScore.summary.passRatio,
+      failureCount: semanticScore.failures.length
+    },
+    runtime: {
+      stepCount: afterDiagnostics?.currentStep
+        ?? afterDiagnostics?.diagnostics?.currentStep
+        ?? afterDiagnostics?.diagnostics?.step
+        ?? afterDiagnostics?.step
+        ?? afterDiagnostics?.results?.length
+        ?? null,
+      intentSpeakerCount: intentSpeakers.length,
+      intentSpeakers,
+      playerReadable: semanticScore.contract.playerReadableEveryScene,
+      objectiveProxyVisible: semanticScore.contract.objectiveProxyVisibleEveryScene,
+      intentFeedReadable: semanticScore.contract.intentFeedReadableEveryScene,
+      worldPingSubordinate: semanticScore.contract.worldPingSubordinateEveryScene,
+      rotationRecovered: semanticScore.contract.rotationRecoveredEveryScene,
+      trapInferencePass: semanticScore.contract.trapInferencePassEveryScene,
+      wardenReadabilityPass: semanticScore.contract.wardenReadabilityPassEveryScene,
+      itemProxyPass: semanticScore.contract.itemProxyPassEveryScene,
+      puzzleProxyPass: semanticScore.contract.puzzleProxyPassEveryScene,
+      shellRelationshipUnderstanding: afterDiagnostics?.contentProof?.shellRelationshipPass ?? false,
+      connectorReadability: afterDiagnostics?.contentProof?.connectorReadabilityPass ?? false,
+      rotationRecovery: afterDiagnostics?.contentProof?.rotationRecoveryPass ?? false,
+      signalOverloadPass: semanticScore.contract.signalOverloadPassEveryScene
+    }
+  };
+};
 
 const captureScenarioPacket = async ({
   browser,

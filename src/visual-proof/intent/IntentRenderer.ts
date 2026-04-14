@@ -1,4 +1,5 @@
-import { type IntentFeedState, type IntentVisiblePing, type IntentSpeaker } from './IntentEvent';
+import { type IntentFeedState, type IntentVisiblePing } from './IntentEvent';
+import { formatIntentSpeakerHandle } from '../../mazer-core/intent';
 
 const escapeHtml = (value: string): string => value
   .replaceAll('&', '&amp;')
@@ -8,7 +9,6 @@ const escapeHtml = (value: string): string => value
   .replaceAll("'", '&#39;');
 
 const categoryToken = (value: string): string => value.toUpperCase();
-const speakerHandle = (speaker: IntentSpeaker): string => `@${speaker}`;
 const confidenceLabel = (confidence: number): string => `${Math.round(confidence * 100)}%`;
 const estimatePingWidth = (label: string): number => Math.max(78, Math.min(156, 26 + (label.length * 7.2)));
 
@@ -58,7 +58,7 @@ export const renderIntentFeedMarkup = (
             style="--intent-opacity:${entry.opacity}; --intent-raise:${entry.slot * 4}px;"
           >
             <div class="proof-intent-row">
-              <span class="proof-intent-speaker">${escapeHtml(speakerHandle(entry.speaker))}</span>
+              <span class="proof-intent-speaker">${escapeHtml(formatIntentSpeakerHandle(entry.speaker))}</span>
               <span class="proof-intent-tag">${escapeHtml(categoryToken(entry.category))}</span>
               <span class="proof-intent-confidence">${escapeHtml(confidenceLabel(entry.confidence))}</span>
             </div>

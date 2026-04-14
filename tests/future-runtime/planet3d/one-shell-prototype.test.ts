@@ -25,8 +25,10 @@ describe('planet3d future runtime', () => {
     expect(frame.objectiveProxy.label).toBe('Inner core projection');
     expect(frame.intentFeed.primaryPlacement).toBe('screen-space');
     expect(frame.intentFeed.entries.length).toBeGreaterThan(0);
+    expect(frame.intentFeed.entries.length).toBeLessThanOrEqual(4);
     expect(frame.intentFeed.worldPings.length).toBeLessThanOrEqual(2);
     expect(frame.intentFeed.entries.length).toBeGreaterThanOrEqual(frame.intentFeed.worldPings.length);
+    expect(new Set(frame.intentFeed.entries.map((entry) => entry.speaker))).not.toContain('Maze');
     expect(frame.contentProof.trapInferencePass).toBe(true);
     expect(frame.contentProof.wardenReadabilityPass).toBe(true);
     expect(frame.contentProof.itemProxyPass).toBe(true);

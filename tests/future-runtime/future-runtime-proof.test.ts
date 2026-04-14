@@ -73,7 +73,7 @@ describe('future runtime proof contract', () => {
           bus: {
             records: [
               { summary: 'Runner reaches the goal' },
-              { summary: 'Maze confirms the gate' }
+              { summary: 'Puzzle times the gate' }
             ],
             debouncedWorldPingCount: 1,
             debouncedEventCount: 2
@@ -208,7 +208,7 @@ describe('future runtime proof contract', () => {
     });
 
     expect(scene.intentFeedReadable).toBe(true);
-    expect(scene.diagnostics.visibleIntentRecordCount).toBe(3);
+    expect(scene.diagnostics.visibleIntentRecordCount).toBe(4);
     expect(scene.diagnostics.intentHistoryCount).toBe(5);
   });
 
