@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 import { REPO_ROOT, parseCliArgs, parseIntegerArg } from './common.mjs';
 import { readVisualProofConfig } from '../../tools/visual-pipeline/config.mjs';
 import {
+  FUTURE_RUNTIME_ARTIFACT_ROOT,
+  FUTURE_RUNTIME_BASELINE_POINTER
+} from '../../tools/visual-pipeline/futureRuntime.mjs';
+import {
   compareLatestRunToBaseline,
   compareLatestRunToArtifactRoot,
   loadBaselinePointer,
@@ -132,7 +136,12 @@ const buildLegacyComparisonReport = async ({ artifactRoot, comparison }) => {
 const main = async () => {
   const args = parseCliArgs();
   const config = await readVisualProofConfig(REPO_ROOT);
-  const artifactRoot = typeof args['artifact-root'] === 'string' ? args['artifact-root'] : config.artifactRoot;
+  const futureArtifactRoot = typeof args['future-artifact-root'] === 'string'
+    ? args['future-artifact-root']
+    : null;
+  const artifactRoot = typeof args['artifact-root'] === 'string'
+    ? args['artifact-root']
+    : futureArtifactRoot ?? config.artifactRoot;
   const compareMode = parseBooleanArg(args.compare);
   const compareLegacyMode = parseBooleanArg(args['compare-legacy']);
   const regressionsMode = parseBooleanArg(args.regressions);
@@ -141,6 +150,11 @@ const main = async () => {
   const legacyArtifactRoot = typeof args['legacy-artifact-root'] === 'string'
     ? args['legacy-artifact-root']
     : 'tmp/captures/mazer-legacy-proof';
+  const baselinePointerPath = typeof args['baseline-pointer'] === 'string'
+    ? args['baseline-pointer']
+    : (futureArtifactRoot === FUTURE_RUNTIME_ARTIFACT_ROOT || artifactRoot === FUTURE_RUNTIME_ARTIFACT_ROOT)
+      ? FUTURE_RUNTIME_BASELINE_POINTER
+      : 'artifacts/visual/baseline.json';
 
   const { indexPath, index, latestRunId, latestGeneratedAt } = await writeArtifactIndex(REPO_ROOT, artifactRoot);
 
@@ -171,16 +185,17 @@ const main = async () => {
   }
 
   if (promoteMode) {
-    const promoted = await writeBaselinePointer(REPO_ROOT, artifactRoot, index);
+    const promoted = await writeBaselinePointer(REPO_ROOT, artifactRoot, index, baselinePointerPath);
     const comparison = await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
       baselinePointer: { pointer: promoted.pointer },
+      baselinePointerRelative: baselinePointerPath,
       requireBaseline: true
     });
 
     printJson({
       mode: 'promote-baseline',
       artifactRoot,
-      baselinePointerPath: resolve(REPO_ROOT, 'artifacts/visual/baseline.json'),
+      baselinePointerPath: resolve(REPO_ROOT, baselinePointerPath),
       baseline: promoted.pointer,
       latestRunId,
       latestGeneratedAt,
@@ -194,13 +209,15 @@ const main = async () => {
     return;
   }
 
-  const baselinePointer = await loadBaselinePointer(REPO_ROOT);
+  const baselinePointer = await loadBaselinePointer(REPO_ROOT, baselinePointerPath);
   const comparison = baselinePointer
     ? await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
-        baselinePointer,
-        requireBaseline: compareMode || regressionsMode
-      })
+      baselinePointer,
+      baselinePointerRelative: baselinePointerPath,
+      requireBaseline: compareMode || regressionsMode
+    })
     : await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
+        baselinePointerRelative: baselinePointerPath,
         requireBaseline: false
       });
 
@@ -208,6 +225,7 @@ const main = async () => {
     printJson({
       mode: 'compare',
       artifactRoot,
+      baselinePointerPath: resolve(REPO_ROOT, baselinePointerPath),
       latestRunId: comparison.latestRunId,
       baseline: comparison.baseline,
       regressionCount: comparison.aggregateDiffSummary.regressions.length,
@@ -226,6 +244,7 @@ const main = async () => {
     printJson({
       mode: 'regressions',
       artifactRoot,
+      baselinePointerPath: resolve(REPO_ROOT, baselinePointerPath),
       latestRunId: comparison.latestRunId,
       baseline: comparison.baseline,
       limit,
@@ -237,6 +256,7 @@ const main = async () => {
   printJson({
     mode: 'index',
     artifactRoot,
+    baselinePointerPath: resolve(REPO_ROOT, baselinePointerPath),
     packetCount: index.packetCount,
     scenarioCount: index.scenarioCount,
     latestRunId,

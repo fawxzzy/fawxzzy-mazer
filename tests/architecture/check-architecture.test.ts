@@ -93,6 +93,28 @@ describe('architecture firewall', () => {
     expect(violations.map((entry) => entry.message).join('\n')).toContain('local and legal-candidate-only');
   });
 
+  it('fails when scorer inputs admit manifest or bus truth', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/visual-proof/main.ts', 'export const main = true;'],
+      ['src/visual-proof/proofRuntime.ts', 'export const runtime = true;'],
+      ['src/visual-proof/intent/IntentBus.ts', 'export const intentBus = true;'],
+      ['src/mazer-core/agent/types.ts', `
+        import type { PlanetProofManifest } from '../../visual-proof/manifestTypes';
+        export interface PolicyScorerInput {
+          manifest: PlanetProofManifest;
+          objectiveNodeId: string;
+        }
+      `],
+      ['src/mazer-core/agent/FrontierPlanner.ts', 'export const planner = true;'],
+      ['src/mazer-core/agent/PolicyScorer.ts', 'export const scorer = true;'],
+      ['src/visual-proof/intent/IntentFeed.ts', 'export const feed = true;']
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'scorer-input-bounded')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('derived episode-log features');
+  });
+
   it('fails when runtime code bypasses legal-candidate filtering', async () => {
     const { collectArchitectureViolations } = await loadChecker();
     const violations = collectArchitectureViolations(new Map([
@@ -195,5 +217,70 @@ describe('architecture firewall', () => {
     expect(installBoundaryViolations).toHaveLength(2);
     expect(installBoundaryViolations.map((entry) => entry.message).join('\n')).toContain('Playbook-only');
     expect(installBoundaryViolations.map((entry) => entry.message).join('\n')).toContain('Cortex and Atlas installs remain out of scope');
+  });
+
+  it('fails when future-runtime imports proof-lane surfaces directly', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/future-runtime/phaser/FuturePhaserScene.ts', `
+        import { renderIntentFeedMarkup } from '../../visual-proof/intent/IntentRenderer';
+        export const scene = renderIntentFeedMarkup;
+      `]
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'future-runtime-proof-isolation')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('isolated from proof-lane code');
+  });
+
+  it('fails when future-runtime bypasses the runtime adapter bridge', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/future-runtime/planet3d/PlanetPrototypeRuntime.ts', `
+        export const bypass = (planner) => planner.scoreCandidates({ candidates: [] });
+      `]
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'future-runtime-core-seam')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('RuntimeAdapterBridge');
+  });
+
+  it('fails when runtime logging imports proof-lane manifest truth', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/mazer-core/logging/RuntimeEpisodeLog.ts', `
+        import type { PlanetProofManifest } from '../../visual-proof/manifestTypes';
+        export const leak = (manifest: PlanetProofManifest) => manifest.objectiveNodeId;
+      `]
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'logging-local-only')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('bounded to local replay truth');
+  });
+
+  it('fails when replay export or eval surfaces import proof-lane truth', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/mazer-core/eval/ReplayEval.ts', `
+        import type { PlanetProofManifest } from '../../visual-proof/manifestTypes';
+        export const leak = (manifest: PlanetProofManifest) => manifest.objectiveNodeId;
+      `]
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'logging-local-only')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('bounded to local replay truth');
+  });
+
+  it('fails when training and tuning surfaces claim manifest or intent-bus ownership', async () => {
+    const { collectArchitectureViolations } = await loadChecker();
+    const violations = collectArchitectureViolations(new Map([
+      ['src/mazer-core/playbook/tuning/OfflineScorerTuner.ts', `
+        import type { IntentBusRecord } from '../../intent/IntentEvent';
+        import type { PlanetProofManifest } from '../../../visual-proof/manifestTypes';
+        export const leak = (manifest: PlanetProofManifest, record: IntentBusRecord) => [manifest, record];
+      `]
+    ]));
+
+    expect(violations.some((entry) => entry.rule === 'training-advisory-only')).toBe(true);
+    expect(violations.map((entry) => entry.message).join('\n')).toContain('replay-linked and advisory-only');
   });
 });

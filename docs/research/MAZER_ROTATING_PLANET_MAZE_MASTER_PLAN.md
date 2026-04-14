@@ -206,6 +206,28 @@ Content rules:
 - enemies, traps, and puzzles must attach to junctions, loops, sightlines, checkpoints, or rotation phases
 - no mechanic should float above topology as generic noise
 
+Implementation boundary:
+- future content systems consume `mazer-core` through the runtime adapter seam
+- Playbook remains the only shared engine in scope at the shared-system boundary
+- runtime or UI lanes may publish trail, intent, proof, and packet outputs, but they do not author planner truth or patch the Intent Bus contract
+- lane-specific baselines must be promoted independently before additional content stacks on top
+
+## Future Content Hooks
+
+Trap hooks:
+- bind trap contracts to junctions, loops, checkpoints, or rotation phases
+- require inferable state through timing, landmarks, proxies, or connector behavior before a trap can matter
+- treat blocked hidden-state traps as failure telemetry, not as surprise difficulty
+
+Warden hooks:
+- keep the first enemy agent topology-bound by limiting decisions to junction exits, loop circulation, sightline breaks, and rotation-phase reactions
+- reuse local legal-candidate discipline instead of runtime-specific cheating or animation-authored pathing
+
+Item and puzzle hooks:
+- keep item usefulness and puzzle opportunity tied to districts, connectors, checkpoints, and shell unlocks
+- require visible or proxied puzzle state whenever the true state is offscreen
+- feed items and puzzles into the bounded scorer only as advisory signals derived from local evidence
+
 ## Technical Staging
 
 Fixed sequence:
@@ -217,6 +239,7 @@ Fixed sequence:
 Stage rules:
 - the topology sandbox should prove graph rules, district signatures, landmark spacing, objective visibility behavior, and rotation-state clarity before visual spectacle becomes the focus
 - the isolated 3D prototype should prove camera behavior, player readability, shell legibility, and orientation recovery under motion
+- the first isolated 3D prototype gate is one shell only, with discrete rotation states, a visible objective proxy, readable trail output, and no production multi-shell scope
 - the current Phaser ambient build is not the implementation target for the first 3D spike
 - no live-product integration decision should be made until the spike proves camera, readability, and orientation
 - engine and runtime choice remain deferred until after the isolated prototype gate
@@ -229,6 +252,13 @@ The first prototype lane is successful only if it proves:
 - district types feel different in topology, not just in art direction
 - the player and active objective remain visible without heavy HUD dependence
 - bounded regional goals feel satisfying before the core is reached
+
+## Replay And Logging
+
+Replay and logging rules for the future lane:
+- keep runtime logs local and deterministic so identical observation streams reproduce the same trail, intent feed, and episode log
+- record trap activations, blocked hidden-state telemetry, warden decisions, item evidence, and puzzle opportunities as bounded runtime outputs rather than manifest truth
+- future-runtime proof packets may compare lane outputs, but they do not replace the visual-proof baseline or import planner truth from another lane
 
 ## Proposed Future Contracts
 

@@ -17,6 +17,16 @@ export interface LocalGoalObservation {
   label?: string;
 }
 
+export interface PolicyCandidateAdvisoryFeatures {
+  trapRisk: number;
+  enemyPressure: number;
+  itemOpportunity: number;
+  puzzleOpportunity: number;
+  timingWindow: number;
+}
+
+export type PolicyCandidateSignalMap = Partial<Record<TileId, Partial<PolicyCandidateAdvisoryFeatures>>>;
+
 export interface LocalObservation {
   step: number;
   currentTileId: TileId;
@@ -25,6 +35,7 @@ export interface LocalObservation {
   localCues: readonly string[];
   visibleLandmarks: readonly VisibleLandmark[];
   goal: LocalGoalObservation;
+  candidateSignals?: PolicyCandidateSignalMap;
 }
 
 export interface BeliefNode {
@@ -78,6 +89,7 @@ export interface PolicyObservationFeatures {
   enemyCueCount: number;
   itemCueCount: number;
   puzzleCueCount: number;
+  timingCueCount: number;
   goalVisible: boolean;
 }
 
@@ -87,6 +99,11 @@ export interface PolicyCandidateFeatures {
   unexploredNeighborCount: number;
   frontierCount: number;
   goalVisible: boolean;
+  trapRisk: number;
+  enemyPressure: number;
+  itemOpportunity: number;
+  puzzleOpportunity: number;
+  timingWindow: number;
 }
 
 export interface PolicyActionCandidate {
@@ -113,7 +130,25 @@ export interface PolicyEpisodeOutcome {
   enemyCueCount: number;
   itemCueCount: number;
   puzzleCueCount: number;
+  timingCueCount: number;
   localCues: string[];
+}
+
+export interface PolicyAdaptivePrior {
+  samples: number;
+  frontierValue: number;
+  backtrackUrgency: number;
+  trapSuspicion: number;
+  enemyRisk: number;
+  itemValue: number;
+  puzzleValue: number;
+  rotationTiming: number;
+}
+
+export interface PolicyEpisodeLogFeatures {
+  totalEpisodes: number;
+  global: PolicyAdaptivePrior;
+  byTileId: Record<TileId, PolicyAdaptivePrior>;
 }
 
 export interface PolicyEpisode {
@@ -140,6 +175,7 @@ export interface PolicyScorerInput {
   observation: LocalObservation;
   snapshot: ExplorerSnapshot;
   candidates: readonly PolicyActionCandidate[];
+  episodeLogFeatures?: PolicyEpisodeLogFeatures | null;
 }
 
 export interface PolicyScorer {
@@ -219,6 +255,47 @@ export const stableTokenScore = (seed: string, tileId: TileId, heading: HeadingT
   }
 
   return (hash >>> 0) / 0xffffffff;
+};
+
+const clampAdvisoryValue = (value: number | null | undefined): number => Number(
+  Math.min(1, Math.max(0, value ?? 0)).toFixed(4)
+);
+
+export const createEmptyPolicyCandidateAdvisoryFeatures = (): PolicyCandidateAdvisoryFeatures => ({
+  trapRisk: 0,
+  enemyPressure: 0,
+  itemOpportunity: 0,
+  puzzleOpportunity: 0,
+  timingWindow: 0
+});
+
+export const normalizePolicyCandidateAdvisoryFeatures = (
+  value: Partial<PolicyCandidateAdvisoryFeatures> | null | undefined
+): PolicyCandidateAdvisoryFeatures => ({
+  trapRisk: clampAdvisoryValue(value?.trapRisk),
+  enemyPressure: clampAdvisoryValue(value?.enemyPressure),
+  itemOpportunity: clampAdvisoryValue(value?.itemOpportunity),
+  puzzleOpportunity: clampAdvisoryValue(value?.puzzleOpportunity),
+  timingWindow: clampAdvisoryValue(value?.timingWindow)
+});
+
+export const mergePolicyCandidateAdvisoryFeatures = (
+  ...entries: Array<Partial<PolicyCandidateAdvisoryFeatures> | null | undefined>
+): PolicyCandidateAdvisoryFeatures => {
+  let merged = createEmptyPolicyCandidateAdvisoryFeatures();
+
+  for (const entry of entries) {
+    const normalized = normalizePolicyCandidateAdvisoryFeatures(entry);
+    merged = {
+      trapRisk: Math.max(merged.trapRisk, normalized.trapRisk),
+      enemyPressure: Math.max(merged.enemyPressure, normalized.enemyPressure),
+      itemOpportunity: Math.max(merged.itemOpportunity, normalized.itemOpportunity),
+      puzzleOpportunity: Math.max(merged.puzzleOpportunity, normalized.puzzleOpportunity),
+      timingWindow: Math.max(merged.timingWindow, normalized.timingWindow)
+    };
+  }
+
+  return merged;
 };
 
 export const cloneNode = (node: BeliefNode): BeliefNode => ({

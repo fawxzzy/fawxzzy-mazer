@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-14T05:09:18.964Z",
+  "promotedAt": "2026-04-14T05:09:29.378Z",
+  "artifactRoot": "tmp/captures/mazer-future-runtime",
+  "indexPath": "tmp/captures/mazer-future-runtime/index.json",
+  "runId": "baseline-promotion",
+  "packetCount": 4,
+  "scenarioCount": 2
+}

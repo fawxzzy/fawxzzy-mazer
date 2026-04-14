@@ -1,6 +1,6 @@
 import { BeliefGraph } from './BeliefGraph';
 import { FrontierPlanner } from './FrontierPlanner';
-import { summarizeObservationFeatures } from './PolicyScorer';
+import { summarizeEpisodeLogFeatures, summarizeObservationFeatures } from './PolicyScorer';
 import {
   type ExplorerActionLogEntry,
   type ExplorerAgentOptions,
@@ -34,6 +34,7 @@ const buildObservationFeatures = (observation: LocalObservation): PolicyObservat
     enemyCueCount: cueSummary.enemyCueCount,
     itemCueCount: cueSummary.itemCueCount,
     puzzleCueCount: cueSummary.puzzleCueCount,
+    timingCueCount: cueSummary.timingCueCount,
     goalVisible: observation.goal.visible
   };
 };
@@ -90,9 +91,11 @@ export class ExplorerAgent {
     this.finalizePendingEpisode(observation);
 
     const snapshotBeforeDecision = this.buildSnapshot();
+    const episodeLogFeatures = summarizeEpisodeLogFeatures(this.episodeLog);
     const plan = this.planner.plan(this.graph, observation.currentTileId, observation.heading, {
       observation,
-      snapshot: snapshotBeforeDecision
+      snapshot: snapshotBeforeDecision,
+      episodeLogFeatures
     });
     const nextTileId = plan.path.length > 1 ? plan.path[1] : null;
     const targetKind = nextTileId && this.graph.getNodeVisitCount(nextTileId) > 0 && plan.targetKind !== 'goal'
@@ -224,6 +227,7 @@ export class ExplorerAgent {
         enemyCueCount: cueSummary.enemyCueCount,
         itemCueCount: cueSummary.itemCueCount,
         puzzleCueCount: cueSummary.puzzleCueCount,
+        timingCueCount: cueSummary.timingCueCount,
         localCues: [...observation.localCues]
       }
     };

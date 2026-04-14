@@ -26,7 +26,10 @@ const ARTIFACT_LABELS = {
 };
 
 const resolveArtifactDir = (repoRoot) => resolve(repoRoot, 'artifacts', 'visual');
-export const resolveBaselinePointerPath = (repoRoot) => resolve(resolveArtifactDir(repoRoot), 'baseline.json');
+export const resolveBaselinePointerPath = (
+  repoRoot,
+  baselinePointerRelative = 'artifacts/visual/baseline.json'
+) => resolve(repoRoot, baselinePointerRelative);
 
 const readJsonFile = async (filePath) => {
   try {
@@ -307,13 +310,21 @@ export const loadArtifactIndex = async (repoRoot, artifactRootRelative) => {
   return index ? { index, indexPath, artifactRoot } : null;
 };
 
-export const loadBaselinePointer = async (repoRoot) => {
-  const pointerPath = resolveBaselinePointerPath(repoRoot);
+export const loadBaselinePointer = async (
+  repoRoot,
+  baselinePointerRelative = 'artifacts/visual/baseline.json'
+) => {
+  const pointerPath = resolveBaselinePointerPath(repoRoot, baselinePointerRelative);
   const pointer = await readJsonFile(pointerPath);
   return pointer ? { pointer, pointerPath } : null;
 };
 
-export const writeBaselinePointer = async (repoRoot, artifactRootRelative, index) => {
+export const writeBaselinePointer = async (
+  repoRoot,
+  artifactRootRelative,
+  index,
+  baselinePointerRelative = 'artifacts/visual/baseline.json'
+) => {
   const artifactRoot = resolve(repoRoot, artifactRootRelative);
   const packets = flattenIndex(index);
   const latestSummary = summarizeRuns(packets);
@@ -330,7 +341,7 @@ export const writeBaselinePointer = async (repoRoot, artifactRootRelative, index
     scenarioCount: new Set(latestRunPackets.map((packet) => packet.scenario.id)).size
   };
 
-  const pointerPath = resolveBaselinePointerPath(repoRoot);
+  const pointerPath = resolveBaselinePointerPath(repoRoot, baselinePointerRelative);
   await mkdir(dirname(pointerPath), { recursive: true });
   await writeJsonFile(pointerPath, pointer);
   return { pointer, pointerPath };
@@ -462,7 +473,8 @@ export const compareLatestRunToBaseline = async (repoRoot, artifactRootRelative,
     throw new Error(`Latest run ${latestRunId} is missing from the visual index.`);
   }
 
-  const baselinePointerResult = options.baselinePointer ?? await loadBaselinePointer(repoRoot);
+  const baselinePointerResult = options.baselinePointer
+    ?? await loadBaselinePointer(repoRoot, options.baselinePointerRelative);
   const baselinePointer = baselinePointerResult?.pointer ?? null;
   const baselineIndexResult = baselinePointer?.indexPath
     ? await readJsonFile(resolve(repoRoot, baselinePointer.indexPath)).then((value) => (value ? { index: value, indexPath: resolve(repoRoot, baselinePointer.indexPath) } : null))

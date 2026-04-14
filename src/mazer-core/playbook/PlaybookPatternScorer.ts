@@ -3,23 +3,22 @@ import type {
   LocalObservation,
   PolicyActionCandidate,
   PolicyEpisode,
-  TileId
+  PolicyEpisodeLogFeatures
 } from '../agent/types';
-
-const DANGER_CUE_KEYWORDS = ['trap', 'hazard', 'spike', 'ward', 'mine', 'alarm', 'laser', 'timing'];
-const ENEMY_CUE_KEYWORDS = ['enemy', 'warden', 'guard', 'hunter', 'scout', 'sentry', 'patrol'];
-const ITEM_CUE_KEYWORDS = ['item', 'key', 'cache', 'relic', 'shard', 'beacon', 'token'];
-const PUZZLE_CUE_KEYWORDS = ['puzzle', 'glyph', 'switch', 'lever', 'plate', 'cipher', 'rune'];
-const TIMING_CUE_KEYWORDS = ['timing', 'rotation', 'phase', 'align', 'cycle', 'gate'];
-
-interface TilePolicyMemory {
-  samples: number;
-  frontierSuccess: number;
-  trapHits: number;
-  enemyHits: number;
-  itemFinds: number;
-  puzzleFinds: number;
-}
+import {
+  createDefaultPlaybookTuningWeights,
+  normalizePlaybookTuningWeights,
+  type PlaybookTuningWeights
+} from './tuning/PlaybookTuningWeights';
+import {
+  appendEpisodeLogFeatures,
+  blendAdaptiveSignal,
+  centerAdaptiveSignal,
+  createEmptyEpisodeLogFeatures,
+  localCueAdaptiveSignal,
+  resolveTileAdaptivePrior,
+  summarizeObservationFeatures
+} from './PlaybookFeatureSignals';
 
 export interface PlaybookLegalCandidateInput {
   seed: string;
@@ -27,98 +26,143 @@ export interface PlaybookLegalCandidateInput {
   observation: LocalObservation;
   snapshot: ExplorerSnapshot;
   candidates: readonly PolicyActionCandidate[];
+  episodeLogFeatures?: PolicyEpisodeLogFeatures | null;
+  tuningWeights?: Partial<PlaybookTuningWeights> | null;
 }
 
-const countKeywordHits = (values: readonly string[], keywords: readonly string[]): number => (
-  values.reduce((count, value) => {
-    const normalized = value.toLowerCase();
-    return count + (keywords.some((keyword) => normalized.includes(keyword)) ? 1 : 0);
-  }, 0)
-);
+const scoreCandidate = (
+  candidate: PolicyActionCandidate,
+  input: PlaybookLegalCandidateInput,
+  learnedFeatures: PolicyEpisodeLogFeatures,
+  tuningWeights: PlaybookTuningWeights
+): number => {
+  const observationFeatures = summarizeObservationFeatures(input.observation.localCues);
+  const globalPrior = learnedFeatures.global;
+  const tilePrior = resolveTileAdaptivePrior(learnedFeatures, candidate.targetTileId);
 
-const getOrCreateMemory = (memory: Map<TileId, TilePolicyMemory>, tileId: TileId): TilePolicyMemory => {
-  const existing = memory.get(tileId);
-  if (existing) {
-    return existing;
-  }
+  const frontierSignal = blendAdaptiveSignal([
+    [globalPrior.frontierValue, 0.34],
+    [tilePrior.frontierValue, 0.46],
+    [localCueAdaptiveSignal(candidate.features.unexploredNeighborCount, 0.08), 0.2]
+  ]);
+  const backtrackSignal = blendAdaptiveSignal([
+    [globalPrior.backtrackUrgency, 0.42],
+    [tilePrior.backtrackUrgency, 0.38],
+    [localCueAdaptiveSignal(candidate.features.visitCount > 0 ? 1 : 0, 0.12), 0.2]
+  ]);
+  const trapSignal = blendAdaptiveSignal([
+    [globalPrior.trapSuspicion, 0.24],
+    [tilePrior.trapSuspicion, 0.34],
+    [candidate.features.trapRisk, 0.24],
+    [localCueAdaptiveSignal(observationFeatures.dangerCueCount, 0.16), 0.18]
+  ]);
+  const enemySignal = blendAdaptiveSignal([
+    [globalPrior.enemyRisk, 0.24],
+    [tilePrior.enemyRisk, 0.34],
+    [candidate.features.enemyPressure, 0.24],
+    [localCueAdaptiveSignal(observationFeatures.enemyCueCount, 0.18), 0.18]
+  ]);
+  const itemSignal = blendAdaptiveSignal([
+    [globalPrior.itemValue, 0.22],
+    [tilePrior.itemValue, 0.28],
+    [candidate.features.itemOpportunity, 0.3],
+    [localCueAdaptiveSignal(observationFeatures.itemCueCount, 0.18), 0.2]
+  ]);
+  const puzzleSignal = blendAdaptiveSignal([
+    [globalPrior.puzzleValue, 0.22],
+    [tilePrior.puzzleValue, 0.28],
+    [candidate.features.puzzleOpportunity, 0.3],
+    [localCueAdaptiveSignal(observationFeatures.puzzleCueCount, 0.18), 0.2]
+  ]);
+  const rotationSignal = blendAdaptiveSignal([
+    [globalPrior.rotationTiming, 0.24],
+    [tilePrior.rotationTiming, 0.24],
+    [candidate.features.timingWindow, 0.32],
+    [localCueAdaptiveSignal(observationFeatures.timingCueCount, 0.2), 0.2]
+  ]);
 
-  const created: TilePolicyMemory = {
-    samples: 0,
-    frontierSuccess: 0,
-    trapHits: 0,
-    enemyHits: 0,
-    itemFinds: 0,
-    puzzleFinds: 0
-  };
-  memory.set(tileId, created);
-  return created;
+  const heuristicBias = (
+    (candidate.features.unexploredNeighborCount * 0.18)
+    - (candidate.features.pathCost * 0.1)
+    - (candidate.features.visitCount * 0.08)
+    + (candidate.features.goalVisible ? 0.12 : 0)
+  );
+  const frontierBias = centerAdaptiveSignal(frontierSignal) * (
+    0.38
+    + (candidate.features.unexploredNeighborCount * 0.1)
+  );
+  const backtrackBias = candidate.features.visitCount > 0
+    ? centerAdaptiveSignal(backtrackSignal) * (0.42 + (candidate.features.visitCount * 0.08))
+    : 0;
+  const trapPenalty = centerAdaptiveSignal(trapSignal) * (
+    0.34
+    + (candidate.features.unexploredNeighborCount * 0.06)
+    + (observationFeatures.dangerCueCount * 0.03)
+    + (candidate.features.trapRisk * 0.26)
+  );
+  const enemyPenalty = centerAdaptiveSignal(enemySignal) * (
+    0.32
+    + (candidate.features.pathCost * 0.05)
+    + (observationFeatures.enemyCueCount * 0.04)
+    + (candidate.features.enemyPressure * 0.24)
+  );
+  const itemBias = centerAdaptiveSignal(itemSignal) * (
+    0.24
+    + (observationFeatures.itemCueCount * 0.06)
+    + (Math.max(0, candidate.features.unexploredNeighborCount - candidate.features.visitCount) * 0.04)
+    + (candidate.features.itemOpportunity * 0.22)
+  );
+  const puzzleBias = centerAdaptiveSignal(puzzleSignal) * (
+    0.22
+    + (observationFeatures.puzzleCueCount * 0.05)
+    + (candidate.features.puzzleOpportunity * 0.24)
+  );
+  const rotationBias = centerAdaptiveSignal(rotationSignal) * (
+    0.22
+    + (observationFeatures.timingCueCount * 0.05)
+    + (Math.max(0, 2 - candidate.features.pathCost) * 0.05)
+    + (candidate.features.timingWindow * 0.18)
+  );
+
+  return Number((
+    heuristicBias
+    + (frontierBias * tuningWeights.frontierValue)
+    + (backtrackBias * tuningWeights.backtrackUrgency)
+    + (itemBias * tuningWeights.itemValue)
+    + (puzzleBias * tuningWeights.puzzleValue)
+    + (rotationBias * tuningWeights.rotationTiming)
+    - (trapPenalty * tuningWeights.trapSuspicion)
+    - (enemyPenalty * tuningWeights.enemyRisk)
+  ).toFixed(4));
 };
 
-export const summarizeObservationFeatures = (localCues: readonly string[]) => ({
-  dangerCueCount: countKeywordHits(localCues, DANGER_CUE_KEYWORDS),
-  enemyCueCount: countKeywordHits(localCues, ENEMY_CUE_KEYWORDS),
-  itemCueCount: countKeywordHits(localCues, ITEM_CUE_KEYWORDS),
-  puzzleCueCount: countKeywordHits(localCues, PUZZLE_CUE_KEYWORDS),
-  timingCueCount: countKeywordHits(localCues, TIMING_CUE_KEYWORDS)
-});
+export {
+  summarizeEpisodeLogFeatures,
+  summarizeObservationFeatures
+} from './PlaybookFeatureSignals';
 
 export class PlaybookPatternScorer {
-  private readonly tileMemory = new Map<TileId, TilePolicyMemory>();
+  private learnedFeatures: PolicyEpisodeLogFeatures = createEmptyEpisodeLogFeatures();
+
+  private tuningWeights: PlaybookTuningWeights = createDefaultPlaybookTuningWeights();
 
   scoreLegalCandidates(input: PlaybookLegalCandidateInput): ReadonlyMap<string, number> {
     const scores = new Map<string, number>();
-    const observationFeatures = summarizeObservationFeatures(input.observation.localCues);
+    const episodeLogFeatures = input.episodeLogFeatures ?? this.learnedFeatures;
+    const tuningWeights = normalizePlaybookTuningWeights(input.tuningWeights ?? this.tuningWeights);
 
     for (const candidate of input.candidates) {
-      const memory = candidate.targetTileId ? this.tileMemory.get(candidate.targetTileId) ?? null : null;
-      const learnedBias = memory
-        ? (
-            (memory.frontierSuccess * 0.32)
-            + (memory.itemFinds * 0.24)
-            + (memory.puzzleFinds * 0.14)
-            - (memory.trapHits * 0.42)
-            - (memory.enemyHits * 0.5)
-          )
-        : 0;
-      const frontierBias = candidate.features.unexploredNeighborCount * 0.2;
-      const pathPenalty = candidate.features.pathCost * 0.12;
-      const repeatPenalty = candidate.features.visitCount * 0.1;
-      const trapPenalty = observationFeatures.dangerCueCount > 0
-        ? candidate.features.unexploredNeighborCount * 0.06
-        : 0;
-      const enemyPenalty = observationFeatures.enemyCueCount > 0
-        ? candidate.features.pathCost * 0.08
-        : 0;
-      const itemBias = observationFeatures.itemCueCount > 0
-        ? candidate.features.unexploredNeighborCount * 0.08
-        : 0;
-      const puzzleBias = observationFeatures.puzzleCueCount > 0
-        ? Math.max(0, candidate.features.frontierCount - candidate.features.pathCost) * 0.04
-        : 0;
-      const timingBias = observationFeatures.timingCueCount > 0
-        ? Math.max(0, 2 - candidate.features.pathCost) * 0.06
-        : 0;
-      const heuristicBias = frontierBias - pathPenalty - repeatPenalty - trapPenalty - enemyPenalty + itemBias + puzzleBias + timingBias;
-      scores.set(candidate.id, Number((learnedBias + heuristicBias).toFixed(4)));
+      scores.set(candidate.id, scoreCandidate(candidate, input, episodeLogFeatures, tuningWeights));
     }
 
     return scores;
   }
 
   updateEpisodePatterns(episode: PolicyEpisode): void {
-    if (!episode.outcome || !episode.chosenAction.targetTileId) {
-      return;
-    }
+    this.learnedFeatures = appendEpisodeLogFeatures(this.learnedFeatures, episode);
+  }
 
-    const tileId = episode.outcome.arrivedTileId || episode.chosenAction.targetTileId;
-    const memory = getOrCreateMemory(this.tileMemory, tileId);
-    memory.samples += 1;
-    if (episode.outcome.discoveredTilesDelta > 0 || episode.outcome.frontierDelta > 0 || episode.outcome.goalVisible) {
-      memory.frontierSuccess += 1;
-    }
-    memory.trapHits += episode.outcome.trapCueCount;
-    memory.enemyHits += episode.outcome.enemyCueCount;
-    memory.itemFinds += episode.outcome.itemCueCount;
-    memory.puzzleFinds += episode.outcome.puzzleCueCount;
+  updateTuningWeights(weights: Partial<PlaybookTuningWeights> | null | undefined): void {
+    this.tuningWeights = normalizePlaybookTuningWeights(weights);
   }
 }

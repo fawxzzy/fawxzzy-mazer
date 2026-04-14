@@ -5,7 +5,17 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const boundaryScanRoots = [
   'src/mazer-core',
-  'src/visual-proof'
+  'src/visual-proof',
+  'src/future-runtime'
+];
+const replayBoundedRoots = [
+  'src/mazer-core/logging/',
+  'src/mazer-core/logging/export/',
+  'src/mazer-core/eval/'
+];
+const advisoryTrainingRoots = [
+  'src/mazer-core/playbook/',
+  'src/mazer-core/playbook/tuning/'
 ];
 const sourceExtensions = new Set([
   '.ts',
@@ -23,9 +33,11 @@ const trackedFiles = [
   'src/visual-proof/intent/IntentEvent.ts',
   'src/visual-proof/agent/FrontierPlanner.ts',
   'src/visual-proof/agent/PolicyScorer.ts',
+  'src/mazer-core/agent/types.ts',
   'src/mazer-core/agent/FrontierPlanner.ts',
   'src/mazer-core/agent/PolicyScorer.ts',
   'src/mazer-core/playbook/PlaybookAdapter.ts',
+  'src/mazer-core/playbook/PlaybookFeatureSignals.ts',
   'src/mazer-core/playbook/PlaybookPatternScorer.ts',
   'src/mazer-core/playbook/PlaybookIntentTemplates.ts',
   'src/mazer-core/intent/IntentEvent.ts',
@@ -141,6 +153,89 @@ export const collectArchitectureViolations = (sourceFiles) => {
     }
   }
 
+  for (const [file, text] of files.entries()) {
+    if (!file.startsWith('src/future-runtime/')) {
+      continue;
+    }
+
+    const proofLaneImport = extractModuleSpecifiers(text)
+      .find((specifier) => /(visual-proof|topology-proof|manifestLoader|manifestTypes|scenarioLibrary|proofRuntime)/i.test(specifier));
+    if (proofLaneImport) {
+      violations.push(violation(
+        'future-runtime-proof-isolation',
+        file,
+        `future runtime adapters must stay isolated from proof-lane code; found "${proofLaneImport}". Reuse readability cues by contract, not by importing proof surfaces.`
+      ));
+    }
+
+    const runtimePlannerBypassHit = [
+      'new ExplorerAgent(',
+      'buildIntentBus(',
+      'makeIntentRecord(',
+      '.scoreCandidates('
+    ].find((token) => text.includes(token));
+    if (runtimePlannerBypassHit) {
+      violations.push(violation(
+        'future-runtime-core-seam',
+        file,
+        `future runtime adapters must consume planner outputs through RuntimeAdapterBridge instead of authoring planner or intent truth directly; found "${runtimePlannerBypassHit}".`
+      ));
+    }
+  }
+
+  for (const [file, text] of files.entries()) {
+    if (!replayBoundedRoots.some((root) => file.startsWith(root))) {
+      continue;
+    }
+
+    const proofLaneImport = extractModuleSpecifiers(text)
+      .find((specifier) => /(visual-proof|topology-proof|manifestLoader|manifestTypes|scenarioLibrary|proofRuntime)/i.test(specifier));
+    const manifestTruthHit = [
+      /\bPlanetProofManifest\b/,
+      /\bobjectiveNodeId\b/,
+      /\bsolutionPath\b/,
+      /\bmanifestPath\b/
+    ].find((pattern) => pattern.test(text));
+
+    if (proofLaneImport || manifestTruthHit) {
+      violations.push(violation(
+        'logging-local-only',
+        file,
+        `runtime logging must stay bounded to local replay truth; found "${proofLaneImport ?? manifestTruthHit?.source ?? 'manifest truth'}". Episode logs may not import or store proof-lane manifest data.`
+      ));
+    }
+  }
+
+  for (const [file, text] of files.entries()) {
+    if (!advisoryTrainingRoots.some((root) => file.startsWith(root))) {
+      continue;
+    }
+
+    const proofLaneImport = extractModuleSpecifiers(text)
+      .find((specifier) => /(visual-proof|topology-proof|manifestLoader|manifestTypes|scenarioLibrary|proofRuntime)/i.test(specifier));
+    const manifestTruthHit = [
+      /\bPlanetProofManifest\b/,
+      /\bobjectiveNodeId\b/,
+      /\bsolutionPath\b/,
+      /\bmanifestPath\b/
+    ].find((pattern) => pattern.test(text));
+    const plannerAuthorshipHit = [
+      /\bIntentBusRecord\b/,
+      /\bmakeIntentRecord\b/,
+      /\bbuildIntentBus\b/,
+      /\bRuntimeIntentDelivery\b/,
+      /\bRuntimeEpisodeDelivery\b/
+    ].find((pattern) => pattern.test(text));
+
+    if (proofLaneImport || manifestTruthHit || plannerAuthorshipHit) {
+      violations.push(violation(
+        'training-advisory-only',
+        file,
+        `training and tuning surfaces must stay replay-linked and advisory-only; found "${proofLaneImport ?? manifestTruthHit?.source ?? plannerAuthorshipHit?.source}". Manifest truth, bus payload ownership, and runtime-authored legality remain out of bounds.`
+      ));
+    }
+  }
+
   const main = files.get('src/visual-proof/main.ts') ?? '';
   const runtime = files.get('src/visual-proof/proofRuntime.ts') ?? '';
   const visualIntentBus = files.get('src/visual-proof/intent/IntentBus.ts') ?? '';
@@ -153,7 +248,9 @@ export const collectArchitectureViolations = (sourceFiles) => {
   const scorer = files.get('src/mazer-core/agent/PolicyScorer.ts')
     ?? files.get('src/visual-proof/agent/PolicyScorer.ts')
     ?? '';
+  const agentTypes = files.get('src/mazer-core/agent/types.ts') ?? '';
   const playbookAdapter = files.get('src/mazer-core/playbook/PlaybookAdapter.ts') ?? '';
+  const playbookFeatureSignals = files.get('src/mazer-core/playbook/PlaybookFeatureSignals.ts') ?? '';
   const playbookScorer = files.get('src/mazer-core/playbook/PlaybookPatternScorer.ts') ?? '';
   const playbookIntentTemplates = files.get('src/mazer-core/playbook/PlaybookIntentTemplates.ts') ?? '';
   const feed = files.get('src/visual-proof/intent/IntentFeed.ts') ?? '';
@@ -248,8 +345,28 @@ export const collectArchitectureViolations = (sourceFiles) => {
     ));
   }
 
+  const scorerInputBlock = findFirstMatch(agentTypes, /export\s+interface\s+PolicyScorerInput\s*\{([\s\S]*?)\}/);
+  const scorerInputLeak = [
+    /\bPlanetProofManifest\b/,
+    /\bmanifest\b/,
+    /\bobjectiveNodeId\b/,
+    /\bsolutionPath\b/,
+    /\bRuntimeEpisodeDelivery\b/,
+    /\bRuntimeIntentDelivery\b/,
+    /\bIntentSourceState\b/,
+    /\bIntentBusRecord\b/
+  ].find((pattern) => pattern.test(scorerInputBlock ?? ''));
+  if (scorerInputLeak) {
+    violations.push(violation(
+      'scorer-input-bounded',
+      'src/mazer-core/agent/types.ts',
+      `PolicyScorerInput must stay bounded to local observation, legal candidates, and derived episode-log features; found "${scorerInputLeak.source}" in the scorer input contract.`
+    ));
+  }
+
   const playbookTruthLeakChecks = [
     ['src/mazer-core/playbook/PlaybookAdapter.ts', playbookAdapter],
+    ['src/mazer-core/playbook/PlaybookFeatureSignals.ts', playbookFeatureSignals],
     ['src/mazer-core/playbook/PlaybookPatternScorer.ts', playbookScorer],
     ['src/mazer-core/playbook/PlaybookIntentTemplates.ts', playbookIntentTemplates]
   ];

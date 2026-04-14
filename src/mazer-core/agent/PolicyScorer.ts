@@ -2,6 +2,7 @@ import { PlaybookAdapter } from '../playbook/PlaybookAdapter';
 import type { PolicyEpisode, PolicyScorer, PolicyScorerInput } from './types';
 
 export { summarizeObservationFeatures } from '../playbook/PlaybookPatternScorer';
+export { summarizeEpisodeLogFeatures } from '../playbook/PlaybookPatternScorer';
 
 export class EpisodicPolicyScorer implements PolicyScorer {
   readonly id = 'episode-priors';

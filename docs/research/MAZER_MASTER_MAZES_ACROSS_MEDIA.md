@@ -294,6 +294,8 @@ Better patterns:
 - loops support pursuit, escape, and recovery, not just visual variation
 - checkpoint districts use bounded goals rather than endless wandering
 - puzzle state stays visible or is replaced by a clear proxy when the true object is offscreen
+- trap logic stays inferable through timing, landmarks, connector behavior, or other local proxies instead of hidden-state gotchas
+- item relevance and puzzle opportunity should be rankable only from bounded local evidence, not omniscient planner truth
 
 The [Portal postmortem](https://cdn.cloudflare.steamstatic.com/apps/valve/2008/GDC2008_PortalPostMortem.pdf) remains the clearest anchor for this rule. Good puzzle difficulty comes from reasoning over visible state, not from hidden dependencies.
 
@@ -306,6 +308,11 @@ The current roadmap's staging order is still correct:
 4. later integration decision
 
 That order is justified by the synthesis above.
+
+Implementation discipline for that sequence:
+- future content systems should consume `mazer-core` through a runtime adapter seam instead of authoring planner truth in runtime or UI code
+- Playbook remains the only shared engine in scope while the future lane is still proving topology and readability
+- promote lane-specific baselines separately before stacking more content; the future-runtime baseline, visual-proof baseline, and legacy reference lane should remain distinct
 
 ### Option A: Readability Upgrade In The Current 2D Product
 

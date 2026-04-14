@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { PlaybookAdapter } from '../../src/mazer-core/playbook/PlaybookAdapter';
+import { summarizeEpisodeLogFeatures } from '../../src/mazer-core/playbook';
 import type {
   ExplorerSnapshot,
   LocalObservation,
   PolicyActionCandidate,
+  PolicyCandidateAdvisoryFeatures,
   PolicyEpisode
 } from '../../src/mazer-core/agent/types';
 
@@ -40,10 +42,32 @@ const makeSnapshot = (overrides: Partial<ExplorerSnapshot> = {}): ExplorerSnapsh
   observedCues: overrides.observedCues ?? ['timing gate']
 });
 
+type CandidateFeatureInput = Omit<
+  PolicyActionCandidate['features'],
+  keyof PolicyCandidateAdvisoryFeatures
+> & Partial<PolicyCandidateAdvisoryFeatures>;
+
+const withAdvisoryDefaults = (
+  features: CandidateFeatureInput
+): PolicyActionCandidate['features'] => {
+  const defaults: PolicyCandidateAdvisoryFeatures = {
+    trapRisk: 0,
+    enemyPressure: 0,
+    itemOpportunity: 0,
+    puzzleOpportunity: 0,
+    timingWindow: 0
+  };
+
+  return {
+    ...defaults,
+    ...features
+  };
+};
+
 const makeCandidate = (
   id: string,
   targetTileId: string,
-  features: PolicyActionCandidate['features']
+  features: CandidateFeatureInput
 ): PolicyActionCandidate => ({
   id,
   targetKind: 'frontier',
@@ -53,7 +77,7 @@ const makeCandidate = (
   reason: 'expanding local frontier from current tile',
   heuristicScore: 0,
   policyScore: null,
-  features
+  features: withAdvisoryDefaults(features)
 });
 
 const makeEpisode = (overrides: Partial<PolicyEpisode> = {}): PolicyEpisode => ({
@@ -70,6 +94,7 @@ const makeEpisode = (overrides: Partial<PolicyEpisode> = {}): PolicyEpisode => (
     enemyCueCount: 0,
     itemCueCount: 0,
     puzzleCueCount: 0,
+    timingCueCount: 1,
     goalVisible: false
   },
   candidates: overrides.candidates ?? [
@@ -107,6 +132,7 @@ const makeEpisode = (overrides: Partial<PolicyEpisode> = {}): PolicyEpisode => (
     enemyCueCount: 0,
     itemCueCount: 1,
     puzzleCueCount: 0,
+    timingCueCount: 1,
     localCues: ['beacon cache']
   }
 });
@@ -192,6 +218,7 @@ describe('PlaybookAdapter', () => {
         enemyCueCount: 1,
         itemCueCount: 0,
         puzzleCueCount: 0,
+        timingCueCount: 0,
         localCues: ['trap rhythm', 'enemy patrol']
       }
     }));
@@ -200,6 +227,167 @@ describe('PlaybookAdapter', () => {
 
     expect((after.get('frontier:safe-branch') ?? 0) - (before.get('frontier:safe-branch') ?? 0)).toBeGreaterThan(0);
     expect(after.get('frontier:safe-branch') ?? 0).toBeGreaterThan(after.get('frontier:trap-branch') ?? 0);
+  });
+
+  test('consumes bounded episode-log priors without ranking missing candidates', () => {
+    const adapter = new PlaybookAdapter();
+    const candidates = [
+      makeCandidate('frontier:loop-return', 'loop-return', {
+        pathCost: 1,
+        visitCount: 2,
+        unexploredNeighborCount: 1,
+        frontierCount: 2,
+        goalVisible: false,
+        timingWindow: 0.72
+      }),
+      makeCandidate('frontier:trap-branch', 'trap-branch', {
+        pathCost: 1,
+        visitCount: 0,
+        unexploredNeighborCount: 2,
+        frontierCount: 2,
+        goalVisible: false,
+        trapRisk: 0.88
+      })
+    ];
+    const episodeLogFeatures = summarizeEpisodeLogFeatures([
+      makeEpisode({
+        chosenCandidateId: 'frontier:loop-return',
+        chosenAction: {
+          targetKind: 'backtrack',
+          targetTileId: 'loop-return',
+          nextTileId: 'loop-return',
+          reason: 'reaching the best discovered frontier by shortest known path'
+        },
+        observation: {
+          traversableCount: 2,
+          landmarkCount: 0,
+          localCueCount: 1,
+          dangerCueCount: 0,
+          enemyCueCount: 0,
+          itemCueCount: 0,
+          puzzleCueCount: 0,
+          timingCueCount: 1,
+          goalVisible: false
+        },
+        outcome: {
+          arrivedTileId: 'loop-return',
+          discoveredTilesDelta: 0,
+          frontierDelta: -1,
+          replanDelta: 1,
+          backtrackDelta: 1,
+          goalVisible: false,
+          goalObservedStep: null,
+          trapCueCount: 0,
+          enemyCueCount: 0,
+          itemCueCount: 0,
+          puzzleCueCount: 0,
+          timingCueCount: 2,
+          localCues: ['rotation gate']
+        }
+      }),
+      makeEpisode({
+        chosenCandidateId: 'frontier:trap-branch',
+        chosenAction: {
+          targetKind: 'frontier',
+          targetTileId: 'trap-branch',
+          nextTileId: 'trap-branch',
+          reason: 'expanding local frontier from current tile'
+        },
+        outcome: {
+          arrivedTileId: 'trap-branch',
+          discoveredTilesDelta: 0,
+          frontierDelta: -1,
+          replanDelta: 1,
+          backtrackDelta: 1,
+          goalVisible: false,
+          goalObservedStep: null,
+          trapCueCount: 2,
+          enemyCueCount: 2,
+          itemCueCount: 0,
+          puzzleCueCount: 0,
+          timingCueCount: 0,
+          localCues: ['trap rhythm', 'enemy patrol']
+        }
+      }),
+      makeEpisode({
+        chosenCandidateId: 'frontier:illegal-shortcut',
+        chosenAction: {
+          targetKind: 'frontier',
+          targetTileId: 'illegal-shortcut',
+          nextTileId: 'illegal-shortcut',
+          reason: 'expanding local frontier from current tile'
+        },
+        outcome: {
+          arrivedTileId: 'illegal-shortcut',
+          discoveredTilesDelta: 3,
+          frontierDelta: 2,
+          replanDelta: 1,
+          backtrackDelta: 0,
+          goalVisible: false,
+          goalObservedStep: null,
+          trapCueCount: 0,
+          enemyCueCount: 0,
+          itemCueCount: 2,
+          puzzleCueCount: 0,
+          timingCueCount: 1,
+          localCues: ['cache beacon', 'timing gate']
+        }
+      })
+    ]);
+
+    const scores = adapter.scoreLegalCandidates({
+      seed: 'seed-7',
+      step: 6,
+      observation: makeObservation({ localCues: ['rotation gate'] }),
+      snapshot: makeSnapshot({ observedCues: ['rotation gate'] }),
+      candidates,
+      episodeLogFeatures
+    });
+
+    expect([...scores.keys()].sort()).toEqual(candidates.map((candidate) => candidate.id).sort());
+    expect(scores.has('frontier:illegal-shortcut')).toBe(false);
+    expect(scores.get('frontier:loop-return') ?? 0).toBeGreaterThan(scores.get('frontier:trap-branch') ?? 0);
+  });
+
+  test('treats item and puzzle opportunity as bounded advisory candidate signals', () => {
+    const adapter = new PlaybookAdapter();
+    const candidates = [
+      makeCandidate('frontier:cache-branch', 'cache-branch', {
+        pathCost: 1,
+        visitCount: 0,
+        unexploredNeighborCount: 2,
+        frontierCount: 2,
+        goalVisible: false,
+        itemOpportunity: 0.92,
+        puzzleOpportunity: 0.68
+      }),
+      makeCandidate('frontier:trap-branch', 'trap-branch', {
+        pathCost: 1,
+        visitCount: 0,
+        unexploredNeighborCount: 2,
+        frontierCount: 2,
+        goalVisible: false,
+        trapRisk: 0.94,
+        enemyPressure: 0.6
+      })
+    ];
+
+    const scores = adapter.scoreLegalCandidates({
+      seed: 'seed-7',
+      step: 7,
+      observation: makeObservation({
+        traversableTileIds: ['cache-branch', 'trap-branch'],
+        localCues: ['item cache', 'puzzle proxy', 'enemy patrol', 'trap rhythm']
+      }),
+      snapshot: makeSnapshot({
+        frontierIds: ['cache-branch', 'trap-branch'],
+        discoveredNodeIds: ['junction-a', 'cache-branch', 'trap-branch'],
+        observedCues: ['item cache', 'puzzle proxy', 'enemy patrol', 'trap rhythm']
+      }),
+      candidates
+    });
+
+    expect(scores.get('frontier:cache-branch') ?? 0).toBeGreaterThan(scores.get('frontier:trap-branch') ?? 0);
   });
 
   test('returns intent summaries without bus-owned record fields', () => {
@@ -228,6 +416,7 @@ describe('PlaybookAdapter', () => {
   test('stays bounded away from manifest truth and bus record construction', () => {
     const boundedFiles = [
       '../../src/mazer-core/playbook/PlaybookAdapter.ts',
+      '../../src/mazer-core/playbook/PlaybookFeatureSignals.ts',
       '../../src/mazer-core/playbook/PlaybookPatternScorer.ts',
       '../../src/mazer-core/playbook/PlaybookIntentTemplates.ts'
     ];

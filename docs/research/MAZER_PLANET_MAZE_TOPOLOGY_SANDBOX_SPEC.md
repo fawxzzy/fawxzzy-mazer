@@ -25,6 +25,82 @@ Belief graph separation:
 - learned scoring may rank only the legal candidate set already produced by the safety kernel
 - failure mode: full-manifest shortest path masquerading as smart AI
 
+## Runtime Adapter Contract
+
+All future runtimes in this lane must consume `mazer-core` through one shared adapter seam.
+
+Runtime-owned inputs:
+
+- observation projection into `LocalObservation`
+- legal move application against the runtime's local topology state
+- tile and connector labels needed for spectator-facing summaries
+
+Core-owned outputs:
+
+- planner decision and legality truth
+- trail snapshots derived from committed occupancy history
+- intent event construction and delivery
+- episode logging and replay-ready policy episodes
+
+Rule:
+
+- runtimes project observations and apply moves
+- `mazer-core` owns planner truth, trail truth, intent records, and episode truth
+
+Failure mode:
+
+- letting a Phaser scene, 3D shell, or proof UI author intent payloads, trail rules, or planner decisions directly
+
+## Episode Log Replay
+
+Episode logs are core-owned and serializable.
+
+They must capture only bounded local truth:
+
+- seed
+- start tile
+- starting heading
+- intent canary when present
+- step-wise observation, decision, trail, intent, and episode outputs
+
+Replay rule:
+
+- a saved log can be fed back through `RuntimeAdapterBridge` by way of a replay host that replays local observations and validates committed outputs
+- replay must reproduce route, trail, intent stream, and step count without bypassing the planner
+
+Leakage rule:
+
+- episode logs must not add manifest paths, full graph truth, or proof-lane imports
+- replay helpers stay inside `mazer-core` and consume only log data and local runtime state
+
+## Eval Metrics Contract
+
+The deterministic eval harness is core-owned and runs only on replay logs or replayed fixed-seed scenario logs.
+
+Required summary fields:
+
+- `summaryId` or another stable digest field
+- `runId`
+- `seed` on scenario-level summaries
+- `metrics`
+
+Required metric names:
+
+- `discoveryEfficiency`
+- `backtrackPressure`
+- `trapFalsePositiveRate`
+- `trapFalseNegativeRate`
+- `wardenPressureExposure`
+- `itemUsefulnessScore`
+- `puzzleStateClarityScore`
+
+Eval summary rules:
+
+- summary values stay machine-readable and bounded to local replay truth
+- summary values may include step counts, candidate scores, and replay verification status
+- summary values must not include manifest graph truth, full path manifests, or proof-lane imports
+- summary values should remain deterministic for the same fixed-seed scenario set
+
 ## Output Contract
 
 The sandbox exports one JSON manifest per proof seed to `public/topology-proof/manifests/`.

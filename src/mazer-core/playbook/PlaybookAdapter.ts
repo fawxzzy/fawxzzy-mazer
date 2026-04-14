@@ -8,6 +8,7 @@ import {
   type PlaybookIntentSummary,
   type PlaybookIntentSummaryInput
 } from './PlaybookIntentTemplates';
+import type { PlaybookTuningWeights } from './tuning';
 
 export type {
   PlaybookLegalCandidateInput
@@ -34,5 +35,9 @@ export class PlaybookAdapter {
 
   updateEpisodePatterns(episode: PolicyEpisode): void {
     this.patternScorer.updateEpisodePatterns(episode);
+  }
+
+  updateTuningWeights(weights: Partial<PlaybookTuningWeights> | null | undefined): void {
+    this.patternScorer.updateTuningWeights(weights);
   }
 }

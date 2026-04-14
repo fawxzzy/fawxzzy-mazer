@@ -9,7 +9,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        'visual-proof': resolve(__dirname, 'visual-proof.html')
+        'visual-proof': resolve(__dirname, 'visual-proof.html'),
+        'future-phaser': resolve(__dirname, 'future-phaser.html'),
+        planet3d: resolve(__dirname, 'planet3d.html')
       },
       output: {
         manualChunks(id) {

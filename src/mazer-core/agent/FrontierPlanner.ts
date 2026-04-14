@@ -1,10 +1,12 @@
 import {
+  normalizePolicyCandidateAdvisoryFeatures,
   stableTokenScore,
   type ExplorerSnapshot,
   type FrontierCandidate,
   type HeadingToken,
   type LocalObservation,
   type PolicyActionCandidate,
+  type PolicyEpisodeLogFeatures,
   type PolicyScorer,
   type TileId
 } from './types';
@@ -34,6 +36,7 @@ export class FrontierPlanner {
     context?: {
       observation?: LocalObservation;
       snapshot?: ExplorerSnapshot;
+      episodeLogFeatures?: PolicyEpisodeLogFeatures;
     }
   ): FrontierPlanResult {
     const goalTileId = graph.getGoalTileId();
@@ -69,7 +72,8 @@ export class FrontierPlanner {
         goalVisible: context?.observation?.goal.visible ?? false,
         reason,
         observation: context?.observation,
-        snapshot: context?.snapshot
+        snapshot: context?.snapshot,
+        episodeLogFeatures: context?.episodeLogFeatures
       });
       const candidate = selection.frontierCandidate;
 
@@ -99,7 +103,8 @@ export class FrontierPlanner {
       goalVisible: context?.observation?.goal.visible ?? false,
       reason,
       observation: context?.observation,
-      snapshot: context?.snapshot
+      snapshot: context?.snapshot,
+      episodeLogFeatures: context?.episodeLogFeatures
     });
     const candidate = selection.frontierCandidate;
 
@@ -135,6 +140,7 @@ export class FrontierPlanner {
       reason: string;
       observation?: LocalObservation;
       snapshot?: ExplorerSnapshot;
+      episodeLogFeatures?: PolicyEpisodeLogFeatures;
     }
   ): {
     frontierCandidate: FrontierCandidate | null;
@@ -163,7 +169,8 @@ export class FrontierPlanner {
       step: context.observation.step,
       observation: context.observation,
       snapshot: context.snapshot,
-      candidates: policyCandidates
+      candidates: policyCandidates,
+      episodeLogFeatures: context.episodeLogFeatures ?? null
     });
     const policyCandidatesWithScores = policyCandidates.map((candidate) => ({
       ...candidate,
@@ -198,13 +205,19 @@ export class FrontierPlanner {
     {
       frontierCount,
       goalVisible,
-      reason
+      reason,
+      observation
     }: {
       frontierCount: number;
       goalVisible: boolean;
       reason: string;
+      observation?: LocalObservation;
     }
   ): PolicyActionCandidate {
+    const advisory = normalizePolicyCandidateAdvisoryFeatures(
+      observation?.candidateSignals?.[candidate.tileId] ?? null
+    );
+
     return {
       id: candidate.id,
       targetKind: candidate.targetKind,
@@ -219,7 +232,8 @@ export class FrontierPlanner {
         visitCount: candidate.visitCount,
         unexploredNeighborCount: candidate.unexploredNeighborCount,
         frontierCount,
-        goalVisible
+        goalVisible,
+        ...advisory
       }
     };
   }
