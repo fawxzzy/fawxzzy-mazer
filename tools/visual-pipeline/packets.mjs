@@ -58,6 +58,7 @@ const hashFile = async (filePath) => {
 };
 
 const makePacketKey = (scenarioId, viewportId, runId) => `${scenarioId}::${viewportId}::${runId}`;
+const makeScenarioViewportKey = (scenarioId, viewportId) => `${scenarioId}::${viewportId}`;
 
 const flattenIndex = (index) => {
   if (Array.isArray(index?.packets)) {
@@ -323,22 +324,38 @@ export const writeBaselinePointer = async (
   repoRoot,
   artifactRootRelative,
   index,
-  baselinePointerRelative = 'artifacts/visual/baseline.json'
+  baselinePointerRelative = 'artifacts/visual/baseline.json',
+  options = {}
 ) => {
   const artifactRoot = resolve(repoRoot, artifactRootRelative);
   const packets = flattenIndex(index);
   const latestSummary = summarizeRuns(packets);
-  const latestRunPackets = packets.filter((packet) => packet.runId === latestSummary.latestRunId);
-  const generatedAt = latestSummary.latestGeneratedAt ?? index.generatedAt ?? new Date().toISOString();
+  const selectedRunId = options.runId ?? latestSummary.latestRunId;
+  const latestRunPackets = packets.filter((packet) => packet.runId === selectedRunId);
+  if (!selectedRunId || latestRunPackets.length === 0) {
+    throw new Error(`Could not resolve a baseline promotion run for ${artifactRootRelative}.`);
+  }
+
+  const generatedAt = latestRunPackets.reduce((current, packet) => (
+    packet.generatedAt.localeCompare(current) > 0 ? packet.generatedAt : current
+  ), index.generatedAt ?? new Date().toISOString());
+  const scenarioIds = [...new Set(latestRunPackets.map((packet) => packet.scenario.id))].sort();
+  const viewportIds = [...new Set(latestRunPackets.map((packet) => packet.viewport.id))].sort();
+  const packetKeys = latestRunPackets
+    .map((packet) => makeScenarioViewportKey(packet.scenario.id, packet.viewport.id))
+    .sort();
   const pointer = {
     schemaVersion: 1,
     generatedAt,
     promotedAt: new Date().toISOString(),
     artifactRoot: toPosixPath(artifactRootRelative),
     indexPath: relativeFromRepo(repoRoot, resolve(artifactRoot, 'index.json')),
-    runId: latestSummary.latestRunId,
+    runId: selectedRunId,
     packetCount: latestRunPackets.length,
-    scenarioCount: new Set(latestRunPackets.map((packet) => packet.scenario.id)).size
+    scenarioCount: scenarioIds.length,
+    scenarioIds,
+    viewportIds,
+    packetKeys
   };
 
   const pointerPath = resolveBaselinePointerPath(repoRoot, baselinePointerRelative);
@@ -494,6 +511,36 @@ export const compareLatestRunToBaseline = async (repoRoot, artifactRootRelative,
     baselinePackets = flattenedBaselinePackets.filter((packet) => packet.runId === baselinePointer.runId);
     if (baselinePackets.length === 0) {
       throw new Error(`Baseline run ${baselinePointer.runId} was not found in ${baselinePointer.indexPath}.`);
+    }
+  }
+
+  const enforceBaselineContract = options.enforceBaselineContract === true
+    || (options.enforceBaselineContract !== false && Boolean(options.requireBaseline));
+
+  if (baselinePointer && enforceBaselineContract) {
+    const currentPacketKeys = latestRunPackets
+      .map((packet) => makeScenarioViewportKey(packet.scenario.id, packet.viewport.id))
+      .sort();
+    const baselinePacketKeys = Array.isArray(baselinePointer.packetKeys) && baselinePointer.packetKeys.length > 0
+      ? [...baselinePointer.packetKeys].sort()
+      : baselinePackets
+        .map((packet) => makeScenarioViewportKey(packet.scenario.id, packet.viewport.id))
+        .sort();
+
+    if (baselinePointer.packetCount && baselinePackets.length !== baselinePointer.packetCount) {
+      throw new Error(
+        `Baseline pointer packet count mismatch: pointer recorded ${baselinePointer.packetCount}, index resolved ${baselinePackets.length}.`
+      );
+    }
+
+    if (currentPacketKeys.join('|') !== baselinePacketKeys.join('|')) {
+      const missingFromCurrent = baselinePacketKeys.filter((key) => !currentPacketKeys.includes(key));
+      const unexpectedInCurrent = currentPacketKeys.filter((key) => !baselinePacketKeys.includes(key));
+      throw new Error(
+        `Baseline packet contract mismatch for ${artifactRootRelative}. `
+        + `Missing current packets: ${missingFromCurrent.join(', ') || 'none'}. `
+        + `Unexpected current packets: ${unexpectedInCurrent.join(', ') || 'none'}.`
+      );
     }
   }
 

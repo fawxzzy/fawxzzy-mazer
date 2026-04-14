@@ -215,12 +215,35 @@ describe('replay-linked training dataset', () => {
     const dataset = createReplayLinkedTrainingDataset(log, {
       ...evalSummary,
       summaryId: createReplayEvalSummaryId(evalSummary)
+    }, {
+      packId: 'mazer-runtime-benchmark-v1',
+      scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
+      districtType: 'scavenger-checkpoint',
+      seed: 'seed-training',
+      expectedMetricBands: {
+        itemUsefulnessScore: {
+          min: 0.6,
+          max: 1
+        }
+      }
     });
     const repeat = createReplayLinkedTrainingDataset(log, {
       ...evalSummary,
       summaryId: createReplayEvalSummaryId(evalSummary)
+    }, {
+      packId: 'mazer-runtime-benchmark-v1',
+      scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
+      districtType: 'scavenger-checkpoint',
+      seed: 'seed-training',
+      expectedMetricBands: {
+        itemUsefulnessScore: {
+          min: 0.6,
+          max: 1
+        }
+      }
     });
 
+    expect(dataset.benchmark?.scenarioId).toBe('scavenger-checkpoint-item-usefulness-charlie');
     expect(dataset.replayLink.seed).toBe('seed-training');
     expect(dataset.replayLink.episodeCount).toBe(1);
     expect(dataset.evalSummary?.summaryId).toBe(createReplayEvalSummaryId(evalSummary));

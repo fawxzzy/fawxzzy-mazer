@@ -1,4 +1,12 @@
-import { parseCliArgs, readJson, hashStableValue, writeJson } from './common.mjs';
+import {
+  hashStableValue,
+  parseCliArgs,
+  readJson,
+  resolveRuntimeBenchmarkPack,
+  resolveRuntimeBenchmarkScenarioById,
+  resolveRuntimeBenchmarkScenarioBySeed,
+  writeJson
+} from './common.mjs';
 
 const collectEpisodes = (log) => (
   (log.entries ?? [])
@@ -45,12 +53,61 @@ const summarizePriors = (episodes) => {
   };
 };
 
-const buildDataset = (log, evalSummary = null) => {
+const resolveBenchmarkScenario = ({ log, evalSummary, scenarioId }) => {
+  if (typeof scenarioId === 'string' && scenarioId.length > 0) {
+    return resolveRuntimeBenchmarkScenarioById(scenarioId);
+  }
+
+  const evalScenarioId = evalSummary?.scenarioId ?? null;
+  if (typeof evalScenarioId === 'string' && evalScenarioId.length > 0) {
+    return resolveRuntimeBenchmarkScenarioById(evalScenarioId);
+  }
+
+  return resolveRuntimeBenchmarkScenarioBySeed(log.source.seed);
+};
+
+const resolveEvalSummaryReference = ({ evalSummary, benchmarkScenario, log }) => {
+  if (!evalSummary) {
+    return null;
+  }
+
+  if (Array.isArray(evalSummary.scenarioSummaries)) {
+    const resolvedScenario = (
+      benchmarkScenario
+        ? evalSummary.scenarioSummaries.find((scenario) => scenario.scenarioId === benchmarkScenario.id)
+        : evalSummary.scenarioSummaries.find((scenario) => scenario.seed === log.source.seed)
+    ) ?? null;
+
+    return resolvedScenario
+      ? {
+          schemaVersion: 1,
+          summaryId: resolvedScenario.summaryId,
+          runId: resolvedScenario.runId,
+          seed: resolvedScenario.seed,
+          metrics: resolvedScenario.metrics
+        }
+      : null;
+  }
+
+  return evalSummary;
+};
+
+const buildDataset = (log, evalSummary = null, benchmarkScenario = null) => {
+  const benchmarkPack = resolveRuntimeBenchmarkPack();
   const episodes = collectEpisodes(log);
   return {
     schemaVersion: 1,
     exportedAt: log.generatedAt,
     lane: 'offline',
+    benchmark: benchmarkScenario
+      ? {
+          packId: benchmarkPack.packId,
+          scenarioId: benchmarkScenario.id,
+          focus: benchmarkScenario.focus,
+          seed: benchmarkScenario.seed,
+          stepCount: benchmarkScenario.steps.length
+        }
+      : null,
     replayLink: {
       seed: log.source.seed,
       startTileId: log.source.startTileId,
@@ -78,8 +135,18 @@ const main = async () => {
   }
 
   const log = await readJson(logPath);
-  const evalSummary = typeof args.eval === 'string' ? await readJson(args.eval) : null;
-  const dataset = buildDataset(log, evalSummary);
+  const rawEvalSummary = typeof args.eval === 'string' ? await readJson(args.eval) : null;
+  const benchmarkScenario = resolveBenchmarkScenario({
+    log,
+    evalSummary: rawEvalSummary,
+    scenarioId: typeof args.scenario === 'string' ? args.scenario : null
+  });
+  const evalSummary = resolveEvalSummaryReference({
+    evalSummary: rawEvalSummary,
+    benchmarkScenario,
+    log
+  });
+  const dataset = buildDataset(log, evalSummary, benchmarkScenario);
 
   if (typeof args.output === 'string') {
     await writeJson(args.output, dataset);

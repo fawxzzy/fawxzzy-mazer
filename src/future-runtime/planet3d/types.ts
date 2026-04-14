@@ -10,6 +10,7 @@ import type {
 } from '../../mazer-core/adapters';
 import type { LocalObservation, TileId, VisibleLandmark } from '../../mazer-core/agent/types';
 
+export type Planet3DShellId = 'outer-shell' | 'inner-shell';
 export type Planet3DRotationStateId = 'north' | 'east' | 'south' | 'west';
 
 export interface Planet3DPoint3D {
@@ -25,6 +26,7 @@ export interface Planet3DPoint2D {
 
 export interface Planet3DNode {
   id: TileId;
+  shellId: Planet3DShellId;
   label: string;
   position: Planet3DPoint3D;
   neighbors: TileId[];
@@ -34,14 +36,30 @@ export interface Planet3DNode {
   goalLabel?: string;
   rotationAdvance?: Planet3DRotationStateId;
   objectiveProxy?: boolean;
+  connectorTargetId?: TileId;
+  connectorRequiredRotation?: Planet3DRotationStateId;
+  connectorLabel?: string;
 }
 
 export interface Planet3DShell {
-  id: 'one-shell';
+  id: Planet3DShellId;
   label: string;
   radius: number;
   rotationStates: readonly Planet3DRotationStateId[];
   transitionCount: number;
+}
+
+export interface Planet3DShellRelationship {
+  currentShellId: Planet3DShellId;
+  currentShellLabel: string;
+  linkedShellId: Planet3DShellId;
+  linkedShellLabel: string;
+  connectorId: string | null;
+  connectorLabel: string | null;
+  connectorAccessible: boolean;
+  connectorReadable: boolean;
+  rotationRequirement: Planet3DRotationStateId | null;
+  relationshipReadable: boolean;
 }
 
 export interface Planet3DTrailPoint {
@@ -71,11 +89,16 @@ export interface FutureRuntimeContentProof {
   wardenReadabilityPass: boolean;
   itemProxyPass: boolean;
   puzzleProxyPass: boolean;
+  shellRelationshipPass: boolean;
+  connectorReadabilityPass: boolean;
+  rotationRecoveryPass: boolean;
   signalOverloadPass: boolean;
 }
 
 export interface Planet3DPrototypeFrame {
   shell: Planet3DShell;
+  shells: readonly Planet3DShell[];
+  shellRelationship: Planet3DShellRelationship;
   rotationState: Planet3DRotationStateId;
   camera: {
     headingDegrees: number;

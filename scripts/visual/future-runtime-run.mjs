@@ -1,5 +1,6 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -30,6 +31,7 @@ import {
   writeReport
 } from '../../tools/visual-pipeline/packets.mjs';
 import { renderContactSheet } from '../../tools/visual-pipeline/contactSheet.mjs';
+import runtimeBenchmarkPack from '../../src/mazer-core/eval/runtime-benchmark-pack.json' with { type: 'json' };
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
@@ -70,14 +72,48 @@ const FUTURE_RUNTIME_SCENARIOS = Object.freeze([
     route: '/planet3d.html',
     motion: true,
     report: {
-      changed: 'The one-shell prototype now emits proof packets while stepping through discrete rotation states and themed content cues.',
-      regressed: 'This does not attempt to prove shell parity against the shipping lane.',
+      changed: 'The graph-first planet3d prototype now emits proof packets while stepping through discrete rotation states, shell transitions, and themed content cues.',
+      regressed: 'This still does not attempt to prove shell parity against the shipping lane.',
       better: 'The packet shows a recoverable rotation cycle, readable intent feed, a visible objective proxy, and content-proof gating.',
-      worse: 'The lane is intentionally compact and does not chase cinematic world coverage.',
-      humanJudgment: 'Confirm the final rotation returns to north while the content-proof panel stays readable instead of merely looking stable.'
+      worse: 'The lane remains intentionally compact and does not chase cinematic world coverage.',
+      humanJudgment: 'Confirm the final rotation returns to north while the content-proof panel stays readable and the shell bridge remains legible.'
+    }
+  },
+  {
+    id: 'planet3d-two-shell-proof',
+    label: 'Planet 3D two-shell proof',
+    kind: 'planet3d',
+    route: '/planet3d.html',
+    motion: true,
+    report: {
+      changed: 'The dedicated two-shell lane now proves a landmarked connector pair, a discrete alignment puzzle, and the recoverable return from inner shell to outer bearings.',
+      regressed: 'This remains a prototype lane and does not widen into production art scope or dense multi-connector routing.',
+      better: 'Shell relationship understanding, connector readability, rotation recovery, and objective proxy visibility are now all asserted from the same adapter-backed frame.',
+      worse: 'The lane is still graph-first and deliberately sparse rather than fully featured.',
+      humanJudgment: 'Confirm the bridge is scarce, the alignment puzzle is readable, and the inner-shell return lands with north-facing bearings restored.'
     }
   }
 ]);
+
+const FUTURE_RUNTIME_WORKFLOWS = Object.freeze({
+  'full-proof': {
+    runId: null,
+    scenarioIds: FUTURE_RUNTIME_SCENARIOS.map((scenario) => scenario.id)
+  },
+  'content-proof': {
+    runId: 'content-proof',
+    scenarioIds: [
+      'future-phaser-content-proof',
+      'planet3d-content-proof'
+    ]
+  },
+  'two-shell-proof': {
+    runId: 'two-shell-proof',
+    scenarioIds: [
+      'planet3d-two-shell-proof'
+    ]
+  }
+});
 
 const resolveCommandSpec = (command, args) => (
   process.platform === 'win32'
@@ -103,6 +139,42 @@ const runCommand = (command, args, options = {}) => new Promise((resolvePromise,
     rejectPromise(new Error(`${commandSpec.command} ${commandSpec.args.join(' ')} exited with code ${code ?? 'unknown'}.`));
   });
 });
+
+const resolveWorkflow = (runArg, workflowArg) => {
+  const workflowId = typeof workflowArg === 'string' && FUTURE_RUNTIME_WORKFLOWS[workflowArg]
+    ? workflowArg
+    : typeof runArg === 'string' && FUTURE_RUNTIME_WORKFLOWS[runArg]
+      ? runArg
+      : 'full-proof';
+
+  const workflow = FUTURE_RUNTIME_WORKFLOWS[workflowId];
+  const scenarioSet = new Set(workflow.scenarioIds);
+  const scenarios = FUTURE_RUNTIME_SCENARIOS.filter((scenario) => scenarioSet.has(scenario.id));
+  if (scenarios.length === 0) {
+    throw new Error(`Future runtime workflow ${workflowId} did not resolve any scenarios.`);
+  }
+
+  return {
+    workflowId,
+    runId: workflow.runId,
+    scenarios
+  };
+};
+
+const resetRunArtifacts = async (artifactRoot, runId) => {
+  if (!runId) {
+    return;
+  }
+
+  await Promise.all(FUTURE_RUNTIME_SCENARIOS.flatMap((scenario) => (
+    FUTURE_RUNTIME_VIEWPORTS.map((viewport) => (
+      rm(resolve(REPO_ROOT, artifactRoot, scenario.id, viewport.id, runId), {
+        recursive: true,
+        force: true
+      })
+    ))
+  )));
+};
 
 const waitForPreview = async (baseUrl, timeoutMs, child) => {
   const startedAt = Date.now();
@@ -254,7 +326,8 @@ const waitForFunctionComplete = async (page, bridgeKey, timeoutMs, propertyName)
 const capturePlanet3DScenario = async ({
   page,
   packet,
-  timeoutMs
+  timeoutMs,
+  scenario
 }) => {
   const canvas = await captureCanvas(page, timeoutMs);
   const bridgeKey = '__MAZER_FUTURE_PLANET3D__';
@@ -274,7 +347,8 @@ const capturePlanet3DScenario = async ({
 
   const keyframePaths = [];
   const keyframeDiagnostics = [];
-  for (const index of [2, 3]) {
+  const keyframeSteps = scenario?.id === 'planet3d-two-shell-proof' ? [2, 3, 4] : [2, 3];
+  for (const index of keyframeSteps) {
     const diagnostics = await page.evaluate((key) => {
       const controller = window[key];
       if (!controller) {
@@ -308,7 +382,9 @@ const capturePlanet3DScenario = async ({
   await renderContactSheet(browser, {
     frames: keyframePaths,
     outputPath: packet.contactSheetPath,
-    title: 'Planet 3D rotation recovery'
+    title: scenario?.id === 'planet3d-two-shell-proof'
+      ? 'Planet 3D two-shell bridge'
+      : 'Planet 3D rotation recovery'
   });
 
   return {
@@ -318,6 +394,13 @@ const capturePlanet3DScenario = async ({
     keyframePaths
   };
 };
+
+const evaluatePlanet3DProofGates = (frame) => ({
+  shellRelationshipUnderstanding: Boolean(frame?.shellRelationship?.relationshipReadable),
+  connectorReadability: Boolean(frame?.shellRelationship?.connectorReadable),
+  rotationRecovery: frame?.rotationState === 'north',
+  objectiveProxyVisibility: frame?.objectiveProxy?.visible === true
+});
 
 const buildPacketMetadata = ({
   scenario,
@@ -329,6 +412,7 @@ const buildPacketMetadata = ({
   afterDiagnostics,
   keyframeDiagnostics,
   keyframePaths,
+  proofGates,
   semanticScore
 }) => ({
   schemaVersion: 2,
@@ -342,6 +426,11 @@ const buildPacketMetadata = ({
     motion: scenario.motion,
     route: scenario.route
   },
+  benchmark: {
+    packId: runtimeBenchmarkPack.packId,
+    scenarioIds: runtimeBenchmarkPack.scenarios.map((entry) => entry.id)
+  },
+  proofGates,
   viewport,
   source: {
     kind: scenario.kind,
@@ -392,6 +481,9 @@ const buildPacketMetadata = ({
     wardenReadabilityPass: semanticScore.contract.wardenReadabilityPassEveryScene,
     itemProxyPass: semanticScore.contract.itemProxyPassEveryScene,
     puzzleProxyPass: semanticScore.contract.puzzleProxyPassEveryScene,
+    shellRelationshipUnderstanding: afterDiagnostics?.contentProof?.shellRelationshipPass ?? false,
+    connectorReadability: afterDiagnostics?.contentProof?.connectorReadabilityPass ?? false,
+    rotationRecovery: afterDiagnostics?.contentProof?.rotationRecoveryPass ?? false,
     signalOverloadPass: semanticScore.contract.signalOverloadPassEveryScene
   }
 });
@@ -429,7 +521,7 @@ const captureScenarioPacket = async ({
     if (scenario.kind === 'future-phaser') {
       captureResult = await capturePhaserScenario({ page, packet, timeoutMs });
     } else if (scenario.kind === 'planet3d') {
-      captureResult = await capturePlanet3DScenario({ page, packet, timeoutMs });
+      captureResult = await capturePlanet3DScenario({ page, packet, timeoutMs, scenario });
     } else {
       throw new Error(`Unsupported future runtime scenario kind: ${scenario.kind}`);
     }
@@ -458,6 +550,15 @@ const captureScenarioPacket = async ({
       },
       sceneScores
     });
+    if (scenario.kind === 'planet3d') {
+      const proofGates = evaluatePlanet3DProofGates(afterDiagnostics);
+      const failingProofGates = Object.entries(proofGates)
+        .filter(([, passed]) => !passed)
+        .map(([gateId]) => gateId);
+      if (failingProofGates.length > 0) {
+        throw new Error(`Planet3D proof gates failed for ${scenario.id}/${viewport.id}: ${failingProofGates.join(', ')}`);
+      }
+    }
     const metadata = buildPacketMetadata({
       scenario,
       viewport,
@@ -468,6 +569,7 @@ const captureScenarioPacket = async ({
       afterDiagnostics,
       keyframeDiagnostics,
       keyframePaths: captureResult.keyframePaths,
+      proofGates: scenario.kind === 'planet3d' ? evaluatePlanet3DProofGates(afterDiagnostics) : null,
       semanticScore
     });
 
@@ -502,15 +604,29 @@ export const runFutureRuntimeProofSuite = async ({
   previewTimeoutMs = DEFAULT_PREVIEW_TIMEOUT_MS,
   captureTimeoutMs = DEFAULT_CAPTURE_TIMEOUT_MS,
   skipBuild = false,
+  workflowId = 'full-proof',
+  scenarioIds = null,
   runId,
   allowFailures = false
 } = {}) => {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const commitSha = getCommitSha();
-  const resolvedRunId = resolveRunId(commitSha, runId);
+  const workflow = FUTURE_RUNTIME_WORKFLOWS[workflowId] ?? FUTURE_RUNTIME_WORKFLOWS['full-proof'];
+  const scenarioSet = new Set(
+    Array.isArray(scenarioIds) && scenarioIds.length > 0
+      ? scenarioIds
+      : workflow.scenarioIds
+  );
+  const scenarios = FUTURE_RUNTIME_SCENARIOS.filter((scenario) => scenarioSet.has(scenario.id));
+  if (scenarios.length === 0) {
+    throw new Error(`Future runtime workflow ${workflowId} did not match any proof scenarios.`);
+  }
+
+  const resolvedRunId = resolveRunId(commitSha, runId ?? workflow.runId);
   const previewLogPath = resolve(REPO_ROOT, artifactRoot, '_preview.log');
 
   await ensureDir(resolve(REPO_ROOT, artifactRoot));
+  await resetRunArtifacts(artifactRoot, resolvedRunId);
   const previewLog = createWriteStream(previewLogPath, { flags: 'a' });
 
   if (!skipBuild) {
@@ -540,7 +656,7 @@ export const runFutureRuntimeProofSuite = async ({
 
     const packets = [];
     const failures = [];
-    for (const scenario of FUTURE_RUNTIME_SCENARIOS) {
+    for (const scenario of scenarios) {
       for (const viewport of FUTURE_RUNTIME_VIEWPORTS) {
         const packetResult = await captureScenarioPacket({
           browser,
@@ -565,8 +681,12 @@ export const runFutureRuntimeProofSuite = async ({
 
     const { indexPath } = await writeArtifactIndex(REPO_ROOT, artifactRoot);
     const summary = {
+      workflowId,
       runId: resolvedRunId,
       artifactRoot,
+      benchmarkPackId: runtimeBenchmarkPack.packId,
+      benchmarkScenarioIds: runtimeBenchmarkPack.scenarios.map((entry) => entry.id),
+      scenarioIds: scenarios.map((scenario) => scenario.id),
       packetCount: packets.length,
       indexPath: relativeFromRepo(REPO_ROOT, indexPath),
       failures,
@@ -591,6 +711,7 @@ export const runFutureRuntimeProofSuite = async ({
 
 const main = async () => {
   const args = parseCliArgs();
+  const workflow = resolveWorkflow(args.run, args.workflow);
   const summary = await runFutureRuntimeProofSuite({
     baseUrl: args['base-url'] ?? process.env.MAZER_VISUAL_BASE_URL ?? DEFAULT_BASE_URL,
     artifactRoot: typeof args['artifact-root'] === 'string'
@@ -599,13 +720,23 @@ const main = async () => {
     previewTimeoutMs: parseIntegerArg(args['preview-timeout'], DEFAULT_PREVIEW_TIMEOUT_MS),
     captureTimeoutMs: parseIntegerArg(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
     skipBuild: args['skip-build'] === true || args['skip-build'] === 'true',
-    runId: typeof args.run === 'string' ? args.run : undefined,
+    workflowId: workflow.workflowId,
+    scenarioIds: workflow.scenarios.map((scenario) => scenario.id),
+    runId: typeof args['run-id'] === 'string'
+      ? args['run-id']
+      : typeof args.run === 'string' && FUTURE_RUNTIME_WORKFLOWS[args.run]
+        ? workflow.runId
+        : typeof args.run === 'string'
+          ? args.run
+          : undefined,
     allowFailures: args['allow-failures'] === true || args['allow-failures'] === 'true'
   });
 
   process.stdout.write(`${JSON.stringify({
+    workflowId: summary.workflowId,
     runId: summary.runId,
     artifactRoot: summary.artifactRoot,
+    scenarioIds: summary.scenarioIds,
     packetCount: summary.packetCount,
     indexPath: summary.indexPath,
     failureCount: summary.failures.length

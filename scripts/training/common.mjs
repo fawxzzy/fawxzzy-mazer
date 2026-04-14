@@ -1,4 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
+import {
+  resolveLifelineBenchmarkPack,
+  resolveLifelineBenchmarkScenarioById,
+  resolveLifelineBenchmarkScenarioBySeed
+} from '../lifeline/benchmark-pack.mjs';
 
 const clampMetric = (value) => Number(Math.min(1, Math.max(0, Number(value) || 0)).toFixed(4));
 
@@ -81,6 +87,58 @@ const writeJson = async (filePath, value) => {
   await writeFile(filePath, text, 'utf8');
 };
 
+const resolveRuntimeBenchmarkPack = () => resolveLifelineBenchmarkPack();
+
+const resolveRuntimeBenchmarkScenarioById = (scenarioId) => resolveLifelineBenchmarkScenarioById(scenarioId);
+
+const resolveRuntimeBenchmarkScenarioBySeed = (seed) => resolveLifelineBenchmarkScenarioBySeed(seed);
+
+const resolvePlaybookTuningWeights = (value) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  if (value.weights && typeof value.weights === 'object') {
+    return value.weights;
+  }
+
+  if (value.candidateRecord?.weights && typeof value.candidateRecord.weights === 'object') {
+    return value.candidateRecord.weights;
+  }
+
+  return value;
+};
+
+const resolveCommandSpec = (command, args) => (
+  process.platform === 'win32'
+    ? { command: 'cmd.exe', args: ['/d', '/s', '/c', `${command} ${args.join(' ')}`] }
+    : { command, args }
+);
+
+const runCommand = (command, args, options = {}) => {
+  const commandSpec = resolveCommandSpec(command, args);
+
+  try {
+    const stdout = execFileSync(commandSpec.command, commandSpec.args, {
+      cwd: options.cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    return {
+      ok: true,
+      stdout,
+      stderr: ''
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      stdout: error?.stdout ? String(error.stdout) : '',
+      stderr: error?.stderr ? String(error.stderr) : (error instanceof Error ? error.message : String(error))
+    };
+  }
+};
+
 const average = (values) => (
   values.length > 0
     ? clampMetric(values.reduce((total, value) => total + value, 0) / values.length)
@@ -120,6 +178,11 @@ export {
   hashStableValue,
   parseCliArgs,
   readJson,
+  resolvePlaybookTuningWeights,
+  resolveRuntimeBenchmarkPack,
+  resolveRuntimeBenchmarkScenarioById,
+  resolveRuntimeBenchmarkScenarioBySeed,
+  runCommand,
   stableSerialize,
   writeJson
 };

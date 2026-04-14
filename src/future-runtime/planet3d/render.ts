@@ -1,6 +1,6 @@
 import type { RuntimeIntentDelivery, RuntimeTrailDelivery } from '../../mazer-core/adapters';
 import type { IntentBusRecord } from '../../mazer-core/intent/IntentEvent';
-import { oneShellPlanet3DWorld, type OneShellPlanet3DHost } from './world';
+import { oneShellPlanet3DWorld, resolveShellRelationship, type OneShellPlanet3DHost } from './world';
 import type {
   FutureRuntimeContentProof,
   Planet3DIntentFeedEntry,
@@ -186,6 +186,7 @@ const hasIntentRecord = (
 
 const buildContentProof = (host: OneShellPlanet3DHost, delivery: RuntimeIntentDelivery | null): FutureRuntimeContentProof => {
   const visibleIntentRecordCount = delivery?.bus.records.slice(-4).length ?? 0;
+  const shellRelationship = resolveShellRelationship(host);
   const trapInferencePass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'trap-inferred' || record.speaker === 'TrapNet')
     || host.episodeDeliveries.some((entry) => Boolean(entry.latestEpisode?.outcome?.trapCueCount && entry.latestEpisode.outcome.trapCueCount > 0));
   const wardenReadabilityPass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'enemy-seen' || record.speaker === 'Warden')
@@ -194,16 +195,25 @@ const buildContentProof = (host: OneShellPlanet3DHost, delivery: RuntimeIntentDe
     || host.episodeDeliveries.some((entry) => Boolean(entry.latestEpisode?.outcome?.itemCueCount && entry.latestEpisode.outcome.itemCueCount > 0));
   const puzzleProxyPass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'puzzle-state-observed' || record.speaker === 'Puzzle')
     || host.episodeDeliveries.some((entry) => Boolean(entry.latestEpisode?.outcome?.puzzleCueCount && entry.latestEpisode.outcome.puzzleCueCount > 0));
+  const shellRelationshipPass = shellRelationship.relationshipReadable;
+  const connectorReadabilityPass = shellRelationship.connectorReadable;
+  const rotationRecoveryPass = host.rotationState === 'north';
 
   return {
     trapInferencePass,
     wardenReadabilityPass,
     itemProxyPass,
     puzzleProxyPass,
+    shellRelationshipPass,
+    connectorReadabilityPass,
+    rotationRecoveryPass,
     signalOverloadPass: trapInferencePass
       && wardenReadabilityPass
       && itemProxyPass
       && puzzleProxyPass
+      && shellRelationshipPass
+      && connectorReadabilityPass
+      && rotationRecoveryPass
       && visibleIntentRecordCount <= 4
   };
 };
@@ -216,9 +226,12 @@ export const renderPlanet3DPrototypeFrame = (host: OneShellPlanet3DHost): Planet
   const objectiveNode = oneShellPlanet3DWorld.nodes[oneShellPlanet3DWorld.objectiveTileId];
   const objectiveProjection = projectWorldPoint(objectiveNode.position, host.rotationState);
   const contentProof = buildContentProof(host, intentDelivery);
+  const shellRelationship = resolveShellRelationship(host);
 
   return {
-    shell: oneShellPlanet3DWorld.shell,
+    shell: host.shell,
+    shells: host.shells,
+    shellRelationship,
     rotationState: host.rotationState,
     camera: {
       headingDegrees: ROTATION_TO_DEGREES[host.rotationState],
@@ -351,12 +364,14 @@ export const drawPlanet3DPrototypeFrame = (
   context.fillStyle = '#bdd5e5';
   context.font = '13px Consolas, monospace';
   context.fillText(`Shell :: ${frame.shell.label}`, 72, 76);
-  context.fillText(`Trail :: ${frame.trail.points.map((point) => point.tileId).join(' -> ')}`, 72, 98);
-  context.fillText(`Objective proxy :: ${frame.objectiveProxy.visible ? 'visible' : 'hidden'}`, 72, 120);
+  context.fillText(`Linked shell :: ${frame.shellRelationship.linkedShellLabel}`, 72, 98);
+  context.fillText(`Connector :: ${frame.shellRelationship.connectorLabel} (${frame.shellRelationship.connectorAccessible ? 'open' : 'locked'})`, 72, 120);
+  context.fillText(`Trail :: ${frame.trail.points.map((point) => point.tileId).join(' -> ')}`, 72, 142);
+  context.fillText(`Objective proxy :: ${frame.objectiveProxy.visible ? 'visible' : 'hidden'}`, 72, 164);
   context.fillText(
-    `Content proof :: trap ${frame.contentProof.trapInferencePass ? 'pass' : 'fail'} | warden ${frame.contentProof.wardenReadabilityPass ? 'pass' : 'fail'} | item ${frame.contentProof.itemProxyPass ? 'pass' : 'fail'} | puzzle ${frame.contentProof.puzzleProxyPass ? 'pass' : 'fail'} | signal ${frame.contentProof.signalOverloadPass ? 'pass' : 'fail'}`,
+    `Content proof :: trap ${frame.contentProof.trapInferencePass ? 'pass' : 'fail'} | warden ${frame.contentProof.wardenReadabilityPass ? 'pass' : 'fail'} | item ${frame.contentProof.itemProxyPass ? 'pass' : 'fail'} | puzzle ${frame.contentProof.puzzleProxyPass ? 'pass' : 'fail'} | shell ${frame.contentProof.shellRelationshipPass ? 'pass' : 'fail'} | bridge ${frame.contentProof.connectorReadabilityPass ? 'pass' : 'fail'} | recover ${frame.contentProof.rotationRecoveryPass ? 'pass' : 'fail'} | signal ${frame.contentProof.signalOverloadPass ? 'pass' : 'fail'}`,
     72,
-    142
+    186
   );
 };
 

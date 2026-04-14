@@ -1,10 +1,21 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-14T05:09:18.964Z",
-  "promotedAt": "2026-04-14T05:09:29.378Z",
+  "generatedAt": "2026-04-14T17:16:57.609Z",
+  "promotedAt": "2026-04-14T17:16:57.612Z",
   "artifactRoot": "tmp/captures/mazer-future-runtime",
   "indexPath": "tmp/captures/mazer-future-runtime/index.json",
-  "runId": "baseline-promotion",
-  "packetCount": 4,
-  "scenarioCount": 2
+  "runId": "two-shell-proof",
+  "packetCount": 2,
+  "scenarioCount": 1,
+  "scenarioIds": [
+    "planet3d-two-shell-proof"
+  ],
+  "viewportIds": [
+    "desktop",
+    "mobile"
+  ],
+  "packetKeys": [
+    "planet3d-two-shell-proof::desktop",
+    "planet3d-two-shell-proof::mobile"
+  ]
 }

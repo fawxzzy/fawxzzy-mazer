@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-04-14T17:16:59.208Z",
+  "currentBlessedRecordId": "mazer-runtime-benchmark-v1:eval-1e876219",
+  "candidates": [
+    {
+      "schemaVersion": 1,
+      "recordId": "mazer-runtime-benchmark-v1:eval-8d0d3467",
+      "advisoryOnly": true,
+      "status": "rejected",
+      "weights": {
+        "frontierValue": 1.1401,
+        "backtrackUrgency": 0.8563,
+        "trapSuspicion": 1.0915,
+        "enemyRisk": 0.7563,
+        "itemValue": 0.7391,
+        "puzzleValue": 0.7774,
+        "rotationTiming": 1.145
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v1",
+        "createdAt": "2026-04-14T17:06:06.631Z",
+        "runId": "eval-8d0d3467",
+        "sourceRunId": "governed-candidate",
+        "date": "2026-04-14",
+        "evalSummary": {
+          "summaryId": "eval-dd9a98fe",
+          "runId": "eval-8d0d3467",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.6334,
+            "backtrackPressure": 0.2666,
+            "trapFalsePositiveRate": 0.1,
+            "trapFalseNegativeRate": 0.2,
+            "wardenPressureExposure": 0.1847,
+            "itemUsefulnessScore": 0.153,
+            "puzzleStateClarityScore": 0.1587
+          },
+          "path": "C:\\ATLAS\\repos\\fawxzzy-mazer\\tmp\\eval\\runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "futureRuntimeContentProof": true,
+          "runtimeEval": true
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 1.1401,
+          "delta": 0.1401
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 0.8563,
+          "delta": -0.1437
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 1.0915,
+          "delta": 0.0915
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 0.7563,
+          "delta": -0.2437
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 0.7391,
+          "delta": -0.2609
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 0.7774,
+          "delta": -0.2226
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 1.145,
+          "delta": 0.145
+        }
+      },
+      "notes": [
+        "runtime eval summary fell outside expected metric bands",
+        "candidatePath: tmp/training/governed-candidate/candidate-weights.json",
+        "candidateManifestPath: tmp/lifeline/headless-runner/governed-candidate/manifest.json"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "mazer-runtime-benchmark-v1:eval-1e876219",
+      "advisoryOnly": true,
+      "status": "blessed",
+      "weights": {
+        "frontierValue": 1,
+        "backtrackUrgency": 1,
+        "trapSuspicion": 1,
+        "enemyRisk": 1,
+        "itemValue": 1,
+        "puzzleValue": 1,
+        "rotationTiming": 1
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v1",
+        "createdAt": "2026-04-14T17:16:59.208Z",
+        "runId": "eval-1e876219",
+        "sourceRunId": null,
+        "date": "2026-04-14",
+        "evalSummary": {
+          "summaryId": "eval-d12b8216",
+          "runId": "eval-1e876219",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.7333,
+            "backtrackPressure": 0.3333,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2007,
+            "itemUsefulnessScore": 0.8,
+            "puzzleStateClarityScore": 0.776
+          },
+          "path": "C:\\ATLAS\\repos\\fawxzzy-mazer\\tmp\\eval\\runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "futureRuntimeContentProof": true,
+          "runtimeEval": true
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        }
+      },
+      "notes": [
+        "candidatePath: tmp/training/governed-candidate/default-weights.json"
+      ]
+    }
+  ],
+  "blessed": [
+    {
+      "schemaVersion": 1,
+      "recordId": "mazer-runtime-benchmark-v1:eval-1e876219",
+      "advisoryOnly": true,
+      "status": "blessed",
+      "weights": {
+        "frontierValue": 1,
+        "backtrackUrgency": 1,
+        "trapSuspicion": 1,
+        "enemyRisk": 1,
+        "itemValue": 1,
+        "puzzleValue": 1,
+        "rotationTiming": 1
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v1",
+        "createdAt": "2026-04-14T17:16:59.208Z",
+        "runId": "eval-1e876219",
+        "sourceRunId": null,
+        "date": "2026-04-14",
+        "evalSummary": {
+          "summaryId": "eval-d12b8216",
+          "runId": "eval-1e876219",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.7333,
+            "backtrackPressure": 0.3333,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2007,
+            "itemUsefulnessScore": 0.8,
+            "puzzleStateClarityScore": 0.776
+          },
+          "path": "C:\\ATLAS\\repos\\fawxzzy-mazer\\tmp\\eval\\runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "futureRuntimeContentProof": true,
+          "runtimeEval": true
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        }
+      },
+      "notes": [
+        "candidatePath: tmp/training/governed-candidate/default-weights.json"
+      ]
+    }
+  ]
+}

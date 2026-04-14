@@ -1,8 +1,19 @@
 import { RuntimeAdapterBridge, type RuntimeAdapterHost, type RuntimeEpisodeDelivery, type RuntimeIntentDelivery, type RuntimeMoveApplication, type RuntimeObservationProjection, type RuntimeTrailDelivery } from '../adapters';
-import type { HeadingToken, LocalObservation, PolicyActionCandidate, PolicyCandidateSignalMap, PolicyEpisode, PolicyScorer, PolicyScorerInput, TileId, VisibleLandmark } from '../agent/types';
+import type { ExplorerSnapshot, HeadingToken, LocalObservation, PolicyActionCandidate, PolicyCandidateSignalMap, PolicyEpisode, PolicyScorer, PolicyScorerInput, TileId, VisibleLandmark } from '../agent/types';
 import { createRuntimeEpisodeReplayHost, type RuntimeEpisodeLog, type RuntimeEpisodeLogEntry } from '../logging';
+import { PlaybookPatternScorer, type PlaybookTuningWeights } from '../playbook';
+import {
+  assertRuntimeBenchmarkScenarioIds,
+  getRuntimeBenchmarkPack,
+  type RuntimeBenchmarkCandidateContract,
+  type RuntimeBenchmarkDistrictType,
+  type RuntimeBenchmarkMetricBand,
+  type RuntimeBenchmarkMetricName,
+  type RuntimeBenchmarkScenarioContract,
+  type RuntimeBenchmarkStepContract
+} from './RuntimeBenchmarkPack';
 
-export type RuntimeEvalFocus = 'trap' | 'warden' | 'item' | 'puzzle';
+export type RuntimeEvalFocus = 'trap' | 'warden' | 'item' | 'puzzle' | 'rotation';
 
 export interface RuntimeEvalScenarioStepSpec {
   tileId: TileId;
@@ -21,6 +32,7 @@ export interface RuntimeEvalScenarioStepSpec {
 export interface RuntimeEvalScenarioSpec {
   id: string;
   focus: RuntimeEvalFocus;
+  districtType: RuntimeBenchmarkDistrictType;
   seed: string;
   startTileId: TileId;
   startHeading: HeadingToken;
@@ -94,6 +106,7 @@ export interface RuntimeEvalScenarioSummary {
   runId: string;
   scenarioId: string;
   focus: RuntimeEvalFocus;
+  districtType: RuntimeBenchmarkDistrictType;
   seed: string;
   startTileId: TileId;
   startHeading: HeadingToken;
@@ -104,15 +117,22 @@ export interface RuntimeEvalScenarioSummary {
     stepCount: number;
   };
   evaluation: RuntimeEvalLogSummary;
+  expectedMetricBands: Partial<Record<RuntimeBenchmarkMetricName, RuntimeBenchmarkMetricBand>>;
+  metricBandValidation: {
+    passed: boolean;
+    failures: string[];
+  };
 }
 
 export interface RuntimeEvalSuiteSummary {
   schemaVersion: 1;
   suiteId: string;
+  benchmarkPackId: string;
   summaryId: string;
   runId: string;
   generatedAt: string;
   scenarioCount: number;
+  scenarioIds: readonly string[];
   replayIntegrity: {
     verifiedScenarioCount: number;
     failedScenarioCount: number;
@@ -120,7 +140,17 @@ export interface RuntimeEvalSuiteSummary {
   };
   metrics: RuntimeEvalMetricSummary;
   support: RuntimeEvalSupportSummary;
+  metricBandValidation: {
+    passedScenarioCount: number;
+    failedScenarioCount: number;
+    allScenariosWithinBands: boolean;
+  };
   scenarioSummaries: readonly RuntimeEvalScenarioSummary[];
+}
+
+export interface RuntimeEvalSuiteOptions {
+  tuningWeights?: Partial<PlaybookTuningWeights> | null;
+  scenarioIds?: readonly string[] | null;
 }
 
 const TRAP_THRESHOLD = 0.6;
@@ -557,267 +587,278 @@ class DeterministicEvalHost implements RuntimeAdapterHost {
 
 const makeStep = (step: RuntimeEvalScenarioStepSpec): RuntimeEvalScenarioStepSpec => cloneStepSpec(step);
 
-export const createDeterministicRuntimeEvalScenarios = (): readonly RuntimeEvalScenarioSpec[] => ([
-  {
-    id: 'trap-inference-seed-alpha',
-    focus: 'trap',
-    seed: 'eval-trap-alpha',
-    startTileId: 'trap-entry',
-    startHeading: 'east',
-    preferredNextTileIds: ['trap-mid', null, 'trap-spur', null],
-    steps: [
-      makeStep({
-        tileId: 'trap-entry',
-        label: 'Trap Entry',
-        heading: 'east',
-        traversableTileIds: ['trap-mid', 'trap-spur'],
-        localCues: ['trap rhythm', 'timing gate'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'trap-mid': { trapRisk: 0.88, timingWindow: 0.6 },
-          'trap-spur': { trapRisk: 0.08, timingWindow: 0.1 }
-        },
-        moveToTileId: 'trap-mid'
-      }),
-      makeStep({
-        tileId: 'trap-mid',
-        label: 'Trap Mid',
-        heading: 'west',
-        traversableTileIds: ['trap-entry'],
-        localCues: ['quiet corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'trap-entry': { trapRisk: 0.14, timingWindow: 0.08 }
-        },
-        moveToTileId: 'trap-entry'
-      }),
-      makeStep({
-        tileId: 'trap-entry',
-        label: 'Trap Entry',
-        heading: 'east',
-        traversableTileIds: ['trap-spur'],
-        localCues: ['quiet corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'trap-spur': { trapRisk: 0.12, timingWindow: 0.05 }
-        },
-        moveToTileId: 'trap-spur'
-      }),
-      makeStep({
-        tileId: 'trap-spur',
-        label: 'Trap Spur',
-        heading: 'south',
-        traversableTileIds: [],
-        localCues: ['trap alarm', 'hazard seal'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {},
-        moveToTileId: null
-      })
-    ]
-  },
-  {
-    id: 'warden-pressure-seed-bravo',
-    focus: 'warden',
-    seed: 'eval-warden-bravo',
-    startTileId: 'warden-entry',
-    startHeading: 'east',
-    preferredNextTileIds: ['warden-mid', null, 'warden-spur', null],
-    steps: [
-      makeStep({
-        tileId: 'warden-entry',
-        label: 'Warden Entry',
-        heading: 'east',
-        traversableTileIds: ['warden-mid', 'warden-spur'],
-        localCues: ['enemy patrol', 'sightline broken'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'warden-mid': { enemyPressure: 0.92, timingWindow: 0.25 },
-          'warden-spur': { enemyPressure: 0.18, timingWindow: 0.08 }
-        },
-        moveToTileId: 'warden-mid'
-      }),
-      makeStep({
-        tileId: 'warden-mid',
-        label: 'Warden Mid',
-        heading: 'west',
-        traversableTileIds: ['warden-entry'],
-        localCues: ['quiet corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'warden-entry': { enemyPressure: 0.81, timingWindow: 0.2 }
-        },
-        moveToTileId: 'warden-entry'
-      }),
-      makeStep({
-        tileId: 'warden-entry',
-        label: 'Warden Entry',
-        heading: 'east',
-        traversableTileIds: ['warden-spur'],
-        localCues: ['quiet corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'warden-spur': { enemyPressure: 0.84, timingWindow: 0.18 }
-        },
-        moveToTileId: 'warden-spur'
-      }),
-      makeStep({
-        tileId: 'warden-spur',
-        label: 'Warden Spur',
-        heading: 'south',
-        traversableTileIds: [],
-        localCues: ['warden shadow', 'enemy patrol'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {},
-        moveToTileId: null
-      })
-    ]
-  },
-  {
-    id: 'item-usefulness-seed-charlie',
-    focus: 'item',
-    seed: 'eval-item-charlie',
-    startTileId: 'item-entry',
-    startHeading: 'east',
-    preferredNextTileIds: ['item-mid', null, 'item-spur', null],
-    steps: [
-      makeStep({
-        tileId: 'item-entry',
-        label: 'Item Entry',
-        heading: 'east',
-        traversableTileIds: ['item-mid', 'item-spur'],
-        localCues: ['cache beacon', 'item glint'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'item-mid': { itemOpportunity: 0.63, timingWindow: 0.28 },
-          'item-spur': { itemOpportunity: 0.12, timingWindow: 0.08 }
-        },
-        moveToTileId: 'item-mid'
-      }),
-      makeStep({
-        tileId: 'item-mid',
-        label: 'Item Mid',
-        heading: 'west',
-        traversableTileIds: ['item-entry'],
-        localCues: ['empty alcove'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'item-entry': { itemOpportunity: 0.87, timingWindow: 0.35 }
-        },
-        moveToTileId: 'item-entry'
-      }),
-      makeStep({
-        tileId: 'item-entry',
-        label: 'Item Entry',
-        heading: 'east',
-        traversableTileIds: ['item-spur'],
-        localCues: ['empty alcove'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'item-spur': { itemOpportunity: 0.9, timingWindow: 0.33 }
-        },
-        moveToTileId: 'item-spur'
-      }),
-      makeStep({
-        tileId: 'item-spur',
-        label: 'Item Spur',
-        heading: 'south',
-        traversableTileIds: [],
-        localCues: ['item cache', 'key shard'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {},
-        moveToTileId: null
-      })
-    ]
-  },
-  {
-    id: 'puzzle-clarity-seed-delta',
-    focus: 'puzzle',
-    seed: 'eval-puzzle-delta',
-    startTileId: 'puzzle-entry',
-    startHeading: 'east',
-    preferredNextTileIds: ['puzzle-mid', null, 'puzzle-spur', null],
-    steps: [
-      makeStep({
-        tileId: 'puzzle-entry',
-        label: 'Puzzle Entry',
-        heading: 'east',
-        traversableTileIds: ['puzzle-mid', 'puzzle-spur'],
-        localCues: ['puzzle proxy', 'glyph hint'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'puzzle-mid': { puzzleOpportunity: 0.57, timingWindow: 0.3 },
-          'puzzle-spur': { puzzleOpportunity: 0.09, timingWindow: 0.05 }
-        },
-        moveToTileId: 'puzzle-mid'
-      }),
-      makeStep({
-        tileId: 'puzzle-mid',
-        label: 'Puzzle Mid',
-        heading: 'west',
-        traversableTileIds: ['puzzle-entry'],
-        localCues: ['rune corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'puzzle-entry': { puzzleOpportunity: 0.91, timingWindow: 0.4 }
-        },
-        moveToTileId: 'puzzle-entry'
-      }),
-      makeStep({
-        tileId: 'puzzle-entry',
-        label: 'Puzzle Entry',
-        heading: 'east',
-        traversableTileIds: ['puzzle-spur'],
-        localCues: ['rune corridor'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {
-          'puzzle-spur': { puzzleOpportunity: 0.9, timingWindow: 0.36 }
-        },
-        moveToTileId: 'puzzle-spur'
-      }),
-      makeStep({
-        tileId: 'puzzle-spur',
-        label: 'Puzzle Spur',
-        heading: 'south',
-        traversableTileIds: [],
-        localCues: ['puzzle state', 'cipher plate'],
-        visibleLandmarks: [],
-        goal: { visible: false, tileId: null },
-        candidateSignals: {},
-        moveToTileId: null
-      })
-    ]
+const resolveScenarioFocus = (scenario: RuntimeBenchmarkScenarioContract): RuntimeEvalFocus => {
+  switch (scenario.variant) {
+    case 'trap-inference':
+      return 'trap';
+    case 'warden-pressure':
+      return 'warden';
+    case 'item-usefulness':
+      return 'item';
+    case 'puzzle-visibility':
+      return 'puzzle';
+    case 'rotation-timing':
+      return 'rotation';
+    default:
+      return 'puzzle';
   }
-] as const);
+};
 
-export const evaluateRuntimeEpisodeLog = (log: RuntimeEpisodeLog): RuntimeEvalLogSummary => (
-  buildRuntimeEvalLogSummary(log)
+const buildCandidateSignals = (
+  candidates: readonly RuntimeBenchmarkCandidateContract[]
+): PolicyCandidateSignalMap => Object.fromEntries(
+  candidates.map((candidate) => [
+    candidate.tileId,
+    {
+      trapRisk: candidate.trapRisk,
+      enemyPressure: candidate.enemyPressure,
+      itemOpportunity: candidate.itemOpportunity,
+      puzzleOpportunity: candidate.puzzleOpportunity,
+      timingWindow: candidate.timingWindow
+    }
+  ])
 );
 
-export const runRuntimeEvalScenario = (scenario: RuntimeEvalScenarioSpec): RuntimeEvalScenarioSummary => {
+const toRuntimeEvalStepSpec = (
+  step: RuntimeBenchmarkStepContract
+): RuntimeEvalScenarioStepSpec => makeStep({
+  tileId: step.tileId,
+  label: step.label,
+  heading: step.heading,
+  traversableTileIds: [...step.traversableTileIds],
+  localCues: [...step.localCues],
+  visibleLandmarks: cloneLandmarks(step.visibleLandmarks),
+  goal: { ...step.goal },
+  candidateSignals: buildCandidateSignals(step.candidates),
+  moveToTileId: step.moveToTileId
+});
+
+const toRuntimeEvalScenarioSpec = (
+  scenario: RuntimeBenchmarkScenarioContract
+): RuntimeEvalScenarioSpec => {
+  const replaySteps = scenario.steps.map((step) => toRuntimeEvalStepSpec(step));
+  const lastStep = scenario.steps.at(-1);
+  const lastCandidateOutcome = lastStep?.candidates.at(-1)?.outcome ?? null;
+
+  if (lastStep) {
+    replaySteps.push(makeStep({
+      tileId: lastStep.moveToTileId ?? lastStep.tileId,
+      label: `${lastStep.label} Terminal`,
+      heading: lastStep.heading,
+      traversableTileIds: [],
+      localCues: lastCandidateOutcome?.localCues ?? [...lastStep.localCues],
+      visibleLandmarks: cloneLandmarks(lastStep.visibleLandmarks),
+      goal: { ...lastStep.goal },
+      candidateSignals: {},
+      moveToTileId: null
+    }));
+  }
+
+  return {
+    id: scenario.id,
+    focus: resolveScenarioFocus(scenario),
+    districtType: scenario.districtType,
+    seed: scenario.seed,
+    startTileId: scenario.steps[0]?.tileId ?? 'start',
+    startHeading: scenario.steps[0]?.heading ?? 'north',
+    intentCanary: `${scenario.id}-benchmark`,
+    preferredNextTileIds: [...scenario.steps.map((step) => step.moveToTileId ?? null), null],
+    steps: replaySteps
+  };
+};
+
+const buildBenchmarkSnapshot = (
+  scenario: RuntimeBenchmarkScenarioContract,
+  stepIndex: number,
+  step: RuntimeBenchmarkStepContract
+): ExplorerSnapshot => ({
+  seed: scenario.seed,
+  currentTileId: step.tileId,
+  currentHeading: step.heading,
+  mode: step.goal.visible ? 'goal' : 'explore',
+  counters: {
+    replanCount: stepIndex,
+    backtrackCount: step.candidates.some((candidate) => candidate.targetKind === 'backtrack') ? 1 : 0,
+    frontierCount: step.traversableTileIds.length,
+    goalObservedStep: step.goal.visible ? stepIndex : null,
+    tilesDiscovered: stepIndex + 1
+  },
+  discoveredNodeIds: Array.from(new Set([
+    ...scenario.steps.slice(0, stepIndex + 1).map((entry) => entry.tileId),
+    ...step.traversableTileIds
+  ])),
+  frontierIds: [...step.traversableTileIds],
+  goalTileId: step.goal.tileId ?? null,
+  observedLandmarkIds: step.visibleLandmarks.map((landmark) => landmark.id),
+  observedCues: [...step.localCues]
+});
+
+const buildPolicyCandidate = (
+  scenario: RuntimeBenchmarkScenarioContract,
+  stepIndex: number,
+  step: RuntimeBenchmarkStepContract,
+  candidate: RuntimeBenchmarkCandidateContract
+): PolicyActionCandidate => ({
+  id: `${scenario.id}:step-${stepIndex}:${candidate.targetKind}:${candidate.tileId}`,
+  targetKind: candidate.targetKind,
+  targetTileId: candidate.tileId,
+  path: [...candidate.path],
+  nextTileId: candidate.path.length > 1 ? candidate.path[1] ?? candidate.tileId : candidate.tileId,
+  reason: 'benchmark advisory evaluation',
+  heuristicScore: candidate.heuristicScore,
+  policyScore: null,
+  features: {
+    pathCost: Math.max(0, candidate.path.length - 1),
+    visitCount: candidate.visitCount,
+    unexploredNeighborCount: candidate.unexploredNeighborCount,
+    frontierCount: step.traversableTileIds.length,
+    goalVisible: step.goal.visible,
+    trapRisk: candidate.trapRisk,
+    enemyPressure: candidate.enemyPressure,
+    itemOpportunity: candidate.itemOpportunity,
+    puzzleOpportunity: candidate.puzzleOpportunity,
+    timingWindow: candidate.timingWindow
+  }
+});
+
+const selectAdvisoryCandidate = (
+  candidates: readonly PolicyActionCandidate[],
+  policyScores: ReadonlyMap<string, number>
+): PolicyActionCandidate | null => (
+  [...candidates].sort((left, right) => {
+    const leftScore = policyScores.get(left.id) ?? 0;
+    const rightScore = policyScores.get(right.id) ?? 0;
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore;
+    }
+
+    if (left.heuristicScore !== right.heuristicScore) {
+      return right.heuristicScore - left.heuristicScore;
+    }
+
+    return left.id.localeCompare(right.id);
+  })[0] ?? null
+);
+
+const buildAdvisoryStepSummary = (
+  scorer: PlaybookPatternScorer,
+  scenario: RuntimeBenchmarkScenarioContract,
+  stepIndex: number,
+  step: RuntimeBenchmarkStepContract,
+  tuningWeights?: Partial<PlaybookTuningWeights> | null
+): RuntimeEvalStepSummary | null => {
+  if (step.candidates.length === 0) {
+    return null;
+  }
+
+  const observation: LocalObservation = {
+    step: stepIndex,
+    currentTileId: step.tileId,
+    heading: step.heading,
+    traversableTileIds: [...step.traversableTileIds],
+    localCues: [...step.localCues],
+    visibleLandmarks: cloneLandmarks(step.visibleLandmarks),
+    goal: { ...step.goal },
+    candidateSignals: buildCandidateSignals(step.candidates)
+  };
+  const snapshot = buildBenchmarkSnapshot(scenario, stepIndex, step);
+  const policyCandidates = step.candidates.map((candidate) => (
+    buildPolicyCandidate(scenario, stepIndex, step, candidate)
+  ));
+  const policyScores = scorer.scoreLegalCandidates({
+    seed: scenario.seed,
+    step: stepIndex,
+    observation,
+    snapshot,
+    candidates: policyCandidates,
+    tuningWeights
+  });
+  const selectedCandidate = selectAdvisoryCandidate(policyCandidates, policyScores);
+  if (!selectedCandidate) {
+    return null;
+  }
+
+  const candidateContract = step.candidates.find((candidate) => candidate.tileId === selectedCandidate.targetTileId) ?? null;
+  if (!candidateContract) {
+    return null;
+  }
+
+  const outcome = candidateContract.outcome;
+
+  return {
+    step: stepIndex,
+    currentTileId: step.tileId,
+    targetKind: selectedCandidate.targetKind,
+    targetTileId: selectedCandidate.targetTileId,
+    nextTileId: selectedCandidate.nextTileId,
+    selectedCandidateId: selectedCandidate.id,
+    candidateCount: policyCandidates.length,
+    reason: selectedCandidate.reason,
+    discoveredTilesDelta: outcome.discoveredTilesDelta,
+    backtrackDelta: outcome.backtrackDelta,
+    trapRisk: selectedCandidate.features.trapRisk,
+    predictedTrap: selectedCandidate.features.trapRisk >= TRAP_THRESHOLD,
+    actualTrap: outcome.trapCueCount > 0,
+    trapCueCount: outcome.trapCueCount,
+    enemyPressure: selectedCandidate.features.enemyPressure,
+    predictedEnemyPressure: selectedCandidate.features.enemyPressure,
+    actualEnemy: outcome.enemyCueCount > 0,
+    enemyCueCount: outcome.enemyCueCount,
+    itemOpportunity: selectedCandidate.features.itemOpportunity,
+    predictedItemOpportunity: selectedCandidate.features.itemOpportunity,
+    actualItem: outcome.itemCueCount > 0,
+    itemCueCount: outcome.itemCueCount,
+    puzzleOpportunity: selectedCandidate.features.puzzleOpportunity,
+    predictedPuzzleOpportunity: selectedCandidate.features.puzzleOpportunity,
+    actualPuzzle: outcome.puzzleCueCount > 0,
+    puzzleCueCount: outcome.puzzleCueCount
+  };
+};
+
+const evaluateBenchmarkScenario = (
+  scenario: RuntimeBenchmarkScenarioContract,
+  tuningWeights?: Partial<PlaybookTuningWeights> | null
+): RuntimeEvalLogSummary => {
+  const scorer = new PlaybookPatternScorer();
+  const rows = scenario.steps
+    .map((step, index) => buildAdvisoryStepSummary(scorer, scenario, index, step, tuningWeights))
+    .filter((summary): summary is RuntimeEvalStepSummary => Boolean(summary));
+
+  return summarizeRows(rows);
+};
+
+const validateMetricBands = (
+  metrics: RuntimeEvalMetricSummary,
+  bands: Partial<Record<RuntimeBenchmarkMetricName, RuntimeBenchmarkMetricBand>>
+): { passed: boolean; failures: string[] } => {
+  const failures = Object.entries(bands).flatMap(([metricName, band]) => {
+    if (!band) {
+      return [];
+    }
+
+    const value = metrics[metricName as RuntimeBenchmarkMetricName];
+    return value >= band.min && value <= band.max
+      ? []
+      : [`${metricName}=${value} outside [${band.min}, ${band.max}]`];
+  });
+
+  return {
+    passed: failures.length === 0,
+    failures
+  };
+};
+
+const runReplayScenario = (scenario: RuntimeEvalScenarioSpec) => {
+  const maxSteps = scenario.steps.length + 1;
   const host = new DeterministicEvalHost(scenario);
   const scorer = new DeterministicEvalPolicyScorer(new Map(
     scenario.preferredNextTileIds.map((tileId, index) => [index, tileId])
   ));
   const bridge = new RuntimeAdapterBridge(host, scorer);
-  const stepResults = bridge.runUntilIdle(scenario.steps.length);
+  const stepResults = bridge.runUntilIdle(maxSteps);
   const log = bridge.createEpisodeLog();
   const replayBridge = new RuntimeAdapterBridge(createRuntimeEpisodeReplayHost(log), scorer);
-  const replaySteps = replayBridge.runUntilIdle(scenario.steps.length);
+  const replaySteps = replayBridge.runUntilIdle(maxSteps);
   const replayLog = replayBridge.createEpisodeLog();
   const replayVerified = (
     replaySteps.length === stepResults.length
@@ -827,12 +868,42 @@ export const runRuntimeEvalScenario = (scenario: RuntimeEvalScenarioSpec): Runti
       generatedAt: log.generatedAt
     }) === JSON.stringify(log)
   );
-  const evaluation = evaluateRuntimeEpisodeLog(log);
+
+  return {
+    log,
+    replayVerified
+  };
+};
+
+export const createDeterministicRuntimeEvalScenarios = (
+  scenarioIds?: readonly string[] | null
+): readonly RuntimeEvalScenarioSpec[] => {
+  const scenarios = scenarioIds
+    ? assertRuntimeBenchmarkScenarioIds(scenarioIds)
+    : getRuntimeBenchmarkPack().scenarios;
+
+  return scenarios.map((scenario) => toRuntimeEvalScenarioSpec(scenario));
+};
+
+export const evaluateRuntimeEpisodeLog = (log: RuntimeEpisodeLog): RuntimeEvalLogSummary => (
+  buildRuntimeEvalLogSummary(log)
+);
+
+export const runRuntimeEvalScenario = (
+  scenario: RuntimeBenchmarkScenarioContract,
+  tuningWeights?: Partial<PlaybookTuningWeights> | null
+): RuntimeEvalScenarioSummary => {
+  const replayScenario = toRuntimeEvalScenarioSpec(scenario);
+  const replay = runReplayScenario(replayScenario);
+  const evaluation = evaluateBenchmarkScenario(scenario, tuningWeights);
+  const metricBandValidation = validateMetricBands(evaluation.metrics, scenario.expectedMetricBands);
   const runId = digestText(JSON.stringify({
     scenarioId: scenario.id,
     seed: scenario.seed,
-    stepCount: log.stepCount,
-    replayVerified
+    districtType: scenario.districtType,
+    tuningWeights: tuningWeights ?? null,
+    replayVerified: replay.replayVerified,
+    metrics: evaluation.metrics
   }));
   const summaryId = digestText(JSON.stringify({
     scenarioId: scenario.id,
@@ -845,17 +916,25 @@ export const runRuntimeEvalScenario = (scenario: RuntimeEvalScenarioSpec): Runti
     summaryId,
     runId,
     scenarioId: scenario.id,
-    focus: scenario.focus,
+    focus: resolveScenarioFocus(scenario),
+    districtType: scenario.districtType,
     seed: scenario.seed,
-    startTileId: scenario.startTileId,
-    startHeading: scenario.startHeading,
-    replayVerified,
+    startTileId: replayScenario.startTileId,
+    startHeading: replayScenario.startHeading,
+    replayVerified: replay.replayVerified,
     metrics: evaluation.metrics,
     log: {
-      source: { ...log.source },
-      stepCount: log.stepCount
+      source: { ...replay.log.source },
+      stepCount: replay.log.stepCount
     },
-    evaluation
+    evaluation,
+    expectedMetricBands: Object.fromEntries(
+      Object.entries(scenario.expectedMetricBands).map(([metricName, band]) => [
+        metricName,
+        band ? { ...band } : band
+      ])
+    ),
+    metricBandValidation
   };
 };
 
@@ -864,39 +943,58 @@ const aggregateLogSummaries = (summaries: readonly RuntimeEvalLogSummary[]): Run
   return summarizeRows(rows);
 };
 
-export const runDeterministicRuntimeEvalSuite = (): RuntimeEvalSuiteSummary => {
-  const scenarios = createDeterministicRuntimeEvalScenarios();
-  const scenarioSummaries = scenarios.map((scenario) => runRuntimeEvalScenario(scenario));
+export const runDeterministicRuntimeEvalSuite = (
+  options: RuntimeEvalSuiteOptions = {}
+): RuntimeEvalSuiteSummary => {
+  const benchmarkPack = getRuntimeBenchmarkPack();
+  const scenarios = options.scenarioIds
+    ? assertRuntimeBenchmarkScenarioIds(options.scenarioIds)
+    : benchmarkPack.scenarios;
+  const scenarioSummaries = scenarios.map((scenario) => (
+    runRuntimeEvalScenario(scenario, options.tuningWeights)
+  ));
   const replayIntegrity = {
     verifiedScenarioCount: scenarioSummaries.filter((entry) => entry.replayVerified).length,
     failedScenarioCount: scenarioSummaries.filter((entry) => !entry.replayVerified).length,
     allScenariosVerified: scenarioSummaries.every((entry) => entry.replayVerified)
   };
   const aggregate = aggregateLogSummaries(scenarioSummaries.map((scenario) => scenario.evaluation));
+  const metricBandValidation = {
+    passedScenarioCount: scenarioSummaries.filter((scenario) => scenario.metricBandValidation.passed).length,
+    failedScenarioCount: scenarioSummaries.filter((scenario) => !scenario.metricBandValidation.passed).length,
+    allScenariosWithinBands: scenarioSummaries.every((scenario) => scenario.metricBandValidation.passed)
+  };
+  const scenarioIds = scenarioSummaries.map((entry) => entry.scenarioId);
   const runId = digestText(JSON.stringify({
     suiteId: 'mazer-core-deterministic-runtime-eval',
-    scenarioIds: scenarioSummaries.map((entry) => entry.scenarioId),
-    seeds: scenarioSummaries.map((entry) => entry.seed),
+    benchmarkPackId: benchmarkPack.packId,
+    scenarioIds,
     metrics: aggregate.metrics,
-    support: aggregate.support
+    support: aggregate.support,
+    tuningWeights: options.tuningWeights ?? null
   }));
   const summaryId = digestText(JSON.stringify({
     suiteId: 'mazer-core-deterministic-runtime-eval',
+    benchmarkPackId: benchmarkPack.packId,
     runId,
     replayIntegrity,
+    metricBandValidation,
     metrics: aggregate.metrics
   }));
 
   return {
     schemaVersion: 1,
     suiteId: 'mazer-core-deterministic-runtime-eval',
+    benchmarkPackId: benchmarkPack.packId,
     summaryId,
     runId,
     generatedAt: new Date().toISOString(),
     scenarioCount: scenarioSummaries.length,
+    scenarioIds,
     replayIntegrity,
     metrics: aggregate.metrics,
     support: aggregate.support,
+    metricBandValidation,
     scenarioSummaries
   };
 };

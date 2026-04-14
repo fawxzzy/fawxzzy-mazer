@@ -37,6 +37,13 @@ export const createPlanet3DPrototype = (options: Planet3DRuntimeOptions = {}): P
 
     drawPlanet3DPrototypeFrame(mountedContext, prototype.currentFrame, mountedSize);
   };
+  const refreshFrame = () => {
+    const frame = buildPlanet3DPrototypeFrame(host);
+    prototype.currentFrame = frame;
+    prototype.shell = frame.shell;
+    redrawMountedFrame();
+    return frame;
+  };
   const prototype: Planet3DPrototypeState = {
     host,
     bridge,
@@ -44,20 +51,16 @@ export const createPlanet3DPrototype = (options: Planet3DRuntimeOptions = {}): P
     currentFrame: buildPlanet3DPrototypeFrame(host),
     runStep: () => {
       const result = bridge.runStep();
-      prototype.currentFrame = buildPlanet3DPrototypeFrame(host);
-      redrawMountedFrame();
+      refreshFrame();
       return result;
     },
     runUntilIdle: (maxSteps: number) => {
       const results = bridge.runUntilIdle(maxSteps);
-      prototype.currentFrame = buildPlanet3DPrototypeFrame(host);
-      redrawMountedFrame();
+      refreshFrame();
       return results;
     },
     renderFrame: () => {
-      prototype.currentFrame = buildPlanet3DPrototypeFrame(host);
-      redrawMountedFrame();
-      return prototype.currentFrame;
+      return refreshFrame();
     },
     getTrail: () => [...host.trailDeliveries],
     getIntents: () => [...host.intentDeliveries],

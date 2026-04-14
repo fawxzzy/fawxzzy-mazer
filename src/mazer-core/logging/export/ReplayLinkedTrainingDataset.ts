@@ -5,6 +5,7 @@ import type {
   TileId
 } from '../../agent/types';
 import { summarizeEpisodeLogFeatures } from '../../agent/PolicyScorer';
+import type { RuntimeBenchmarkDistrictType, RuntimeBenchmarkMetricBand } from '../../eval';
 import type { RuntimeEpisodeLog } from '../RuntimeEpisodeLog';
 
 export interface ReplayEvalMetricsSummary {
@@ -42,6 +43,13 @@ export interface ReplayLinkedTrainingDataset {
   schemaVersion: 1;
   exportedAt: string;
   lane: 'offline';
+  benchmark: {
+    packId: string;
+    scenarioId: string;
+    districtType: RuntimeBenchmarkDistrictType;
+    seed: string;
+    expectedMetricBands: Record<string, RuntimeBenchmarkMetricBand>;
+  } | null;
   replayLink: {
     seed: string;
     startTileId: TileId;
@@ -166,7 +174,8 @@ export const normalizeReplayEvalSummary = (
 
 export const createReplayLinkedTrainingDataset = (
   log: RuntimeEpisodeLog,
-  evalSummary?: ReplayEvalSummaryReference | null
+  evalSummary?: ReplayEvalSummaryReference | null,
+  benchmark?: ReplayLinkedTrainingDataset['benchmark']
 ): ReplayLinkedTrainingDataset => {
   const sourceEpisodes = log.entries
     .map((entry) => entry.episodes.latestEpisode)
@@ -191,6 +200,20 @@ export const createReplayLinkedTrainingDataset = (
     schemaVersion: 1,
     exportedAt: log.generatedAt,
     lane: 'offline',
+    benchmark: benchmark
+      ? {
+          packId: benchmark.packId,
+          scenarioId: benchmark.scenarioId,
+          districtType: benchmark.districtType,
+          seed: benchmark.seed,
+          expectedMetricBands: Object.fromEntries(
+            Object.entries(benchmark.expectedMetricBands).map(([metricName, band]) => [
+              metricName,
+              band ? { ...band } : band
+            ])
+          )
+        }
+      : null,
     replayLink,
     priors,
     evalSummary: normalizeReplayEvalSummary(evalSummary),

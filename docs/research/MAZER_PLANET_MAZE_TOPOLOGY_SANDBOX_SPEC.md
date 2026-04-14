@@ -137,6 +137,29 @@ The first pass uses five fixed proof presets:
 
 These presets must differ in measured topology, not only naming or art treatment.
 
+## Benchmark Curriculum Contract
+
+The shared benchmark pack for replay, eval, export, and promotion is:
+
+- `src/mazer-core/eval/runtime-benchmark-pack.json`
+
+Contract requirements:
+
+- every benchmark scenario has a stable `scenarioId`
+- every benchmark scenario has a stable `seed`
+- every benchmark scenario declares one of the five district presets above
+- every benchmark scenario declares expected metric bands for the mechanic it is exercising
+- repeated runs on the same pack must keep per-scenario `summaryId` and `runId` stable
+- future-runtime proof metadata, runtime eval summaries, replay-linked dataset export, and scorer-weight promotion must all reference the same benchmark scenario ids
+
+Current mechanic coverage inside the pack:
+
+- trap inference
+- Warden pressure
+- item usefulness
+- puzzle visibility
+- rotation timing
+
 ## Schema Summary
 
 `PlanetMazeGraph`

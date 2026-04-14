@@ -11,7 +11,7 @@ Commands:
 - `node scripts/visual/future-runtime-run.mjs`
 - `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime`
 - `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime --compare`
-- `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime --promote-baseline`
+- `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime --promote-baseline --run-id two-shell-proof`
 - `node scripts/visual/legacy-run.mjs`
 - `node scripts/visual/index-artifacts.mjs --compare-legacy --legacy-artifact-root tmp/captures/mazer-legacy-proof`
 - `npm run visual:promote-baseline`
@@ -100,9 +100,12 @@ Future runtime lane:
 
 - Future Phaser and planet3d packets live under `tmp/captures/mazer-future-runtime/`.
 - Their baseline pointer is separate from the visual-proof baseline and lives at `artifacts/visual/future-runtime-baseline.json`.
-- `node scripts/visual/future-runtime-run.mjs --run content-proof` is the content-proof workflow for this lane; it captures both `future-phaser.html` and `planet3d.html` under a shared run id.
+- `node scripts/visual/future-runtime-run.mjs --run content-proof` is the shared content-proof workflow for this lane; it captures `future-phaser.html` plus the non-baselined `planet3d-content-proof` packet set under the `content-proof` run id.
+- `node scripts/visual/future-runtime-run.mjs --run two-shell-proof` is the dedicated future-baseline workflow; it captures only `planet3d-two-shell-proof` under the `two-shell-proof` run id.
 - The content-proof packet contract now includes `trapInferencePass`, `wardenReadabilityPass`, `itemProxyPass`, `puzzleProxyPass`, and `signalOverloadPass`, with world pings kept subordinate to the readable intent feed.
 - `scripts/visual/index-artifacts.mjs` accepts `--future-artifact-root tmp/captures/mazer-future-runtime` so index/compare/promote stay on the future lane without touching the visual-proof baseline.
+- Future baseline promotion is lane-specific: use `--run-id two-shell-proof` so `artifacts/visual/future-runtime-baseline.json` points only at the dedicated two-shell packet set.
+- Future baseline compare is also lane-specific: use `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime --compare --run-id two-shell-proof` when checking the promoted two-shell lane.
 - The packet contract stays the same: `before.png`, `after.png`, `focus.png`, `contact-sheet.png`, `metadata.json`, `REPORT.md`, `score.json`, `diff-summary.json`, and `run.webm` when motion is enabled.
 
 Comparison workflow:
@@ -134,3 +137,4 @@ Policy scorer:
 - The explorer remains the deterministic safety kernel. It owns move legality, local observation limits, goal promotion, committed trail truth, and rotation legality.
 - `PolicyScorer` is an optional ranking layer that scores only the legal candidate set already produced by the explorer.
 - Proof packets now include scorer metadata and training-ready episode logs so frontier value, trap suspicion, enemy risk, item value, and rotation timing can learn without giving the scorer full-manifest truth.
+- `scripts/training/promote-weights.mjs` can derive a candidate directly from the benchmark-pack headless runner when `--candidate` is omitted, then bless it only if the full governed matrix stays green.

@@ -147,6 +147,9 @@ const main = async () => {
   const regressionsMode = parseBooleanArg(args.regressions);
   const promoteMode = parseBooleanArg(args['promote-baseline']);
   const limit = parseIntegerArg(args.limit, 10);
+  const requestedRunId = typeof args['run-id'] === 'string'
+    ? args['run-id']
+    : null;
   const legacyArtifactRoot = typeof args['legacy-artifact-root'] === 'string'
     ? args['legacy-artifact-root']
     : 'tmp/captures/mazer-legacy-proof';
@@ -185,11 +188,15 @@ const main = async () => {
   }
 
   if (promoteMode) {
-    const promoted = await writeBaselinePointer(REPO_ROOT, artifactRoot, index, baselinePointerPath);
+    const promoted = await writeBaselinePointer(REPO_ROOT, artifactRoot, index, baselinePointerPath, {
+      runId: requestedRunId
+    });
     const comparison = await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
+      runId: requestedRunId ?? promoted.pointer.runId,
       baselinePointer: { pointer: promoted.pointer },
       baselinePointerRelative: baselinePointerPath,
-      requireBaseline: true
+      requireBaseline: true,
+      enforceBaselineContract: true
     });
 
     printJson({
@@ -197,8 +204,8 @@ const main = async () => {
       artifactRoot,
       baselinePointerPath: resolve(REPO_ROOT, baselinePointerPath),
       baseline: promoted.pointer,
-      latestRunId,
-      latestGeneratedAt,
+      latestRunId: promoted.pointer.runId,
+      latestGeneratedAt: promoted.pointer.generatedAt,
       comparison: {
         latestRunId: comparison.latestRunId,
         regressionCount: comparison.aggregateDiffSummary.regressions.length,
@@ -212,13 +219,17 @@ const main = async () => {
   const baselinePointer = await loadBaselinePointer(REPO_ROOT, baselinePointerPath);
   const comparison = baselinePointer
     ? await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
+      runId: requestedRunId ?? undefined,
       baselinePointer,
       baselinePointerRelative: baselinePointerPath,
-      requireBaseline: compareMode || regressionsMode
+      requireBaseline: compareMode || regressionsMode,
+      enforceBaselineContract: compareMode || regressionsMode
     })
     : await compareLatestRunToBaseline(REPO_ROOT, artifactRoot, {
+        runId: requestedRunId ?? undefined,
         baselinePointerRelative: baselinePointerPath,
-        requireBaseline: false
+        requireBaseline: false,
+        enforceBaselineContract: false
       });
 
   if (compareMode) {
