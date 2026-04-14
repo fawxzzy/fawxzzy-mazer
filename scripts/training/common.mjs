@@ -6,6 +6,8 @@ import {
   resolveLifelineBenchmarkScenarioBySeed
 } from '../lifeline/benchmark-pack.mjs';
 
+const DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH = 'artifacts/training/playbook-weight-registry.json';
+
 const clampMetric = (value) => Number(Math.min(1, Math.max(0, Number(value) || 0)).toFixed(4));
 
 const stableSerialize = (value) => {
@@ -58,6 +60,16 @@ const defaultPriors = () => ({
   rotationTiming: 0.5
 });
 
+const createDefaultPlaybookTuningWeights = () => ({
+  frontierValue: 1,
+  backtrackUrgency: 1,
+  trapSuspicion: 1,
+  enemyRisk: 1,
+  itemValue: 1,
+  puzzleValue: 1,
+  rotationTiming: 1
+});
+
 const parseCliArgs = (argv = process.argv.slice(2)) => {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -107,6 +119,24 @@ const resolvePlaybookTuningWeights = (value) => {
   }
 
   return value;
+};
+
+const getCurrentBlessedWeightRecord = (registry) => (
+  registry?.currentBlessedRecordId
+    ? registry.blessed?.find((record) => record.recordId === registry.currentBlessedRecordId) ?? null
+    : registry?.blessed?.at(-1) ?? null
+);
+
+const resolveBlessedPlaybookWeights = async (registryPath = DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH) => {
+  const registry = await readJson(registryPath).catch(() => null);
+  const blessedRecord = registry ? getCurrentBlessedWeightRecord(registry) : null;
+
+  return {
+    registryPath,
+    registry,
+    blessedRecord,
+    weights: blessedRecord?.weights ?? createDefaultPlaybookTuningWeights()
+  };
 };
 
 const resolveCommandSpec = (command, args) => (
@@ -174,10 +204,14 @@ export {
   averageMetrics,
   averagePriors,
   clampMetric,
+  createDefaultPlaybookTuningWeights,
   defaultPriors,
+  DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,
+  getCurrentBlessedWeightRecord,
   hashStableValue,
   parseCliArgs,
   readJson,
+  resolveBlessedPlaybookWeights,
   resolvePlaybookTuningWeights,
   resolveRuntimeBenchmarkPack,
   resolveRuntimeBenchmarkScenarioById,

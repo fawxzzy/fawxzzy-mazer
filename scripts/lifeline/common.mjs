@@ -71,6 +71,19 @@ const parseCliArgs = (argv = process.argv.slice(2)) => {
   return args;
 };
 
+const relativeFromRepo = (absolutePath) => absolutePath.startsWith(REPO_ROOT)
+  ? absolutePath.slice(REPO_ROOT.length + 1).replace(/\\/g, '/')
+  : absolutePath.replace(/\\/g, '/');
+
+const pathExists = async (filePath) => {
+  try {
+    await readFile(filePath, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, 'utf8'));
 
 const writeJson = async (filePath, value) => {
@@ -82,8 +95,10 @@ export {
   REPO_ROOT,
   clampMetric,
   hashStableValue,
+  pathExists,
   parseCliArgs,
   readJson,
+  relativeFromRepo,
   stableSerialize,
   writeJson
 };

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runDeterministicRuntimeEvalSuite } from '../../src/mazer-core/eval';
-import { resolvePlaybookTuningWeights } from '../training/common.mjs';
+import { resolveBlessedPlaybookWeights, resolvePlaybookTuningWeights } from '../training/common.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(SCRIPT_PATH);
@@ -45,7 +45,15 @@ const main = async () => {
     : DEFAULT_OUTPUT_PATH;
   const tuningWeights = typeof args.weights === 'string'
     ? resolvePlaybookTuningWeights(JSON.parse(await readFile(resolve(REPO_ROOT, args.weights), 'utf8')))
-    : null;
+    : args.blessed === true || args.blessed === 'true'
+      ? (
+          await resolveBlessedPlaybookWeights(
+            typeof args.registry === 'string'
+              ? resolve(REPO_ROOT, args.registry)
+              : undefined
+          )
+        ).weights
+      : null;
   const scenarioIds = typeof args.scenario === 'string'
     ? args.scenario.split(',').map((entry) => entry.trim()).filter(Boolean)
     : null;

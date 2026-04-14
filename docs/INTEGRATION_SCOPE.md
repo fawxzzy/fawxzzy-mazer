@@ -73,6 +73,25 @@ Rule:
 - Required weight diff reporting covers frontier value, backtrack urgency, trap suspicion, enemy risk, item value, puzzle value, and rotation timing.
 - Replay-linked dataset export now records benchmark pack metadata so eval, dataset export, and promotion all reference the same scenario ids.
 
+## Burn-In Workflow
+
+- `node scripts/lifeline/burn-in.mjs --counts 25,100,500` runs the benchmark pack under the current blessed advisory profile and writes resumable output under `tmp/lifeline/burn-in/`.
+- Burn-in is fixed-weight only. It resolves the blessed neutral advisory profile from `artifacts/training/playbook-weight-registry.json` and does not tune or promote candidate weights.
+- Each burn-in batch emits:
+  - `manifest.json`
+  - `failure-buckets.json`
+  - `eval-summary-rollup.json`
+  - `dataset-pointers.json`
+  - `scorer-weight-metadata.json`
+- Each batch also writes per-attempt headless runner outputs under `tmp/lifeline/burn-in/runs-<count>/attempts/`.
+- The batch manifest is resumable. Completed attempts are preserved, and rerunning the command continues from the next missing attempt unless `--resume false` is passed.
+- Burn-in thresholds are fixed:
+  - deterministic replay consistency: every attempt must keep replay integrity green, stay within metric bands, and match the baseline deterministic signature
+  - no architecture leakage: `npm run architecture:check` must pass before and after each batch
+  - no proof-gate regression: `npm run visual:proof` and `npm run visual:canaries` must pass before and after each batch
+  - stable summaryId/runId generation: suite ids and per-scenario ids must remain unchanged across attempts
+  - no candidate-weight promotion: the weight registry digest must not change during burn-in
+
 ## Enforcement
 
 - `npm run architecture:check` rejects Cortex or Atlas imports under `src/mazer-core/**` and `src/visual-proof/**`.

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
-const TS_ENTRY = resolve(SCRIPT_DIR, 'headless-runner-cli.ts');
+const TS_ENTRY = resolve(SCRIPT_DIR, 'burn-in-cli.ts');
 
 const resolveCommandSpec = (command, args) => (
   process.platform === 'win32'

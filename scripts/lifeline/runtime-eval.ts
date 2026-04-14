@@ -470,7 +470,7 @@ const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } 
   };
 };
 
-const main = async () => {
+export const main = async () => {
   const args = parseCliArgs();
   const scenarioIds = typeof args.scenario === 'string'
     ? args.scenario.split(',').map((value) => value.trim()).filter(Boolean)
@@ -489,10 +489,3 @@ export {
   runLifelineBenchmarkSuite,
   runScenario
 };
-
-if (process.argv[1] && process.argv[1].endsWith('runtime-eval.ts')) {
-  main().catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-    process.exitCode = 1;
-  });
-}
