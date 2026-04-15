@@ -1,17 +1,15 @@
 import { RuntimeAdapterBridge } from '../../src/mazer-core/adapters';
 import { createRuntimeEpisodeReplayHost } from '../../src/mazer-core/logging';
-import { evaluateRuntimeEpisodeLog } from '../../src/mazer-core/eval';
+import { evaluateRuntimeEpisodeLog, runDeterministicRuntimeEvalSuite } from '../../src/mazer-core/eval';
 import { createReplayEvalSummaryId, createReplayLinkedTrainingDataset } from '../../src/mazer-core/logging/export';
 import type { RuntimeEpisodeLog } from '../../src/mazer-core/logging';
-import type { RuntimeEvalLogSummary } from '../../src/mazer-core/eval';
-import { PlaybookPatternScorer } from '../../src/mazer-core/playbook';
+import type { RuntimeEvalLogSummary, RuntimeEvalMetricSummary, RuntimeEvalSupportSummary, RuntimeEvalSuiteSummary } from '../../src/mazer-core/eval';
+import { PlaybookPatternScorer, type PlaybookTuningWeights } from '../../src/mazer-core/playbook';
 import { tunePlaybookWeightsOffline } from '../../src/mazer-core/playbook/tuning';
 import type {
   HeadingToken,
   LocalObservation,
-  PolicyActionCandidate,
   PolicyCandidateSignalMap,
-  PolicyEpisode,
   PolicyScorer,
   PolicyScorerInput,
   TileId,
@@ -23,14 +21,17 @@ import type {
   RuntimeIntentDelivery,
   RuntimeMoveApplication,
   RuntimeObservationProjection,
-  RuntimeTrailDelivery
+  RuntimeTrailDelivery,
+  RuntimeAdapterStepResult
 } from '../../src/mazer-core/adapters/types';
-import { hashStableValue, parseCliArgs } from './common.mjs';
+import { parseCliArgs } from './common.mjs';
 import {
   resolveLifelineBenchmarkPack,
   resolveLifelineBenchmarkScenarioById,
   resolveLifelineBenchmarkScenarioBySeed
 } from './benchmark-pack.mjs';
+
+type LifelineCliArgs = Record<string, string | boolean>;
 
 type LifelineBenchmarkStepSpec = {
   tileId: TileId;
@@ -317,7 +318,10 @@ const buildScenarioEvalSummary = (log: RuntimeEpisodeLog, metrics: RuntimeEvalLo
   metrics: metrics.metrics
 });
 
-const runScenario = (scenario: LifelineBenchmarkScenarioSpec, tuningWeights: Record<string, number> | null = null) => {
+const runScenario = (
+  scenario: LifelineBenchmarkScenarioSpec,
+  tuningWeights: Partial<PlaybookTuningWeights> | null = null
+): LifelineBenchmarkScenarioRun => {
   const host = new BenchmarkHost(scenario);
   const scorer = new BenchmarkPolicyScorer(
     new Map(scenario.preferredNextTileIds.map((tileId, index) => [index, tileId])),
@@ -361,7 +365,7 @@ const runScenario = (scenario: LifelineBenchmarkScenarioSpec, tuningWeights: Rec
   };
 };
 
-const aggregateMetrics = (evaluations: readonly ReturnType<typeof evaluateRuntimeEpisodeLog>[]) => {
+const aggregateMetrics = (evaluations: readonly ReturnType<typeof evaluateRuntimeEpisodeLog>[]): RuntimeEvalMetricSummary => {
   if (evaluations.length === 0) {
     return {
       discoveryEfficiency: 0,
@@ -385,7 +389,7 @@ const aggregateMetrics = (evaluations: readonly ReturnType<typeof evaluateRuntim
   };
 };
 
-const aggregateSupport = (evaluations: readonly ReturnType<typeof evaluateRuntimeEpisodeLog>[]) => ({
+const aggregateSupport = (evaluations: readonly ReturnType<typeof evaluateRuntimeEpisodeLog>[]): RuntimeEvalSupportSummary => ({
   rowsEvaluated: evaluations.reduce((total, entry) => total + entry.support.rowsEvaluated, 0),
   discoverySamples: evaluations.reduce((total, entry) => total + entry.support.discoverySamples, 0),
   backtrackSamples: evaluations.reduce((total, entry) => total + entry.support.backtrackSamples, 0),
@@ -398,24 +402,85 @@ const aggregateSupport = (evaluations: readonly ReturnType<typeof evaluateRuntim
   puzzlePositiveSamples: evaluations.reduce((total, entry) => total + entry.support.puzzlePositiveSamples, 0)
 });
 
-const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } = {}) => {
-  const pack = resolveLifelineBenchmarkPack();
+interface LifelineBenchmarkRunSummary {
+  scenarioId: string;
+  seed: string;
+  focus: string;
+  startTileId: TileId;
+  startHeading: HeadingToken;
+  replayVerified: boolean;
+  summaryId: string;
+  runId: string;
+  metrics: RuntimeEvalMetricSummary;
+  log: RuntimeEpisodeLog;
+  replayLog: RuntimeEpisodeLog;
+  evaluation: RuntimeEvalLogSummary;
+  dataset: ReturnType<typeof createReplayLinkedTrainingDataset>;
+  tuning: ReturnType<typeof tunePlaybookWeightsOffline>;
+}
+
+interface LifelineBenchmarkScenarioRun {
+  scenarioId: string;
+  seed: string;
+  focus: string;
+  startTileId: TileId;
+  startHeading: HeadingToken;
+  replayVerified: boolean;
+  log: RuntimeEpisodeLog;
+  replayLog: RuntimeEpisodeLog;
+  evaluation: RuntimeEvalLogSummary;
+  evalSummary: ReturnType<typeof buildScenarioEvalSummary>;
+  dataset: ReturnType<typeof createReplayLinkedTrainingDataset>;
+  tuningRun: ReturnType<typeof tunePlaybookWeightsOffline>;
+  stepResults: RuntimeAdapterStepResult[];
+  replaySteps: RuntimeAdapterStepResult[];
+}
+
+interface LifelineBenchmarkSuiteSummary {
+  schemaVersion: 1;
+  benchmarkPackId: string;
+  summaryId: string;
+  runId: string;
+  generatedAt: string;
+  scenarioCount: number;
+  scenarioIds: string[];
+  replayIntegrity: RuntimeEvalSuiteSummary['replayIntegrity'];
+  metricBandValidation: RuntimeEvalSuiteSummary['metricBandValidation'];
+  metrics: RuntimeEvalMetricSummary;
+  support: RuntimeEvalSupportSummary;
+  scenarioSummaries: LifelineBenchmarkRunSummary[];
+}
+
+const runLifelineBenchmarkSuite = ({
+  scenarioIds = null,
+  tuningWeights = null
+}: {
+  scenarioIds?: readonly string[] | null;
+  tuningWeights?: Partial<PlaybookTuningWeights> | null;
+} = {}): LifelineBenchmarkSuiteSummary => {
+  const pack = resolveLifelineBenchmarkPack() as unknown as {
+    packId: string;
+    scenarios: readonly LifelineBenchmarkScenarioSpec[];
+  };
   const resolvedScenarioList = scenarioIds && scenarioIds.length > 0
     ? scenarioIds.map((scenarioId) => (
-        resolveLifelineBenchmarkScenarioById(scenarioId) ?? resolveLifelineBenchmarkScenarioBySeed(scenarioId)
+        (resolveLifelineBenchmarkScenarioById(scenarioId) as LifelineBenchmarkScenarioSpec | null)
+        ?? (resolveLifelineBenchmarkScenarioBySeed(scenarioId) as LifelineBenchmarkScenarioSpec | null)
       ))
     : pack.scenarios;
 
   if (scenarioIds && scenarioIds.length > 0) {
-    const missingScenarioIds = scenarioIds.filter((scenarioId, index) => !resolvedScenarioList[index]);
+    const missingScenarioIds = scenarioIds.filter((_scenarioId, index) => !resolvedScenarioList[index]);
     if (missingScenarioIds.length > 0) {
       throw new Error(`No lifeline benchmark scenarios matched ids: ${missingScenarioIds.join(', ')}.`);
     }
   }
 
-  const scenarioList = resolvedScenarioList.filter(Boolean);
+  const scenarioList = resolvedScenarioList.filter(
+    (scenario): scenario is NonNullable<(typeof resolvedScenarioList)[number]> => Boolean(scenario)
+  );
 
-  const scenarioRuns = scenarioList.map((scenario) => runScenario({
+  const scenarioRuns: LifelineBenchmarkScenarioRun[] = scenarioList.map((scenario) => runScenario({
     ...scenario,
     steps: scenario.steps.map(cloneStepSpec)
   }, tuningWeights));
@@ -437,6 +502,10 @@ const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } 
     runId,
     metrics
   }));
+  const governedEvalSuite = runDeterministicRuntimeEvalSuite({
+    scenarioIds: scenarioList.map((scenario) => scenario.id),
+    tuningWeights
+  });
 
   return {
     schemaVersion: 1 as const,
@@ -447,6 +516,7 @@ const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } 
     scenarioCount: scenarioRuns.length,
     scenarioIds: scenarioRuns.map((entry) => entry.scenarioId),
     replayIntegrity,
+    metricBandValidation: governedEvalSuite.metricBandValidation,
     metrics,
     support,
     scenarioSummaries: scenarioRuns.map((scenarioRun) => ({
@@ -459,10 +529,8 @@ const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } 
       summaryId: scenarioRun.evalSummary.summaryId,
       runId: scenarioRun.evalSummary.runId,
       metrics: scenarioRun.evaluation.metrics,
-      log: {
-        source: { ...scenarioRun.log.source },
-        stepCount: scenarioRun.log.stepCount
-      },
+      log: scenarioRun.log,
+      replayLog: scenarioRun.replayLog,
       evaluation: scenarioRun.evaluation,
       dataset: scenarioRun.dataset,
       tuning: scenarioRun.tuningRun
@@ -471,9 +539,12 @@ const runLifelineBenchmarkSuite = ({ scenarioIds = null, tuningWeights = null } 
 };
 
 export const main = async () => {
-  const args = parseCliArgs();
+  const args = parseCliArgs() as LifelineCliArgs;
   const scenarioIds = typeof args.scenario === 'string'
-    ? args.scenario.split(',').map((value) => value.trim()).filter(Boolean)
+    ? args.scenario
+      .split(',')
+      .map((value: string) => value.trim())
+      .filter((value: string) => value.length > 0)
     : null;
   const summary = runLifelineBenchmarkSuite({
     scenarioIds

@@ -10,6 +10,14 @@ import {
   writeJson
 } from './common.mjs';
 
+/**
+ * @typedef {import('../../src/mazer-core/eval').RuntimeEvalSuiteSummary} RuntimeEvalSuiteSummary
+ * @typedef {import('../../src/mazer-core/playbook/tuning').PlaybookTuningWeights} PlaybookTuningWeights
+ * @typedef {import('../../src/mazer-core/playbook/tuning').PlaybookWeightRegistry} PlaybookWeightRegistry
+ * @typedef {import('../../src/mazer-core/playbook/tuning').WeightPromotionDecision} WeightPromotionDecision
+ * @typedef {import('../../src/mazer-core/playbook/tuning').PromotionGateStatus} PromotionGateStatus
+ */
+
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
@@ -55,6 +63,7 @@ const normalizeWeights = (weights) => {
   };
 };
 
+/** @returns {PlaybookWeightRegistry} */
 const createEmptyRegistry = () => ({
   schemaVersion: 1,
   updatedAt: new Date(0).toISOString(),
@@ -63,6 +72,7 @@ const createEmptyRegistry = () => ({
   blessed: []
 });
 
+/** @param {string} benchmarkPackId @returns {RuntimeEvalSuiteSummary} */
 const createMissingEvalSummary = (benchmarkPackId) => ({
   schemaVersion: 1,
   suiteId: 'mazer-core-deterministic-runtime-eval',
@@ -106,6 +116,7 @@ const createMissingEvalSummary = (benchmarkPackId) => ({
   scenarioSummaries: []
 });
 
+/** @param {Partial<PlaybookTuningWeights> | null | undefined} previousWeights @param {Partial<PlaybookTuningWeights> | null | undefined} nextWeights */
 const createWeightDiffReport = (previousWeights, nextWeights) => {
   const previous = normalizeWeights(previousWeights);
   const next = normalizeWeights(nextWeights);
@@ -126,12 +137,14 @@ const createWeightDiffReport = (previousWeights, nextWeights) => {
   };
 };
 
+/** @param {PlaybookWeightRegistry} registry */
 const getCurrentBlessedRecord = (registry) => (
   registry.currentBlessedRecordId
     ? registry.blessed.find((record) => record.recordId === registry.currentBlessedRecordId) ?? null
     : registry.blessed.at(-1) ?? null
 );
 
+/** @param {RuntimeEvalSuiteSummary['metrics'] | null} baseline @param {RuntimeEvalSuiteSummary['metrics']} candidate */
 const compareMetrics = (baseline, candidate) => {
   if (!baseline) {
     return {
@@ -174,6 +187,7 @@ const compareMetrics = (baseline, candidate) => {
   };
 };
 
+/** @param {{ key: string, command: string, args: string[] }} gate */
 const runPromotionGate = (gate) => {
   const result = runCommand(gate.command, gate.args, { cwd: REPO_ROOT });
   return {
@@ -184,6 +198,13 @@ const runPromotionGate = (gate) => {
   };
 };
 
+/**
+ * @param {{
+ *   futureArtifactRoot: string;
+ *   futureBaselinePointer: string;
+ *   twoShellRunId: string;
+ * }} params
+ */
 const runFutureRuntimeGate = async ({
   futureArtifactRoot,
   futureBaselinePointer,
@@ -292,6 +313,7 @@ const runFutureRuntimeGate = async ({
   };
 };
 
+/** @param {Record<string, string | boolean>} args */
 const resolveCandidateInput = async (args) => {
   if (typeof args.candidate === 'string') {
     const candidatePath = resolve(REPO_ROOT, args.candidate);

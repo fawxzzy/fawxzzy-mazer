@@ -9,7 +9,12 @@ import {
   stableSerialize,
   writeJson
 } from './common.mjs';
-import { runHeadlessRunner, type HeadlessRunnerManifest, type HeadlessRunnerWeightMetadata } from './headless-runner.ts';
+import {
+  runHeadlessRunner,
+  type HeadlessRunnerManifest,
+  type HeadlessRunnerWeightMetadata
+} from './headless-runner.ts';
+import type { LifelineBenchmarkSuiteSummary } from './runtime-eval.ts';
 import {
   DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,
   resolveBlessedPlaybookWeights,
@@ -19,6 +24,7 @@ import {
 const DEFAULT_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'burn-in');
 const DEFAULT_COUNTS = [25, 100, 500];
 const DEFAULT_RUN_ID = 'neutral-advisory-burn-in';
+type CliArgs = Record<string, string | boolean>;
 
 const GATE_DEFINITIONS = [
   {
@@ -53,40 +59,6 @@ interface GateSuiteResult {
   results: GateResult[];
 }
 
-interface AttemptRecord {
-  attempt: number;
-  attemptId: string;
-  status: 'passed' | 'failed';
-  manifestPath: string;
-  summaryPath: string;
-  runId: string;
-  summaryId: string;
-  signature: string;
-  replayIntegrityOk: boolean;
-  metricBandsOk: boolean;
-  scenarioIds: readonly string[];
-  scenarioRunIds: Array<{ scenarioId: string; runId: string }>;
-  scenarioSummaryIds: Array<{ scenarioId: string; summaryId: string }>;
-  metrics: Record<string, number>;
-  datasetPointers: Array<{
-    scenarioId: string;
-    datasetPath: string;
-    evalPath: string;
-    tuningPath: string;
-  }>;
-  failures: string[];
-}
-
-interface BatchBaseline {
-  runId: string;
-  summaryId: string;
-  signature: string;
-  scenarioIds: readonly string[];
-  scenarioRunIds: Array<{ scenarioId: string; runId: string }>;
-  scenarioSummaryIds: Array<{ scenarioId: string; summaryId: string }>;
-  metrics: Record<string, number>;
-}
-
 interface BatchFailureBuckets {
   deterministicReplayConsistency: { count: number; attempts: string[] };
   stableSummaryIdGeneration: { count: number; attempts: string[] };
@@ -102,6 +74,70 @@ interface BatchArtifacts {
   evalSummaryRollupPath: string;
   datasetPointersPath: string;
   scorerWeightMetadataPath: string;
+}
+
+interface BatchMetricSummary {
+  min: number;
+  max: number;
+  average: number;
+}
+
+interface BatchEvalSummaryRollup {
+  schemaVersion: 1;
+  batchId: string;
+  targetRuns: number;
+  completedRuns: number;
+  uniqueRunIds: readonly string[];
+  uniqueSummaryIds: readonly string[];
+  uniqueSignatures: readonly string[];
+  metrics: Record<string, BatchMetricSummary>;
+}
+
+interface BatchDatasetPointer {
+  scenarioId: string;
+  datasetPath: string;
+  evalPath: string;
+  tuningPath: string;
+}
+
+interface BatchDatasetPointerManifest {
+  schemaVersion: 1;
+  batchId: string;
+  targetRuns: number;
+  attempts: Array<{
+    attemptId: string;
+    manifestPath: string;
+    summaryPath: string;
+    datasetPointers: BatchDatasetPointer[];
+  }>;
+}
+
+interface BatchScorerWeightMetadataArtifact {
+  schemaVersion: 1;
+  batchId: string;
+  scorerWeights: HeadlessRunnerWeightMetadata;
+}
+
+interface BatchAttemptBaseline {
+  runId: string;
+  summaryId: string;
+  signature: string;
+  scenarioIds: readonly string[];
+  scenarioRunIds: Array<{ scenarioId: string; runId: string }>;
+  scenarioSummaryIds: Array<{ scenarioId: string; summaryId: string }>;
+  metrics: Record<string, number>;
+}
+
+interface BatchAttemptRecord extends BatchAttemptBaseline {
+  attempt: number;
+  attemptId: string;
+  status: 'passed' | 'failed';
+  manifestPath: string;
+  summaryPath: string;
+  replayIntegrityOk: boolean;
+  metricBandsOk: boolean;
+  datasetPointers: BatchDatasetPointer[];
+  failures: string[];
 }
 
 interface BurnInBatchManifest {
@@ -120,9 +156,9 @@ interface BurnInBatchManifest {
   registryDigestAfter: string | null;
   registryStable: boolean | null;
   gateSuites: GateSuiteResult[];
-  baseline: BatchBaseline | null;
+  baseline: BatchAttemptBaseline | null;
   failures: string[];
-  attempts: AttemptRecord[];
+  attempts: BatchAttemptRecord[];
   artifacts: BatchArtifacts;
 }
 
@@ -223,7 +259,7 @@ const runGateSuite = (phase: 'before' | 'after'): GateSuiteResult => {
 
 const relativeRegistryPath = (registryPath: string) => relativeFromRepo(resolve(registryPath));
 
-const normalizeSummary = (summary: Record<string, unknown>) => ({
+const normalizeSummary = (summary: LifelineBenchmarkSuiteSummary) => ({
   benchmarkPackId: summary.benchmarkPackId,
   summaryId: summary.summaryId,
   runId: summary.runId,
@@ -236,7 +272,6 @@ const normalizeSummary = (summary: Record<string, unknown>) => ({
   scenarioSummaries: Array.isArray(summary.scenarioSummaries)
     ? summary.scenarioSummaries.map((scenario) => ({
         scenarioId: scenario.scenarioId,
-        districtType: scenario.districtType,
         summaryId: scenario.summaryId,
         runId: scenario.runId,
         replayVerified: scenario.replayVerified,
@@ -246,7 +281,7 @@ const normalizeSummary = (summary: Record<string, unknown>) => ({
     : []
 });
 
-const buildAttemptSignature = (manifest: HeadlessRunnerManifest, summary: Record<string, unknown>) => hashStableValue({
+const buildAttemptSignature = (manifest: HeadlessRunnerManifest, summary: LifelineBenchmarkSuiteSummary) => hashStableValue({
   manifest: {
     runId: manifest.runId,
     summaryId: manifest.summaryId,
@@ -262,7 +297,7 @@ const buildAttemptSignature = (manifest: HeadlessRunnerManifest, summary: Record
 
 const average = (values: number[]) => Number((values.reduce((total, value) => total + value, 0) / Math.max(values.length, 1)).toFixed(4));
 
-const buildEvalSummaryRollup = (batchManifest: BurnInBatchManifest) => {
+const buildEvalSummaryRollup = (batchManifest: BurnInBatchManifest): BatchEvalSummaryRollup => {
   const attempts = batchManifest.attempts;
   const metricNames = attempts[0] ? Object.keys(attempts[0].metrics) : [];
 
@@ -288,7 +323,7 @@ const buildEvalSummaryRollup = (batchManifest: BurnInBatchManifest) => {
   };
 };
 
-const buildDatasetPointers = (batchManifest: BurnInBatchManifest) => ({
+const buildDatasetPointers = (batchManifest: BurnInBatchManifest): BatchDatasetPointerManifest => ({
   schemaVersion: 1,
   batchId: batchManifest.batchId,
   targetRuns: batchManifest.targetRuns,
@@ -335,7 +370,7 @@ const buildAttemptRecord = async (
   runId: string,
   batchDir: string,
   scorerWeights: HeadlessRunnerWeightMetadata
-): Promise<AttemptRecord> => {
+): Promise<BatchAttemptRecord> => {
   const attemptId = attemptIdFor(attempt);
   const attemptRoot = resolve(batchDir, 'attempts', attemptId);
   const manifest = await runHeadlessRunner({
@@ -345,7 +380,7 @@ const buildAttemptRecord = async (
     tuningWeights: scorerWeights.weights,
     weightMetadata: scorerWeights
   });
-  const summary = await readJson(resolve(REPO_ROOT, manifest.artifacts.summary));
+  const summary = await readJson(resolve(REPO_ROOT, manifest.artifacts.summary)) as LifelineBenchmarkSuiteSummary;
   const signature = buildAttemptSignature(manifest, summary);
 
   return {
@@ -360,11 +395,11 @@ const buildAttemptRecord = async (
     replayIntegrityOk: manifest.replayIntegrity.allScenariosVerified,
     metricBandsOk: manifest.metricBandValidation?.allScenariosWithinBands ?? true,
     scenarioIds: manifest.scenarioIds,
-    scenarioRunIds: summary.scenarioSummaries.map((scenario: Record<string, string>) => ({
+    scenarioRunIds: summary.scenarioSummaries.map((scenario) => ({
       scenarioId: scenario.scenarioId,
       runId: scenario.runId
     })),
-    scenarioSummaryIds: summary.scenarioSummaries.map((scenario: Record<string, string>) => ({
+    scenarioSummaryIds: summary.scenarioSummaries.map((scenario) => ({
       scenarioId: scenario.scenarioId,
       summaryId: scenario.summaryId
     })),
@@ -379,7 +414,11 @@ const buildAttemptRecord = async (
   };
 };
 
-const evaluateAttempt = (attempt: AttemptRecord, baseline: BatchBaseline | null, buckets: BatchFailureBuckets): BatchBaseline => {
+const evaluateAttempt = (
+  attempt: BatchAttemptRecord,
+  baseline: BatchAttemptBaseline | null,
+  buckets: BatchFailureBuckets
+): BatchAttemptBaseline => {
   if (!attempt.replayIntegrityOk || !attempt.metricBandsOk) {
     attempt.failures.push('deterministicReplayConsistency');
     addBucketAttempt(buckets.deterministicReplayConsistency, attempt.attemptId);
@@ -423,7 +462,7 @@ const evaluateAttempt = (attempt: AttemptRecord, baseline: BatchBaseline | null,
   return baseline;
 };
 
-const writeBatchArtifacts = async (batchManifest: BurnInBatchManifest, failureBuckets: BatchFailureBuckets) => {
+const writeBatchArtifacts = async (batchManifest: BurnInBatchManifest, failureBuckets: BatchFailureBuckets): Promise<void> => {
   await writeJson(resolve(REPO_ROOT, batchManifest.artifacts.manifestPath), batchManifest);
   await writeJson(resolve(REPO_ROOT, batchManifest.artifacts.failureBucketsPath), {
     schemaVersion: 1,
@@ -437,7 +476,7 @@ const writeBatchArtifacts = async (batchManifest: BurnInBatchManifest, failureBu
     schemaVersion: 1,
     batchId: batchManifest.batchId,
     scorerWeights: batchManifest.scorerWeights
-  });
+  } satisfies BatchScorerWeightMetadataArtifact);
 };
 
 const createBatchManifest = (
@@ -477,6 +516,16 @@ const createBatchManifest = (
   }
 });
 
+interface BurnInBatchOptions {
+  count: number;
+  outputRoot: string;
+  runId: string;
+  scorerWeights: HeadlessRunnerWeightMetadata;
+  registryPath: string;
+  registryDigestBefore: string;
+  resume: boolean;
+}
+
 const runBurnInBatch = async ({
   count,
   outputRoot,
@@ -485,15 +534,7 @@ const runBurnInBatch = async ({
   registryPath,
   registryDigestBefore,
   resume
-}: {
-  count: number;
-  outputRoot: string;
-  runId: string;
-  scorerWeights: HeadlessRunnerWeightMetadata;
-  registryPath: string;
-  registryDigestBefore: string;
-  resume: boolean;
-}): Promise<string> => {
+}: BurnInBatchOptions): Promise<string> => {
   const batchId = `runs-${count}`;
   const batchDir = resolve(outputRoot, batchId);
   const batchManifestPath = resolve(batchDir, 'manifest.json');
@@ -572,19 +613,21 @@ const runBurnInBatch = async ({
   return batchManifest.artifacts.manifestPath;
 };
 
+interface BurnInOptions {
+  counts?: number[];
+  outputRoot?: string;
+  runId?: string;
+  resume?: boolean;
+  registryPath?: string;
+}
+
 export const runBurnIn = async ({
   counts = DEFAULT_COUNTS,
   outputRoot = DEFAULT_OUTPUT_ROOT,
   runId = DEFAULT_RUN_ID,
   resume = true,
   registryPath = resolve(REPO_ROOT, DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH)
-}: {
-  counts?: number[];
-  outputRoot?: string;
-  runId?: string;
-  resume?: boolean;
-  registryPath?: string;
-} = {}): Promise<BurnInRootManifest> => {
+}: BurnInOptions = {}): Promise<BurnInRootManifest> => {
   const resolvedOutputRoot = resolve(outputRoot);
   const resolvedRegistryPath = resolve(registryPath);
   const blessed = await resolveBlessedPlaybookWeights(resolvedRegistryPath);
@@ -649,7 +692,7 @@ export const runBurnIn = async ({
 };
 
 export const main = async () => {
-  const args = parseCliArgs();
+  const args = parseCliArgs() as CliArgs;
   const counts = parseCounts(args.counts);
   const rootManifest = await runBurnIn({
     counts,

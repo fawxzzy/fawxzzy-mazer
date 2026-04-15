@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runDeterministicRuntimeEvalSuite } from '../../src/mazer-core/eval';
+import type { RuntimeEvalSuiteSummary } from '../../src/mazer-core/eval';
 import { resolveBlessedPlaybookWeights, resolvePlaybookTuningWeights } from '../training/common.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -9,8 +10,16 @@ const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const DEFAULT_OUTPUT_PATH = resolve(REPO_ROOT, 'tmp', 'eval', 'runtime-eval-summary.json');
 
-const parseArgs = (argv = process.argv.slice(2)) => {
-  const args: Record<string, string | boolean> = {};
+interface EvalCliArgs extends Record<string, string | boolean> {
+  out?: string;
+  weights?: string;
+  blessed?: string | boolean;
+  registry?: string;
+  scenario?: string;
+}
+
+const parseArgs = (argv: string[] = process.argv.slice(2)): EvalCliArgs => {
+  const args: EvalCliArgs = {};
 
   for (let index = 0; index < argv.length; index += 1) {
     const entry = argv[index];
@@ -38,7 +47,7 @@ const parseArgs = (argv = process.argv.slice(2)) => {
   return args;
 };
 
-const main = async () => {
+const main = async (): Promise<void> => {
   const args = parseArgs();
   const outputPath = typeof args.out === 'string'
     ? resolve(REPO_ROOT, args.out)
@@ -60,7 +69,7 @@ const main = async () => {
   const summary = runDeterministicRuntimeEvalSuite({
     scenarioIds,
     tuningWeights
-  });
+  }) satisfies RuntimeEvalSuiteSummary;
 
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');

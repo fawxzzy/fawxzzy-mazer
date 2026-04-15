@@ -1,7 +1,19 @@
 import { averageMetrics, averagePriors, parseCliArgs, readJson, writeJson } from './common.mjs';
 
+/**
+ * @typedef {import('../../src/mazer-core/logging/export').ReplayLinkedTrainingDataset} ReplayLinkedTrainingDataset
+ * @typedef {{
+ *   schemaVersion: 1;
+ *   advisoryOnly: true;
+ *   datasetCount: number;
+ *   episodeCount: number;
+ *   weights: import('../../src/mazer-core/playbook/tuning').PlaybookTuningWeights;
+ * }} TuneScorerOutput
+ */
+
 const clampWeight = (value) => Number(Math.min(1.6, Math.max(0.4, value)).toFixed(4));
 
+/** @param {readonly ReplayLinkedTrainingDataset[]} datasets */
 const deriveWeights = (datasets) => {
   const metrics = averageMetrics(datasets);
   const priors = averagePriors(datasets);
@@ -26,6 +38,7 @@ const main = async () => {
 
   const datasetPaths = datasetArg.split(',').map((value) => value.trim()).filter(Boolean);
   const datasets = await Promise.all(datasetPaths.map((filePath) => readJson(filePath)));
+  /** @type {TuneScorerOutput} */
   const output = {
     schemaVersion: 1,
     advisoryOnly: true,

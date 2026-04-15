@@ -6,6 +6,7 @@ import {
   createRuntimeEpisodeLog,
   getReplayLinkedDatasetDigest
 } from '../../../src/mazer-core/logging';
+import type { ReplayEvalSummaryReference } from '../../../src/mazer-core/logging/export';
 
 const makeStepResult = (step: number): RuntimeAdapterStepResult => ({
   step,
@@ -198,8 +199,22 @@ describe('replay-linked training dataset', () => {
       startHeading: 'north',
       intentCanary: null
     }, [makeStepResult(0), makeStepResult(1)]);
-    const evalSummary = {
+    const evalSummary: ReplayEvalSummaryReference = {
       schemaVersion: 1,
+      summaryId: createReplayEvalSummaryId({
+        schemaVersion: 1,
+        runId: 'eval-seed-training',
+        seed: 'seed-training',
+        metrics: {
+          discoveryEfficiency: 0.78,
+          backtrackPressure: 0.22,
+          trapFalsePositiveRate: 0.1,
+          trapFalseNegativeRate: 0.08,
+          wardenPressureExposure: 0.24,
+          itemUsefulnessScore: 0.82,
+          puzzleStateClarityScore: 0.72
+        }
+      }),
       runId: 'eval-seed-training',
       seed: 'seed-training',
       metrics: {
@@ -212,10 +227,7 @@ describe('replay-linked training dataset', () => {
         puzzleStateClarityScore: 0.72
       }
     };
-    const dataset = createReplayLinkedTrainingDataset(log, {
-      ...evalSummary,
-      summaryId: createReplayEvalSummaryId(evalSummary)
-    }, {
+    const dataset = createReplayLinkedTrainingDataset(log, evalSummary, {
       packId: 'mazer-runtime-benchmark-v1',
       scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
       districtType: 'scavenger-checkpoint',
@@ -227,10 +239,7 @@ describe('replay-linked training dataset', () => {
         }
       }
     });
-    const repeat = createReplayLinkedTrainingDataset(log, {
-      ...evalSummary,
-      summaryId: createReplayEvalSummaryId(evalSummary)
-    }, {
+    const repeat = createReplayLinkedTrainingDataset(log, evalSummary, {
       packId: 'mazer-runtime-benchmark-v1',
       scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
       districtType: 'scavenger-checkpoint',
@@ -246,7 +255,7 @@ describe('replay-linked training dataset', () => {
     expect(dataset.benchmark?.scenarioId).toBe('scavenger-checkpoint-item-usefulness-charlie');
     expect(dataset.replayLink.seed).toBe('seed-training');
     expect(dataset.replayLink.episodeCount).toBe(1);
-    expect(dataset.evalSummary?.summaryId).toBe(createReplayEvalSummaryId(evalSummary));
+    expect(dataset.evalSummary?.summaryId).toBe(evalSummary.summaryId);
     expect(dataset.priors.totalEpisodes).toBe(1);
     expect(getReplayLinkedDatasetDigest(dataset)).toBe(getReplayLinkedDatasetDigest(repeat));
     expect(JSON.stringify(dataset)).not.toMatch(/manifest|visual-proof|PlanetProofManifest|objectiveNodeId|solutionPath/i);

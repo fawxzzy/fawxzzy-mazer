@@ -10,6 +10,8 @@ import {
 } from './common.mjs';
 import { runLifelineBenchmarkSuite } from './runtime-eval.ts';
 import { resolveBlessedPlaybookWeights, resolvePlaybookTuningWeights } from '../training/common.mjs';
+import type { PlaybookTuningWeights } from '../../src/mazer-core/playbook';
+import type { RuntimeEvalMetricSummary, RuntimeEvalSupportSummary } from '../../src/mazer-core/eval';
 
 const DEFAULT_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'headless-runner');
 
@@ -32,12 +34,17 @@ export interface HeadlessRunnerWeightMetadata {
   weights: HeadlessRunnerScorerWeights;
 }
 
+export interface HeadlessRunnerArtifactPointers {
+  summary: string;
+  manifest: string;
+}
+
 export interface HeadlessRunnerOptions {
   scenarioIds?: readonly string[] | null;
   runId?: string;
   outputRoot?: string;
   resume?: boolean;
-  tuningWeights?: Partial<HeadlessRunnerScorerWeights> | null;
+  tuningWeights?: Partial<PlaybookTuningWeights> | null;
   weightMetadata?: HeadlessRunnerWeightMetadata | null;
 }
 
@@ -60,13 +67,10 @@ export interface HeadlessRunnerManifest {
     failedScenarioCount: number;
     allScenariosWithinBands: boolean;
   } | null;
-  metrics: Record<string, number>;
-  support: Record<string, number>;
+  metrics: RuntimeEvalMetricSummary;
+  support: RuntimeEvalSupportSummary;
   scorerWeights: HeadlessRunnerWeightMetadata | null;
-  artifacts: {
-    summary: string;
-    manifest: string;
-  };
+  artifacts: HeadlessRunnerArtifactPointers;
   scenarios: Array<{
     scenarioId: string;
     seed: string;
@@ -82,6 +86,8 @@ export interface HeadlessRunnerManifest {
     };
   }>;
 }
+
+type LifelineCliArgs = Record<string, string | boolean>;
 
 const resolveRunId = (seed: unknown) => hashStableValue(seed);
 
@@ -210,7 +216,7 @@ export const runHeadlessRunner = async (options: HeadlessRunnerOptions = {}): Pr
 };
 
 const resolveCliWeights = async (
-  args: Record<string, string | boolean>
+  args: LifelineCliArgs
 ): Promise<{ tuningWeights: Partial<HeadlessRunnerScorerWeights> | null; weightMetadata: HeadlessRunnerWeightMetadata | null }> => {
   if (typeof args.weights === 'string') {
     const explicitWeights = resolvePlaybookTuningWeights(await readJson(resolve(REPO_ROOT, args.weights)));
@@ -258,9 +264,9 @@ const resolveCliWeights = async (
 };
 
 export const main = async () => {
-  const args = parseCliArgs();
+  const args = parseCliArgs() as LifelineCliArgs;
   const scenarioIds = typeof args.scenario === 'string'
-    ? args.scenario.split(',').map((entry) => entry.trim()).filter(Boolean)
+    ? args.scenario.split(',').map((entry: string) => entry.trim()).filter((entry: string) => entry.length > 0)
     : null;
   const runId = typeof args.run === 'string'
     ? args.run

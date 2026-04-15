@@ -6,6 +6,15 @@ import {
   resolveLifelineBenchmarkScenarioBySeed
 } from '../lifeline/benchmark-pack.mjs';
 
+/**
+ * @typedef {Record<string, string | boolean>} CliArgs
+ * @typedef {{ ok: boolean, stdout: string, stderr: string }} CommandResult
+ * @typedef {{ command: string, args: string[] }} CommandSpec
+ * @typedef {import('../../src/mazer-core/playbook/tuning').PlaybookTuningWeights} PlaybookTuningWeights
+ * @typedef {import('../../src/mazer-core/eval').RuntimeEvalSuiteSummary} RuntimeEvalSuiteSummary
+ * @typedef {import('../../src/mazer-core/logging/export').ReplayLinkedTrainingDataset} ReplayLinkedTrainingDataset
+ */
+
 const DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH = 'artifacts/training/playbook-weight-registry.json';
 
 const clampMetric = (value) => Number(Math.min(1, Math.max(0, Number(value) || 0)).toFixed(4));
@@ -70,6 +79,7 @@ const createDefaultPlaybookTuningWeights = () => ({
   rotationTiming: 1
 });
 
+/** @param {string[]} [argv] @returns {CliArgs} */
 const parseCliArgs = (argv = process.argv.slice(2)) => {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -105,6 +115,7 @@ const resolveRuntimeBenchmarkScenarioById = (scenarioId) => resolveLifelineBench
 
 const resolveRuntimeBenchmarkScenarioBySeed = (seed) => resolveLifelineBenchmarkScenarioBySeed(seed);
 
+/** @param {unknown} value @returns {PlaybookTuningWeights | null} */
 const resolvePlaybookTuningWeights = (value) => {
   if (!value || typeof value !== 'object') {
     return null;
@@ -139,12 +150,14 @@ const resolveBlessedPlaybookWeights = async (registryPath = DEFAULT_PLAYBOOK_WEI
   };
 };
 
+/** @param {string} command @param {readonly string[]} args @returns {CommandSpec} */
 const resolveCommandSpec = (command, args) => (
   process.platform === 'win32'
     ? { command: 'cmd.exe', args: ['/d', '/s', '/c', `${command} ${args.join(' ')}`] }
     : { command, args }
 );
 
+/** @param {string} command @param {readonly string[]} args @param {{ cwd?: string }} [options] @returns {CommandResult} */
 const runCommand = (command, args, options = {}) => {
   const commandSpec = resolveCommandSpec(command, args);
 
@@ -169,12 +182,25 @@ const runCommand = (command, args, options = {}) => {
   }
 };
 
+/** @param {readonly number[]} values @returns {number} */
 const average = (values) => (
   values.length > 0
     ? clampMetric(values.reduce((total, value) => total + value, 0) / values.length)
     : 0.5
 );
 
+/** @param {readonly ReplayLinkedTrainingDataset[]} datasets @returns {RuntimeEvalSuiteSummary['metrics']} */
+const averageMetrics = (datasets) => ({
+  discoveryEfficiency: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.discoveryEfficiency ?? 0.5)),
+  backtrackPressure: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.backtrackPressure ?? 0.5)),
+  trapFalsePositiveRate: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.trapFalsePositiveRate ?? 0.5)),
+  trapFalseNegativeRate: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.trapFalseNegativeRate ?? 0.5)),
+  wardenPressureExposure: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.wardenPressureExposure ?? 0.5)),
+  itemUsefulnessScore: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.itemUsefulnessScore ?? 0.5)),
+  puzzleStateClarityScore: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.puzzleStateClarityScore ?? 0.5))
+});
+
+/** @param {readonly ReplayLinkedTrainingDataset[]} datasets @returns {import('../../src/mazer-core/agent/types').PolicyAdaptivePrior} */
 const averagePriors = (datasets) => {
   const priors = datasets.map((dataset) => dataset.priors?.global ?? defaultPriors());
 
@@ -189,16 +215,6 @@ const averagePriors = (datasets) => {
     rotationTiming: average(priors.map((prior) => prior.rotationTiming ?? 0.5))
   };
 };
-
-const averageMetrics = (datasets) => ({
-  discoveryEfficiency: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.discoveryEfficiency ?? 0.5)),
-  backtrackPressure: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.backtrackPressure ?? 0.5)),
-  trapFalsePositiveRate: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.trapFalsePositiveRate ?? 0.5)),
-  trapFalseNegativeRate: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.trapFalseNegativeRate ?? 0.5)),
-  wardenPressureExposure: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.wardenPressureExposure ?? 0.5)),
-  itemUsefulnessScore: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.itemUsefulnessScore ?? 0.5)),
-  puzzleStateClarityScore: average(datasets.map((dataset) => dataset.evalSummary?.metrics?.puzzleStateClarityScore ?? 0.5))
-});
 
 export {
   averageMetrics,

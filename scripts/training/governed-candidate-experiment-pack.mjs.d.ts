@@ -1,0 +1,10 @@
+export const REQUIRED_GATE_NAMES: readonly string[];
+export const REQUIRED_GLOBAL_GATES: readonly string[];
+export function createEmptyRegistry(): any;
+export function normalizeWeights(weights?: any): any;
+export function buildGovernedCandidateExperimentRecord(args: any): any;
+export function buildGovernedCandidateExperimentRegistry(args: any): any;
+export function collectMetricBandFailures(evalSummary: any): string[];
+export function evaluateGovernedCandidateExperimentPack(args?: any): Promise<any>;
+export function loadGovernedCandidateExperimentPack(packPath?: string): Promise<any>;
+export function runGovernanceGatePack(): any[];

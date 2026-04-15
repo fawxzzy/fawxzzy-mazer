@@ -8,12 +8,20 @@ import {
   writeJson
 } from './common.mjs';
 
+/**
+ * @typedef {import('../../src/mazer-core/logging').RuntimeEpisodeLog} RuntimeEpisodeLog
+ * @typedef {import('../../src/mazer-core/logging/export').ReplayEvalSummaryReference} ReplayEvalSummaryReference
+ * @typedef {import('../../src/mazer-core/logging/export').ReplayLinkedTrainingDataset} ReplayLinkedTrainingDataset
+ */
+
+/** @param {RuntimeEpisodeLog} log */
 const collectEpisodes = (log) => (
   (log.entries ?? [])
     .map((entry) => entry?.episodes?.latestEpisode ?? null)
     .filter(Boolean)
 );
 
+/** @param {readonly import('../../src/mazer-core/agent/types').PolicyEpisode[]} episodes */
 const summarizePriors = (episodes) => {
   const priors = {
     samples: episodes.length,
@@ -53,6 +61,7 @@ const summarizePriors = (episodes) => {
   };
 };
 
+/** @param {{ log: RuntimeEpisodeLog; evalSummary: ReplayEvalSummaryReference | null; scenarioId: string | null }} params */
 const resolveBenchmarkScenario = ({ log, evalSummary, scenarioId }) => {
   if (typeof scenarioId === 'string' && scenarioId.length > 0) {
     return resolveRuntimeBenchmarkScenarioById(scenarioId);
@@ -66,6 +75,7 @@ const resolveBenchmarkScenario = ({ log, evalSummary, scenarioId }) => {
   return resolveRuntimeBenchmarkScenarioBySeed(log.source.seed);
 };
 
+/** @param {{ evalSummary: ReplayEvalSummaryReference | null; benchmarkScenario: ReturnType<typeof resolveRuntimeBenchmarkScenarioById> | ReturnType<typeof resolveRuntimeBenchmarkScenarioBySeed> | null; log: RuntimeEpisodeLog }} params */
 const resolveEvalSummaryReference = ({ evalSummary, benchmarkScenario, log }) => {
   if (!evalSummary) {
     return null;
@@ -92,6 +102,7 @@ const resolveEvalSummaryReference = ({ evalSummary, benchmarkScenario, log }) =>
   return evalSummary;
 };
 
+/** @param {RuntimeEpisodeLog} log @param {ReplayEvalSummaryReference | null} [evalSummary] @param {ReturnType<typeof resolveRuntimeBenchmarkScenarioById> | ReturnType<typeof resolveRuntimeBenchmarkScenarioBySeed> | null} [benchmarkScenario] @returns {ReplayLinkedTrainingDataset} */
 const buildDataset = (log, evalSummary = null, benchmarkScenario = null) => {
   const benchmarkPack = resolveRuntimeBenchmarkPack();
   const episodes = collectEpisodes(log);
