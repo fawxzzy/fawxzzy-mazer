@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort",
+    "health": "node ./scripts/gates/future-lane-health.mjs",
+    "gate:future-lane": "node ./scripts/gates/future-lane-health.mjs",
     "test": "vitest run --exclude tests/maze/maze-soak.test.ts",
     "test:architecture": "vitest run tests/architecture",
     "architecture:check": "node ./scripts/check-architecture.mjs",
@@ -20,6 +22,11 @@
     "visual:regressions": "node ./scripts/visual/index-artifacts.mjs --regressions",
     "visual:proof": "node ./scripts/visual/mazer-run.mjs",
     "visual:canaries": "node ./scripts/visual/run-canaries.mjs",
+    "future:content-proof": "node ./scripts/visual/future-runtime-run.mjs --run content-proof",
+    "future:two-shell-proof": "node ./scripts/visual/future-runtime-run.mjs --run two-shell-proof",
+    "future:three-shell-proof": "node ./scripts/visual/future-runtime-run.mjs --run three-shell-proof",
+    "eval:runtime": "node ./scripts/eval/run-eval.mjs",
+    "lifeline:headless-smoke": "node ./scripts/lifeline/headless-runner.mjs --scenario labyrinth-tutorial-trap-inference-alpha --run gate-pack-headless-smoke --output-root tmp/lifeline/headless-runner/gate-pack-headless-smoke --blessed true",
     "topology:export": "node ./scripts/topology/export-proof-manifests.mjs"
   },
   "dependencies": {

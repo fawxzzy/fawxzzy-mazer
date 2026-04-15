@@ -160,6 +160,14 @@ Current mechanic coverage inside the pack:
 - puzzle visibility
 - rotation timing
 
+Combined-system coverage in `mazer-runtime-benchmark-v2`:
+
+- traps plus Warden pressure
+- item relevance under pressure
+- puzzle visibility during rotation
+- multi-speaker intent load
+- three-shell connector reasoning
+
 ## Schema Summary
 
 `PlanetMazeGraph`
@@ -235,6 +243,7 @@ The learned scorer may rank:
 - trap suspicion
 - enemy risk
 - item value
+- puzzle value
 - rotation timing
 
 The learned scorer must not:

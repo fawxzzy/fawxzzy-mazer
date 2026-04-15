@@ -15,6 +15,7 @@ import {
   type HeadlessRunnerWeightMetadata
 } from './headless-runner.ts';
 import type { LifelineBenchmarkSuiteSummary } from './runtime-eval.ts';
+import { resolveLifelineBenchmarkPack } from './benchmark-pack.mjs';
 import {
   DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,
   resolveBlessedPlaybookWeights,
@@ -24,6 +25,7 @@ import {
 const DEFAULT_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'burn-in');
 const DEFAULT_COUNTS = [25, 100, 500];
 const DEFAULT_RUN_ID = 'neutral-advisory-burn-in';
+const BENCHMARK_PACK_ID = resolveLifelineBenchmarkPack().packId;
 type CliArgs = Record<string, string | boolean>;
 
 const GATE_DEFINITIONS = [
@@ -545,7 +547,7 @@ const runBurnInBatch = async ({
     ? existingBatchManifest
     : existingBatchManifest ?? createBatchManifest(
         batchId,
-        'mazer-runtime-benchmark-v1',
+        BENCHMARK_PACK_ID,
         count,
         runId,
         resume,
@@ -648,7 +650,7 @@ export const runBurnIn = async ({
     schemaVersion: 1,
     burnInId: 'lifeline-burn-in',
     outputRoot: relativeFromRepo(resolvedOutputRoot),
-    benchmarkPackId: 'mazer-runtime-benchmark-v1',
+    benchmarkPackId: BENCHMARK_PACK_ID,
     counts,
     runId,
     scorerWeights,

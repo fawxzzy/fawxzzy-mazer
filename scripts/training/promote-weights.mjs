@@ -28,6 +28,7 @@ const DEFAULT_CANDIDATE_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'hea
 const DEFAULT_FUTURE_ARTIFACT_ROOT = 'tmp/captures/mazer-future-runtime';
 const DEFAULT_FUTURE_BASELINE_POINTER = 'artifacts/visual/future-runtime-baseline.json';
 const DEFAULT_TWO_SHELL_RUN_ID = 'two-shell-proof';
+const DEFAULT_THREE_SHELL_RUN_ID = 'three-shell-proof';
 
 const PROMOTION_GATES = [
   { key: 'architectureCheck', command: 'npm', args: ['run', 'architecture:check'] },
@@ -203,18 +204,21 @@ const runPromotionGate = (gate) => {
  *   futureArtifactRoot: string;
  *   futureBaselinePointer: string;
  *   twoShellRunId: string;
+ *   threeShellRunId: string;
  * }} params
  */
 const runFutureRuntimeGate = async ({
   futureArtifactRoot,
   futureBaselinePointer,
-  twoShellRunId
+  twoShellRunId,
+  threeShellRunId
 }) => {
   const mainBaselinePath = resolve(REPO_ROOT, 'artifacts', 'visual', 'baseline.json');
   const baselineBefore = await readJson(mainBaselinePath);
   const commands = [
     ['node', ['scripts/visual/future-runtime-run.mjs', '--run', 'content-proof', '--skip-build', 'true']],
     ['node', ['scripts/visual/future-runtime-run.mjs', '--run', twoShellRunId, '--skip-build', 'true']],
+    ['node', ['scripts/visual/future-runtime-run.mjs', '--run', threeShellRunId, '--skip-build', 'true']],
     ['node', [
       'scripts/visual/index-artifacts.mjs',
       '--future-artifact-root',
@@ -254,6 +258,7 @@ const runFutureRuntimeGate = async ({
           futureArtifactRoot,
           futureBaselinePointer,
           twoShellRunId,
+          threeShellRunId,
           commands: outputs
         }
       };
@@ -271,6 +276,7 @@ const runFutureRuntimeGate = async ({
         futureArtifactRoot,
         futureBaselinePointer,
         twoShellRunId,
+        threeShellRunId,
         commands: outputs
       }
     };
@@ -292,6 +298,7 @@ const runFutureRuntimeGate = async ({
         futureArtifactRoot,
         futureBaselinePointer,
         twoShellRunId,
+        threeShellRunId,
         futurePointer,
         commands: outputs
       }
@@ -307,6 +314,7 @@ const runFutureRuntimeGate = async ({
       futureArtifactRoot,
       futureBaselinePointer,
       twoShellRunId,
+      threeShellRunId,
       futurePointer,
       commands: outputs
     }
@@ -401,6 +409,9 @@ const main = async () => {
   const twoShellRunId = typeof args['future-two-shell-run'] === 'string'
     ? args['future-two-shell-run']
     : DEFAULT_TWO_SHELL_RUN_ID;
+  const threeShellRunId = typeof args['future-three-shell-run'] === 'string'
+    ? args['future-three-shell-run']
+    : DEFAULT_THREE_SHELL_RUN_ID;
   const benchmarkPack = resolveRuntimeBenchmarkPack();
   const expectedScenarioIds = benchmarkPack.scenarios.map((scenario) => scenario.id);
   const candidate = await resolveCandidateInput(args);
@@ -411,7 +422,8 @@ const main = async () => {
   const futureRuntimeGate = await runFutureRuntimeGate({
     futureArtifactRoot,
     futureBaselinePointer,
-    twoShellRunId
+    twoShellRunId,
+    threeShellRunId
   });
   gateResults.push(futureRuntimeGate);
 

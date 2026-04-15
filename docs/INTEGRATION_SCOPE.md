@@ -16,7 +16,7 @@ Status: repo-owned truth for shared-system installs in the active Mazer planner 
 - Playbook scoring consumes bounded `PolicyEpisodeLogFeatures` derived from replayable episodes, not proof manifests, raw bus payloads, or runtime-authored truth.
 - Learned/adaptive priors for frontier value, backtrack urgency, trap suspicion, enemy risk, item value, and rotation timing are advisory only. They rank legal candidates; they do not legalize moves, promote goals, or author actions.
 - Offline training and tuning stay dev-lane only under `src/mazer-core/logging/export/**`, `src/mazer-core/eval/**`, `src/mazer-core/playbook/tuning/**`, and `scripts/training/**`. They may export replay-linked datasets and advisory scorer weights, but they do not run in the shipping runtime and they do not own planner truth.
-- Advisory scorer weights now follow a governed `candidate -> blessed` promotion lane. Candidates may be produced offline or derived from the benchmark-pack headless runner, but they are not considered blessed until `scripts/training/promote-weights.mjs` verifies architecture, tests, build, visual proof, visual canaries, future-runtime content proof, the dedicated two-shell future baseline promotion, and the shared runtime benchmark eval without regressions.
+- Advisory scorer weights now follow a governed `candidate -> blessed` promotion lane. Candidates may be produced offline or derived from the benchmark-pack headless runner, but they are not considered blessed until `scripts/training/promote-weights.mjs` verifies architecture, tests, build, visual proof, visual canaries, future-runtime content proof, the dedicated two-shell future baseline promotion, the merged three-shell proof, and the shared runtime benchmark eval without regressions.
 - Playbook may summarize intent phrasing and update replay episodes, but it does not own `IntentBusRecord` construction.
 - `src/visual-proof/**` is an adapter lane over `src/mazer-core/**`, not a second planner implementation.
 - `src/future-runtime/**` is an adapter lane over `src/mazer-core/**`, not a second planner implementation.
@@ -73,6 +73,38 @@ Rule:
 - Required weight diff reporting covers frontier value, backtrack urgency, trap suspicion, enemy risk, item value, puzzle value, and rotation timing.
 - Replay-linked dataset export now records benchmark pack metadata so eval, dataset export, and promotion all reference the same scenario ids.
 
+## Governed Candidate Experiment Pack
+
+- `node scripts/training/governed-candidate-experiment-pack.mjs` evaluates the governed experiment pack defined in `artifacts/training/governed-candidate-experiment-pack.json`.
+- The v2 pack currently covers four non-neutral advisory-only profiles:
+  - `frontier-biased`
+  - `caution-biased`
+  - `pursuit-avoidance-biased`
+  - `item-priority-biased`
+- The governed benchmark contract now rides on `mazer-runtime-benchmark-v2`, which keeps the original five single-focus probes and adds five combined-system probes:
+  - traps plus Warden pressure
+  - item relevance under pressure
+  - puzzle visibility during rotation
+  - multi-speaker intent load
+  - three-shell connector reasoning
+- The experiment pack runs the required global gate surface once per pack:
+  - `npm run architecture:check`
+  - `npm test`
+  - `npm run build`
+  - `npm run visual:proof`
+  - `npm run visual:canaries`
+  - `npm run future:content-proof`
+  - `npm run future:two-shell-proof`
+  - `npm run future:three-shell-proof`
+- Each candidate is then evaluated locally over the governed benchmark pack through `scripts/eval/run-eval.mjs`, using candidate-specific weights written under `tmp/training/governed-candidate-experiment-pack/` and eval summaries under `tmp/eval/governed-candidate-experiment-pack/`.
+- Registry updates remain governed and advisory-only:
+  - accepted candidates are recorded as `candidate`
+  - rejected candidates are recorded as `rejected`
+  - no experiment-pack candidate is blessed automatically
+- Reject reasons must stay explicit. Metric-band failures are recorded per scenario in the candidate notes, alongside any failed gate names, scenario-id mismatches, or replay-integrity failures.
+- Candidate promotion remains blocked until the v2 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
+- The experiment-pack lane does not widen legality. Candidate evaluation still routes through the legal local-candidate scoring path and cannot bypass the existing planner firewall.
+
 ## Burn-In Workflow
 
 - `node scripts/lifeline/burn-in.mjs --counts 25,100,500` runs the benchmark pack under the current blessed advisory profile and writes resumable output under `tmp/lifeline/burn-in/`.
@@ -91,6 +123,37 @@ Rule:
   - no proof-gate regression: `npm run visual:proof` and `npm run visual:canaries` must pass before and after each batch
   - stable summaryId/runId generation: suite ids and per-scenario ids must remain unchanged across attempts
   - no candidate-weight promotion: the weight registry digest must not change during burn-in
+
+## Continuous Lifeline Workflow
+
+- `node scripts/lifeline/continuous.mjs` extends the fixed-weight burn-in lane into a resumable continuous runner for seeded benchmark batches.
+- Continuous mode is still core-driven only:
+  - it runs through `scripts/lifeline/**`
+  - it keeps Playbook advisory-only
+  - it does not import UI surfaces, `MenuScene`, or future-runtime render code
+- The lane resolves and pins the active blessed advisory profile at startup, then records the active blessed weight id in the manifest, watchdog summary, and rollups.
+- Continuous mode checkpoints to `tmp/lifeline/continuous/` with stable top-level pointers:
+  - `manifest.json`
+  - `checkpoint.json`
+  - `watchdog.json`
+  - `summary-rollup.json`
+  - `latest-batch-manifest.json`
+  - `latest-summary-rollup.json`
+  - `latest-failure-buckets.json`
+- Each completed batch writes a retained packet under `tmp/lifeline/continuous/batches/<batch-id>/` with:
+  - `manifest.json`
+  - `summary-rollup.json`
+  - `failure-buckets.json`
+  - the underlying headless-runner artifacts for that batch
+- Resume semantics are checkpoint-based. Restarting the command continues from the next unresolved batch index unless `--resume false` is passed.
+- Retention is windowed. Older retained batch directories are pruned once the configured retention window is exceeded, while summary rollups and the pruned batch id ledger remain stable across resumes.
+- Continuous failure buckets stay explicit:
+  - `resumeCheckpointMismatch`
+  - `batchExecutionFailure`
+  - `blessedWeightMismatch`
+  - `stableArtifactPointerMismatch`
+  - `retentionPruneFailure`
+- The watchdog summary is the small operational surface for long-running batches. It reports batch count, last successful batch, failure-bucket histogram, checkpoint path, stable latest pointers, and the active blessed weight id.
 
 ## Enforcement
 

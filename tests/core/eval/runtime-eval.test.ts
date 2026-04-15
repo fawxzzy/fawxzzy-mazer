@@ -12,16 +12,21 @@ describe('runtime eval harness', () => {
 
     expect(summary.schemaVersion).toBe(1);
     expect(summary.suiteId).toBe('mazer-core-deterministic-runtime-eval');
-    expect(summary.benchmarkPackId).toBe('mazer-runtime-benchmark-v1');
+    expect(summary.benchmarkPackId).toBe('mazer-runtime-benchmark-v2');
     expect(summary.summaryId).toMatch(/^eval-/);
     expect(summary.runId).toMatch(/^eval-/);
-    expect(summary.scenarioCount).toBe(5);
+    expect(summary.scenarioCount).toBe(10);
     expect(summary.scenarioIds).toEqual([
       'labyrinth-tutorial-trap-inference-alpha',
       'loopy-combat-capable-warden-pressure-bravo',
       'scavenger-checkpoint-item-usefulness-charlie',
       'puzzle-visibility-delta',
-      'vantage-observatory-rotation-timing-echo'
+      'vantage-observatory-rotation-timing-echo',
+      'loopy-combat-capable-trap-warden-pressure-foxtrot',
+      'scavenger-checkpoint-item-pressure-golf',
+      'vantage-observatory-puzzle-rotation-hotel',
+      'labyrinth-tutorial-multi-speaker-intent-india',
+      'vantage-observatory-three-shell-connector-juliet'
     ]);
     expect(summary.replayIntegrity.allScenariosVerified).toBe(true);
     expect(summary.replayIntegrity.failedScenarioCount).toBe(0);
@@ -43,7 +48,7 @@ describe('runtime eval harness', () => {
     expect(summary.metrics.wardenPressureExposure).toBeGreaterThan(0);
     expect(summary.metrics.itemUsefulnessScore).toBeGreaterThan(0);
     expect(summary.metrics.puzzleStateClarityScore).toBeGreaterThan(0);
-    expect(summary.scenarioSummaries).toHaveLength(5);
+    expect(summary.scenarioSummaries).toHaveLength(10);
     expect(summary.scenarioSummaries.every((scenario) => (
       typeof scenario.summaryId === 'string'
       && typeof scenario.runId === 'string'
@@ -80,8 +85,8 @@ describe('runtime eval harness', () => {
       expect(cliSummary.summaryId).toBe(fileSummary.summaryId);
       expect(cliSummary.runId).toBe(fileSummary.runId);
       expect(cliSummary.metrics).toEqual(fileSummary.metrics);
-      expect(cliSummary.benchmarkPackId).toBe('mazer-runtime-benchmark-v1');
-      expect(cliSummary.scenarioSummaries).toHaveLength(5);
+      expect(cliSummary.benchmarkPackId).toBe('mazer-runtime-benchmark-v2');
+      expect(cliSummary.scenarioSummaries).toHaveLength(10);
       expect(cliSummary.scenarioIds).toEqual(fileSummary.scenarioIds);
       expect(fileSummary.summaryId).toMatch(/^eval-/);
       expect(JSON.stringify(fileSummary)).not.toMatch(/manifest|PlanetProofManifest|objectiveNodeId/i);

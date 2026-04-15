@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "packId": "mazer-runtime-benchmark-v1",
-  "label": "Mazer runtime benchmark pack v1",
+  "packId": "mazer-runtime-benchmark-v2",
+  "label": "Mazer runtime benchmark pack v2",
   "scenarios": [
     {
       "id": "labyrinth-tutorial-trap-inference-alpha",
@@ -712,6 +712,773 @@
                 "puzzleCueCount": 0,
                 "timingCueCount": 0,
                 "localCues": ["misaligned shell"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "loopy-combat-capable-trap-warden-pressure-foxtrot",
+      "label": "Loopy combat-capable trap plus Warden pressure",
+      "districtType": "loopy-combat-capable",
+      "seed": "benchmark-loopy-trap-warden-foxtrot",
+      "variant": "warden-pressure",
+      "expectedMetricBands": {
+        "discoveryEfficiency": { "min": 0.4, "max": 1 },
+        "backtrackPressure": { "min": 0, "max": 0.55 },
+        "trapFalseNegativeRate": { "min": 0, "max": 0.35 },
+        "wardenPressureExposure": { "min": 0.35, "max": 0.95 }
+      },
+      "steps": [
+        {
+          "tileId": "pressure-entry",
+          "label": "Pressure Entry",
+          "heading": "east",
+          "traversableTileIds": ["pressure-gauntlet", "pressure-cache"],
+          "localCues": ["enemy patrol", "trap rhythm", "speaker:Runner", "speaker:Warden", "speaker:TrapNet"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "pressure-gauntlet",
+          "candidates": [
+            {
+              "tileId": "pressure-gauntlet",
+              "targetKind": "frontier",
+              "path": ["pressure-entry", "pressure-gauntlet"],
+              "heuristicScore": 0.18,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.78,
+              "enemyPressure": 0.84,
+              "itemOpportunity": 0.14,
+              "puzzleOpportunity": 0.09,
+              "timingWindow": 0.41,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 1,
+                "enemyCueCount": 1,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["enemy patrol", "trap alarm", "speaker:Warden", "speaker:TrapNet"]
+              }
+            },
+            {
+              "tileId": "pressure-cache",
+              "targetKind": "frontier",
+              "path": ["pressure-entry", "pressure-cache"],
+              "heuristicScore": 0.11,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.1,
+              "enemyPressure": 0.16,
+              "itemOpportunity": 0.28,
+              "puzzleOpportunity": 0.08,
+              "timingWindow": 0.12,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["cache beacon", "speaker:Inventory"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "pressure-gauntlet",
+          "label": "Pressure Gauntlet",
+          "heading": "north",
+          "traversableTileIds": ["pressure-entry", "pressure-latch"],
+          "localCues": ["enemy patrol", "trap alarm", "speaker:Warden", "speaker:TrapNet"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "pressure-latch",
+          "candidates": [
+            {
+              "tileId": "pressure-latch",
+              "targetKind": "frontier",
+              "path": ["pressure-gauntlet", "pressure-latch"],
+              "heuristicScore": 0.16,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.71,
+              "enemyPressure": 0.76,
+              "itemOpportunity": 0.12,
+              "puzzleOpportunity": 0.18,
+              "timingWindow": 0.52,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 1,
+                "enemyCueCount": 1,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 0,
+                "localCues": ["warden shadow", "trap seal", "latch beacon", "speaker:Runner"]
+              }
+            },
+            {
+              "tileId": "pressure-entry",
+              "targetKind": "backtrack",
+              "path": ["pressure-gauntlet", "pressure-entry"],
+              "heuristicScore": 0.09,
+              "visitCount": 1,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.58,
+              "enemyPressure": 0.62,
+              "itemOpportunity": 0.06,
+              "puzzleOpportunity": 0.04,
+              "timingWindow": 0.18,
+              "outcome": {
+                "discoveredTilesDelta": 0,
+                "backtrackDelta": 1,
+                "trapCueCount": 1,
+                "enemyCueCount": 1,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["enemy patrol", "trap alarm"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "pressure-latch",
+          "label": "Pressure Latch",
+          "heading": "west",
+          "traversableTileIds": ["pressure-core"],
+          "localCues": ["latch beacon", "enemy patrol", "trap seal", "speaker:Runner"],
+          "visibleLandmarks": [],
+          "goal": { "visible": true, "tileId": "pressure-core", "label": "Safe latch" },
+          "moveToTileId": "pressure-core",
+          "candidates": [
+            {
+              "tileId": "pressure-core",
+              "targetKind": "goal",
+              "path": ["pressure-latch", "pressure-core"],
+              "heuristicScore": 0.12,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.22,
+              "enemyPressure": 0.44,
+              "itemOpportunity": 0.1,
+              "puzzleOpportunity": 0.26,
+              "timingWindow": 0.66,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["latch cleared", "speaker:Runner"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scavenger-checkpoint-item-pressure-golf",
+      "label": "Scavenger / checkpoint item relevance under pressure",
+      "districtType": "scavenger-checkpoint",
+      "seed": "benchmark-scavenger-item-pressure-golf",
+      "variant": "item-usefulness",
+      "expectedMetricBands": {
+        "discoveryEfficiency": { "min": 0.4, "max": 1 },
+        "backtrackPressure": { "min": 0, "max": 0.5 },
+        "wardenPressureExposure": { "min": 0.15, "max": 0.7 },
+        "itemUsefulnessScore": { "min": 0.6, "max": 1 }
+      },
+      "steps": [
+        {
+          "tileId": "item-pressure-entry",
+          "label": "Item Pressure Entry",
+          "heading": "east",
+          "traversableTileIds": ["item-vault", "item-sidestep"],
+          "localCues": ["cache beacon", "warden echo", "speaker:Inventory", "speaker:Runner"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "item-vault",
+          "candidates": [
+            {
+              "tileId": "item-vault",
+              "targetKind": "frontier",
+              "path": ["item-pressure-entry", "item-vault"],
+              "heuristicScore": 0.17,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.12,
+              "enemyPressure": 0.46,
+              "itemOpportunity": 0.82,
+              "puzzleOpportunity": 0.18,
+              "timingWindow": 0.38,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["item cache", "pressure veil", "speaker:Inventory"]
+              }
+            },
+            {
+              "tileId": "item-sidestep",
+              "targetKind": "frontier",
+              "path": ["item-pressure-entry", "item-sidestep"],
+              "heuristicScore": 0.1,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.08,
+              "enemyPressure": 0.08,
+              "itemOpportunity": 0.14,
+              "puzzleOpportunity": 0.07,
+              "timingWindow": 0.09,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["quiet corridor"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "item-vault",
+          "label": "Item Vault",
+          "heading": "north",
+          "traversableTileIds": ["item-shield", "item-pressure-entry"],
+          "localCues": ["item cache", "pressure veil", "speaker:Inventory"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "item-shield",
+          "candidates": [
+            {
+              "tileId": "item-shield",
+              "targetKind": "frontier",
+              "path": ["item-vault", "item-shield"],
+              "heuristicScore": 0.15,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.09,
+              "enemyPressure": 0.52,
+              "itemOpportunity": 0.9,
+              "puzzleOpportunity": 0.16,
+              "timingWindow": 0.44,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["item shield", "speaker:Inventory", "speaker:Runner"]
+              }
+            },
+            {
+              "tileId": "item-pressure-entry",
+              "targetKind": "backtrack",
+              "path": ["item-vault", "item-pressure-entry"],
+              "heuristicScore": 0.08,
+              "visitCount": 1,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.06,
+              "enemyPressure": 0.18,
+              "itemOpportunity": 0.28,
+              "puzzleOpportunity": 0.08,
+              "timingWindow": 0.14,
+              "outcome": {
+                "discoveredTilesDelta": 0,
+                "backtrackDelta": 1,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["checkpoint hum"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "item-shield",
+          "label": "Item Shield",
+          "heading": "west",
+          "traversableTileIds": ["item-extract"],
+          "localCues": ["item shield", "pressure drop", "speaker:Runner"],
+          "visibleLandmarks": [],
+          "goal": { "visible": true, "tileId": "item-extract", "label": "Checkpoint exit" },
+          "moveToTileId": "item-extract",
+          "candidates": [
+            {
+              "tileId": "item-extract",
+              "targetKind": "goal",
+              "path": ["item-shield", "item-extract"],
+              "heuristicScore": 0.12,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.05,
+              "enemyPressure": 0.18,
+              "itemOpportunity": 0.74,
+              "puzzleOpportunity": 0.12,
+              "timingWindow": 0.32,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["checkpoint clear", "speaker:Runner"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vantage-observatory-puzzle-rotation-hotel",
+      "label": "Vantage / puzzle visibility during rotation",
+      "districtType": "vantage-observatory",
+      "seed": "benchmark-vantage-puzzle-rotation-hotel",
+      "variant": "rotation-timing",
+      "expectedMetricBands": {
+        "discoveryEfficiency": { "min": 0.4, "max": 1 },
+        "backtrackPressure": { "min": 0, "max": 0.45 },
+        "puzzleStateClarityScore": { "min": 0.65, "max": 1 }
+      },
+      "steps": [
+        {
+          "tileId": "rotation-puzzle-entry",
+          "label": "Rotation Puzzle Entry",
+          "heading": "east",
+          "traversableTileIds": ["rotation-bridge", "rotation-detour"],
+          "localCues": ["rotation hum", "glyph hint", "speaker:Puzzle", "speaker:Runner"],
+          "visibleLandmarks": [
+            { "id": "rotation-lens", "label": "Rotation Lens", "tileId": "rotation-bridge", "cue": "alignment window" }
+          ],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "rotation-bridge",
+          "candidates": [
+            {
+              "tileId": "rotation-bridge",
+              "targetKind": "frontier",
+              "path": ["rotation-puzzle-entry", "rotation-bridge"],
+              "heuristicScore": 0.18,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.05,
+              "enemyPressure": 0.08,
+              "itemOpportunity": 0.04,
+              "puzzleOpportunity": 0.78,
+              "timingWindow": 0.92,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["rotation aligned", "glyph channel", "speaker:Puzzle"]
+              }
+            },
+            {
+              "tileId": "rotation-detour",
+              "targetKind": "frontier",
+              "path": ["rotation-puzzle-entry", "rotation-detour"],
+              "heuristicScore": 0.12,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.04,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.05,
+              "puzzleOpportunity": 0.16,
+              "timingWindow": 0.16,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["misaligned shell"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "rotation-bridge",
+          "label": "Rotation Bridge",
+          "heading": "north",
+          "traversableTileIds": ["rotation-dais"],
+          "localCues": ["rotation aligned", "glyph channel", "speaker:Puzzle"],
+          "visibleLandmarks": [
+            { "id": "rotation-lens", "label": "Rotation Lens", "tileId": "rotation-dais", "cue": "alignment window" }
+          ],
+          "goal": { "visible": true, "tileId": "rotation-dais", "label": "Puzzle dais" },
+          "moveToTileId": "rotation-dais",
+          "candidates": [
+            {
+              "tileId": "rotation-dais",
+              "targetKind": "goal",
+              "path": ["rotation-bridge", "rotation-dais"],
+              "heuristicScore": 0.12,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.03,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.03,
+              "puzzleOpportunity": 0.88,
+              "timingWindow": 0.95,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["puzzle state", "rotation aligned", "speaker:Puzzle"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "rotation-dais",
+          "label": "Rotation Dais",
+          "heading": "west",
+          "traversableTileIds": ["rotation-core"],
+          "localCues": ["puzzle state", "objective proxy", "speaker:Runner"],
+          "visibleLandmarks": [],
+          "goal": { "visible": true, "tileId": "rotation-core", "label": "Aligned core" },
+          "moveToTileId": "rotation-core",
+          "candidates": [
+            {
+              "tileId": "rotation-core",
+              "targetKind": "goal",
+              "path": ["rotation-dais", "rotation-core"],
+              "heuristicScore": 0.11,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.02,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.02,
+              "puzzleOpportunity": 0.72,
+              "timingWindow": 0.84,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["aligned core", "speaker:Runner"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "labyrinth-tutorial-multi-speaker-intent-india",
+      "label": "Tutorial / multi-speaker intent load",
+      "districtType": "labyrinth-tutorial",
+      "seed": "benchmark-labyrinth-intent-india",
+      "variant": "puzzle-visibility",
+      "expectedMetricBands": {
+        "discoveryEfficiency": { "min": 0.4, "max": 1 },
+        "wardenPressureExposure": { "min": 0.15, "max": 0.7 },
+        "itemUsefulnessScore": { "min": 0.45, "max": 1 },
+        "puzzleStateClarityScore": { "min": 0.55, "max": 1 }
+      },
+      "steps": [
+        {
+          "tileId": "intent-entry",
+          "label": "Intent Entry",
+          "heading": "east",
+          "traversableTileIds": ["intent-brief", "intent-quiet"],
+          "localCues": ["speaker:Runner", "speaker:Warden", "speaker:TrapNet", "speaker:Inventory", "speaker:Puzzle"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "intent-brief",
+          "candidates": [
+            {
+              "tileId": "intent-brief",
+              "targetKind": "frontier",
+              "path": ["intent-entry", "intent-brief"],
+              "heuristicScore": 0.18,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.18,
+              "enemyPressure": 0.34,
+              "itemOpportunity": 0.74,
+              "puzzleOpportunity": 0.68,
+              "timingWindow": 0.46,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 1,
+                "timingCueCount": 0,
+                "localCues": ["speaker:Runner", "speaker:Inventory", "speaker:Puzzle"]
+              }
+            },
+            {
+              "tileId": "intent-quiet",
+              "targetKind": "frontier",
+              "path": ["intent-entry", "intent-quiet"],
+              "heuristicScore": 0.1,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.04,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.08,
+              "puzzleOpportunity": 0.1,
+              "timingWindow": 0.06,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["quiet corridor"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "intent-brief",
+          "label": "Intent Brief",
+          "heading": "north",
+          "traversableTileIds": ["intent-relay"],
+          "localCues": ["speaker:Runner", "speaker:Inventory", "speaker:Puzzle"],
+          "visibleLandmarks": [],
+          "goal": { "visible": false, "tileId": null },
+          "moveToTileId": "intent-relay",
+          "candidates": [
+            {
+              "tileId": "intent-relay",
+              "targetKind": "frontier",
+              "path": ["intent-brief", "intent-relay"],
+              "heuristicScore": 0.14,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.14,
+              "enemyPressure": 0.28,
+              "itemOpportunity": 0.62,
+              "puzzleOpportunity": 0.82,
+              "timingWindow": 0.52,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 1,
+                "timingCueCount": 0,
+                "localCues": ["speaker:Runner", "speaker:Puzzle", "speaker:Inventory"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "intent-relay",
+          "label": "Intent Relay",
+          "heading": "west",
+          "traversableTileIds": ["intent-goal"],
+          "localCues": ["speaker:Runner", "speaker:Puzzle", "speaker:Inventory"],
+          "visibleLandmarks": [],
+          "goal": { "visible": true, "tileId": "intent-goal", "label": "Intent rendezvous" },
+          "moveToTileId": "intent-goal",
+          "candidates": [
+            {
+              "tileId": "intent-goal",
+              "targetKind": "goal",
+              "path": ["intent-relay", "intent-goal"],
+              "heuristicScore": 0.11,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.08,
+              "enemyPressure": 0.22,
+              "itemOpportunity": 0.58,
+              "puzzleOpportunity": 0.71,
+              "timingWindow": 0.42,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 1,
+                "timingCueCount": 0,
+                "localCues": ["speaker:Runner", "speaker:Inventory"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vantage-observatory-three-shell-connector-juliet",
+      "label": "Vantage / three-shell connector reasoning",
+      "districtType": "vantage-observatory",
+      "seed": "benchmark-vantage-three-shell-juliet",
+      "variant": "rotation-timing",
+      "expectedMetricBands": {
+        "discoveryEfficiency": { "min": 0.4, "max": 1 },
+        "backtrackPressure": { "min": 0, "max": 0.5 },
+        "puzzleStateClarityScore": { "min": 0.6, "max": 1 }
+      },
+      "steps": [
+        {
+          "tileId": "three-shell-entry",
+          "label": "Three-Shell Entry",
+          "heading": "east",
+          "traversableTileIds": ["middle-latch", "outer-detour"],
+          "localCues": ["shell-hierarchy: outer-middle-inner", "connector-readable", "objective-proxy", "speaker:Runner", "speaker:Puzzle"],
+          "visibleLandmarks": [
+            { "id": "triad-aperture", "label": "Triad Aperture", "tileId": "middle-latch", "cue": "shell-hierarchy: outer-middle-inner" }
+          ],
+          "goal": { "visible": true, "tileId": "inner-core", "label": "Three-shell core projection" },
+          "moveToTileId": "middle-latch",
+          "candidates": [
+            {
+              "tileId": "middle-latch",
+              "targetKind": "goal",
+              "path": ["three-shell-entry", "middle-latch"],
+              "heuristicScore": 0.18,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.04,
+              "enemyPressure": 0.08,
+              "itemOpportunity": 0.04,
+              "puzzleOpportunity": 0.74,
+              "timingWindow": 0.96,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["connector-readable", "shell-hierarchy: outer-middle-inner", "speaker:Puzzle"]
+              }
+            },
+            {
+              "tileId": "outer-detour",
+              "targetKind": "frontier",
+              "path": ["three-shell-entry", "outer-detour"],
+              "heuristicScore": 0.1,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.03,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.08,
+              "puzzleOpportunity": 0.16,
+              "timingWindow": 0.12,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": ["outer shell echo"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "middle-latch",
+          "label": "Middle Latch",
+          "heading": "north",
+          "traversableTileIds": ["inner-bridge"],
+          "localCues": ["connector-readable", "rotation latch", "speaker:Puzzle"],
+          "visibleLandmarks": [
+            { "id": "latch-beacon", "label": "Latch Beacon", "tileId": "inner-bridge", "cue": "connector-readable" }
+          ],
+          "goal": { "visible": true, "tileId": "inner-core", "label": "Three-shell core projection" },
+          "moveToTileId": "inner-bridge",
+          "candidates": [
+            {
+              "tileId": "inner-bridge",
+              "targetKind": "goal",
+              "path": ["middle-latch", "inner-bridge"],
+              "heuristicScore": 0.14,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.03,
+              "enemyPressure": 0.05,
+              "itemOpportunity": 0.03,
+              "puzzleOpportunity": 0.86,
+              "timingWindow": 0.91,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["connector latch", "objective proxy", "speaker:Runner"]
+              }
+            }
+          ]
+        },
+        {
+          "tileId": "inner-bridge",
+          "label": "Inner Bridge",
+          "heading": "west",
+          "traversableTileIds": ["inner-core"],
+          "localCues": ["objective proxy", "rotation recovered", "speaker:Runner"],
+          "visibleLandmarks": [],
+          "goal": { "visible": true, "tileId": "inner-core", "label": "Three-shell core projection" },
+          "moveToTileId": "inner-core",
+          "candidates": [
+            {
+              "tileId": "inner-core",
+              "targetKind": "goal",
+              "path": ["inner-bridge", "inner-core"],
+              "heuristicScore": 0.11,
+              "visitCount": 0,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.02,
+              "enemyPressure": 0.04,
+              "itemOpportunity": 0.02,
+              "puzzleOpportunity": 0.78,
+              "timingWindow": 0.88,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 0,
+                "itemCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
+                "localCues": ["inner shell clear", "speaker:Runner"]
               }
             }
           ]

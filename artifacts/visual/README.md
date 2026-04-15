@@ -2,12 +2,27 @@
 
 Generated proof packets stay under `tmp/captures/mazer-visual-proof/` to match the ATLAS path policy for disposable visual artifacts.
 
+Single-command health pack:
+
+- `npm run health` is the default future-lane gate pack for `codex/mazer-d2-learning-scorer`.
+- It runs architecture check, tests, build, visual proof, visual canaries, future-runtime content-proof, the dedicated two-shell proof, the three-shell proof, and a runtime eval summary in that order.
+- The wrapper fails fast, prints the broken gate name, and writes a short machine-readable summary to `tmp/gates/future-lane-health-summary.json`.
+- `npm run health -- --with-headless-smoke true` adds an optional blessed headless smoke on the benchmark-pack lane without changing the default matrix.
+
 Commands:
 
+- `npm run health`
+- `npm run health -- --with-headless-smoke true`
+- `npm run gate:future-lane`
 - `npm run visual:proof`
 - `npm run visual:canaries`
 - `npm run visual:index`
 - `npm run visual:compare`
+- `npm run future:content-proof`
+- `npm run future:two-shell-proof`
+- `npm run future:three-shell-proof`
+- `npm run eval:runtime`
+- `npm run lifeline:headless-smoke`
 - `node scripts/visual/future-runtime-run.mjs`
 - `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime`
 - `node scripts/visual/index-artifacts.mjs --future-artifact-root tmp/captures/mazer-future-runtime --compare`
@@ -102,6 +117,7 @@ Future runtime lane:
 - Their baseline pointer is separate from the visual-proof baseline and lives at `artifacts/visual/future-runtime-baseline.json`.
 - `node scripts/visual/future-runtime-run.mjs --run content-proof` is the shared content-proof workflow for this lane; it captures `future-phaser.html` plus the non-baselined `planet3d-content-proof` packet set under the `content-proof` run id.
 - `node scripts/visual/future-runtime-run.mjs --run two-shell-proof` is the dedicated future-baseline workflow; it captures only `planet3d-two-shell-proof` under the `two-shell-proof` run id.
+- `node scripts/visual/future-runtime-run.mjs --run three-shell-proof` is the merged three-shell verification workflow; it captures only `planet3d-three-shell-proof` under the `three-shell-proof` run id.
 - The content-proof packet contract now includes `trapInferencePass`, `wardenReadabilityPass`, `itemProxyPass`, `puzzleProxyPass`, and `signalOverloadPass`, with world pings kept subordinate to the readable intent feed.
 - `scripts/visual/index-artifacts.mjs` accepts `--future-artifact-root tmp/captures/mazer-future-runtime` so index/compare/promote stay on the future lane without touching the visual-proof baseline.
 - Future baseline promotion is lane-specific: use `--run-id two-shell-proof` so `artifacts/visual/future-runtime-baseline.json` points only at the dedicated two-shell packet set.
