@@ -153,4 +153,4 @@ Policy scorer:
 - The explorer remains the deterministic safety kernel. It owns move legality, local observation limits, goal promotion, committed trail truth, and rotation legality.
 - `PolicyScorer` is an optional ranking layer that scores only the legal candidate set already produced by the explorer.
 - Proof packets now include scorer metadata and training-ready episode logs so frontier value, trap suspicion, enemy risk, item value, and rotation timing can learn without giving the scorer full-manifest truth.
-- `scripts/training/promote-weights.mjs` can derive a candidate directly from the benchmark-pack headless runner when `--candidate` is omitted, then bless it only if the full governed matrix stays green.
+- `scripts/training/promote-weights.mjs` is review-first: it writes per-candidate manual blessing artifacts by default and only updates the blessed advisory id when `--candidate-id <id> --bless` is supplied explicitly.

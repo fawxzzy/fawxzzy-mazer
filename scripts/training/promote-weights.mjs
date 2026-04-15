@@ -1,70 +1,55 @@
 import { mkdir } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  compareMetrics,
+  getCurrentBlessedWeightRecord,
   parseCliArgs,
   readJson,
-  resolvePlaybookTuningWeights,
-  resolveRuntimeBenchmarkPack,
-  runCommand,
   writeJson
 } from './common.mjs';
-
-/**
- * @typedef {import('../../src/mazer-core/eval').RuntimeEvalSuiteSummary} RuntimeEvalSuiteSummary
- * @typedef {import('../../src/mazer-core/playbook/tuning').PlaybookTuningWeights} PlaybookTuningWeights
- * @typedef {import('../../src/mazer-core/playbook/tuning').PlaybookWeightRegistry} PlaybookWeightRegistry
- * @typedef {import('../../src/mazer-core/playbook/tuning').WeightPromotionDecision} WeightPromotionDecision
- * @typedef {import('../../src/mazer-core/playbook/tuning').PromotionGateStatus} PromotionGateStatus
- */
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const DEFAULT_REGISTRY_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'playbook-weight-registry.json');
-const DEFAULT_EVAL_OUTPUT_PATH = resolve(REPO_ROOT, 'tmp', 'eval', 'runtime-eval-summary.json');
-const DEFAULT_CANDIDATE_OUTPUT_PATH = resolve(REPO_ROOT, 'tmp', 'training', 'governed-candidate', 'candidate-weights.json');
-const DEFAULT_CANDIDATE_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'headless-runner', 'governed-candidate');
-const DEFAULT_FUTURE_ARTIFACT_ROOT = 'tmp/captures/mazer-future-runtime';
-const DEFAULT_FUTURE_BASELINE_POINTER = 'artifacts/visual/future-runtime-baseline.json';
-const DEFAULT_TWO_SHELL_RUN_ID = 'two-shell-proof';
-const DEFAULT_THREE_SHELL_RUN_ID = 'three-shell-proof';
+const DEFAULT_REVIEW_PACK_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'manual-blessing-review-pack.json');
+const DEFAULT_REVIEW_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'training', 'manual-blessing-review-pack');
 
-const PROMOTION_GATES = [
-  { key: 'architectureCheck', command: 'npm', args: ['run', 'architecture:check'] },
-  { key: 'tests', command: 'npm', args: ['test'] },
-  { key: 'build', command: 'npm', args: ['run', 'build'] },
-  { key: 'visualProof', command: 'npm', args: ['run', 'visual:proof'] },
-  { key: 'visualCanaries', command: 'npm', args: ['run', 'visual:canaries'] }
+const SURFACE_DEFINITIONS = [
+  {
+    key: 'runtimeEvalBands',
+    candidateLabel: 'runtime eval bands'
+  },
+  {
+    key: 'visualProof',
+    candidateLabel: 'visual proof',
+    gateKeys: ['visualProof']
+  },
+  {
+    key: 'visualCanaries',
+    candidateLabel: 'visual canaries',
+    gateKeys: ['visualCanaries']
+  },
+  {
+    key: 'contentProof',
+    candidateLabel: 'content proof',
+    gateKeys: ['contentProof', 'futureRuntimeContentProof']
+  },
+  {
+    key: 'twoShellProof',
+    candidateLabel: 'two-shell proof',
+    gateKeys: ['twoShellProof']
+  },
+  {
+    key: 'threeShellProof',
+    candidateLabel: 'three-shell proof',
+    gateKeys: ['threeShellProof']
+  }
 ];
 
-const metricDirection = {
-  discoveryEfficiency: 'up',
-  backtrackPressure: 'down',
-  trapFalsePositiveRate: 'down',
-  trapFalseNegativeRate: 'down',
-  wardenPressureExposure: 'down',
-  itemUsefulnessScore: 'up',
-  puzzleStateClarityScore: 'up'
-};
-
-const clampWeight = (value) => Number(Math.min(1.6, Math.max(0.4, Number(value) || 1)).toFixed(4));
 const toRepoPath = (absolutePath) => relative(REPO_ROOT, absolutePath).replace(/\\/g, '/');
 
-const normalizeWeights = (weights) => {
-  const source = resolvePlaybookTuningWeights(weights) ?? {};
-  return {
-    frontierValue: clampWeight(source.frontierValue ?? 1),
-    backtrackUrgency: clampWeight(source.backtrackUrgency ?? 1),
-    trapSuspicion: clampWeight(source.trapSuspicion ?? 1),
-    enemyRisk: clampWeight(source.enemyRisk ?? 1),
-    itemValue: clampWeight(source.itemValue ?? 1),
-    puzzleValue: clampWeight(source.puzzleValue ?? 1),
-    rotationTiming: clampWeight(source.rotationTiming ?? 1)
-  };
-};
-
-/** @returns {PlaybookWeightRegistry} */
 const createEmptyRegistry = () => ({
   schemaVersion: 1,
   updatedAt: new Date(0).toISOString(),
@@ -73,323 +58,365 @@ const createEmptyRegistry = () => ({
   blessed: []
 });
 
-/** @param {string} benchmarkPackId @returns {RuntimeEvalSuiteSummary} */
-const createMissingEvalSummary = (benchmarkPackId) => ({
-  schemaVersion: 1,
-  suiteId: 'mazer-core-deterministic-runtime-eval',
-  benchmarkPackId,
-  summaryId: 'eval-missing',
-  runId: 'eval-missing',
-  generatedAt: new Date().toISOString(),
-  scenarioCount: 0,
-  scenarioIds: [],
-  replayIntegrity: {
-    verifiedScenarioCount: 0,
-    failedScenarioCount: 0,
-    allScenariosVerified: false
-  },
-  metrics: {
-    discoveryEfficiency: 0,
-    backtrackPressure: 1,
-    trapFalsePositiveRate: 1,
-    trapFalseNegativeRate: 1,
-    wardenPressureExposure: 1,
-    itemUsefulnessScore: 0,
-    puzzleStateClarityScore: 0
-  },
-  support: {
-    rowsEvaluated: 0,
-    discoverySamples: 0,
-    backtrackSamples: 0,
-    trapPredictedPositiveCount: 0,
-    trapActualPositiveCount: 0,
-    trapFalsePositiveCount: 0,
-    trapFalseNegativeCount: 0,
-    wardenExposureSamples: 0,
-    itemPositiveSamples: 0,
-    puzzlePositiveSamples: 0
-  },
-  metricBandValidation: {
-    passedScenarioCount: 0,
-    failedScenarioCount: 0,
-    allScenariosWithinBands: false
-  },
-  scenarioSummaries: []
-});
+const resolveRepoPath = (value) => {
+  if (typeof value !== 'string' || value.length === 0) {
+    return null;
+  }
 
-/** @param {Partial<PlaybookTuningWeights> | null | undefined} previousWeights @param {Partial<PlaybookTuningWeights> | null | undefined} nextWeights */
-const createWeightDiffReport = (previousWeights, nextWeights) => {
-  const previous = normalizeWeights(previousWeights);
-  const next = normalizeWeights(nextWeights);
-  const entry = (prev, current) => ({
-    previous: prev,
-    next: current,
-    delta: Number((current - prev).toFixed(4))
-  });
-
-  return {
-    frontierValue: entry(previous.frontierValue, next.frontierValue),
-    backtrackUrgency: entry(previous.backtrackUrgency, next.backtrackUrgency),
-    trapSuspicion: entry(previous.trapSuspicion, next.trapSuspicion),
-    enemyRisk: entry(previous.enemyRisk, next.enemyRisk),
-    itemValue: entry(previous.itemValue, next.itemValue),
-    puzzleValue: entry(previous.puzzleValue, next.puzzleValue),
-    rotationTiming: entry(previous.rotationTiming, next.rotationTiming)
-  };
+  return isAbsolute(value) ? value : resolve(REPO_ROOT, value);
 };
 
-/** @param {PlaybookWeightRegistry} registry */
-const getCurrentBlessedRecord = (registry) => (
-  registry.currentBlessedRecordId
-    ? registry.blessed.find((record) => record.recordId === registry.currentBlessedRecordId) ?? null
-    : registry.blessed.at(-1) ?? null
+const resolveCandidateEvalSummaryPath = (record) => resolveRepoPath(
+  record?.metadata?.artifactPaths?.evalSummaryPath
+  ?? record?.metadata?.evalSummary?.path
 );
 
-/** @param {RuntimeEvalSuiteSummary['metrics'] | null} baseline @param {RuntimeEvalSuiteSummary['metrics']} candidate */
-const compareMetrics = (baseline, candidate) => {
-  if (!baseline) {
+const resolveGateValue = (record, keys) => {
+  for (const key of keys) {
+    const value = record?.metadata?.gates?.[key];
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+
+  return null;
+};
+
+const loadManualBlessingReviewPack = async (reviewPackPath = DEFAULT_REVIEW_PACK_PATH) => {
+  const pack = await readJson(reviewPackPath);
+
+  return {
+    ...pack,
+    candidateIds: Array.isArray(pack.candidateIds) ? [...pack.candidateIds] : [],
+    requiredReviewSurfaces: Array.isArray(pack.requiredReviewSurfaces)
+      ? [...pack.requiredReviewSurfaces]
+      : SURFACE_DEFINITIONS.map((surface) => surface.key),
+    outputRoot: typeof pack.outputRoot === 'string' ? pack.outputRoot : toRepoPath(DEFAULT_REVIEW_OUTPUT_ROOT)
+  };
+};
+
+const resolveReviewCandidates = (registry, reviewPack) => {
+  const preferredIds = new Set(reviewPack.candidateIds ?? []);
+  const latestByCandidateId = new Map();
+
+  for (const record of registry?.candidates ?? []) {
+    const candidateId = record?.metadata?.candidateId;
+    const packId = record?.metadata?.packId;
+    if (!candidateId || packId !== reviewPack.sourcePackId) {
+      continue;
+    }
+
+    if (preferredIds.size > 0 && !preferredIds.has(candidateId)) {
+      continue;
+    }
+
+    latestByCandidateId.set(candidateId, record);
+  }
+
+  const orderedCandidateIds = preferredIds.size > 0
+    ? [...preferredIds]
+    : [...latestByCandidateId.keys()].sort();
+
+  return orderedCandidateIds
+    .map((candidateId) => latestByCandidateId.get(candidateId))
+    .filter(Boolean);
+};
+
+const mapScenarioSummaries = (evalSummary) => new Map(
+  (evalSummary?.scenarioSummaries ?? []).map((scenarioSummary) => [scenarioSummary.scenarioId, scenarioSummary])
+);
+
+const buildSurfaceComparisons = ({ baselineRecord, baselineEvalSummary, candidateRecord, candidateEvalSummary }) => (
+  SURFACE_DEFINITIONS.map((surface) => {
+    const baselineStatus = surface.key === 'runtimeEvalBands'
+      ? baselineEvalSummary?.metricBandValidation?.allScenariosWithinBands ?? null
+      : resolveGateValue(baselineRecord, surface.gateKeys ?? []);
+    const candidateStatus = surface.key === 'runtimeEvalBands'
+      ? candidateEvalSummary?.metricBandValidation?.allScenariosWithinBands ?? false
+      : resolveGateValue(candidateRecord, surface.gateKeys ?? []);
+
     return {
-      improved: Object.keys(candidate),
-      regressed: [],
-      unchanged: []
+      surfaceKey: surface.key,
+      label: surface.candidateLabel,
+      baselineStatus,
+      candidateStatus,
+      verdict: candidateStatus === true ? 'kept-green' : 'failed',
+      note: baselineStatus === null
+        ? 'current blessed baseline does not record this surface separately'
+        : undefined
     };
+  })
+);
+
+const describeScenarioDelta = ({ scenarioId, districtType, comparison, bandPassed, replayVerified }) => {
+  const parts = [];
+
+  if (comparison.improved.length > 0) {
+    parts.push(`improved ${comparison.improved.join(', ')}`);
   }
 
-  const improved = [];
-  const regressed = [];
-  const unchanged = [];
+  if (comparison.regressed.length > 0) {
+    parts.push(`worsened ${comparison.regressed.join(', ')}`);
+  }
 
-  for (const metricName of Object.keys(candidate)) {
-    const direction = metricDirection[metricName];
-    const baselineValue = baseline[metricName];
-    const candidateValue = candidate[metricName];
+  if (!bandPassed) {
+    parts.push('fell outside expected metric bands');
+  }
 
-    if (candidateValue === baselineValue) {
-      unchanged.push(metricName);
+  if (!replayVerified) {
+    parts.push('replay verification failed');
+  }
+
+  if (parts.length === 0) {
+    parts.push('kept shared metrics green');
+  }
+
+  return `${scenarioId} (${districtType}): ${parts.join('; ')}`;
+};
+
+const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
+  const baselineById = mapScenarioSummaries(baselineEvalSummary);
+  const candidateById = mapScenarioSummaries(candidateEvalSummary);
+  const deltas = [];
+
+  for (const candidateSummary of candidateEvalSummary?.scenarioSummaries ?? []) {
+    const baselineSummary = baselineById.get(candidateSummary.scenarioId);
+
+    if (!baselineSummary) {
+      const keptGreen = candidateSummary?.metricBandValidation?.passed === true
+        && candidateSummary?.replayVerified === true;
+      deltas.push({
+        scenarioId: candidateSummary.scenarioId,
+        districtType: candidateSummary.districtType ?? 'unknown',
+        newCoverage: true,
+        verdict: keptGreen ? 'kept-green' : 'worsened',
+        improved: [],
+        worsened: keptGreen ? [] : ['new coverage failed expected validation'],
+        summary: `${candidateSummary.scenarioId} (${candidateSummary.districtType ?? 'unknown'}): new benchmark-v2 coverage ${keptGreen ? 'kept green' : 'failed validation'}`
+      });
       continue;
     }
 
-    const isImproved = direction === 'up'
-      ? candidateValue > baselineValue
-      : candidateValue < baselineValue;
+    const comparison = compareMetrics(
+      baselineSummary?.metrics ?? null,
+      candidateSummary?.metrics ?? {}
+    );
+    const bandPassed = candidateSummary?.metricBandValidation?.passed === true;
+    const replayVerified = candidateSummary?.replayVerified === true;
+    const verdict = comparison.regressed.length > 0 || !bandPassed || !replayVerified
+      ? 'worsened'
+      : comparison.improved.length > 0
+        ? 'improved'
+        : 'kept-green';
 
-    if (isImproved) {
-      improved.push(metricName);
+    deltas.push({
+      scenarioId: candidateSummary.scenarioId,
+      districtType: candidateSummary.districtType ?? 'unknown',
+      newCoverage: false,
+      verdict,
+      improved: [...comparison.improved],
+      worsened: [
+        ...comparison.regressed,
+        ...(bandPassed ? [] : ['expected metric bands']),
+        ...(replayVerified ? [] : ['replay verification'])
+      ],
+      summary: describeScenarioDelta({
+        scenarioId: candidateSummary.scenarioId,
+        districtType: candidateSummary.districtType ?? 'unknown',
+        comparison,
+        bandPassed,
+        replayVerified
+      })
+    });
+  }
+
+  for (const baselineSummary of baselineEvalSummary?.scenarioSummaries ?? []) {
+    if (candidateById.has(baselineSummary.scenarioId)) {
       continue;
     }
 
-    regressed.push(metricName);
+    deltas.push({
+      scenarioId: baselineSummary.scenarioId,
+      districtType: baselineSummary.districtType ?? 'unknown',
+      newCoverage: false,
+      verdict: 'worsened',
+      improved: [],
+      worsened: ['missing benchmark coverage'],
+      summary: `${baselineSummary.scenarioId} (${baselineSummary.districtType ?? 'unknown'}): missing from candidate benchmark coverage`
+    });
   }
 
-  return {
-    improved,
-    regressed,
-    unchanged
-  };
+  return deltas;
 };
 
-/** @param {{ key: string, command: string, args: string[] }} gate */
-const runPromotionGate = (gate) => {
-  const result = runCommand(gate.command, gate.args, { cwd: REPO_ROOT });
-  return {
-    key: gate.key,
-    ok: result.ok,
-    stdout: result.stdout,
-    stderr: result.stderr
-  };
-};
-
-/**
- * @param {{
- *   futureArtifactRoot: string;
- *   futureBaselinePointer: string;
- *   twoShellRunId: string;
- *   threeShellRunId: string;
- * }} params
- */
-const runFutureRuntimeGate = async ({
-  futureArtifactRoot,
-  futureBaselinePointer,
-  twoShellRunId,
-  threeShellRunId
+const buildBlessingReviewArtifact = ({
+  reviewPack,
+  baselineRecord,
+  baselineEvalSummary,
+  candidateRecord,
+  candidateEvalSummary,
+  createdAt,
+  blessRequested
 }) => {
-  const mainBaselinePath = resolve(REPO_ROOT, 'artifacts', 'visual', 'baseline.json');
-  const baselineBefore = await readJson(mainBaselinePath);
-  const commands = [
-    ['node', ['scripts/visual/future-runtime-run.mjs', '--run', 'content-proof', '--skip-build', 'true']],
-    ['node', ['scripts/visual/future-runtime-run.mjs', '--run', twoShellRunId, '--skip-build', 'true']],
-    ['node', ['scripts/visual/future-runtime-run.mjs', '--run', threeShellRunId, '--skip-build', 'true']],
-    ['node', [
-      'scripts/visual/index-artifacts.mjs',
-      '--future-artifact-root',
-      futureArtifactRoot,
-      '--promote-baseline',
-      '--run-id',
-      twoShellRunId
-    ]],
-    ['node', [
-      'scripts/visual/index-artifacts.mjs',
-      '--future-artifact-root',
-      futureArtifactRoot,
-      '--compare',
-      '--run-id',
-      twoShellRunId
-    ]]
+  const surfaceComparisons = buildSurfaceComparisons({
+    baselineRecord,
+    baselineEvalSummary,
+    candidateRecord,
+    candidateEvalSummary
+  });
+  const metricComparison = compareMetrics(
+    baselineRecord?.metadata?.evalSummary?.metrics ?? null,
+    candidateEvalSummary?.metrics ?? candidateRecord?.metadata?.evalSummary?.metrics ?? {}
+  );
+  const scenarioDeltas = buildScenarioDeltas({
+    baselineEvalSummary,
+    candidateEvalSummary
+  });
+  const technicalBlockers = [];
+
+  if (!candidateEvalSummary) {
+    technicalBlockers.push('candidate eval summary could not be loaded');
+  }
+
+  if (!baselineEvalSummary?.scenarioSummaries?.length) {
+    technicalBlockers.push('current blessed baseline is missing scenario-level eval detail');
+  }
+
+  if (candidateRecord?.governanceDecision === 'rejected' || candidateRecord?.status === 'rejected') {
+    technicalBlockers.push('candidate is not green in the governed registry');
+  }
+
+  if (candidateEvalSummary?.benchmarkPackId !== reviewPack.benchmarkPackId) {
+    technicalBlockers.push(
+      `expected benchmark pack ${reviewPack.benchmarkPackId}, received ${candidateEvalSummary?.benchmarkPackId ?? 'missing'}`
+    );
+  }
+
+  if (candidateEvalSummary?.replayIntegrity?.allScenariosVerified !== true) {
+    technicalBlockers.push('runtime eval replay integrity is not green');
+  }
+
+  const failingSurfaces = surfaceComparisons
+    .filter((surface) => surface.candidateStatus !== true)
+    .map((surface) => surface.surfaceKey);
+  if (failingSurfaces.length > 0) {
+    technicalBlockers.push(`required governed surfaces failed: ${failingSurfaces.join(', ')}`);
+  }
+
+  if (scenarioDeltas.length === 0) {
+    technicalBlockers.push('human-readable scenario deltas were not generated');
+  }
+
+  const blockedReasons = [
+    ...technicalBlockers,
+    ...(!blessRequested
+      ? ['auto-promotion disabled: rerun with --candidate-id <id> --bless after reviewing this artifact']
+      : [])
   ];
 
-  const outputs = [];
-  for (const [command, args] of commands) {
-    const result = runCommand(command, args, { cwd: REPO_ROOT });
-    outputs.push({
-      command,
-      args,
-      ok: result.ok,
-      stdout: result.stdout,
-      stderr: result.stderr
-    });
-
-    if (!result.ok) {
-      return {
-        key: 'futureRuntimeContentProof',
-        ok: false,
-        stdout: outputs.map((entry) => entry.stdout).filter(Boolean).join('\n'),
-        stderr: outputs.map((entry) => entry.stderr).filter(Boolean).join('\n'),
-        details: {
-          futureArtifactRoot,
-          futureBaselinePointer,
-          twoShellRunId,
-          threeShellRunId,
-          commands: outputs
-        }
-      };
-    }
-  }
-
-  const baselineAfter = await readJson(mainBaselinePath);
-  if (JSON.stringify(baselineBefore) !== JSON.stringify(baselineAfter)) {
-    return {
-      key: 'futureRuntimeContentProof',
-      ok: false,
-      stdout: outputs.map((entry) => entry.stdout).filter(Boolean).join('\n'),
-      stderr: 'Main visual baseline pointer changed during future-runtime promotion.',
-      details: {
-        futureArtifactRoot,
-        futureBaselinePointer,
-        twoShellRunId,
-        threeShellRunId,
-        commands: outputs
-      }
-    };
-  }
-
-  const futurePointer = await readJson(resolve(REPO_ROOT, futureBaselinePointer));
-  const scenarioIds = [...(futurePointer?.scenarioIds ?? [])].sort();
-  const laneCorrect = futurePointer?.runId === twoShellRunId
-    && scenarioIds.length === 1
-    && scenarioIds[0] === 'planet3d-two-shell-proof';
-
-  if (!laneCorrect) {
-    return {
-      key: 'futureRuntimeContentProof',
-      ok: false,
-      stdout: outputs.map((entry) => entry.stdout).filter(Boolean).join('\n'),
-      stderr: `Future baseline pointer is not lane-correct for ${twoShellRunId}.`,
-      details: {
-        futureArtifactRoot,
-        futureBaselinePointer,
-        twoShellRunId,
-        threeShellRunId,
-        futurePointer,
-        commands: outputs
-      }
-    };
-  }
-
   return {
-    key: 'futureRuntimeContentProof',
-    ok: true,
-    stdout: outputs.map((entry) => entry.stdout).filter(Boolean).join('\n'),
-    stderr: '',
-    details: {
-      futureArtifactRoot,
-      futureBaselinePointer,
-      twoShellRunId,
-      threeShellRunId,
-      futurePointer,
-      commands: outputs
-    }
+    schemaVersion: 1,
+    reviewPackId: reviewPack.reviewPackId,
+    sourcePackId: reviewPack.sourcePackId,
+    createdAt,
+    blessRequested,
+    manualBlessingReady: technicalBlockers.length === 0,
+    baseline: {
+      recordId: baselineRecord?.recordId ?? null,
+      seedPackId: baselineRecord?.metadata?.seedPackId ?? null,
+      benchmarkPackId: baselineEvalSummary?.benchmarkPackId ?? baselineRecord?.metadata?.seedPackId ?? null,
+      runId: baselineRecord?.metadata?.runId ?? null,
+      evalSummaryPath: resolveCandidateEvalSummaryPath(baselineRecord)
+        ? toRepoPath(resolveCandidateEvalSummaryPath(baselineRecord))
+        : null
+    },
+    candidate: {
+      recordId: candidateRecord.recordId,
+      candidateId: candidateRecord?.metadata?.candidateId ?? null,
+      label: candidateRecord?.metadata?.label ?? candidateRecord?.metadata?.candidateId ?? candidateRecord.recordId,
+      runId: candidateRecord?.metadata?.runId ?? null,
+      benchmarkPackId: candidateEvalSummary?.benchmarkPackId ?? candidateRecord?.metadata?.seedPackId ?? null,
+      evalSummaryPath: resolveCandidateEvalSummaryPath(candidateRecord)
+        ? toRepoPath(resolveCandidateEvalSummaryPath(candidateRecord))
+        : null
+    },
+    keptGreen: [
+      ...surfaceComparisons
+        .filter((surface) => surface.candidateStatus === true)
+        .map((surface) => surface.surfaceKey),
+      ...scenarioDeltas
+        .filter((delta) => delta.verdict === 'kept-green')
+        .map((delta) => delta.summary)
+    ],
+    improved: [
+      ...metricComparison.improved.map((metricName) => `metric:${metricName}`),
+      ...scenarioDeltas
+        .filter((delta) => delta.verdict === 'improved')
+        .map((delta) => delta.summary)
+    ],
+    worsened: [
+      ...metricComparison.regressed.map((metricName) => `metric:${metricName}`),
+      ...scenarioDeltas
+        .filter((delta) => delta.verdict === 'worsened')
+        .map((delta) => delta.summary)
+    ],
+    blockedReasons,
+    comparisonContext: {
+      aggregateMetricNote: baselineRecord?.metadata?.seedPackId === reviewPack.benchmarkPackId
+        ? 'aggregate runtime metrics compare against the same benchmark pack'
+        : `aggregate runtime metrics span ${baselineRecord?.metadata?.seedPackId ?? 'unknown'} -> ${reviewPack.benchmarkPackId}; shared-scenario deltas should drive the blessing review`,
+      sharedScenarioCount: scenarioDeltas.filter((delta) => !delta.newCoverage).length,
+      addedScenarioCount: scenarioDeltas.filter((delta) => delta.newCoverage).length
+    },
+    surfaceComparisons,
+    metricComparison,
+    humanReadableScenarioDeltas: scenarioDeltas.map((delta) => delta.summary),
+    scenarioDeltas
   };
 };
 
-/** @param {Record<string, string | boolean>} args */
-const resolveCandidateInput = async (args) => {
-  if (typeof args.candidate === 'string') {
-    const candidatePath = resolve(REPO_ROOT, args.candidate);
-    const candidateInput = await readJson(candidatePath);
-    return {
-      candidatePath,
-      candidateInput,
-      candidateManifestPath: null,
-      sourceRunId: candidateInput.runId ?? candidateInput.metadata?.runId ?? null
-    };
-  }
+const applyManualBlessing = ({ registry, candidateRecord, reviewArtifactPath, updatedAt }) => {
+  const blessedRecord = JSON.parse(JSON.stringify(candidateRecord));
+  blessedRecord.status = 'blessed';
+  blessedRecord.notes = [
+    ...(blessedRecord.notes ?? []),
+    `manual blessing review artifact: ${toRepoPath(reviewArtifactPath)}`
+  ];
 
-  const candidateOutputRoot = typeof args['candidate-output-root'] === 'string'
-    ? resolve(REPO_ROOT, args['candidate-output-root'])
-    : DEFAULT_CANDIDATE_OUTPUT_ROOT;
-  const candidatePath = typeof args['candidate-out'] === 'string'
-    ? resolve(REPO_ROOT, args['candidate-out'])
-    : DEFAULT_CANDIDATE_OUTPUT_PATH;
-  const candidateRunId = typeof args['candidate-run'] === 'string'
-    ? args['candidate-run']
-    : 'governed-candidate';
-
-  const runnerResult = runCommand('node', [
-    'scripts/lifeline/headless-runner.mjs',
-    '--run',
-    candidateRunId,
-    '--output-root',
-    toRepoPath(candidateOutputRoot)
-  ], { cwd: REPO_ROOT });
-
-  if (!runnerResult.ok) {
-    throw new Error(
-      `Failed to generate benchmark-pack candidate inputs.\n${runnerResult.stderr || runnerResult.stdout}`
-    );
-  }
-
-  const manifestPath = resolve(candidateOutputRoot, 'manifest.json');
-  const manifest = await readJson(manifestPath);
-  const datasetPaths = (manifest.scenarios ?? [])
-    .map((scenario) => scenario?.paths?.datasetPath)
-    .filter(Boolean);
-
-  if (datasetPaths.length === 0) {
-    throw new Error('Benchmark-pack candidate generation did not emit any replay-linked datasets.');
-  }
-
-  await mkdir(dirname(candidatePath), { recursive: true });
-  const tuningResult = runCommand('node', [
-    'scripts/training/tune-scorer.mjs',
-    '--dataset',
-    datasetPaths.join(','),
-    '--output',
-    toRepoPath(candidatePath)
-  ], { cwd: REPO_ROOT });
-
-  if (!tuningResult.ok) {
-    throw new Error(
-      `Failed to derive governed candidate weights.\n${tuningResult.stderr || tuningResult.stdout}`
-    );
-  }
-
-  const candidateInput = await readJson(candidatePath);
   return {
-    candidatePath,
-    candidateInput,
-    candidateManifestPath: manifestPath,
-    sourceRunId: manifest.runId ?? candidateRunId
+    schemaVersion: registry.schemaVersion ?? 1,
+    updatedAt: updatedAt ?? new Date().toISOString(),
+    currentBlessedRecordId: blessedRecord.recordId,
+    candidates: [...(registry.candidates ?? [])],
+    blessed: [
+      ...(registry.blessed ?? []).filter((record) => record.recordId !== blessedRecord.recordId),
+      blessedRecord
+    ]
   };
+};
+
+const buildBlessingReviewArtifacts = ({
+  reviewPack,
+  registry,
+  baselineEvalSummary,
+  candidateEvalSummaries,
+  createdAt,
+  blessRequested
+}) => {
+  const baselineRecord = getCurrentBlessedWeightRecord(registry);
+  const candidates = resolveReviewCandidates(registry, reviewPack);
+
+  return candidates.map((candidateRecord) => (
+    buildBlessingReviewArtifact({
+      reviewPack,
+      baselineRecord,
+      baselineEvalSummary,
+      candidateRecord,
+      candidateEvalSummary: candidateEvalSummaries.get(candidateRecord.recordId) ?? null,
+      createdAt,
+      blessRequested
+    })
+  ));
 };
 
 const main = async () => {
@@ -397,153 +424,140 @@ const main = async () => {
   const registryPath = typeof args.registry === 'string'
     ? resolve(REPO_ROOT, args.registry)
     : DEFAULT_REGISTRY_PATH;
-  const evalOutputPath = typeof args['eval-out'] === 'string'
-    ? resolve(REPO_ROOT, args['eval-out'])
-    : DEFAULT_EVAL_OUTPUT_PATH;
-  const futureArtifactRoot = typeof args['future-artifact-root'] === 'string'
-    ? args['future-artifact-root']
-    : DEFAULT_FUTURE_ARTIFACT_ROOT;
-  const futureBaselinePointer = typeof args['future-baseline-pointer'] === 'string'
-    ? args['future-baseline-pointer']
-    : DEFAULT_FUTURE_BASELINE_POINTER;
-  const twoShellRunId = typeof args['future-two-shell-run'] === 'string'
-    ? args['future-two-shell-run']
-    : DEFAULT_TWO_SHELL_RUN_ID;
-  const threeShellRunId = typeof args['future-three-shell-run'] === 'string'
-    ? args['future-three-shell-run']
-    : DEFAULT_THREE_SHELL_RUN_ID;
-  const benchmarkPack = resolveRuntimeBenchmarkPack();
-  const expectedScenarioIds = benchmarkPack.scenarios.map((scenario) => scenario.id);
-  const candidate = await resolveCandidateInput(args);
-  const candidateWeights = normalizeWeights(candidate.candidateInput);
+  const reviewPackPath = typeof args['review-pack'] === 'string'
+    ? resolve(REPO_ROOT, args['review-pack'])
+    : DEFAULT_REVIEW_PACK_PATH;
+  const reviewPack = await loadManualBlessingReviewPack(reviewPackPath);
+  const reviewOutputRoot = typeof args['review-out-root'] === 'string'
+    ? resolve(REPO_ROOT, args['review-out-root'])
+    : resolve(REPO_ROOT, reviewPack.outputRoot ?? toRepoPath(DEFAULT_REVIEW_OUTPUT_ROOT));
+  const blessRequested = args.bless === true;
+  const candidateId = typeof args['candidate-id'] === 'string' ? args['candidate-id'] : null;
   const registry = await readJson(registryPath).catch(() => createEmptyRegistry());
-  const currentBlessed = getCurrentBlessedRecord(registry);
-  const gateResults = PROMOTION_GATES.map((gate) => runPromotionGate(gate));
-  const futureRuntimeGate = await runFutureRuntimeGate({
-    futureArtifactRoot,
-    futureBaselinePointer,
-    twoShellRunId,
-    threeShellRunId
-  });
-  gateResults.push(futureRuntimeGate);
+  const baselineRecord = getCurrentBlessedWeightRecord(registry);
 
-  const evalGate = runCommand('node', [
-    'scripts/eval/run-eval.mjs',
-    '--out',
-    toRepoPath(evalOutputPath),
-    '--weights',
-    toRepoPath(candidate.candidatePath)
-  ], { cwd: REPO_ROOT });
-  gateResults.push({
-    key: 'runtimeEval',
-    ok: evalGate.ok,
-    stdout: evalGate.stdout,
-    stderr: evalGate.stderr
-  });
-
-  const gateStatus = Object.fromEntries(gateResults.map((result) => [result.key, result.ok]));
-  const evalSummary = await readJson(evalOutputPath).catch(() => createMissingEvalSummary(benchmarkPack.packId));
-  const metricComparison = compareMetrics(
-    currentBlessed?.metadata?.evalSummary?.metrics ?? null,
-    evalSummary.metrics
-  );
-  const reasons = [];
-
-  const failedGateKeys = gateResults.filter((result) => !result.ok).map((result) => result.key);
-  if (failedGateKeys.length > 0) {
-    reasons.push(`failed gates: ${failedGateKeys.join(', ')}`);
+  if (!baselineRecord) {
+    throw new Error('No blessed advisory baseline exists in the weight registry.');
   }
 
-  if (evalSummary.benchmarkPackId !== benchmarkPack.packId) {
-    reasons.push(`expected benchmark pack ${benchmarkPack.packId}, received ${evalSummary.benchmarkPackId}`);
+  const baselineEvalSummaryPath = resolveCandidateEvalSummaryPath(baselineRecord);
+  const baselineEvalSummary = baselineEvalSummaryPath
+    ? await readJson(baselineEvalSummaryPath).catch(() => null)
+    : null;
+  const reviewCandidates = resolveReviewCandidates(registry, reviewPack);
+
+  if (reviewCandidates.length === 0) {
+    throw new Error(`No governed candidates matched review pack ${reviewPack.reviewPackId}.`);
   }
 
-  if (evalSummary.scenarioIds.join('|') !== expectedScenarioIds.join('|')) {
-    reasons.push('runtime eval summary does not match the benchmark scenario ids');
-  }
-
-  if (!evalSummary.replayIntegrity?.allScenariosVerified) {
-    reasons.push('replay integrity failed');
-  }
-
-  if (!evalSummary.metricBandValidation?.allScenariosWithinBands) {
-    reasons.push('runtime eval summary fell outside expected metric bands');
-  }
-
-  if (metricComparison.regressed.length > 0) {
-    reasons.push(`metric regressions: ${metricComparison.regressed.join(', ')}`);
-  }
-
-  if (currentBlessed && metricComparison.improved.length === 0) {
-    reasons.push('no metric improved over the current blessed weights');
+  const candidateEvalSummaries = new Map();
+  for (const candidateRecord of reviewCandidates) {
+    const evalSummaryPath = resolveCandidateEvalSummaryPath(candidateRecord);
+    const evalSummary = evalSummaryPath
+      ? await readJson(evalSummaryPath).catch(() => null)
+      : null;
+    candidateEvalSummaries.set(candidateRecord.recordId, evalSummary);
   }
 
   const createdAt = new Date().toISOString();
-  const candidateRecord = {
-    schemaVersion: 1,
-    recordId: `${benchmarkPack.packId}:${evalSummary.runId}`,
-    advisoryOnly: true,
-    status: reasons.length === 0 ? 'blessed' : 'rejected',
-    weights: candidateWeights,
-    metadata: {
-      seedPackId: benchmarkPack.packId,
-      createdAt,
-      runId: evalSummary.runId,
-      sourceRunId: candidate.sourceRunId,
-      date: createdAt.slice(0, 10),
-      evalSummary: {
-        summaryId: evalSummary.summaryId,
-        runId: evalSummary.runId,
-        scenarioIds: [...evalSummary.scenarioIds],
-        metrics: { ...evalSummary.metrics },
-        path: evalOutputPath
-      },
-      gates: gateStatus
-    },
-    diff: createWeightDiffReport(currentBlessed?.weights ?? null, candidateWeights),
-    notes: [
-      ...reasons,
-      `candidatePath: ${toRepoPath(candidate.candidatePath)}`,
-      ...(candidate.candidateManifestPath ? [`candidateManifestPath: ${toRepoPath(candidate.candidateManifestPath)}`] : [])
-    ]
-  };
+  const artifacts = buildBlessingReviewArtifacts({
+    reviewPack,
+    registry,
+    baselineEvalSummary,
+    candidateEvalSummaries,
+    createdAt,
+    blessRequested
+  });
 
-  const nextRegistry = {
-    schemaVersion: 1,
-    updatedAt: createdAt,
-    currentBlessedRecordId: registry.currentBlessedRecordId ?? null,
-    candidates: [...(registry.candidates ?? []), candidateRecord],
-    blessed: [...(registry.blessed ?? [])]
-  };
-
-  if (reasons.length === 0) {
-    nextRegistry.blessed.push(candidateRecord);
-    nextRegistry.currentBlessedRecordId = candidateRecord.recordId;
+  await mkdir(reviewOutputRoot, { recursive: true });
+  const artifactPaths = new Map();
+  for (const artifact of artifacts) {
+    const artifactPath = resolve(reviewOutputRoot, `${artifact.candidate.candidateId}.review.json`);
+    await writeJson(artifactPath, artifact);
+    artifactPaths.set(artifact.candidate.candidateId, artifactPath);
   }
 
-  await mkdir(dirname(registryPath), { recursive: true });
-  await writeJson(registryPath, nextRegistry);
+  let nextRegistry = registry;
+  if (blessRequested) {
+    if (!candidateId) {
+      throw new Error('Manual blessing requires --candidate-id when --bless is provided.');
+    }
+
+    const selectedArtifact = artifacts.find((artifact) => artifact.candidate.candidateId === candidateId);
+    if (!selectedArtifact) {
+      throw new Error(`Candidate ${candidateId} is not part of review pack ${reviewPack.reviewPackId}.`);
+    }
+
+    if (!selectedArtifact.manualBlessingReady) {
+      throw new Error(
+        `Candidate ${candidateId} is not ready for manual blessing.\n${selectedArtifact.blockedReasons.join('\n')}`
+      );
+    }
+
+    const selectedCandidateRecord = reviewCandidates.find((record) => record.metadata?.candidateId === candidateId);
+    if (!selectedCandidateRecord) {
+      throw new Error(`Candidate record ${candidateId} could not be resolved from the registry.`);
+    }
+
+    nextRegistry = applyManualBlessing({
+      registry,
+      candidateRecord: selectedCandidateRecord,
+      reviewArtifactPath: artifactPaths.get(candidateId),
+      updatedAt: createdAt
+    });
+    await writeJson(registryPath, nextRegistry);
+  }
+
+  const manifestPath = resolve(reviewOutputRoot, 'manifest.json');
+  await writeJson(manifestPath, {
+    schemaVersion: 1,
+    reviewPackId: reviewPack.reviewPackId,
+    sourcePackId: reviewPack.sourcePackId,
+    createdAt,
+    blessRequested,
+    candidateId,
+    currentBlessedRecordIdBefore: registry.currentBlessedRecordId ?? null,
+    currentBlessedRecordIdAfter: nextRegistry.currentBlessedRecordId ?? registry.currentBlessedRecordId ?? null,
+    artifacts: artifacts.map((artifact) => ({
+      candidateId: artifact.candidate.candidateId,
+      recordId: artifact.candidate.recordId,
+      reviewArtifactPath: toRepoPath(artifactPaths.get(artifact.candidate.candidateId)),
+      manualBlessingReady: artifact.manualBlessingReady,
+      blockedReasons: [...artifact.blockedReasons]
+    }))
+  });
 
   process.stdout.write(`${JSON.stringify({
-    accepted: reasons.length === 0,
-    registryPath,
-    candidatePath: candidate.candidatePath,
-    candidateManifestPath: candidate.candidateManifestPath,
-    evalSummaryPath: evalOutputPath,
-    futureBaselinePointerPath: resolve(REPO_ROOT, futureBaselinePointer),
-    recordId: candidateRecord.recordId,
-    reasons,
-    metricComparison,
-    diff: candidateRecord.diff,
-    gateStatus
+    reviewPackId: reviewPack.reviewPackId,
+    registryPath: toRepoPath(registryPath),
+    reviewManifestPath: toRepoPath(manifestPath),
+    currentBlessedRecordIdBefore: registry.currentBlessedRecordId ?? null,
+    currentBlessedRecordIdAfter: nextRegistry.currentBlessedRecordId ?? registry.currentBlessedRecordId ?? null,
+    blessRequested,
+    candidateId,
+    artifacts: artifacts.map((artifact) => ({
+      candidateId: artifact.candidate.candidateId,
+      manualBlessingReady: artifact.manualBlessingReady,
+      reviewArtifactPath: toRepoPath(artifactPaths.get(artifact.candidate.candidateId)),
+      blockedReasons: [...artifact.blockedReasons]
+    }))
   }, null, 2)}\n`);
-
-  if (reasons.length > 0) {
-    process.exitCode = 1;
-  }
 };
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] === SCRIPT_PATH) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
+
+export {
+  applyManualBlessing,
+  buildBlessingReviewArtifact,
+  buildBlessingReviewArtifacts,
+  buildScenarioDeltas,
+  buildSurfaceComparisons,
+  createEmptyRegistry,
+  loadManualBlessingReviewPack,
+  resolveReviewCandidates
+};

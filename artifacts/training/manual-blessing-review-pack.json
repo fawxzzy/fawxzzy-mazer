@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "reviewPackId": "manual-blessing-review-pack-v1",
+  "sourcePackId": "governed-candidate-experiment-pack-v2",
+  "benchmarkPackId": "mazer-runtime-benchmark-v2",
+  "candidateIds": [
+    "frontier-biased",
+    "caution-biased",
+    "pursuit-avoidance-biased",
+    "item-priority-biased"
+  ],
+  "requiredReviewSurfaces": [
+    "runtimeEvalBands",
+    "visualProof",
+    "visualCanaries",
+    "contentProof",
+    "twoShellProof",
+    "threeShellProof"
+  ],
+  "outputRoot": "tmp/training/manual-blessing-review-pack"
+}

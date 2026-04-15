@@ -17,6 +17,16 @@ import {
 
 const DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH = 'artifacts/training/playbook-weight-registry.json';
 
+const metricDirection = {
+  discoveryEfficiency: 'up',
+  backtrackPressure: 'down',
+  trapFalsePositiveRate: 'down',
+  trapFalseNegativeRate: 'down',
+  wardenPressureExposure: 'down',
+  itemUsefulnessScore: 'up',
+  puzzleStateClarityScore: 'up'
+};
+
 const clampMetric = (value) => Number(Math.min(1, Math.max(0, Number(value) || 0)).toFixed(4));
 
 const stableSerialize = (value) => {
@@ -132,6 +142,49 @@ const resolvePlaybookTuningWeights = (value) => {
   return value;
 };
 
+/** @param {RuntimeEvalSuiteSummary['metrics'] | null} baseline @param {RuntimeEvalSuiteSummary['metrics']} candidate */
+const compareMetrics = (baseline, candidate) => {
+  if (!baseline) {
+    return {
+      improved: Object.keys(candidate),
+      regressed: [],
+      unchanged: []
+    };
+  }
+
+  const improved = [];
+  const regressed = [];
+  const unchanged = [];
+
+  for (const metricName of Object.keys(candidate)) {
+    const direction = metricDirection[metricName];
+    const baselineValue = baseline[metricName];
+    const candidateValue = candidate[metricName];
+
+    if (candidateValue === baselineValue) {
+      unchanged.push(metricName);
+      continue;
+    }
+
+    const isImproved = direction === 'up'
+      ? candidateValue > baselineValue
+      : candidateValue < baselineValue;
+
+    if (isImproved) {
+      improved.push(metricName);
+      continue;
+    }
+
+    regressed.push(metricName);
+  }
+
+  return {
+    improved,
+    regressed,
+    unchanged
+  };
+};
+
 const getCurrentBlessedWeightRecord = (registry) => (
   registry?.currentBlessedRecordId
     ? registry.blessed?.find((record) => record.recordId === registry.currentBlessedRecordId) ?? null
@@ -220,6 +273,7 @@ export {
   averageMetrics,
   averagePriors,
   clampMetric,
+  compareMetrics,
   createDefaultPlaybookTuningWeights,
   defaultPriors,
   DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,

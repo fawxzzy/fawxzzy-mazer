@@ -16,7 +16,7 @@ Status: repo-owned truth for shared-system installs in the active Mazer planner 
 - Playbook scoring consumes bounded `PolicyEpisodeLogFeatures` derived from replayable episodes, not proof manifests, raw bus payloads, or runtime-authored truth.
 - Learned/adaptive priors for frontier value, backtrack urgency, trap suspicion, enemy risk, item value, and rotation timing are advisory only. They rank legal candidates; they do not legalize moves, promote goals, or author actions.
 - Offline training and tuning stay dev-lane only under `src/mazer-core/logging/export/**`, `src/mazer-core/eval/**`, `src/mazer-core/playbook/tuning/**`, and `scripts/training/**`. They may export replay-linked datasets and advisory scorer weights, but they do not run in the shipping runtime and they do not own planner truth.
-- Advisory scorer weights now follow a governed `candidate -> blessed` promotion lane. Candidates may be produced offline or derived from the benchmark-pack headless runner, but they are not considered blessed until `scripts/training/promote-weights.mjs` verifies architecture, tests, build, visual proof, visual canaries, future-runtime content proof, the dedicated two-shell future baseline promotion, the merged three-shell proof, and the shared runtime benchmark eval without regressions.
+- Advisory scorer weights now follow a governed `candidate -> manual review -> blessed` promotion lane. Candidates may be produced offline or derived from the benchmark-pack headless runner, but they are not considered blessed until a review artifact is written for each governed candidate, the human-readable scenario deltas are inspected against the current blessed advisory baseline, and `scripts/training/promote-weights.mjs --candidate-id <id> --bless` is invoked explicitly.
 - Playbook may summarize intent phrasing and update replay episodes, but it does not own `IntentBusRecord` construction.
 - `src/visual-proof/**` is an adapter lane over `src/mazer-core/**`, not a second planner implementation.
 - `src/future-runtime/**` is an adapter lane over `src/mazer-core/**`, not a second planner implementation.
@@ -104,6 +104,26 @@ Rule:
 - Reject reasons must stay explicit. Metric-band failures are recorded per scenario in the candidate notes, alongside any failed gate names, scenario-id mismatches, or replay-integrity failures.
 - Candidate promotion remains blocked until the v2 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
 - The experiment-pack lane does not widen legality. Candidate evaluation still routes through the legal local-candidate scoring path and cannot bypass the existing planner firewall.
+
+## Manual Blessing Workflow
+
+- `artifacts/training/manual-blessing-review-pack.json` is the repo-owned source of truth for which governed candidates enter manual blessing review.
+- `node scripts/training/promote-weights.mjs` is review-only by default:
+  - it resolves the current blessed advisory baseline from `artifacts/training/playbook-weight-registry.json`
+  - it loads the current governed v2 candidates from the registry
+  - it writes one review artifact per candidate under `tmp/training/manual-blessing-review-pack/`
+  - it writes `tmp/training/manual-blessing-review-pack/manifest.json`
+  - it does not mutate `currentBlessedRecordId`
+- Every candidate review artifact must emit:
+  - `keptGreen` for the required proof surfaces that stayed green
+  - `improved` for aggregate or shared-scenario gains relative to the current blessed advisory baseline
+  - `worsened` for aggregate or shared-scenario regressions relative to the current blessed advisory baseline
+  - `blockedReasons` for any failed governed surface, missing scenario delta, or the absence of an explicit blessing flag
+- Blessing remains manual and explicit:
+  - review artifacts must exist first
+  - proof, eval, and human-readable scenario deltas must all be present
+  - `node scripts/training/promote-weights.mjs --candidate-id <id> --bless` is the only path that may update `currentBlessedRecordId`
+- Do not bless from metrics alone. Shared benchmark deltas and the added benchmark-v2 coverage must agree with the proof surface before any blessing change.
 
 ## Burn-In Workflow
 
