@@ -81,9 +81,9 @@ Rule:
   - `caution-biased`
   - `pursuit-avoidance-biased`
   - `item-priority-biased`
-- The governed benchmark contract now rides on `mazer-runtime-benchmark-v2`, which keeps the original five single-focus probes and adds five combined-system probes:
-  - traps plus Warden pressure
-  - item relevance under pressure
+- The governed benchmark contract now rides on `mazer-runtime-benchmark-v3`, which keeps the original five single-focus probes and adds five combined-system probes:
+  - traps plus Warden pressure plus item relevance
+  - recovery after discrete alignment changes
   - puzzle visibility during rotation
   - multi-speaker intent load
   - three-shell connector reasoning
@@ -102,7 +102,7 @@ Rule:
   - rejected candidates are recorded as `rejected`
   - no experiment-pack candidate is blessed automatically
 - Reject reasons must stay explicit. Metric-band failures are recorded per scenario in the candidate notes, alongside any failed gate names, scenario-id mismatches, or replay-integrity failures.
-- Candidate promotion remains blocked until the v2 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
+- Candidate promotion remains blocked until the v3 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
 - The experiment-pack lane does not widen legality. Candidate evaluation still routes through the legal local-candidate scoring path and cannot bypass the existing planner firewall.
 
 ## Manual Blessing Workflow
@@ -110,20 +110,25 @@ Rule:
 - `artifacts/training/manual-blessing-review-pack.json` is the repo-owned source of truth for which governed candidates enter manual blessing review.
 - `node scripts/training/promote-weights.mjs` is review-only by default:
   - it resolves the current blessed advisory baseline from `artifacts/training/playbook-weight-registry.json`
-  - it loads the current governed v2 candidates from the registry
-  - it writes one review artifact per candidate under `tmp/training/manual-blessing-review-pack/`
-  - it writes `tmp/training/manual-blessing-review-pack/manifest.json`
+  - it loads the current governed v3 candidates from the registry
+  - the review-pack scenario ids must exactly match `mazer-runtime-benchmark-v3`
+  - it writes one review artifact per candidate under `tmp/training/manual-blessing-review-pack-v3/`
+  - it writes `tmp/training/manual-blessing-review-pack-v3/manifest.json`
   - it does not mutate `currentBlessedRecordId`
 - Every candidate review artifact must emit:
   - `keptGreen` for the required proof surfaces that stayed green
   - `improved` for aggregate or shared-scenario gains relative to the current blessed advisory baseline
   - `worsened` for aggregate or shared-scenario regressions relative to the current blessed advisory baseline
-  - `blockedReasons` for any failed governed surface, missing scenario delta, or the absence of an explicit blessing flag
+  - `blockedReasons` for any failed governed surface, missing scenario delta, benchmark mismatch, or rejected registry state
+  - `recommendation` with exactly one of:
+    - `keep-as-candidate`
+    - `ready-for-manual-blessing`
+    - `reject`
 - Blessing remains manual and explicit:
   - review artifacts must exist first
   - proof, eval, and human-readable scenario deltas must all be present
   - `node scripts/training/promote-weights.mjs --candidate-id <id> --bless` is the only path that may update `currentBlessedRecordId`
-- Do not bless from metrics alone. Shared benchmark deltas and the added benchmark-v2 coverage must agree with the proof surface before any blessing change.
+- Do not bless from metrics alone. Shared benchmark deltas and the added benchmark-v3 coverage must agree with the proof surface before any blessing change.
 
 ## Burn-In Workflow
 
@@ -152,6 +157,10 @@ Rule:
   - it keeps Playbook advisory-only
   - it does not import UI surfaces, `MenuScene`, or future-runtime render code
 - The lane resolves and pins the active blessed advisory profile at startup, then records the active blessed weight id in the manifest, watchdog summary, and rollups.
+- The standard soak packs are now:
+  - `1000` runs
+  - `5000` runs
+- Unless explicit counts are passed, continuous mode runs those standard soak packs in order.
 - Continuous mode checkpoints to `tmp/lifeline/continuous/` with stable top-level pointers:
   - `manifest.json`
   - `checkpoint.json`
@@ -164,8 +173,19 @@ Rule:
   - `manifest.json`
   - `summary-rollup.json`
   - `failure-buckets.json`
-  - the underlying headless-runner artifacts for that batch
+  - `health-before.json`
+  - `health-after.json`
+  - the nested soak packet under `soak-pack/`
+- Each batch summary is diffable and must carry:
+  - the failure-bucket histogram for that batch
+  - the eval rollup for the full soak pack
+  - artifact pointers for the retained packet and nested soak packet
+  - the active blessed weight id used for that batch
 - Resume semantics are checkpoint-based. Restarting the command continues from the next unresolved batch index unless `--resume false` is passed.
+- Resume stays packet-safe:
+  - completed soak attempts inside `soak-pack/` are preserved
+  - interrupted packs resume from the next missing attempt
+  - retained batch summaries, latest-pointer files, and the pruned batch ledger stay stable across resumes
 - Retention is windowed. Older retained batch directories are pruned once the configured retention window is exceeded, while summary rollups and the pruned batch id ledger remain stable across resumes.
 - Continuous failure buckets stay explicit:
   - `resumeCheckpointMismatch`
@@ -173,6 +193,13 @@ Rule:
   - `blessedWeightMismatch`
   - `stableArtifactPointerMismatch`
   - `retentionPruneFailure`
+  - `healthPackRegression`
+- Continuous soak acceptance thresholds are fixed:
+  - replay consistency must stay deterministic across the whole nested soak pack
+  - metric bands must remain inside the currently accepted benchmark ranges
+  - `npm run health` must pass before and after every retained batch
+  - the pinned blessed advisory id and pinned blessed weights must remain unchanged for the full soak run
+- Continuous mode fails the soak immediately if any retained batch trips one of those thresholds. Failed batches remain written for inspection, but they are not considered healthy-lane proof.
 - The watchdog summary is the small operational surface for long-running batches. It reports batch count, last successful batch, failure-bucket histogram, checkpoint path, stable latest pointers, and the active blessed weight id.
 
 ## Enforcement
@@ -181,3 +208,5 @@ Rule:
 - `npm run architecture:check` also rejects proof-lane imports or planner bypasses under `src/future-runtime/**`.
 - `npm run architecture:check` must keep replay export, eval, and tuning surfaces bounded away from proof manifests and bus-owned legality/authorship.
 - `npm run test:architecture` keeps mutation coverage for the install boundary and the existing planner firewall rules.
+
+

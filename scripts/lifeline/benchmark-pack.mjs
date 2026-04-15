@@ -75,8 +75,18 @@ const toTerminalStepSpec = (scenario) => {
 
 const toScenarioSpec = (scenario) => ({
   id: scenario.id,
+  label: scenario.label,
   focus: toFocus(scenario.variant),
+  districtType: scenario.districtType,
+  shellCount: scenario.shellCount,
   seed: scenario.seed,
+  variant: scenario.variant,
+  expectedMetricBands: Object.fromEntries(
+    Object.entries(scenario.expectedMetricBands ?? {}).map(([metricName, band]) => [
+      metricName,
+      band ? { ...band } : band
+    ])
+  ),
   startTileId: scenario.steps[0]?.tileId ?? 'start',
   startHeading: scenario.steps[0]?.heading ?? 'north',
   preferredNextTileIds: [...scenario.steps.map((step) => step.moveToTileId ?? null), null],

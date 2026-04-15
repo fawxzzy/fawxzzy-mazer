@@ -148,6 +148,7 @@ Contract requirements:
 - every benchmark scenario has a stable `scenarioId`
 - every benchmark scenario has a stable `seed`
 - every benchmark scenario declares one of the five district presets above
+- every benchmark scenario declares `shellCount`
 - every benchmark scenario declares expected metric bands for the mechanic it is exercising
 - repeated runs on the same pack must keep per-scenario `summaryId` and `runId` stable
 - future-runtime proof metadata, runtime eval summaries, replay-linked dataset export, and scorer-weight promotion must all reference the same benchmark scenario ids
@@ -160,10 +161,10 @@ Current mechanic coverage inside the pack:
 - puzzle visibility
 - rotation timing
 
-Combined-system coverage in `mazer-runtime-benchmark-v2`:
+Combined-system coverage in `mazer-runtime-benchmark-v3`:
 
-- traps plus Warden pressure
-- item relevance under pressure
+- traps plus Warden pressure plus item relevance
+- recovery after discrete alignment changes
 - puzzle visibility during rotation
 - multi-speaker intent load
 - three-shell connector reasoning

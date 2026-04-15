@@ -114,9 +114,15 @@ const buildDataset = (log, evalSummary = null, benchmarkScenario = null) => {
       ? {
           packId: benchmarkPack.packId,
           scenarioId: benchmarkScenario.id,
-          focus: benchmarkScenario.focus,
+          districtType: benchmarkScenario.districtType,
+          shellCount: benchmarkScenario.shellCount,
           seed: benchmarkScenario.seed,
-          stepCount: benchmarkScenario.steps.length
+          expectedMetricBands: Object.fromEntries(
+            Object.entries(benchmarkScenario.expectedMetricBands ?? {}).map(([metricName, band]) => [
+              metricName,
+              band ? { ...band } : band
+            ])
+          )
         }
       : null,
     replayLink: {

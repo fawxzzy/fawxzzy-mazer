@@ -18,7 +18,7 @@ const makeEvalSummary = (runId: string, options: {
 }) => ({
   schemaVersion: 1,
   suiteId: 'mazer-core-deterministic-runtime-eval',
-  benchmarkPackId: options.benchmarkPackId ?? 'mazer-runtime-benchmark-v2',
+  benchmarkPackId: options.benchmarkPackId ?? 'mazer-runtime-benchmark-v3',
   summaryId: `eval-summary-${runId}`,
   runId,
   generatedAt: '2026-04-14T00:00:00.000Z',
@@ -29,8 +29,8 @@ const makeEvalSummary = (runId: string, options: {
     'scavenger-checkpoint-item-usefulness-charlie',
     'puzzle-visibility-delta',
     'vantage-observatory-rotation-timing-echo',
-    'loopy-combat-capable-trap-warden-pressure-foxtrot',
-    'scavenger-checkpoint-item-pressure-golf',
+    'loopy-combat-capable-trap-warden-item-foxtrot',
+    'vantage-observatory-discrete-alignment-recovery-golf',
     'vantage-observatory-puzzle-rotation-hotel',
     'labyrinth-tutorial-multi-speaker-intent-india',
     'vantage-observatory-three-shell-connector-juliet'
@@ -85,7 +85,7 @@ describe('governed candidate experiment pack', () => {
   test('declares the four non-neutral advisory profiles and required gate policy', async () => {
     const pack = await loadGovernedCandidateExperimentPack();
 
-    expect(pack.packId).toBe('governed-candidate-experiment-pack-v2');
+    expect(pack.packId).toBe('governed-candidate-experiment-pack-v3');
     expect(pack.promotionBlockedUntil).toEqual([
       'architectureCheck',
       'tests',
@@ -135,9 +135,9 @@ describe('governed candidate experiment pack', () => {
   test('records accept and reject reasons without auto-blessing', () => {
     const pack = {
       schemaVersion: 1,
-      packId: 'governed-candidate-experiment-pack-v2',
-      seedPackId: 'mazer-runtime-benchmark-v2',
-      benchmarkPackId: 'mazer-runtime-benchmark-v2',
+      packId: 'governed-candidate-experiment-pack-v3',
+      seedPackId: 'mazer-runtime-benchmark-v3',
+      benchmarkPackId: 'mazer-runtime-benchmark-v3',
       promotionBlockedUntil: [
         'architectureCheck',
         'tests',
@@ -180,11 +180,11 @@ describe('governed candidate experiment pack', () => {
     };
     const registry = {
       ...createEmptyRegistry(),
-      currentBlessedRecordId: 'mazer-runtime-benchmark-v2:eval-current',
+      currentBlessedRecordId: 'mazer-runtime-benchmark-v3:eval-current',
       blessed: [
         {
           schemaVersion: 1,
-          recordId: 'mazer-runtime-benchmark-v2:eval-current',
+          recordId: 'mazer-runtime-benchmark-v3:eval-current',
           advisoryOnly: true,
           status: 'blessed',
           weights: {
@@ -197,7 +197,7 @@ describe('governed candidate experiment pack', () => {
             rotationTiming: 1
           },
           metadata: {
-            seedPackId: 'mazer-runtime-benchmark-v2',
+            seedPackId: 'mazer-runtime-benchmark-v3',
             createdAt: '2026-04-14T00:00:00.000Z',
             runId: 'eval-current',
             date: '2026-04-14',
@@ -210,8 +210,8 @@ describe('governed candidate experiment pack', () => {
                 'scavenger-checkpoint-item-usefulness-charlie',
                 'puzzle-visibility-delta',
                 'vantage-observatory-rotation-timing-echo',
-                'loopy-combat-capable-trap-warden-pressure-foxtrot',
-                'scavenger-checkpoint-item-pressure-golf',
+                'loopy-combat-capable-trap-warden-item-foxtrot',
+                'vantage-observatory-discrete-alignment-recovery-golf',
                 'vantage-observatory-puzzle-rotation-hotel',
                 'labyrinth-tutorial-multi-speaker-intent-india',
                 'vantage-observatory-three-shell-connector-juliet'
@@ -295,7 +295,7 @@ describe('governed candidate experiment pack', () => {
 
     expect(candidateRecords).toHaveLength(2);
     expect(nextRegistry.blessed).toHaveLength(1);
-    expect(nextRegistry.currentBlessedRecordId).toBe('mazer-runtime-benchmark-v2:eval-current');
+    expect(nextRegistry.currentBlessedRecordId).toBe('mazer-runtime-benchmark-v3:eval-current');
 
     const acceptedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'frontier-biased');
     const rejectedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'caution-biased');

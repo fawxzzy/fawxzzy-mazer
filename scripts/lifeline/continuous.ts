@@ -1,23 +1,43 @@
 // @ts-nocheck
 import { mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { REPO_ROOT, hashStableValue, parseCliArgs, pathExists, readJson, relativeFromRepo, stableSerialize, writeJson } from './common.mjs';
+import {
+  REPO_ROOT,
+  hashStableValue,
+  parseCliArgs,
+  pathExists,
+  readJson,
+  relativeFromRepo,
+  stableSerialize,
+  writeJson
+} from './common.mjs';
 import { resolveLifelineBenchmarkPack } from './benchmark-pack.mjs';
-import { runHeadlessRunner, type HeadlessRunnerManifest, type HeadlessRunnerWeightMetadata } from './headless-runner.ts';
-import { DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH, resolveBlessedPlaybookWeights } from '../training/common.mjs';
+import {
+  runBurnInBatch,
+  type BatchEvalSummaryRollup,
+  type BurnInBatchManifest
+} from './burn-in.ts';
+import { type HeadlessRunnerWeightMetadata } from './headless-runner.ts';
+import {
+  DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,
+  resolveBlessedPlaybookWeights,
+  runCommand
+} from '../training/common.mjs';
 
 const DEFAULT_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'lifeline', 'continuous');
-const DEFAULT_BATCH_COUNTS = [25, 100, 500];
-const DEFAULT_RUN_ID = 'continuous-lifeline';
+const DEFAULT_BATCH_COUNTS = [1000, 5000];
+const DEFAULT_RUN_ID = 'continuous-lifeline-soak';
 const DEFAULT_RETENTION_WINDOW = 3;
 const BENCHMARK_PACK_ID = resolveLifelineBenchmarkPack().packId;
+const HEALTH_COMMAND = ['run', 'health'];
 
 type FailureBucketName =
   | 'resumeCheckpointMismatch'
   | 'batchExecutionFailure'
   | 'blessedWeightMismatch'
   | 'stableArtifactPointerMismatch'
-  | 'retentionPruneFailure';
+  | 'retentionPruneFailure'
+  | 'healthPackRegression';
 
 interface FailureBucket {
   count: number;
@@ -31,6 +51,51 @@ interface ContinuousFailureBuckets {
   blessedWeightMismatch: FailureBucket;
   stableArtifactPointerMismatch: FailureBucket;
   retentionPruneFailure: FailureBucket;
+  healthPackRegression: FailureBucket;
+}
+
+interface ContinuousHealthGateSummary {
+  phase: 'before' | 'after';
+  ok: boolean;
+  summaryPath: string;
+  failedGateKey: string | null;
+  failedGateLabel: string | null;
+  results: Array<{
+    key: string;
+    ok: boolean;
+    exitCode: number;
+  }>;
+}
+
+interface ContinuousBatchArtifactPointers {
+  continuousManifestPath: string;
+  continuousSummaryPath: string;
+  continuousFailureBucketsPath: string;
+  healthBeforeSummaryPath: string;
+  healthAfterSummaryPath: string;
+  soakRootManifestPath: string;
+  soakBatchManifestPath: string;
+  soakFailureBucketsPath: string;
+  soakEvalSummaryRollupPath: string;
+  soakDatasetPointersPath: string;
+  soakScorerWeightMetadataPath: string;
+}
+
+interface ContinuousSoakRootManifest {
+  schemaVersion: 1;
+  batchId: string;
+  runId: string;
+  benchmarkPackId: string;
+  targetRuns: number;
+  completedRuns: number;
+  completedAt: string | null;
+  activeBlessedWeightId: string;
+  failures: string[];
+  batchManifestPath: string;
+  failureBucketsPath: string;
+  evalSummaryRollupPath: string;
+  datasetPointersPath: string;
+  scorerWeightMetadataPath: string;
 }
 
 interface ContinuousBatchRecord {
@@ -40,15 +105,17 @@ interface ContinuousBatchRecord {
   runId: string;
   summaryId: string;
   completedAt: string;
-  status: 'running' | 'completed';
+  status: 'running' | 'completed' | 'failed';
   manifestPath: string;
   summaryPath: string;
   failureBucketsPath: string;
-  replayIntegrityOk: boolean;
-  metricBandsOk: boolean;
+  activeBlessedWeightId: string;
   failures: FailureBucketName[];
-  metrics: Record<string, number>;
-  support: Record<string, number>;
+  failureBucketHistogram: Record<FailureBucketName, number>;
+  soakFailures: string[];
+  evalRollup: BatchEvalSummaryRollup;
+  artifactPointers: ContinuousBatchArtifactPointers;
+  healthSuites: ContinuousHealthGateSummary[];
   batchDigest: string;
 }
 
@@ -59,10 +126,11 @@ interface ContinuousBatchFailureDetail {
   targetRuns: number;
   failures: FailureBucketName[];
   histogram: Record<FailureBucketName, number>;
+  soakFailures: string[];
 }
 
 interface ContinuousManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   continuousId: string;
   runId: string;
   benchmarkPackId: string;
@@ -95,7 +163,7 @@ interface ContinuousManifest {
 }
 
 interface ContinuousWatchdogSummary {
-  schemaVersion: 1;
+  schemaVersion: 2;
   continuousId: string;
   runId: string;
   batchCount: number;
@@ -114,7 +182,7 @@ interface ContinuousWatchdogSummary {
 }
 
 interface ContinuousSummaryRollup {
-  schemaVersion: 1;
+  schemaVersion: 2;
   continuousId: string;
   runId: string;
   benchmarkPackId: string;
@@ -128,12 +196,15 @@ interface ContinuousSummaryRollup {
     targetRuns: number;
     runId: string;
     summaryId: string;
+    status: 'completed' | 'failed';
+    activeBlessedWeightId: string;
     batchDigest: string;
-    metrics: Record<string, number>;
-    support: Record<string, number>;
-    replayIntegrityOk: boolean;
-    metricBandsOk: boolean;
     failures: FailureBucketName[];
+    failureBucketHistogram: Record<FailureBucketName, number>;
+    soakFailures: string[];
+    evalRollup: BatchEvalSummaryRollup;
+    artifactPointers: ContinuousBatchArtifactPointers;
+    healthSuites: ContinuousHealthGateSummary[];
   }>;
 }
 
@@ -142,7 +213,8 @@ const FAILURE_BUCKETS: FailureBucketName[] = [
   'batchExecutionFailure',
   'blessedWeightMismatch',
   'stableArtifactPointerMismatch',
-  'retentionPruneFailure'
+  'retentionPruneFailure',
+  'healthPackRegression'
 ];
 
 type BlessedWeightResolution = Awaited<ReturnType<typeof resolveBlessedPlaybookWeights>>;
@@ -159,7 +231,7 @@ const createEmptyHistogram = (): Record<FailureBucketName, number> => Object.fro
 ) as Record<FailureBucketName, number>;
 
 const resolveBatchId = (batchIndex: number, targetRuns: number): string => (
-  `batch-${String(batchIndex).padStart(4, '0')}-runs-${String(targetRuns).padStart(3, '0')}`
+  `batch-${String(batchIndex).padStart(4, '0')}-runs-${String(targetRuns).padStart(4, '0')}`
 );
 
 const resolveBatchTargetRuns = (counts: number[], batchIndex: number): number => {
@@ -192,16 +264,20 @@ const normalizeWeightMetadata = (
   }
 });
 
-const createBatchDigest = (manifest: HeadlessRunnerManifest, batchSummary: Record<string, unknown>): string => hashStableValue({
-  runId: manifest.runId,
-  summaryId: manifest.summaryId,
-  benchmarkPackId: manifest.benchmarkPackId,
-  scenarioIds: manifest.scenarioIds,
-  replayIntegrity: manifest.replayIntegrity,
-  metricBandValidation: manifest.metricBandValidation,
-  metrics: manifest.metrics,
-  support: manifest.support,
-  batchSummary
+const createBatchDigest = (batchRecord: Omit<ContinuousBatchRecord, 'batchDigest'>): string => hashStableValue({
+  batchIndex: batchRecord.batchIndex,
+  batchId: batchRecord.batchId,
+  targetRuns: batchRecord.targetRuns,
+  runId: batchRecord.runId,
+  summaryId: batchRecord.summaryId,
+  status: batchRecord.status,
+  activeBlessedWeightId: batchRecord.activeBlessedWeightId,
+  failures: batchRecord.failures,
+  failureBucketHistogram: batchRecord.failureBucketHistogram,
+  soakFailures: batchRecord.soakFailures,
+  evalRollup: batchRecord.evalRollup,
+  artifactPointers: batchRecord.artifactPointers,
+  healthSuites: batchRecord.healthSuites
 });
 
 const incrementBucket = (
@@ -211,9 +287,9 @@ const incrementBucket = (
   batchId: string,
   reason: string
 ) => {
-  buckets[bucketName].count += 1;
-  histogram[bucketName] += 1;
   if (!buckets[bucketName].batchIds.includes(batchId)) {
+    buckets[bucketName].count += 1;
+    histogram[bucketName] += 1;
     buckets[bucketName].batchIds.push(batchId);
   }
   if (!buckets[bucketName].reasons.includes(reason)) {
@@ -221,33 +297,63 @@ const incrementBucket = (
   }
 };
 
+const addBatchFailure = (
+  failures: FailureBucketName[],
+  histogram: Record<FailureBucketName, number>,
+  bucketName: FailureBucketName
+) => {
+  if (failures.includes(bucketName)) {
+    return;
+  }
+
+  failures.push(bucketName);
+  histogram[bucketName] = 1;
+};
+
 const buildBatchFailureDetail = (
   batchId: string,
   batchIndex: number,
   targetRuns: number,
-  failures: FailureBucketName[]
-): ContinuousBatchFailureDetail => {
-  const histogram = Object.fromEntries(
-    FAILURE_BUCKETS.map((bucketName) => [bucketName, failures.includes(bucketName) ? 1 : 0])
-  ) as Record<FailureBucketName, number>;
+  failures: FailureBucketName[],
+  histogram: Record<FailureBucketName, number>,
+  soakFailures: string[]
+): ContinuousBatchFailureDetail => ({
+  schemaVersion: 1,
+  batchId,
+  batchIndex,
+  targetRuns,
+  failures: [...failures],
+  histogram: { ...histogram },
+  soakFailures: [...soakFailures]
+});
 
-  return {
-    schemaVersion: 1,
-    batchId,
-    batchIndex,
-    targetRuns,
-    failures: [...failures],
-    histogram
-  };
-};
+const cloneEvalRollup = (evalRollup: BatchEvalSummaryRollup): BatchEvalSummaryRollup => ({
+  ...evalRollup,
+  uniqueRunIds: [...evalRollup.uniqueRunIds],
+  uniqueSummaryIds: [...evalRollup.uniqueSummaryIds],
+  uniqueSignatures: [...evalRollup.uniqueSignatures],
+  metrics: Object.fromEntries(
+    Object.entries(evalRollup.metrics).map(([metricName, value]) => [metricName, { ...value }])
+  )
+});
+
+const cloneHealthSuites = (healthSuites: ContinuousHealthGateSummary[]): ContinuousHealthGateSummary[] => (
+  healthSuites.map((suite) => ({
+    ...suite,
+    results: suite.results.map((result) => ({ ...result }))
+  }))
+);
 
 const buildCheckpoint = (manifest: ContinuousManifest): ContinuousManifest => ({
   ...manifest,
   retainedBatches: manifest.retainedBatches.map((batch) => ({
     ...batch,
     failures: [...batch.failures],
-    metrics: { ...batch.metrics },
-    support: { ...batch.support }
+    failureBucketHistogram: { ...batch.failureBucketHistogram },
+    soakFailures: [...batch.soakFailures],
+    evalRollup: cloneEvalRollup(batch.evalRollup),
+    artifactPointers: { ...batch.artifactPointers },
+    healthSuites: cloneHealthSuites(batch.healthSuites)
   })),
   prunedBatchIds: [...manifest.prunedBatchIds],
   failureBucketHistogram: { ...manifest.failureBucketHistogram },
@@ -259,7 +365,7 @@ const buildCheckpoint = (manifest: ContinuousManifest): ContinuousManifest => ({
 });
 
 const buildSummaryRollup = (manifest: ContinuousManifest): ContinuousSummaryRollup => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   continuousId: manifest.continuousId,
   runId: manifest.runId,
   benchmarkPackId: manifest.benchmarkPackId,
@@ -273,17 +379,20 @@ const buildSummaryRollup = (manifest: ContinuousManifest): ContinuousSummaryRoll
     targetRuns: batch.targetRuns,
     runId: batch.runId,
     summaryId: batch.summaryId,
+    status: batch.status === 'failed' ? 'failed' : 'completed',
+    activeBlessedWeightId: batch.activeBlessedWeightId,
     batchDigest: batch.batchDigest,
-    metrics: { ...batch.metrics },
-    support: { ...batch.support },
-    replayIntegrityOk: batch.replayIntegrityOk,
-    metricBandsOk: batch.metricBandsOk,
-    failures: [...batch.failures]
+    failures: [...batch.failures],
+    failureBucketHistogram: { ...batch.failureBucketHistogram },
+    soakFailures: [...batch.soakFailures],
+    evalRollup: cloneEvalRollup(batch.evalRollup),
+    artifactPointers: { ...batch.artifactPointers },
+    healthSuites: cloneHealthSuites(batch.healthSuites)
   }))
 });
 
 const buildWatchdogSummary = (manifest: ContinuousManifest): ContinuousWatchdogSummary => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   continuousId: manifest.continuousId,
   runId: manifest.runId,
   batchCount: manifest.retainedBatches.length + manifest.prunedBatchIds.length,
@@ -292,7 +401,8 @@ const buildWatchdogSummary = (manifest: ContinuousManifest): ContinuousWatchdogS
         batchId: manifest.lastSuccessfulBatchId,
         batchIndex: manifest.lastSuccessfulBatchIndex ?? manifest.nextBatchIndex - 1,
         summaryId: manifest.lastSuccessfulBatchSummaryId ?? '',
-        manifestPath: manifest.retainedBatches.at(-1)?.manifestPath ?? manifest.latestBatchManifestPath
+        manifestPath: manifest.retainedBatches.find((batch) => batch.batchId === manifest.lastSuccessfulBatchId)?.manifestPath
+          ?? manifest.latestBatchManifestPath
       }
     : null,
   failureBucketHistogram: { ...manifest.failureBucketHistogram },
@@ -311,7 +421,7 @@ const createContinuousManifest = (
   scorerWeights: HeadlessRunnerWeightMetadata,
   activeBlessedWeightId: string
 ): ContinuousManifest => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   continuousId: 'lifeline-continuous',
   runId,
   benchmarkPackId: BENCHMARK_PACK_ID,
@@ -353,6 +463,16 @@ const loadExistingManifest = async (manifestPath: string, checkpointPath: string
   return null;
 };
 
+const manifestPathFromManifest = (manifest: ContinuousManifest): string => manifest.checkpointPath.replace(/checkpoint\.json$/, 'manifest.json');
+
+const resolvePersistedJson = async <T>(filePath: string): Promise<T | null> => {
+  if (!(await pathExists(filePath))) {
+    return null;
+  }
+
+  return await readJson(filePath) as T;
+};
+
 const writeContinuousArtifacts = async (
   manifest: ContinuousManifest,
   latestBatch: ContinuousBatchRecord | null,
@@ -361,30 +481,49 @@ const writeContinuousArtifacts = async (
   const checkpoint = buildCheckpoint(manifest);
   const summaryRollup = buildSummaryRollup(manifest);
   const watchdog = buildWatchdogSummary(manifest);
+  const latestBatchManifestPath = resolve(REPO_ROOT, manifest.latestBatchManifestPath);
+  const latestBatchSummaryPath = resolve(REPO_ROOT, manifest.latestBatchSummaryPath);
+  const latestFailureBucketsPath = resolve(REPO_ROOT, manifest.latestFailureBucketsPath);
+  const persistedLatestBatch = latestBatch ?? await resolvePersistedJson<ContinuousBatchRecord>(latestBatchManifestPath);
+  const persistedLatestSummary = latestBatch ?? await resolvePersistedJson<ContinuousBatchRecord>(latestBatchSummaryPath);
+  const persistedLatestFailureBuckets = latestFailureBuckets
+    ?? await resolvePersistedJson<ContinuousBatchFailureDetail>(latestFailureBucketsPath);
 
   await writeJson(resolve(REPO_ROOT, manifest.checkpointPath), checkpoint);
   await writeJson(resolve(REPO_ROOT, manifest.summaryRollupPath), summaryRollup);
   await writeJson(resolve(REPO_ROOT, manifest.watchdogPath), watchdog);
-  await writeJson(resolve(REPO_ROOT, manifest.latestBatchManifestPath), latestBatch);
-  await writeJson(resolve(REPO_ROOT, manifest.latestBatchSummaryPath), latestBatch ? {
-    schemaVersion: 1,
-    batchIndex: latestBatch.batchIndex,
-    batchId: latestBatch.batchId,
-    targetRuns: latestBatch.targetRuns,
-    runId: latestBatch.runId,
-    summaryId: latestBatch.summaryId,
-    batchDigest: latestBatch.batchDigest,
-    metrics: { ...latestBatch.metrics },
-    support: { ...latestBatch.support },
-    replayIntegrityOk: latestBatch.replayIntegrityOk,
-    metricBandsOk: latestBatch.metricBandsOk,
-    failures: [...latestBatch.failures]
-  } : null);
-  await writeJson(resolve(REPO_ROOT, manifest.latestFailureBucketsPath), latestFailureBuckets);
+  await writeJson(latestBatchManifestPath, persistedLatestBatch);
+  await writeJson(latestBatchSummaryPath, persistedLatestSummary);
+  await writeJson(latestFailureBucketsPath, persistedLatestFailureBuckets);
   await writeJson(resolve(REPO_ROOT, manifestPathFromManifest(manifest)), manifest);
 };
 
-const manifestPathFromManifest = (manifest: ContinuousManifest): string => manifest.checkpointPath.replace(/checkpoint\.json$/, 'manifest.json');
+const writeSoakRootManifest = async (
+  soakRoot: string,
+  soakManifest: BurnInBatchManifest,
+  activeBlessedWeightId: string
+): Promise<string> => {
+  const soakRootManifestPath = resolve(soakRoot, 'manifest.json');
+  const soakRootManifest: ContinuousSoakRootManifest = {
+    schemaVersion: 1,
+    batchId: soakManifest.batchId,
+    runId: soakManifest.runId,
+    benchmarkPackId: soakManifest.benchmarkPackId,
+    targetRuns: soakManifest.targetRuns,
+    completedRuns: soakManifest.completedRuns,
+    completedAt: soakManifest.completedAt,
+    activeBlessedWeightId,
+    failures: [...soakManifest.failures],
+    batchManifestPath: soakManifest.artifacts.manifestPath,
+    failureBucketsPath: soakManifest.artifacts.failureBucketsPath,
+    evalSummaryRollupPath: soakManifest.artifacts.evalSummaryRollupPath,
+    datasetPointersPath: soakManifest.artifacts.datasetPointersPath,
+    scorerWeightMetadataPath: soakManifest.artifacts.scorerWeightMetadataPath
+  };
+
+  await writeJson(soakRootManifestPath, soakRootManifest);
+  return relativeFromRepo(soakRootManifestPath);
+};
 
 const pruneRetainedBatchDirs = async (
   manifest: ContinuousManifest,
@@ -413,16 +552,78 @@ const pruneRetainedBatchDirs = async (
   }
 };
 
+const resolveBlessedMismatchReason = (
+  resolvedBlessed: BlessedWeightResolution,
+  manifest: ContinuousManifest
+): string | null => {
+  const currentBlessedWeightId = resolvedBlessed.blessedRecord?.recordId ?? 'default-neutral';
+  const currentWeights = normalizeWeightMetadata(resolvedBlessed.weights, {
+    source: resolvedBlessed.blessedRecord ? 'registry-blessed' : 'default',
+    registryPath: relativeFromRepo(resolve(resolvedBlessed.registryPath)),
+    recordId: resolvedBlessed.blessedRecord?.recordId,
+    advisoryOnly: resolvedBlessed.blessedRecord?.advisoryOnly,
+    status: resolvedBlessed.blessedRecord?.status
+  });
+
+  if (currentBlessedWeightId !== manifest.activeBlessedWeightId) {
+    return `expected active blessed weight ${manifest.activeBlessedWeightId}, received ${currentBlessedWeightId}`;
+  }
+
+  if (stableSerialize(currentWeights.weights) !== stableSerialize(manifest.scorerWeights.weights)) {
+    return `expected pinned blessed weights ${hashStableValue(manifest.scorerWeights.weights)}, received ${hashStableValue(currentWeights.weights)}`;
+  }
+
+  return null;
+};
+
+const runHealthPack = async (
+  batchRoot: string,
+  phase: 'before' | 'after',
+  commandRunner: typeof runCommand
+): Promise<ContinuousHealthGateSummary> => {
+  const summaryPath = resolve(batchRoot, `health-${phase}.json`);
+  const relativeSummaryPath = relativeFromRepo(summaryPath);
+  const result = commandRunner('npm', [...HEALTH_COMMAND, '--', '--summary', relativeSummaryPath], { cwd: REPO_ROOT });
+  const summary = await readJson(summaryPath).catch(() => null);
+
+  return {
+    phase,
+    ok: result.ok && !summary?.failedGate,
+    summaryPath: relativeSummaryPath,
+    failedGateKey: summary?.failedGate?.key ?? null,
+    failedGateLabel: summary?.failedGate?.label ?? null,
+    results: Array.isArray(summary?.results)
+      ? summary.results.map((entry: Record<string, unknown>) => ({
+          key: String(entry.key),
+          ok: Boolean(entry.ok),
+          exitCode: Number(entry.exitCode ?? 1)
+        }))
+      : []
+  };
+};
+
+const writeBatchArtifacts = async (
+  batchRecord: ContinuousBatchRecord,
+  batchFailureDetail: ContinuousBatchFailureDetail
+) => {
+  await writeJson(resolve(REPO_ROOT, batchRecord.manifestPath), batchRecord);
+  await writeJson(resolve(REPO_ROOT, batchRecord.summaryPath), batchRecord);
+  await writeJson(resolve(REPO_ROOT, batchRecord.failureBucketsPath), batchFailureDetail);
+};
+
 const runContinuousBatch = async (
   manifest: ContinuousManifest,
   outputRoot: string,
   batchIndex: number,
   targetRuns: number,
-  blessed: BlessedWeightResolution,
+  registryPath: string,
+  resolveBlessedWeights: typeof resolveBlessedPlaybookWeights,
+  commandRunner: typeof runCommand,
   buckets: ContinuousFailureBuckets
 ): Promise<ContinuousBatchRecord> => {
   const batchId = resolveBatchId(batchIndex, targetRuns);
   const batchRoot = resolveBatchRoot(outputRoot, batchId);
+  const soakRoot = resolve(batchRoot, 'soak-pack');
   const batchManifestPath = resolve(batchRoot, 'manifest.json');
   const batchSummaryPath = resolve(batchRoot, 'summary-rollup.json');
   const batchFailureBucketsPath = resolve(batchRoot, 'failure-buckets.json');
@@ -446,123 +647,147 @@ const runContinuousBatch = async (
   };
   await writeContinuousArtifacts(manifest, null, null);
 
-  const batchRunId = `${manifest.runId}:${batchId}`;
-  const batchManifest = await runHeadlessRunner({
-    runId: batchRunId,
-    outputRoot: batchRoot,
-    resume: true,
-    tuningWeights: blessed.weights,
-    weightMetadata: blessed
-  });
-  const batchSummary = await readJson(resolve(REPO_ROOT, batchManifest.artifacts.summary)) as Record<string, unknown>;
   const failures: FailureBucketName[] = [];
-
-  if (blessed.recordId && blessed.recordId !== manifest.activeBlessedWeightId) {
-    failures.push('blessedWeightMismatch');
+  const batchFailureHistogram = createEmptyHistogram();
+  const beforeBlessed = await resolveBlessedWeights(registryPath);
+  const beforeBlessedMismatch = resolveBlessedMismatchReason(beforeBlessed, manifest);
+  if (beforeBlessedMismatch) {
+    addBatchFailure(failures, batchFailureHistogram, 'blessedWeightMismatch');
     incrementBucket(
       buckets,
       manifest.failureBucketHistogram,
       'blessedWeightMismatch',
       batchId,
-      `expected blessed weight ${manifest.activeBlessedWeightId}, received ${blessed.recordId}`
+      `${beforeBlessedMismatch} before batch execution`
     );
   }
 
-  if (!batchManifest.replayIntegrity.allScenariosVerified || !(batchManifest.metricBandValidation?.allScenariosWithinBands ?? true)) {
-    failures.push('batchExecutionFailure');
+  const healthBefore = await runHealthPack(batchRoot, 'before', commandRunner);
+  if (!healthBefore.ok) {
+    addBatchFailure(failures, batchFailureHistogram, 'healthPackRegression');
+    incrementBucket(
+      buckets,
+      manifest.failureBucketHistogram,
+      'healthPackRegression',
+      batchId,
+      `health pack failed before batch execution${healthBefore.failedGateKey ? ` at ${healthBefore.failedGateKey}` : ''}`
+    );
+  }
+
+  const soakManifest = await runBurnInBatch({
+    count: targetRuns,
+    outputRoot: soakRoot,
+    runId: `${manifest.runId}:${batchId}`,
+    scorerWeights: manifest.scorerWeights,
+    registryPath,
+    registryDigestBefore: hashStableValue({
+      activeBlessedWeightId: manifest.activeBlessedWeightId,
+      scorerWeights: manifest.scorerWeights.weights
+    }),
+    resume: true,
+    gateSuitesEnabled: false,
+    enforceRegistryStability: false
+  });
+  const soakRootManifestPath = await writeSoakRootManifest(soakRoot, soakManifest, manifest.activeBlessedWeightId);
+
+  const evalRollup = await readJson(resolve(REPO_ROOT, soakManifest.artifacts.evalSummaryRollupPath)) as BatchEvalSummaryRollup;
+  if (Array.isArray(soakManifest.failures) && soakManifest.failures.length > 0) {
+    addBatchFailure(failures, batchFailureHistogram, 'batchExecutionFailure');
     incrementBucket(
       buckets,
       manifest.failureBucketHistogram,
       'batchExecutionFailure',
       batchId,
-      'headless batch replay integrity or metric bands failed'
+      `soak pack reported failures: ${soakManifest.failures.join(', ')}`
     );
   }
 
-  const batchRecord: ContinuousBatchRecord = {
+  const healthAfter = await runHealthPack(batchRoot, 'after', commandRunner);
+  if (!healthAfter.ok) {
+    addBatchFailure(failures, batchFailureHistogram, 'healthPackRegression');
+    incrementBucket(
+      buckets,
+      manifest.failureBucketHistogram,
+      'healthPackRegression',
+      batchId,
+      `health pack failed after batch execution${healthAfter.failedGateKey ? ` at ${healthAfter.failedGateKey}` : ''}`
+    );
+  }
+
+  const afterBlessed = await resolveBlessedWeights(registryPath);
+  const afterBlessedMismatch = resolveBlessedMismatchReason(afterBlessed, manifest);
+  if (afterBlessedMismatch) {
+    addBatchFailure(failures, batchFailureHistogram, 'blessedWeightMismatch');
+    incrementBucket(
+      buckets,
+      manifest.failureBucketHistogram,
+      'blessedWeightMismatch',
+      batchId,
+      `${afterBlessedMismatch} after batch execution`
+    );
+  }
+
+  const artifactPointers: ContinuousBatchArtifactPointers = {
+    continuousManifestPath: relativeFromRepo(batchManifestPath),
+    continuousSummaryPath: relativeFromRepo(batchSummaryPath),
+    continuousFailureBucketsPath: relativeFromRepo(batchFailureBucketsPath),
+    healthBeforeSummaryPath: healthBefore.summaryPath,
+    healthAfterSummaryPath: healthAfter.summaryPath,
+    soakRootManifestPath,
+    soakBatchManifestPath: soakManifest.artifacts.manifestPath,
+    soakFailureBucketsPath: soakManifest.artifacts.failureBucketsPath,
+    soakEvalSummaryRollupPath: soakManifest.artifacts.evalSummaryRollupPath,
+    soakDatasetPointersPath: soakManifest.artifacts.datasetPointersPath,
+    soakScorerWeightMetadataPath: soakManifest.artifacts.scorerWeightMetadataPath
+  };
+
+  const batchRecordWithoutDigest: Omit<ContinuousBatchRecord, 'batchDigest'> = {
     batchIndex,
     batchId,
     targetRuns,
-    runId: batchManifest.runId,
-    summaryId: batchManifest.summaryId,
-    completedAt: batchManifest.completedAt,
-    status: 'completed',
+    runId: soakManifest.runId,
+    summaryId: soakManifest.baseline?.summaryId ?? `${batchId}-summary`,
+    completedAt: soakManifest.completedAt ?? new Date().toISOString(),
+    status: failures.length > 0 ? 'failed' : 'completed',
     manifestPath: relativeFromRepo(batchManifestPath),
     summaryPath: relativeFromRepo(batchSummaryPath),
     failureBucketsPath: relativeFromRepo(batchFailureBucketsPath),
-    replayIntegrityOk: batchManifest.replayIntegrity.allScenariosVerified,
-    metricBandsOk: batchManifest.metricBandValidation?.allScenariosWithinBands ?? true,
-    failures,
-    metrics: { ...batchManifest.metrics },
-    support: { ...batchManifest.support },
-    batchDigest: createBatchDigest(batchManifest, batchSummary)
+    activeBlessedWeightId: manifest.activeBlessedWeightId,
+    failures: [...failures],
+    failureBucketHistogram: { ...batchFailureHistogram },
+    soakFailures: Array.isArray(soakManifest.failures) ? [...soakManifest.failures] : [],
+    evalRollup,
+    artifactPointers,
+    healthSuites: [healthBefore, healthAfter]
   };
-
-  const failureDetail = buildBatchFailureDetail(batchId, batchIndex, targetRuns, failures);
-
-  await writeJson(batchManifestPath, batchRecord);
-  await writeJson(batchSummaryPath, {
-    schemaVersion: 1,
-    batchIndex,
+  const batchRecord: ContinuousBatchRecord = {
+    ...batchRecordWithoutDigest,
+    batchDigest: createBatchDigest(batchRecordWithoutDigest)
+  };
+  let batchFailureDetail = buildBatchFailureDetail(
     batchId,
-    targetRuns,
-    runId: batchManifest.runId,
-    summaryId: batchManifest.summaryId,
-    batchDigest: batchRecord.batchDigest,
-    metrics: { ...batchRecord.metrics },
-    support: { ...batchRecord.support },
-    replayIntegrityOk: batchRecord.replayIntegrityOk,
-    metricBandsOk: batchRecord.metricBandsOk,
-    failures: [...batchRecord.failures],
-    scenarioIds: [...batchManifest.scenarioIds]
-  });
-  await writeJson(batchFailureBucketsPath, failureDetail);
-
-  const latestBatchManifestPath = resolve(REPO_ROOT, manifest.latestBatchManifestPath);
-  const latestBatchSummaryPath = resolve(REPO_ROOT, manifest.latestBatchSummaryPath);
-  const latestFailureBucketsPath = resolve(REPO_ROOT, manifest.latestFailureBucketsPath);
-  await writeJson(latestBatchManifestPath, batchRecord);
-  await writeJson(latestBatchSummaryPath, {
-    schemaVersion: 1,
     batchIndex,
-    batchId,
     targetRuns,
-    runId: batchManifest.runId,
-    summaryId: batchManifest.summaryId,
-    batchDigest: batchRecord.batchDigest,
-    metrics: { ...batchRecord.metrics },
-    support: { ...batchRecord.support },
-    replayIntegrityOk: batchRecord.replayIntegrityOk,
-    metricBandsOk: batchRecord.metricBandsOk,
-    failures: [...batchRecord.failures],
-    scenarioIds: [...batchManifest.scenarioIds]
-  });
-  await writeJson(latestFailureBucketsPath, failureDetail);
+    batchRecord.failures,
+    batchRecord.failureBucketHistogram,
+    batchRecord.soakFailures
+  );
 
-  const latestManifestRoundTrip = await readJson(latestBatchManifestPath) as ContinuousBatchRecord;
-  const latestSummaryRoundTrip = await readJson(latestBatchSummaryPath) as Record<string, unknown>;
-  const latestFailureRoundTrip = await readJson(latestFailureBucketsPath) as ContinuousBatchFailureDetail;
-  let updatedFailureDetail = failureDetail;
+  await writeBatchArtifacts(batchRecord, batchFailureDetail);
+  await writeJson(resolve(REPO_ROOT, manifest.latestBatchManifestPath), batchRecord);
+  await writeJson(resolve(REPO_ROOT, manifest.latestBatchSummaryPath), batchRecord);
+  await writeJson(resolve(REPO_ROOT, manifest.latestFailureBucketsPath), batchFailureDetail);
+
+  const latestManifestRoundTrip = await readJson(resolve(REPO_ROOT, manifest.latestBatchManifestPath)) as ContinuousBatchRecord;
+  const latestSummaryRoundTrip = await readJson(resolve(REPO_ROOT, manifest.latestBatchSummaryPath)) as ContinuousBatchRecord;
+  const latestFailureRoundTrip = await readJson(resolve(REPO_ROOT, manifest.latestFailureBucketsPath)) as ContinuousBatchFailureDetail;
+
   if (
     stableSerialize(latestManifestRoundTrip) !== stableSerialize(batchRecord)
-    || stableSerialize(latestSummaryRoundTrip) !== stableSerialize({
-      schemaVersion: 1,
-      batchIndex,
-      batchId,
-      targetRuns,
-      runId: batchManifest.runId,
-      summaryId: batchManifest.summaryId,
-      batchDigest: batchRecord.batchDigest,
-      metrics: { ...batchRecord.metrics },
-      support: { ...batchRecord.support },
-      replayIntegrityOk: batchRecord.replayIntegrityOk,
-      metricBandsOk: batchRecord.metricBandsOk,
-      failures: [...batchRecord.failures],
-      scenarioIds: [...batchManifest.scenarioIds]
-    })
-    || stableSerialize(latestFailureRoundTrip) !== stableSerialize(failureDetail)
+    || stableSerialize(latestSummaryRoundTrip) !== stableSerialize(batchRecord)
+    || stableSerialize(latestFailureRoundTrip) !== stableSerialize(batchFailureDetail)
   ) {
-    failures.push('stableArtifactPointerMismatch');
+    addBatchFailure(batchRecord.failures, batchRecord.failureBucketHistogram, 'stableArtifactPointerMismatch');
     incrementBucket(
       buckets,
       manifest.failureBucketHistogram,
@@ -570,69 +795,41 @@ const runContinuousBatch = async (
       batchId,
       'latest artifact pointer files did not round-trip to the completed batch'
     );
-    batchRecord.failures = [...failures];
-    updatedFailureDetail = buildBatchFailureDetail(batchId, batchIndex, targetRuns, failures);
-    batchRecord.batchDigest = createBatchDigest(batchManifest, {
-      schemaVersion: 1,
-      batchIndex,
-      batchId,
-      targetRuns,
-      runId: batchManifest.runId,
-      summaryId: batchManifest.summaryId,
-      batchDigest: batchRecord.batchDigest,
-      metrics: { ...batchRecord.metrics },
-      support: { ...batchRecord.support },
-      replayIntegrityOk: batchRecord.replayIntegrityOk,
-      metricBandsOk: batchRecord.metricBandsOk,
-      failures: [...batchRecord.failures],
-      scenarioIds: [...batchManifest.scenarioIds]
+    batchRecord.status = 'failed';
+    batchRecord.batchDigest = createBatchDigest({
+      ...batchRecord,
+      batchDigest: undefined
     });
-    await writeJson(batchManifestPath, batchRecord);
-    await writeJson(batchSummaryPath, {
-      schemaVersion: 1,
-      batchIndex,
+    batchFailureDetail = buildBatchFailureDetail(
       batchId,
-      targetRuns,
-      runId: batchManifest.runId,
-      summaryId: batchManifest.summaryId,
-      batchDigest: batchRecord.batchDigest,
-      metrics: { ...batchRecord.metrics },
-      support: { ...batchRecord.support },
-      replayIntegrityOk: batchRecord.replayIntegrityOk,
-      metricBandsOk: batchRecord.metricBandsOk,
-      failures: [...batchRecord.failures],
-      scenarioIds: [...batchManifest.scenarioIds]
-    });
-    await writeJson(batchFailureBucketsPath, updatedFailureDetail);
-    await writeJson(latestBatchManifestPath, batchRecord);
-    await writeJson(latestBatchSummaryPath, {
-      schemaVersion: 1,
       batchIndex,
-      batchId,
       targetRuns,
-      runId: batchManifest.runId,
-      summaryId: batchManifest.summaryId,
-      batchDigest: batchRecord.batchDigest,
-      metrics: { ...batchRecord.metrics },
-      support: { ...batchRecord.support },
-      replayIntegrityOk: batchRecord.replayIntegrityOk,
-      metricBandsOk: batchRecord.metricBandsOk,
-      failures: [...batchRecord.failures],
-      scenarioIds: [...batchManifest.scenarioIds]
-    });
-    await writeJson(latestFailureBucketsPath, updatedFailureDetail);
+      batchRecord.failures,
+      batchRecord.failureBucketHistogram,
+      batchRecord.soakFailures
+    );
+    await writeBatchArtifacts(batchRecord, batchFailureDetail);
+    await writeJson(resolve(REPO_ROOT, manifest.latestBatchManifestPath), batchRecord);
+    await writeJson(resolve(REPO_ROOT, manifest.latestBatchSummaryPath), batchRecord);
+    await writeJson(resolve(REPO_ROOT, manifest.latestFailureBucketsPath), batchFailureDetail);
   }
 
   manifest.retainedBatches.push(batchRecord);
   manifest.retainedBatches.sort((left, right) => left.batchIndex - right.batchIndex);
   manifest.activeBatch = null;
   manifest.nextBatchIndex = batchIndex + 1;
-  manifest.lastSuccessfulBatchId = batchId;
-  manifest.lastSuccessfulBatchIndex = batchIndex;
-  manifest.lastSuccessfulBatchSummaryId = batchRecord.summaryId;
+  if (batchRecord.status === 'completed') {
+    manifest.lastSuccessfulBatchId = batchId;
+    manifest.lastSuccessfulBatchIndex = batchIndex;
+    manifest.lastSuccessfulBatchSummaryId = batchRecord.summaryId;
+  }
 
   await pruneRetainedBatchDirs(manifest, outputRoot, buckets);
-  await writeContinuousArtifacts(manifest, batchRecord, updatedFailureDetail);
+  await writeContinuousArtifacts(manifest, batchRecord, batchFailureDetail);
+
+  if (batchRecord.failures.length > 0) {
+    throw new Error(`Continuous soak batch ${batchId} failed: ${batchRecord.failures.join(', ')}`);
+  }
 
   return batchRecord;
 };
@@ -644,7 +841,9 @@ export const runContinuousLifeline = async ({
   retentionWindow = DEFAULT_RETENTION_WINDOW,
   resume = true,
   maxBatches = counts.length,
-  registryPath = resolve(REPO_ROOT, DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH)
+  registryPath = resolve(REPO_ROOT, DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH),
+  resolveBlessedWeights = resolveBlessedPlaybookWeights,
+  commandRunner = runCommand
 }: {
   counts?: number[];
   outputRoot?: string;
@@ -653,14 +852,16 @@ export const runContinuousLifeline = async ({
   resume?: boolean;
   maxBatches?: number | null;
   registryPath?: string;
+  resolveBlessedWeights?: typeof resolveBlessedPlaybookWeights;
+  commandRunner?: typeof runCommand;
 } = {}): Promise<ContinuousManifest> => {
   const resolvedOutputRoot = resolve(outputRoot);
   const resolvedRegistryPath = resolve(registryPath);
-  const blessed = await resolveBlessedPlaybookWeights(resolvedRegistryPath);
+  const blessed = await resolveBlessedWeights(resolvedRegistryPath);
   const activeBlessedWeightId = blessed.blessedRecord?.recordId ?? 'default-neutral';
   const scorerWeights = normalizeWeightMetadata(blessed.weights, {
     source: blessed.blessedRecord ? 'registry-blessed' : 'default',
-    registryPath: relativeFromRepo(blessed.registryPath),
+    registryPath: relativeFromRepo(resolve(blessed.registryPath)),
     recordId: blessed.blessedRecord?.recordId,
     advisoryOnly: blessed.blessedRecord?.advisoryOnly,
     status: blessed.blessedRecord?.status
@@ -698,11 +899,24 @@ export const runContinuousLifeline = async ({
 
   for (let batchIndex = manifest.nextBatchIndex; completedBatches < targetBatchCount; batchIndex += 1, completedBatches += 1) {
     const targetRuns = resolveBatchTargetRuns([...counts], batchIndex);
-    await runContinuousBatch(manifest, resolvedOutputRoot, batchIndex, targetRuns, blessed, failureBuckets);
+    await runContinuousBatch(
+      manifest,
+      resolvedOutputRoot,
+      batchIndex,
+      targetRuns,
+      resolvedRegistryPath,
+      resolveBlessedWeights,
+      commandRunner,
+      failureBuckets
+    );
   }
 
   manifest.completedAt = new Date().toISOString();
-  await writeContinuousArtifacts(manifest, manifest.retainedBatches.at(-1) ?? null, null);
+  const lastBatch = manifest.retainedBatches.at(-1) ?? null;
+  const lastFailureBuckets = lastBatch
+    ? await readJson(resolve(REPO_ROOT, lastBatch.failureBucketsPath)).catch(() => null)
+    : null;
+  await writeContinuousArtifacts(manifest, lastBatch, lastFailureBuckets);
   await writeJson(manifestPath, manifest);
 
   return manifest;

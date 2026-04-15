@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-04-15T03:08:34.722Z",
+  "updatedAt": "2026-04-15T07:59:46.934Z",
   "currentBlessedRecordId": "mazer-runtime-benchmark-v1:eval-1e876219",
   "candidates": [
     {
@@ -1073,6 +1073,494 @@
             "wardenPressureExposure": 0.2313,
             "itemUsefulnessScore": 0.708,
             "puzzleStateClarityScore": 0.7056
+          },
+          "path": "tmp/eval/governed-candidate-experiment-pack/item-priority-biased/runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "contentProof": true,
+          "twoShellProof": true,
+          "threeShellProof": true,
+          "runtimeEval": true
+        },
+        "artifactPaths": {
+          "weightsPath": "tmp/training/governed-candidate-experiment-pack/item-priority-biased/weights.json",
+          "evalSummaryPath": "tmp/eval/governed-candidate-experiment-pack/item-priority-biased/runtime-eval-summary.json"
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 0.96,
+          "delta": -0.04
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 0.94,
+          "delta": -0.06
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 0.92,
+          "delta": -0.08
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 0.9,
+          "delta": -0.1
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 1.32,
+          "delta": 0.32
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 1.08,
+          "delta": 0.08
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 0.98,
+          "delta": -0.02
+        }
+      },
+      "notes": [
+        "accepted: all required promotion gates green",
+        "accepted: runtime eval bands green",
+        "promotion blocked: manual blessing required",
+        "candidatePath: tmp/training/governed-candidate-experiment-pack/item-priority-biased/weights.json",
+        "evalSummaryPath: tmp/eval/governed-candidate-experiment-pack/item-priority-biased/runtime-eval-summary.json"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "governed-candidate-experiment-pack-v3:frontier-biased:fnv1a-496675c0",
+      "advisoryOnly": true,
+      "status": "candidate",
+      "governanceDecision": "accepted",
+      "weights": {
+        "frontierValue": 1.3,
+        "backtrackUrgency": 0.9,
+        "trapSuspicion": 0.95,
+        "enemyRisk": 0.92,
+        "itemValue": 1.05,
+        "puzzleValue": 1,
+        "rotationTiming": 1.08
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v3",
+        "packId": "governed-candidate-experiment-pack-v3",
+        "candidateId": "frontier-biased",
+        "label": "Frontier Biased",
+        "promotionBlockedUntil": [
+          "architectureCheck",
+          "tests",
+          "build",
+          "visualProof",
+          "visualCanaries",
+          "contentProof",
+          "twoShellProof",
+          "threeShellProof",
+          "runtimeEvalBands"
+        ],
+        "createdAt": "2026-04-15T07:59:46.934Z",
+        "runId": "eval-0c5b8dc3",
+        "sourceRunId": null,
+        "date": "2026-04-15",
+        "evalSummary": {
+          "summaryId": "eval-4044b901",
+          "runId": "eval-0c5b8dc3",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo",
+            "loopy-combat-capable-trap-warden-item-foxtrot",
+            "vantage-observatory-discrete-alignment-recovery-golf",
+            "vantage-observatory-puzzle-rotation-hotel",
+            "labyrinth-tutorial-multi-speaker-intent-india",
+            "vantage-observatory-three-shell-connector-juliet"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.8667,
+            "backtrackPressure": 0.1667,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2267,
+            "itemUsefulnessScore": 0.7356,
+            "puzzleStateClarityScore": 0.7142
+          },
+          "path": "tmp/eval/governed-candidate-experiment-pack/frontier-biased/runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "contentProof": true,
+          "twoShellProof": true,
+          "threeShellProof": true,
+          "runtimeEval": true
+        },
+        "artifactPaths": {
+          "weightsPath": "tmp/training/governed-candidate-experiment-pack/frontier-biased/weights.json",
+          "evalSummaryPath": "tmp/eval/governed-candidate-experiment-pack/frontier-biased/runtime-eval-summary.json"
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 1.3,
+          "delta": 0.3
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 0.9,
+          "delta": -0.1
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 0.95,
+          "delta": -0.05
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 0.92,
+          "delta": -0.08
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 1.05,
+          "delta": 0.05
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 1.08,
+          "delta": 0.08
+        }
+      },
+      "notes": [
+        "accepted: all required promotion gates green",
+        "accepted: runtime eval bands green",
+        "promotion blocked: manual blessing required",
+        "candidatePath: tmp/training/governed-candidate-experiment-pack/frontier-biased/weights.json",
+        "evalSummaryPath: tmp/eval/governed-candidate-experiment-pack/frontier-biased/runtime-eval-summary.json"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "governed-candidate-experiment-pack-v3:caution-biased:fnv1a-59613160",
+      "advisoryOnly": true,
+      "status": "candidate",
+      "governanceDecision": "accepted",
+      "weights": {
+        "frontierValue": 0.92,
+        "backtrackUrgency": 1.08,
+        "trapSuspicion": 1.28,
+        "enemyRisk": 1.22,
+        "itemValue": 0.96,
+        "puzzleValue": 0.94,
+        "rotationTiming": 0.9
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v3",
+        "packId": "governed-candidate-experiment-pack-v3",
+        "candidateId": "caution-biased",
+        "label": "Caution Biased",
+        "promotionBlockedUntil": [
+          "architectureCheck",
+          "tests",
+          "build",
+          "visualProof",
+          "visualCanaries",
+          "contentProof",
+          "twoShellProof",
+          "threeShellProof",
+          "runtimeEvalBands"
+        ],
+        "createdAt": "2026-04-15T07:59:46.934Z",
+        "runId": "eval-180f935e",
+        "sourceRunId": null,
+        "date": "2026-04-15",
+        "evalSummary": {
+          "summaryId": "eval-50abcf7c",
+          "runId": "eval-180f935e",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo",
+            "loopy-combat-capable-trap-warden-item-foxtrot",
+            "vantage-observatory-discrete-alignment-recovery-golf",
+            "vantage-observatory-puzzle-rotation-hotel",
+            "labyrinth-tutorial-multi-speaker-intent-india",
+            "vantage-observatory-three-shell-connector-juliet"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.8667,
+            "backtrackPressure": 0.1667,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2267,
+            "itemUsefulnessScore": 0.7356,
+            "puzzleStateClarityScore": 0.7142
+          },
+          "path": "tmp/eval/governed-candidate-experiment-pack/caution-biased/runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "contentProof": true,
+          "twoShellProof": true,
+          "threeShellProof": true,
+          "runtimeEval": true
+        },
+        "artifactPaths": {
+          "weightsPath": "tmp/training/governed-candidate-experiment-pack/caution-biased/weights.json",
+          "evalSummaryPath": "tmp/eval/governed-candidate-experiment-pack/caution-biased/runtime-eval-summary.json"
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 0.92,
+          "delta": -0.08
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 1.08,
+          "delta": 0.08
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 1.28,
+          "delta": 0.28
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 1.22,
+          "delta": 0.22
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 0.96,
+          "delta": -0.04
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 0.94,
+          "delta": -0.06
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 0.9,
+          "delta": -0.1
+        }
+      },
+      "notes": [
+        "accepted: all required promotion gates green",
+        "accepted: runtime eval bands green",
+        "promotion blocked: manual blessing required",
+        "candidatePath: tmp/training/governed-candidate-experiment-pack/caution-biased/weights.json",
+        "evalSummaryPath: tmp/eval/governed-candidate-experiment-pack/caution-biased/runtime-eval-summary.json"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "governed-candidate-experiment-pack-v3:pursuit-avoidance-biased:fnv1a-c4d10c8b",
+      "advisoryOnly": true,
+      "status": "candidate",
+      "governanceDecision": "accepted",
+      "weights": {
+        "frontierValue": 1,
+        "backtrackUrgency": 1.05,
+        "trapSuspicion": 1.18,
+        "enemyRisk": 1.3,
+        "itemValue": 0.94,
+        "puzzleValue": 0.96,
+        "rotationTiming": 1.02
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v3",
+        "packId": "governed-candidate-experiment-pack-v3",
+        "candidateId": "pursuit-avoidance-biased",
+        "label": "Pursuit Avoidance Biased",
+        "promotionBlockedUntil": [
+          "architectureCheck",
+          "tests",
+          "build",
+          "visualProof",
+          "visualCanaries",
+          "contentProof",
+          "twoShellProof",
+          "threeShellProof",
+          "runtimeEvalBands"
+        ],
+        "createdAt": "2026-04-15T07:59:46.934Z",
+        "runId": "eval-d8043789",
+        "sourceRunId": null,
+        "date": "2026-04-15",
+        "evalSummary": {
+          "summaryId": "eval-514afe50",
+          "runId": "eval-d8043789",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo",
+            "loopy-combat-capable-trap-warden-item-foxtrot",
+            "vantage-observatory-discrete-alignment-recovery-golf",
+            "vantage-observatory-puzzle-rotation-hotel",
+            "labyrinth-tutorial-multi-speaker-intent-india",
+            "vantage-observatory-three-shell-connector-juliet"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.8667,
+            "backtrackPressure": 0.1667,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2267,
+            "itemUsefulnessScore": 0.7356,
+            "puzzleStateClarityScore": 0.7142
+          },
+          "path": "tmp/eval/governed-candidate-experiment-pack/pursuit-avoidance-biased/runtime-eval-summary.json"
+        },
+        "gates": {
+          "architectureCheck": true,
+          "tests": true,
+          "build": true,
+          "visualProof": true,
+          "visualCanaries": true,
+          "contentProof": true,
+          "twoShellProof": true,
+          "threeShellProof": true,
+          "runtimeEval": true
+        },
+        "artifactPaths": {
+          "weightsPath": "tmp/training/governed-candidate-experiment-pack/pursuit-avoidance-biased/weights.json",
+          "evalSummaryPath": "tmp/eval/governed-candidate-experiment-pack/pursuit-avoidance-biased/runtime-eval-summary.json"
+        }
+      },
+      "diff": {
+        "frontierValue": {
+          "previous": 1,
+          "next": 1,
+          "delta": 0
+        },
+        "backtrackUrgency": {
+          "previous": 1,
+          "next": 1.05,
+          "delta": 0.05
+        },
+        "trapSuspicion": {
+          "previous": 1,
+          "next": 1.18,
+          "delta": 0.18
+        },
+        "enemyRisk": {
+          "previous": 1,
+          "next": 1.3,
+          "delta": 0.3
+        },
+        "itemValue": {
+          "previous": 1,
+          "next": 0.94,
+          "delta": -0.06
+        },
+        "puzzleValue": {
+          "previous": 1,
+          "next": 0.96,
+          "delta": -0.04
+        },
+        "rotationTiming": {
+          "previous": 1,
+          "next": 1.02,
+          "delta": 0.02
+        }
+      },
+      "notes": [
+        "accepted: all required promotion gates green",
+        "accepted: runtime eval bands green",
+        "promotion blocked: manual blessing required",
+        "candidatePath: tmp/training/governed-candidate-experiment-pack/pursuit-avoidance-biased/weights.json",
+        "evalSummaryPath: tmp/eval/governed-candidate-experiment-pack/pursuit-avoidance-biased/runtime-eval-summary.json"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "governed-candidate-experiment-pack-v3:item-priority-biased:fnv1a-7b590f10",
+      "advisoryOnly": true,
+      "status": "candidate",
+      "governanceDecision": "accepted",
+      "weights": {
+        "frontierValue": 0.96,
+        "backtrackUrgency": 0.94,
+        "trapSuspicion": 0.92,
+        "enemyRisk": 0.9,
+        "itemValue": 1.32,
+        "puzzleValue": 1.08,
+        "rotationTiming": 0.98
+      },
+      "metadata": {
+        "seedPackId": "mazer-runtime-benchmark-v3",
+        "packId": "governed-candidate-experiment-pack-v3",
+        "candidateId": "item-priority-biased",
+        "label": "Item Priority Biased",
+        "promotionBlockedUntil": [
+          "architectureCheck",
+          "tests",
+          "build",
+          "visualProof",
+          "visualCanaries",
+          "contentProof",
+          "twoShellProof",
+          "threeShellProof",
+          "runtimeEvalBands"
+        ],
+        "createdAt": "2026-04-15T07:59:46.934Z",
+        "runId": "eval-56baf78f",
+        "sourceRunId": null,
+        "date": "2026-04-15",
+        "evalSummary": {
+          "summaryId": "eval-664d4512",
+          "runId": "eval-56baf78f",
+          "scenarioIds": [
+            "labyrinth-tutorial-trap-inference-alpha",
+            "loopy-combat-capable-warden-pressure-bravo",
+            "scavenger-checkpoint-item-usefulness-charlie",
+            "puzzle-visibility-delta",
+            "vantage-observatory-rotation-timing-echo",
+            "loopy-combat-capable-trap-warden-item-foxtrot",
+            "vantage-observatory-discrete-alignment-recovery-golf",
+            "vantage-observatory-puzzle-rotation-hotel",
+            "labyrinth-tutorial-multi-speaker-intent-india",
+            "vantage-observatory-three-shell-connector-juliet"
+          ],
+          "metrics": {
+            "discoveryEfficiency": 0.8667,
+            "backtrackPressure": 0.1667,
+            "trapFalsePositiveRate": 0,
+            "trapFalseNegativeRate": 0,
+            "wardenPressureExposure": 0.2267,
+            "itemUsefulnessScore": 0.7356,
+            "puzzleStateClarityScore": 0.7142
           },
           "path": "tmp/eval/governed-candidate-experiment-pack/item-priority-biased/runtime-eval-summary.json"
         },

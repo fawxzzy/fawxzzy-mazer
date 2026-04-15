@@ -47,6 +47,7 @@ export interface ReplayLinkedTrainingDataset {
     packId: string;
     scenarioId: string;
     districtType: RuntimeBenchmarkDistrictType;
+    shellCount: number;
     seed: string;
     expectedMetricBands: Record<string, RuntimeBenchmarkMetricBand>;
   } | null;
@@ -205,6 +206,7 @@ export const createReplayLinkedTrainingDataset = (
           packId: benchmark.packId,
           scenarioId: benchmark.scenarioId,
           districtType: benchmark.districtType,
+          shellCount: benchmark.shellCount,
           seed: benchmark.seed,
           expectedMetricBands: Object.fromEntries(
             Object.entries(benchmark.expectedMetricBands).map(([metricName, band]) => [

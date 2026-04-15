@@ -5,6 +5,7 @@ import {
   buildBlessingReviewArtifacts,
   loadManualBlessingReviewPack
 } from '../../../scripts/training/promote-weights.mjs';
+import { resolveRuntimeBenchmarkPack } from '../../../scripts/training/common.mjs';
 
 const makeEvalSummary = (runId: string, options: {
   benchmarkPackId: string;
@@ -64,11 +65,12 @@ const makeEvalSummary = (runId: string, options: {
 });
 
 describe('manual blessing review pack', () => {
-  test('loads the governed v2 candidate review pack', async () => {
+  test('loads the governed v3 candidate review pack', async () => {
     const pack = await loadManualBlessingReviewPack();
 
-    expect(pack.reviewPackId).toBe('manual-blessing-review-pack-v1');
-    expect(pack.sourcePackId).toBe('governed-candidate-experiment-pack-v2');
+    expect(pack.reviewPackId).toBe('manual-blessing-review-pack-v3');
+    expect(pack.sourcePackId).toBe('governed-candidate-experiment-pack-v3');
+    expect(pack.scenarioIds).toEqual(resolveRuntimeBenchmarkPack().scenarios.map((scenario) => scenario.id));
     expect(pack.requiredReviewSurfaces).toEqual([
       'runtimeEvalBands',
       'visualProof',
@@ -87,9 +89,10 @@ describe('manual blessing review pack', () => {
 
   test('builds dry-run review artifacts without mutating the blessed id', () => {
     const reviewPack = {
-      reviewPackId: 'manual-blessing-review-pack-v1',
-      sourcePackId: 'governed-candidate-experiment-pack-v2',
-      benchmarkPackId: 'mazer-runtime-benchmark-v2',
+      reviewPackId: 'manual-blessing-review-pack-v3',
+      sourcePackId: 'governed-candidate-experiment-pack-v3',
+      benchmarkPackId: 'mazer-runtime-benchmark-v3',
+      scenarioIds: resolveRuntimeBenchmarkPack().scenarios.map((scenario) => scenario.id),
       candidateIds: ['frontier-biased']
     };
     const registry = {
@@ -99,7 +102,7 @@ describe('manual blessing review pack', () => {
       candidates: [
         {
           schemaVersion: 1,
-          recordId: 'governed-candidate-experiment-pack-v2:frontier-biased:fnv1a-test',
+          recordId: 'governed-candidate-experiment-pack-v3:frontier-biased:fnv1a-test',
           advisoryOnly: true,
           status: 'candidate',
           governanceDecision: 'accepted',
@@ -113,8 +116,8 @@ describe('manual blessing review pack', () => {
             rotationTiming: 1.08
           },
           metadata: {
-            seedPackId: 'mazer-runtime-benchmark-v2',
-            packId: 'governed-candidate-experiment-pack-v2',
+            seedPackId: 'mazer-runtime-benchmark-v3',
+            packId: 'governed-candidate-experiment-pack-v3',
             candidateId: 'frontier-biased',
             label: 'Frontier Biased',
             createdAt: '2026-04-15T00:00:00.000Z',
@@ -253,7 +256,7 @@ describe('manual blessing review pack', () => {
       ]
     });
     const candidateEvalSummary = makeEvalSummary('candidate', {
-      benchmarkPackId: 'mazer-runtime-benchmark-v2',
+      benchmarkPackId: 'mazer-runtime-benchmark-v3',
       scenarioIds: [
         'labyrinth-tutorial-trap-inference-alpha',
         'vantage-observatory-three-shell-connector-juliet'
@@ -302,7 +305,7 @@ describe('manual blessing review pack', () => {
       registry,
       baselineEvalSummary,
       candidateEvalSummaries: new Map([
-        ['governed-candidate-experiment-pack-v2:frontier-biased:fnv1a-test', candidateEvalSummary]
+        ['governed-candidate-experiment-pack-v3:frontier-biased:fnv1a-test', candidateEvalSummary]
       ]),
       createdAt: '2026-04-15T01:00:00.000Z',
       blessRequested: false
@@ -313,6 +316,7 @@ describe('manual blessing review pack', () => {
 
     const artifact = artifacts[0];
     expect(artifact.manualBlessingReady).toBe(true);
+    expect(artifact.recommendation).toBe('ready-for-manual-blessing');
     expect(artifact.keptGreen).toEqual(expect.arrayContaining([
       'runtimeEvalBands',
       'visualProof',
@@ -330,10 +334,9 @@ describe('manual blessing review pack', () => {
       'metric:itemUsefulnessScore',
       'metric:puzzleStateClarityScore'
     ]));
-    expect(artifact.blockedReasons).toContain(
-      'auto-promotion disabled: rerun with --candidate-id <id> --bless after reviewing this artifact'
-    );
-    expect(artifact.humanReadableScenarioDeltas.join(' | ')).toContain('new benchmark-v2 coverage kept green');
+    expect(artifact.blockedReasons).toEqual([]);
+    expect(artifact.dryRunNote).toContain('Review-only run.');
+    expect(artifact.humanReadableScenarioDeltas.join(' | ')).toContain('new benchmark-v3 coverage kept green');
   });
 
   test('applies an explicit manual blessing by updating only the blessed record pointer', () => {
@@ -357,7 +360,7 @@ describe('manual blessing review pack', () => {
             rotationTiming: 1.08
           },
           metadata: {
-            seedPackId: 'mazer-runtime-benchmark-v2',
+            seedPackId: 'mazer-runtime-benchmark-v3',
             runId: 'eval-frontier',
             evalSummary: {
               summaryId: 'eval-summary-frontier',
@@ -456,13 +459,14 @@ describe('manual blessing review pack', () => {
     const nextRegistry = applyManualBlessing({
       registry,
       candidateRecord: registry.candidates[0],
-      reviewArtifactPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/manual-blessing-review-pack/frontier-biased.review.json',
+      reviewArtifactPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/manual-blessing-review-pack-v3/frontier-biased.review.json',
       updatedAt: '2026-04-15T02:00:00.000Z'
     });
 
     expect(nextRegistry.currentBlessedRecordId).toBe('candidate-record');
     expect(nextRegistry.blessed.at(-1)?.status).toBe('blessed');
     expect(nextRegistry.candidates).toHaveLength(1);
-    expect(nextRegistry.blessed.at(-1)?.notes.join(' | ')).toContain('manual blessing review artifact: tmp/training/manual-blessing-review-pack/frontier-biased.review.json');
+    expect(nextRegistry.blessed.at(-1)?.notes.join(' | ')).toContain('manual blessing review artifact: tmp/training/manual-blessing-review-pack-v3/frontier-biased.review.json');
   });
 });
+

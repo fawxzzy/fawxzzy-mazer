@@ -6,6 +6,8 @@ import {
   getCurrentBlessedWeightRecord,
   parseCliArgs,
   readJson,
+  resolveRuntimeBenchmarkPack,
+  stableSerialize,
   writeJson
 } from './common.mjs';
 
@@ -14,7 +16,8 @@ const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const DEFAULT_REGISTRY_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'playbook-weight-registry.json');
 const DEFAULT_REVIEW_PACK_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'manual-blessing-review-pack.json');
-const DEFAULT_REVIEW_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'training', 'manual-blessing-review-pack');
+const DEFAULT_REVIEW_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'training', 'manual-blessing-review-pack-v3');
+const DEFAULT_RUNTIME_BENCHMARK_SCENARIO_IDS = resolveRuntimeBenchmarkPack().scenarios.map((scenario) => scenario.id);
 
 const SURFACE_DEFINITIONS = [
   {
@@ -84,9 +87,19 @@ const resolveGateValue = (record, keys) => {
 
 const loadManualBlessingReviewPack = async (reviewPackPath = DEFAULT_REVIEW_PACK_PATH) => {
   const pack = await readJson(reviewPackPath);
+  const scenarioIds = Array.isArray(pack.scenarioIds)
+    ? [...pack.scenarioIds]
+    : [...DEFAULT_RUNTIME_BENCHMARK_SCENARIO_IDS];
+
+  if (stableSerialize(scenarioIds) !== stableSerialize(DEFAULT_RUNTIME_BENCHMARK_SCENARIO_IDS)) {
+    throw new Error(
+      `Review pack scenario ids must exactly match runtime benchmark pack ${pack.benchmarkPackId ?? 'unknown'}.`
+    );
+  }
 
   return {
     ...pack,
+    scenarioIds,
     candidateIds: Array.isArray(pack.candidateIds) ? [...pack.candidateIds] : [],
     requiredReviewSurfaces: Array.isArray(pack.requiredReviewSurfaces)
       ? [...pack.requiredReviewSurfaces]
@@ -192,7 +205,7 @@ const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
         verdict: keptGreen ? 'kept-green' : 'worsened',
         improved: [],
         worsened: keptGreen ? [] : ['new coverage failed expected validation'],
-        summary: `${candidateSummary.scenarioId} (${candidateSummary.districtType ?? 'unknown'}): new benchmark-v2 coverage ${keptGreen ? 'kept green' : 'failed validation'}`
+        summary: `${candidateSummary.scenarioId} (${candidateSummary.districtType ?? 'unknown'}): new benchmark-v3 coverage ${keptGreen ? 'kept green' : 'failed validation'}`
       });
       continue;
     }
@@ -273,6 +286,7 @@ const buildBlessingReviewArtifact = ({
     candidateEvalSummary
   });
   const technicalBlockers = [];
+  const candidateRejected = candidateRecord?.governanceDecision === 'rejected' || candidateRecord?.status === 'rejected';
 
   if (!candidateEvalSummary) {
     technicalBlockers.push('candidate eval summary could not be loaded');
@@ -282,7 +296,7 @@ const buildBlessingReviewArtifact = ({
     technicalBlockers.push('current blessed baseline is missing scenario-level eval detail');
   }
 
-  if (candidateRecord?.governanceDecision === 'rejected' || candidateRecord?.status === 'rejected') {
+  if (candidateRejected) {
     technicalBlockers.push('candidate is not green in the governed registry');
   }
 
@@ -307,12 +321,11 @@ const buildBlessingReviewArtifact = ({
     technicalBlockers.push('human-readable scenario deltas were not generated');
   }
 
-  const blockedReasons = [
-    ...technicalBlockers,
-    ...(!blessRequested
-      ? ['auto-promotion disabled: rerun with --candidate-id <id> --bless after reviewing this artifact']
-      : [])
-  ];
+  const recommendation = candidateRejected
+    ? 'reject'
+    : technicalBlockers.length === 0
+      ? 'ready-for-manual-blessing'
+      : 'keep-as-candidate';
 
   return {
     schemaVersion: 1,
@@ -321,11 +334,13 @@ const buildBlessingReviewArtifact = ({
     createdAt,
     blessRequested,
     manualBlessingReady: technicalBlockers.length === 0,
+    recommendation,
     baseline: {
       recordId: baselineRecord?.recordId ?? null,
       seedPackId: baselineRecord?.metadata?.seedPackId ?? null,
       benchmarkPackId: baselineEvalSummary?.benchmarkPackId ?? baselineRecord?.metadata?.seedPackId ?? null,
       runId: baselineRecord?.metadata?.runId ?? null,
+      scenarioIds: Array.isArray(baselineEvalSummary?.scenarioIds) ? [...baselineEvalSummary.scenarioIds] : [],
       evalSummaryPath: resolveCandidateEvalSummaryPath(baselineRecord)
         ? toRepoPath(resolveCandidateEvalSummaryPath(baselineRecord))
         : null
@@ -336,6 +351,7 @@ const buildBlessingReviewArtifact = ({
       label: candidateRecord?.metadata?.label ?? candidateRecord?.metadata?.candidateId ?? candidateRecord.recordId,
       runId: candidateRecord?.metadata?.runId ?? null,
       benchmarkPackId: candidateEvalSummary?.benchmarkPackId ?? candidateRecord?.metadata?.seedPackId ?? null,
+      scenarioIds: Array.isArray(candidateEvalSummary?.scenarioIds) ? [...candidateEvalSummary.scenarioIds] : [],
       evalSummaryPath: resolveCandidateEvalSummaryPath(candidateRecord)
         ? toRepoPath(resolveCandidateEvalSummaryPath(candidateRecord))
         : null
@@ -360,14 +376,16 @@ const buildBlessingReviewArtifact = ({
         .filter((delta) => delta.verdict === 'worsened')
         .map((delta) => delta.summary)
     ],
-    blockedReasons,
+    blockedReasons: [...technicalBlockers],
     comparisonContext: {
       aggregateMetricNote: baselineRecord?.metadata?.seedPackId === reviewPack.benchmarkPackId
         ? 'aggregate runtime metrics compare against the same benchmark pack'
         : `aggregate runtime metrics span ${baselineRecord?.metadata?.seedPackId ?? 'unknown'} -> ${reviewPack.benchmarkPackId}; shared-scenario deltas should drive the blessing review`,
       sharedScenarioCount: scenarioDeltas.filter((delta) => !delta.newCoverage).length,
-      addedScenarioCount: scenarioDeltas.filter((delta) => delta.newCoverage).length
+      addedScenarioCount: scenarioDeltas.filter((delta) => delta.newCoverage).length,
+      reviewScenarioIds: [...reviewPack.scenarioIds]
     },
+    dryRunNote: blessRequested ? null : 'Review-only run. Blessing remains explicit and requires rerunning with --candidate-id <id> --bless after human review.',
     surfaceComparisons,
     metricComparison,
     humanReadableScenarioDeltas: scenarioDeltas.map((delta) => delta.summary),
@@ -516,6 +534,7 @@ const main = async () => {
     createdAt,
     blessRequested,
     candidateId,
+    reviewScenarioIds: [...reviewPack.scenarioIds],
     currentBlessedRecordIdBefore: registry.currentBlessedRecordId ?? null,
     currentBlessedRecordIdAfter: nextRegistry.currentBlessedRecordId ?? registry.currentBlessedRecordId ?? null,
     artifacts: artifacts.map((artifact) => ({
@@ -523,6 +542,7 @@ const main = async () => {
       recordId: artifact.candidate.recordId,
       reviewArtifactPath: toRepoPath(artifactPaths.get(artifact.candidate.candidateId)),
       manualBlessingReady: artifact.manualBlessingReady,
+      recommendation: artifact.recommendation,
       blockedReasons: [...artifact.blockedReasons]
     }))
   });
@@ -531,6 +551,7 @@ const main = async () => {
     reviewPackId: reviewPack.reviewPackId,
     registryPath: toRepoPath(registryPath),
     reviewManifestPath: toRepoPath(manifestPath),
+    reviewScenarioIds: [...reviewPack.scenarioIds],
     currentBlessedRecordIdBefore: registry.currentBlessedRecordId ?? null,
     currentBlessedRecordIdAfter: nextRegistry.currentBlessedRecordId ?? registry.currentBlessedRecordId ?? null,
     blessRequested,
@@ -538,6 +559,7 @@ const main = async () => {
     artifacts: artifacts.map((artifact) => ({
       candidateId: artifact.candidate.candidateId,
       manualBlessingReady: artifact.manualBlessingReady,
+      recommendation: artifact.recommendation,
       reviewArtifactPath: toRepoPath(artifactPaths.get(artifact.candidate.candidateId)),
       blockedReasons: [...artifact.blockedReasons]
     }))
@@ -561,3 +583,4 @@ export {
   loadManualBlessingReviewPack,
   resolveReviewCandidates
 };
+

@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "packId": "governed-candidate-experiment-pack-v2",
-  "seedPackId": "mazer-runtime-benchmark-v2",
-  "benchmarkPackId": "mazer-runtime-benchmark-v2",
+  "packId": "governed-candidate-experiment-pack-v3",
+  "seedPackId": "mazer-runtime-benchmark-v3",
+  "benchmarkPackId": "mazer-runtime-benchmark-v3",
   "scenarioIds": [
     "labyrinth-tutorial-trap-inference-alpha",
     "loopy-combat-capable-warden-pressure-bravo",
     "scavenger-checkpoint-item-usefulness-charlie",
     "puzzle-visibility-delta",
     "vantage-observatory-rotation-timing-echo",
-    "loopy-combat-capable-trap-warden-pressure-foxtrot",
-    "scavenger-checkpoint-item-pressure-golf",
+    "loopy-combat-capable-trap-warden-item-foxtrot",
+    "vantage-observatory-discrete-alignment-recovery-golf",
     "vantage-observatory-puzzle-rotation-hotel",
     "labyrinth-tutorial-multi-speaker-intent-india",
     "vantage-observatory-three-shell-connector-juliet"

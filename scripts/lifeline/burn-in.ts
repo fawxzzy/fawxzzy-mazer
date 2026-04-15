@@ -14,7 +14,6 @@ import {
   type HeadlessRunnerManifest,
   type HeadlessRunnerWeightMetadata
 } from './headless-runner.ts';
-import type { LifelineBenchmarkSuiteSummary } from './runtime-eval.ts';
 import { resolveLifelineBenchmarkPack } from './benchmark-pack.mjs';
 import {
   DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH,
@@ -27,6 +26,7 @@ const DEFAULT_COUNTS = [25, 100, 500];
 const DEFAULT_RUN_ID = 'neutral-advisory-burn-in';
 const BENCHMARK_PACK_ID = resolveLifelineBenchmarkPack().packId;
 type CliArgs = Record<string, string | boolean>;
+type LifelineBenchmarkSuiteSummary = any;
 
 const GATE_DEFINITIONS = [
   {
@@ -48,20 +48,20 @@ const GATE_DEFINITIONS = [
 
 type GateKey = (typeof GATE_DEFINITIONS)[number]['key'];
 
-interface GateResult {
+export interface GateResult {
   key: GateKey;
   ok: boolean;
   stdout: string;
   stderr: string;
 }
 
-interface GateSuiteResult {
+export interface GateSuiteResult {
   phase: 'before' | 'after';
   ok: boolean;
   results: GateResult[];
 }
 
-interface BatchFailureBuckets {
+export interface BatchFailureBuckets {
   deterministicReplayConsistency: { count: number; attempts: string[] };
   stableSummaryIdGeneration: { count: number; attempts: string[] };
   stableRunIdGeneration: { count: number; attempts: string[] };
@@ -70,7 +70,7 @@ interface BatchFailureBuckets {
   candidateWeightPromotion: { count: number; phases: string[] };
 }
 
-interface BatchArtifacts {
+export interface BatchArtifacts {
   manifestPath: string;
   failureBucketsPath: string;
   evalSummaryRollupPath: string;
@@ -78,13 +78,13 @@ interface BatchArtifacts {
   scorerWeightMetadataPath: string;
 }
 
-interface BatchMetricSummary {
+export interface BatchMetricSummary {
   min: number;
   max: number;
   average: number;
 }
 
-interface BatchEvalSummaryRollup {
+export interface BatchEvalSummaryRollup {
   schemaVersion: 1;
   batchId: string;
   targetRuns: number;
@@ -95,14 +95,14 @@ interface BatchEvalSummaryRollup {
   metrics: Record<string, BatchMetricSummary>;
 }
 
-interface BatchDatasetPointer {
+export interface BatchDatasetPointer {
   scenarioId: string;
   datasetPath: string;
   evalPath: string;
   tuningPath: string;
 }
 
-interface BatchDatasetPointerManifest {
+export interface BatchDatasetPointerManifest {
   schemaVersion: 1;
   batchId: string;
   targetRuns: number;
@@ -114,13 +114,13 @@ interface BatchDatasetPointerManifest {
   }>;
 }
 
-interface BatchScorerWeightMetadataArtifact {
+export interface BatchScorerWeightMetadataArtifact {
   schemaVersion: 1;
   batchId: string;
   scorerWeights: HeadlessRunnerWeightMetadata;
 }
 
-interface BatchAttemptBaseline {
+export interface BatchAttemptBaseline {
   runId: string;
   summaryId: string;
   signature: string;
@@ -130,7 +130,7 @@ interface BatchAttemptBaseline {
   metrics: Record<string, number>;
 }
 
-interface BatchAttemptRecord extends BatchAttemptBaseline {
+export interface BatchAttemptRecord extends BatchAttemptBaseline {
   attempt: number;
   attemptId: string;
   status: 'passed' | 'failed';
@@ -142,7 +142,7 @@ interface BatchAttemptRecord extends BatchAttemptBaseline {
   failures: string[];
 }
 
-interface BurnInBatchManifest {
+export interface BurnInBatchManifest {
   schemaVersion: 1;
   batchId: string;
   benchmarkPackId: string;
@@ -272,7 +272,7 @@ const normalizeSummary = (summary: LifelineBenchmarkSuiteSummary) => ({
   metrics: summary.metrics,
   support: summary.support,
   scenarioSummaries: Array.isArray(summary.scenarioSummaries)
-    ? summary.scenarioSummaries.map((scenario) => ({
+    ? summary.scenarioSummaries.map((scenario: any) => ({
         scenarioId: scenario.scenarioId,
         summaryId: scenario.summaryId,
         runId: scenario.runId,
@@ -367,7 +367,6 @@ const recordGateFailures = (buckets: BatchFailureBuckets, gateSuite: GateSuiteRe
 };
 
 const buildAttemptRecord = async (
-  count: number,
   attempt: number,
   runId: string,
   batchDir: string,
@@ -397,16 +396,16 @@ const buildAttemptRecord = async (
     replayIntegrityOk: manifest.replayIntegrity.allScenariosVerified,
     metricBandsOk: manifest.metricBandValidation?.allScenariosWithinBands ?? true,
     scenarioIds: manifest.scenarioIds,
-    scenarioRunIds: summary.scenarioSummaries.map((scenario) => ({
+    scenarioRunIds: summary.scenarioSummaries.map((scenario: any) => ({
       scenarioId: scenario.scenarioId,
       runId: scenario.runId
     })),
-    scenarioSummaryIds: summary.scenarioSummaries.map((scenario) => ({
+    scenarioSummaryIds: summary.scenarioSummaries.map((scenario: any) => ({
       scenarioId: scenario.scenarioId,
       summaryId: scenario.summaryId
     })),
-    metrics: manifest.metrics,
-    datasetPointers: manifest.scenarios.map((scenario) => ({
+    metrics: { ...manifest.metrics },
+    datasetPointers: manifest.scenarios.map((scenario: any) => ({
       scenarioId: scenario.scenarioId,
       datasetPath: scenario.paths.datasetPath,
       evalPath: scenario.paths.evalPath,
@@ -526,17 +525,21 @@ interface BurnInBatchOptions {
   registryPath: string;
   registryDigestBefore: string;
   resume: boolean;
+  gateSuitesEnabled?: boolean;
+  enforceRegistryStability?: boolean;
 }
 
-const runBurnInBatch = async ({
+export const runBurnInBatch = async ({
   count,
   outputRoot,
   runId,
   scorerWeights,
   registryPath,
   registryDigestBefore,
-  resume
-}: BurnInBatchOptions): Promise<string> => {
+  resume,
+  gateSuitesEnabled = true,
+  enforceRegistryStability = true
+}: BurnInBatchOptions): Promise<BurnInBatchManifest> => {
   const batchId = `runs-${count}`;
   const batchDir = resolve(outputRoot, batchId);
   const batchManifestPath = resolve(batchDir, 'manifest.json');
@@ -559,14 +562,14 @@ const runBurnInBatch = async ({
 
   if (existingBatchManifest?.completedAt) {
     await writeBatchArtifacts(batchManifest, failureBuckets);
-    return batchManifest.artifacts.manifestPath;
+    return batchManifest;
   }
 
   for (const gateSuite of batchManifest.gateSuites) {
     recordGateFailures(failureBuckets, gateSuite);
   }
 
-  if (batchManifest.gateSuites.length === 0) {
+  if (gateSuitesEnabled && batchManifest.gateSuites.length === 0) {
     const beforeSuite = runGateSuite('before');
     batchManifest.gateSuites.push(beforeSuite);
     recordGateFailures(failureBuckets, beforeSuite);
@@ -583,7 +586,7 @@ const runBurnInBatch = async ({
   }
 
   for (let attempt = batchManifest.attempts.length + 1; attempt <= count; attempt += 1) {
-    const attemptRecord = await buildAttemptRecord(count, attempt, runId, batchDir, scorerWeights);
+    const attemptRecord = await buildAttemptRecord(attempt, runId, batchDir, scorerWeights);
     baseline = evaluateAttempt(attemptRecord, baseline, failureBuckets);
     batchManifest.baseline = baseline;
     batchManifest.attempts.push(attemptRecord);
@@ -591,15 +594,23 @@ const runBurnInBatch = async ({
     await writeBatchArtifacts(batchManifest, failureBuckets);
   }
 
-  const afterSuite = runGateSuite('after');
-  batchManifest.gateSuites.push(afterSuite);
-  recordGateFailures(failureBuckets, afterSuite);
-  const registryDigestAfter = hashStableValue(await readJson(registryPath).catch(() => null));
-  batchManifest.registryDigestAfter = registryDigestAfter;
-  batchManifest.registryStable = registryDigestAfter === registryDigestBefore;
+  if (gateSuitesEnabled) {
+    const afterSuite = runGateSuite('after');
+    batchManifest.gateSuites.push(afterSuite);
+    recordGateFailures(failureBuckets, afterSuite);
+  }
 
-  if (!batchManifest.registryStable) {
-    addBucketPhase(failureBuckets.candidateWeightPromotion, 'after');
+  if (enforceRegistryStability) {
+    const registryDigestAfter = hashStableValue(await readJson(registryPath).catch(() => null));
+    batchManifest.registryDigestAfter = registryDigestAfter;
+    batchManifest.registryStable = registryDigestAfter === registryDigestBefore;
+
+    if (!batchManifest.registryStable) {
+      addBucketPhase(failureBuckets.candidateWeightPromotion, 'after');
+    }
+  } else {
+    batchManifest.registryDigestAfter = null;
+    batchManifest.registryStable = null;
   }
 
   batchManifest.failures = [
@@ -612,7 +623,7 @@ const runBurnInBatch = async ({
   ];
   batchManifest.completedAt = new Date().toISOString();
   await writeBatchArtifacts(batchManifest, failureBuckets);
-  return batchManifest.artifacts.manifestPath;
+  return batchManifest;
 };
 
 interface BurnInOptions {
@@ -671,18 +682,20 @@ export const runBurnIn = async ({
       await writeJson(rootManifestPath, rootManifest);
     }
 
-    const manifestPath = await runBurnInBatch({
+    const batchManifest = await runBurnInBatch({
       count,
       outputRoot: resolvedOutputRoot,
       runId,
       scorerWeights,
       registryPath: resolvedRegistryPath,
       registryDigestBefore,
-      resume
+      resume,
+      gateSuitesEnabled: true,
+      enforceRegistryStability: true
     });
     const batch = rootManifest.batches.find((entry) => entry.count === count);
     if (batch) {
-      batch.manifestPath = manifestPath;
+      batch.manifestPath = batchManifest.artifacts.manifestPath;
       batch.status = 'completed';
     }
     await writeJson(rootManifestPath, rootManifest);

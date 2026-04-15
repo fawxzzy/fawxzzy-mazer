@@ -33,6 +33,7 @@ export interface RuntimeEvalScenarioSpec {
   id: string;
   focus: RuntimeEvalFocus;
   districtType: RuntimeBenchmarkDistrictType;
+  shellCount: number;
   seed: string;
   startTileId: TileId;
   startHeading: HeadingToken;
@@ -107,6 +108,7 @@ export interface RuntimeEvalScenarioSummary {
   scenarioId: string;
   focus: RuntimeEvalFocus;
   districtType: RuntimeBenchmarkDistrictType;
+  shellCount: number;
   seed: string;
   startTileId: TileId;
   startHeading: HeadingToken;
@@ -658,6 +660,7 @@ const toRuntimeEvalScenarioSpec = (
     id: scenario.id,
     focus: resolveScenarioFocus(scenario),
     districtType: scenario.districtType,
+    shellCount: scenario.shellCount,
     seed: scenario.seed,
     startTileId: scenario.steps[0]?.tileId ?? 'start',
     startHeading: scenario.steps[0]?.heading ?? 'north',
@@ -918,6 +921,7 @@ export const runRuntimeEvalScenario = (
     scenarioId: scenario.id,
     focus: resolveScenarioFocus(scenario),
     districtType: scenario.districtType,
+    shellCount: scenario.shellCount,
     seed: scenario.seed,
     startTileId: replayScenario.startTileId,
     startHeading: replayScenario.startHeading,

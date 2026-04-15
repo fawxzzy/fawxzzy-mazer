@@ -64,6 +64,7 @@ export interface RuntimeBenchmarkScenarioContract {
   id: string;
   label: string;
   districtType: RuntimeBenchmarkDistrictType;
+  shellCount: number;
   seed: string;
   variant: string;
   expectedMetricBands: Partial<Record<RuntimeBenchmarkMetricName, RuntimeBenchmarkMetricBand>>;

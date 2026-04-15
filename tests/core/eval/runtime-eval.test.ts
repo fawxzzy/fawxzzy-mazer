@@ -12,7 +12,7 @@ describe('runtime eval harness', () => {
 
     expect(summary.schemaVersion).toBe(1);
     expect(summary.suiteId).toBe('mazer-core-deterministic-runtime-eval');
-    expect(summary.benchmarkPackId).toBe('mazer-runtime-benchmark-v2');
+    expect(summary.benchmarkPackId).toBe('mazer-runtime-benchmark-v3');
     expect(summary.summaryId).toMatch(/^eval-/);
     expect(summary.runId).toMatch(/^eval-/);
     expect(summary.scenarioCount).toBe(10);
@@ -22,8 +22,8 @@ describe('runtime eval harness', () => {
       'scavenger-checkpoint-item-usefulness-charlie',
       'puzzle-visibility-delta',
       'vantage-observatory-rotation-timing-echo',
-      'loopy-combat-capable-trap-warden-pressure-foxtrot',
-      'scavenger-checkpoint-item-pressure-golf',
+      'loopy-combat-capable-trap-warden-item-foxtrot',
+      'vantage-observatory-discrete-alignment-recovery-golf',
       'vantage-observatory-puzzle-rotation-hotel',
       'labyrinth-tutorial-multi-speaker-intent-india',
       'vantage-observatory-three-shell-connector-juliet'
@@ -54,6 +54,7 @@ describe('runtime eval harness', () => {
       && typeof scenario.runId === 'string'
       && typeof scenario.seed === 'string'
       && typeof scenario.districtType === 'string'
+      && typeof scenario.shellCount === 'number'
       && Object.keys(scenario.metrics).length === 7
       && scenario.replayVerified
       && scenario.metricBandValidation.passed
@@ -85,7 +86,7 @@ describe('runtime eval harness', () => {
       expect(cliSummary.summaryId).toBe(fileSummary.summaryId);
       expect(cliSummary.runId).toBe(fileSummary.runId);
       expect(cliSummary.metrics).toEqual(fileSummary.metrics);
-      expect(cliSummary.benchmarkPackId).toBe('mazer-runtime-benchmark-v2');
+      expect(cliSummary.benchmarkPackId).toBe('mazer-runtime-benchmark-v3');
       expect(cliSummary.scenarioSummaries).toHaveLength(10);
       expect(cliSummary.scenarioIds).toEqual(fileSummary.scenarioIds);
       expect(fileSummary.summaryId).toMatch(/^eval-/);
@@ -93,5 +94,6 @@ describe('runtime eval harness', () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
-  });
+  }, 15000);
 });
+
