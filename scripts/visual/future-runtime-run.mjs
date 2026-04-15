@@ -92,6 +92,20 @@ const FUTURE_RUNTIME_SCENARIOS = Object.freeze([
       worse: 'The lane is still graph-first and deliberately sparse rather than fully featured.',
       humanJudgment: 'Confirm the bridge is scarce, the alignment puzzle is readable, and the inner-shell return lands with north-facing bearings restored.'
     }
+  },
+  {
+    id: 'planet3d-three-shell-proof',
+    label: 'Planet 3D three-shell proof',
+    kind: 'planet3d',
+    route: '/planet3d.html',
+    motion: true,
+    report: {
+      changed: 'The constrained three-shell lane now proves an outer observatory reveal, a scarce bridge into the middle shell, and a single landmarked rotation latch into the inner shell.',
+      regressed: 'This remains a narrow experiment and still avoids free-spin rotation or connector density creep.',
+      better: 'The stack is now legible as outer, middle, and inner shells, with the objective proxy staying visible or proxied while rotation recovers to north.',
+      worse: 'The lane is still a proof of structure, not a claim of production visual parity.',
+      humanJudgment: 'Confirm the observatory explains the full shell stack, the mid-shell latch stays discrete, and the final recovery lands on the inner shell with bearings restored.'
+    }
   }
 ]);
 
@@ -105,6 +119,12 @@ const FUTURE_RUNTIME_WORKFLOWS = Object.freeze({
     scenarioIds: [
       'future-phaser-content-proof',
       'planet3d-content-proof'
+    ]
+  },
+  'three-shell-proof': {
+    runId: 'three-shell-proof',
+    scenarioIds: [
+      'planet3d-three-shell-proof'
     ]
   },
   'two-shell-proof': {
@@ -347,7 +367,11 @@ const capturePlanet3DScenario = async ({
 
   const keyframePaths = [];
   const keyframeDiagnostics = [];
-  const keyframeSteps = scenario?.id === 'planet3d-two-shell-proof' ? [2, 3, 4] : [2, 3];
+  const keyframeSteps = scenario?.id === 'planet3d-three-shell-proof'
+    ? [2, 4, 6]
+    : scenario?.id === 'planet3d-two-shell-proof'
+      ? [2, 3, 4]
+      : [2, 3];
   for (const index of keyframeSteps) {
     const diagnostics = await page.evaluate((key) => {
       const controller = window[key];
@@ -384,6 +408,8 @@ const capturePlanet3DScenario = async ({
     outputPath: packet.contactSheetPath,
     title: scenario?.id === 'planet3d-two-shell-proof'
       ? 'Planet 3D two-shell bridge'
+      : scenario?.id === 'planet3d-three-shell-proof'
+        ? 'Planet 3D three-shell stack'
       : 'Planet 3D rotation recovery'
   });
 
@@ -396,10 +422,11 @@ const capturePlanet3DScenario = async ({
 };
 
 const evaluatePlanet3DProofGates = (frame) => ({
-  shellRelationshipUnderstanding: Boolean(frame?.shellRelationship?.relationshipReadable),
-  connectorReadability: Boolean(frame?.shellRelationship?.connectorReadable),
-  rotationRecovery: frame?.rotationState === 'north',
-  objectiveProxyVisibility: frame?.objectiveProxy?.visible === true
+  shellHierarchyPass: Boolean(frame?.contentProof?.shellHierarchyPass),
+  connectorReadabilityPass: Boolean(frame?.contentProof?.connectorReadabilityPass),
+  rotationRecoveryPass: frame?.rotationState === 'north',
+  objectiveProxyPass: Boolean(frame?.contentProof?.objectiveProxyPass),
+  signalOverloadPass: Boolean(frame?.contentProof?.signalOverloadPass)
 });
 
 const buildPacketMetadata = ({
@@ -485,6 +512,8 @@ const buildPacketMetadata = ({
       intentFeedReadable: semanticScore.contract.intentFeedReadableEveryScene,
       worldPingSubordinate: semanticScore.contract.worldPingSubordinateEveryScene,
       rotationRecovered: semanticScore.contract.rotationRecoveredEveryScene,
+      shellHierarchyPass: afterDiagnostics?.contentProof?.shellHierarchyPass ?? false,
+      objectiveProxyPass: afterDiagnostics?.contentProof?.objectiveProxyPass ?? false,
       trapInferencePass: semanticScore.contract.trapInferencePassEveryScene,
       wardenReadabilityPass: semanticScore.contract.wardenReadabilityPassEveryScene,
       itemProxyPass: semanticScore.contract.itemProxyPassEveryScene,

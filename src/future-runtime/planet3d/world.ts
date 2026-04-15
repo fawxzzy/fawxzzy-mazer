@@ -22,8 +22,15 @@ const ROTATION_STATES: readonly Planet3DRotationStateId[] = ['north', 'east', 's
 
 const SHELL_IDS = {
   outer: 'outer-shell',
+  middle: 'middle-shell',
   inner: 'inner-shell'
 } as const;
+
+const SHELL_ORDER: readonly Planet3DShellId[] = [
+  SHELL_IDS.outer,
+  SHELL_IDS.middle,
+  SHELL_IDS.inner
+];
 
 const SHELLS: Record<Planet3DShellId, Planet3DShell> = {
   [SHELL_IDS.outer]: {
@@ -32,6 +39,13 @@ const SHELLS: Record<Planet3DShellId, Planet3DShell> = {
     radius: 1,
     rotationStates: ROTATION_STATES,
     transitionCount: 1
+  },
+  [SHELL_IDS.middle]: {
+    id: SHELL_IDS.middle,
+    label: 'Middle shell',
+    radius: 0.78,
+    rotationStates: ROTATION_STATES,
+    transitionCount: 2
   },
   [SHELL_IDS.inner]: {
     id: SHELL_IDS.inner,
@@ -49,18 +63,30 @@ const TILE_IDS = {
   observatory: 'observatory',
   alignmentCourt: 'alignment-court',
   shellGate: 'shell-gate',
+  midLanding: 'mid-landing',
+  midGallery: 'mid-gallery',
+  midGate: 'mid-gate',
   innerLanding: 'inner-landing',
   innerObservatory: 'inner-observatory',
   goal: 'goal'
 } as const;
 
-const CONNECTOR_PAIR = {
-  id: 'shell-gate::inner-landing',
-  label: 'Scarce bridge span',
-  requiredRotation: 'south' as Planet3DRotationStateId,
-  outerTileId: TILE_IDS.shellGate,
-  innerTileId: TILE_IDS.innerLanding
-};
+const CONNECTOR_FAMILIES = {
+  outerBridge: {
+    id: 'shell-gate::mid-landing',
+    label: 'Scarce bridge span',
+    requiredRotation: 'south' as Planet3DRotationStateId,
+    outerTileId: TILE_IDS.shellGate,
+    innerTileId: TILE_IDS.midLanding
+  },
+  innerLatch: {
+    id: 'mid-gate::inner-landing',
+    label: 'Landmarked rotation latch',
+    requiredRotation: 'west' as Planet3DRotationStateId,
+    outerTileId: TILE_IDS.midGate,
+    innerTileId: TILE_IDS.innerLanding
+  }
+} as const;
 
 const withLandmark = (id: string, label: string, cue: string): VisibleLandmark => ({
   id,
@@ -106,13 +132,14 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
     label: 'Observatory ledge',
     position: { x: 0.18, y: 0.35, z: 0.58 },
     neighbors: [TILE_IDS.gallery, TILE_IDS.alignmentCourt],
-    cues: ['shell:outer-shell', 'objective-proxy', 'shell-bridge', 'item cache', 'rotation-state: south'],
+    cues: ['shell:outer-shell', 'objective-proxy', 'shell-hierarchy: outer-middle-inner', 'shell-bridge', 'item cache', 'rotation-state: south'],
     landmarks: [
       withLandmark('sky-prism', 'Sky prism', 'goal-proxy'),
-      withLandmark('bearing-ring', 'Bearing ring', 'rotation-state: south')
+      withLandmark('bearing-ring', 'Bearing ring', 'rotation-state: south'),
+      withLandmark('triad-aperture', 'Triad aperture', 'shell-hierarchy: outer-middle-inner')
     ],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
     rotationAdvance: 'south',
     objectiveProxy: true
   },
@@ -128,7 +155,7 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
       withLandmark('bridge-index', 'Bridge index', 'connector-readable')
     ],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
     rotationAdvance: 'south',
     objectiveProxy: true
   },
@@ -141,11 +168,57 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
     cues: ['shell:outer-shell', 'connector-readable', 'shell-bridge', 'goal-proxy', 'landmark gate'],
     landmarks: [withLandmark('bridge-keystone', 'Bridge keystone', 'shell-bridge')],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
+    objectiveProxy: true,
+    connectorTargetId: TILE_IDS.midLanding,
+    connectorRequiredRotation: CONNECTOR_FAMILIES.outerBridge.requiredRotation,
+    connectorLabel: CONNECTOR_FAMILIES.outerBridge.label
+  },
+  [TILE_IDS.midLanding]: {
+    id: TILE_IDS.midLanding,
+    shellId: SHELL_IDS.middle,
+    label: 'Mid landing',
+    position: { x: -0.54, y: 0.16, z: -0.02 },
+    neighbors: [TILE_IDS.midGallery],
+    cues: ['shell:middle-shell', 'trail-readable', 'connector-readable', 'rotation-state: north'],
+    landmarks: [withLandmark('mid-plinth', 'Mid plinth', 'shell:middle-shell')],
+    goalVisible: false,
+    connectorTargetId: TILE_IDS.shellGate,
+    connectorRequiredRotation: 'north',
+    connectorLabel: CONNECTOR_FAMILIES.outerBridge.label,
+    rotationAdvance: 'north'
+  },
+  [TILE_IDS.midGallery]: {
+    id: TILE_IDS.midGallery,
+    shellId: SHELL_IDS.middle,
+    label: 'Mid gallery',
+    position: { x: -0.02, y: 0.36, z: -0.18 },
+    neighbors: [TILE_IDS.midLanding, TILE_IDS.midGate],
+    cues: ['shell:middle-shell', 'rotation-state: west', 'trail-readable', 'signal hush'],
+    landmarks: [
+      withLandmark('mid-arch', 'Mid arch', 'trail-readable'),
+      withLandmark('bearing-stone', 'Bearing stone', 'rotation-state: west')
+    ],
+    goalVisible: false,
+    rotationAdvance: 'west'
+  },
+  [TILE_IDS.midGate]: {
+    id: TILE_IDS.midGate,
+    shellId: SHELL_IDS.middle,
+    label: 'Mid gate',
+    position: { x: 0.32, y: 0.6, z: -0.12 },
+    neighbors: [TILE_IDS.midGallery],
+    cues: ['shell:middle-shell', 'connector-readable', 'shell-bridge', 'goal-proxy', 'rotation-state: west'],
+    landmarks: [
+      withLandmark('inner-key', 'Inner key', 'shell-bridge'),
+      withLandmark('latch-beacon', 'Latch beacon', 'connector-readable')
+    ],
+    goalVisible: false,
     objectiveProxy: true,
     connectorTargetId: TILE_IDS.innerLanding,
-    connectorRequiredRotation: CONNECTOR_PAIR.requiredRotation,
-    connectorLabel: CONNECTOR_PAIR.label
+    connectorRequiredRotation: CONNECTOR_FAMILIES.innerLatch.requiredRotation,
+    connectorLabel: CONNECTOR_FAMILIES.innerLatch.label,
+    rotationAdvance: 'west'
   },
   [TILE_IDS.innerLanding]: {
     id: TILE_IDS.innerLanding,
@@ -159,12 +232,12 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
       withLandmark('inner-marker', 'Inner marker', 'shell:inner-shell')
     ],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
     rotationAdvance: 'north',
     objectiveProxy: true,
-    connectorTargetId: TILE_IDS.shellGate,
+    connectorTargetId: TILE_IDS.midGate,
     connectorRequiredRotation: 'north',
-    connectorLabel: CONNECTOR_PAIR.label
+    connectorLabel: CONNECTOR_FAMILIES.innerLatch.label
   },
   [TILE_IDS.innerObservatory]: {
     id: TILE_IDS.innerObservatory,
@@ -178,7 +251,7 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
       withLandmark('bearing-ring-inner', 'Bearing ring', 'rotation-state: north')
     ],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
     rotationAdvance: 'north',
     objectiveProxy: true
   },
@@ -191,7 +264,7 @@ const WORLD_NODES: Record<TileId, Planet3DNode> = {
     cues: ['goal', 'shell:inner-shell', 'warden pursuit', 'rotation-state: north'],
     landmarks: [withLandmark('core-prism', 'Core prism', 'goal')],
     goalVisible: true,
-    goalLabel: 'Inner core projection',
+    goalLabel: 'Three-shell core projection',
     rotationAdvance: 'north',
     objectiveProxy: true
   }
@@ -203,8 +276,14 @@ const EDGE_LABELS: Record<string, string> = {
   [`${TILE_IDS.gallery}::${TILE_IDS.observatory}`]: 'Gallery arc to observatory ledge',
   [`${TILE_IDS.observatory}::${TILE_IDS.alignmentCourt}`]: 'Observatory ledge to alignment court',
   [`${TILE_IDS.alignmentCourt}::${TILE_IDS.shellGate}`]: 'Alignment court to shell gate',
-  [`${TILE_IDS.shellGate}::${TILE_IDS.innerLanding}`]: 'Scarce bridge span',
-  [`${TILE_IDS.innerLanding}::${TILE_IDS.shellGate}`]: 'Scarce bridge span',
+  [`${TILE_IDS.shellGate}::${TILE_IDS.midLanding}`]: CONNECTOR_FAMILIES.outerBridge.label,
+  [`${TILE_IDS.midLanding}::${TILE_IDS.shellGate}`]: CONNECTOR_FAMILIES.outerBridge.label,
+  [`${TILE_IDS.midLanding}::${TILE_IDS.midGallery}`]: 'Mid landing to mid gallery',
+  [`${TILE_IDS.midGallery}::${TILE_IDS.midLanding}`]: 'Mid gallery to mid landing',
+  [`${TILE_IDS.midGallery}::${TILE_IDS.midGate}`]: 'Mid gallery to mid gate',
+  [`${TILE_IDS.midGate}::${TILE_IDS.midGallery}`]: 'Mid gate to mid gallery',
+  [`${TILE_IDS.midGate}::${TILE_IDS.innerLanding}`]: CONNECTOR_FAMILIES.innerLatch.label,
+  [`${TILE_IDS.innerLanding}::${TILE_IDS.midGate}`]: CONNECTOR_FAMILIES.innerLatch.label,
   [`${TILE_IDS.innerLanding}::${TILE_IDS.innerObservatory}`]: 'Inner landing to inner observatory',
   [`${TILE_IDS.innerObservatory}::${TILE_IDS.goal}`]: 'Inner observatory to core destination'
 };
@@ -240,17 +319,33 @@ const hasVisitedShell = (deliveries: readonly RuntimeEpisodeDelivery[], shellId:
   hasLocalCue(deliveries, (cue) => cue === `shell:${shellId}`)
 );
 
+const hasVisitedAllShells = (deliveries: readonly RuntimeEpisodeDelivery[]): boolean => (
+  SHELL_ORDER.every((shellId) => hasVisitedShell(deliveries, shellId))
+);
+
+const resolveLinkedShellId = (shellId: Planet3DShellId): Planet3DShellId => {
+  const currentIndex = SHELL_ORDER.indexOf(shellId);
+  if (currentIndex < 0) {
+    return SHELL_IDS.outer;
+  }
+
+  if (currentIndex === SHELL_ORDER.length - 1) {
+    return SHELL_ORDER[currentIndex - 1] ?? SHELL_IDS.middle;
+  }
+
+  return SHELL_ORDER[currentIndex + 1] ?? SHELL_IDS.inner;
+};
+
 export const resolveShellRelationship = (host: OneShellPlanet3DHost) => {
   const currentNode = WORLD_NODES[host.currentTileId];
   const currentShell = SHELLS[currentNode.shellId];
-  const linkedShellId = currentNode.shellId === SHELL_IDS.outer ? SHELL_IDS.inner : SHELL_IDS.outer;
+  const linkedShellId = resolveLinkedShellId(currentShell.id);
   const linkedShell = SHELLS[linkedShellId];
-  const connectorLabel = currentNode.connectorLabel ?? CONNECTOR_PAIR.label;
+  const connectorLabel = currentNode.connectorLabel ?? CONNECTOR_FAMILIES.outerBridge.label;
   const connectorAccessible = Boolean(currentNode.connectorTargetId && isConnectorTraversalAllowed(currentNode, currentNode.connectorTargetId, host.rotationState));
   const connectorReadable = Boolean(currentNode.connectorLabel)
     || hasLocalCue(host.episodeDeliveries, (cue) => cue.includes('connector-readable') || cue.includes('shell-bridge'));
-  const relationshipReadable = hasVisitedShell(host.episodeDeliveries, SHELL_IDS.outer)
-    && hasVisitedShell(host.episodeDeliveries, SHELL_IDS.inner)
+  const relationshipReadable = hasVisitedAllShells(host.episodeDeliveries)
     && (connectorReadable || connectorAccessible);
 
   return {
@@ -258,11 +353,11 @@ export const resolveShellRelationship = (host: OneShellPlanet3DHost) => {
     currentShellLabel: currentShell.label,
     linkedShellId: linkedShell.id,
     linkedShellLabel: linkedShell.label,
-    connectorId: currentNode.connectorTargetId ? `${currentNode.id}::${currentNode.connectorTargetId}` : CONNECTOR_PAIR.id,
+    connectorId: currentNode.connectorTargetId ? `${currentNode.id}::${currentNode.connectorTargetId}` : CONNECTOR_FAMILIES.outerBridge.id,
     connectorLabel,
     connectorAccessible,
     connectorReadable,
-    rotationRequirement: currentNode.connectorRequiredRotation ?? CONNECTOR_PAIR.requiredRotation,
+    rotationRequirement: currentNode.connectorRequiredRotation ?? CONNECTOR_FAMILIES.outerBridge.requiredRotation,
     relationshipReadable
   };
 };

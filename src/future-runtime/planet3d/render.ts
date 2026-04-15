@@ -1,4 +1,4 @@
-import type { RuntimeIntentDelivery, RuntimeTrailDelivery } from '../../mazer-core/adapters';
+import type { RuntimeEpisodeDelivery, RuntimeIntentDelivery, RuntimeTrailDelivery } from '../../mazer-core/adapters';
 import { formatIntentSpeakerHandle, getIntentPingLabel, type IntentBusRecord } from '../../mazer-core/intent';
 import { oneShellPlanet3DWorld, resolveShellRelationship, type OneShellPlanet3DHost } from './world';
 import type {
@@ -184,9 +184,19 @@ const hasIntentRecord = (
   predicate: (record: IntentBusRecord) => boolean
 ): boolean => deliveries.some((delivery) => delivery.bus.records.some(predicate));
 
+const collectLocalCues = (deliveries: readonly RuntimeEpisodeDelivery[]): string[] => (
+  deliveries.flatMap((delivery) => delivery.latestEpisode?.outcome?.localCues ?? [])
+);
+
+const hasLocalCue = (
+  deliveries: readonly RuntimeEpisodeDelivery[],
+  predicate: (cue: string) => boolean
+): boolean => collectLocalCues(deliveries).some(predicate);
+
 const buildContentProof = (host: OneShellPlanet3DHost, delivery: RuntimeIntentDelivery | null): FutureRuntimeContentProof => {
   const visibleIntentRecordCount = delivery?.bus.records.slice(-4).length ?? 0;
   const shellRelationship = resolveShellRelationship(host);
+  const currentNode = oneShellPlanet3DWorld.nodes[host.currentTileId];
   const trapInferencePass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'trap-inferred' || record.speaker === 'TrapNet')
     || host.episodeDeliveries.some((entry) => Boolean(entry.latestEpisode?.outcome?.trapCueCount && entry.latestEpisode.outcome.trapCueCount > 0));
   const wardenReadabilityPass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'enemy-seen' || record.speaker === 'Warden')
@@ -196,8 +206,11 @@ const buildContentProof = (host: OneShellPlanet3DHost, delivery: RuntimeIntentDe
   const puzzleProxyPass = hasIntentRecord(host.intentDeliveries, (record) => record.kind === 'puzzle-state-observed' || record.speaker === 'Puzzle')
     || host.episodeDeliveries.some((entry) => Boolean(entry.latestEpisode?.outcome?.puzzleCueCount && entry.latestEpisode.outcome.puzzleCueCount > 0));
   const shellRelationshipPass = shellRelationship.relationshipReadable;
+  const shellHierarchyPass = shellRelationshipPass
+    && hasLocalCue(host.episodeDeliveries, (cue) => cue.includes('shell-hierarchy'));
   const connectorReadabilityPass = shellRelationship.connectorReadable;
   const rotationRecoveryPass = host.rotationState === 'north';
+  const objectiveProxyPass = Boolean(currentNode.goalVisible || currentNode.objectiveProxy);
 
   return {
     trapInferencePass,
@@ -205,15 +218,18 @@ const buildContentProof = (host: OneShellPlanet3DHost, delivery: RuntimeIntentDe
     itemProxyPass,
     puzzleProxyPass,
     shellRelationshipPass,
+    shellHierarchyPass,
     connectorReadabilityPass,
     rotationRecoveryPass,
+    objectiveProxyPass,
     signalOverloadPass: trapInferencePass
       && wardenReadabilityPass
       && itemProxyPass
       && puzzleProxyPass
-      && shellRelationshipPass
+      && shellHierarchyPass
       && connectorReadabilityPass
       && rotationRecoveryPass
+      && objectiveProxyPass
       && visibleIntentRecordCount <= 4
   };
 };
@@ -247,15 +263,21 @@ export const renderPlanet3DPrototypeFrame = (host: OneShellPlanet3DHost): Planet
       }
     },
     objectiveProxy: {
-      tileId: currentNode.goalVisible ? oneShellPlanet3DWorld.objectiveTileId : null,
-      label: currentNode.goalVisible ? currentNode.goalLabel ?? objectiveNode.label : null,
-      visible: Boolean(currentNode.goalVisible),
+      tileId: currentNode.goalVisible || currentNode.objectiveProxy ? oneShellPlanet3DWorld.objectiveTileId : null,
+      label: currentNode.goalVisible || currentNode.objectiveProxy ? currentNode.goalLabel ?? objectiveNode.label : null,
+      visible: Boolean(currentNode.goalVisible || currentNode.objectiveProxy),
+      proxied: Boolean(currentNode.objectiveProxy && !currentNode.goalVisible),
       screen: currentNode.goalVisible
         ? {
             x: objectiveProjection.x,
             y: objectiveProjection.y
           }
-        : null
+        : currentNode.objectiveProxy
+          ? {
+              x: playerProjection.x,
+              y: playerProjection.y
+            }
+          : null
     },
     landmarks: buildLandmarks(host),
     trail: {
@@ -363,15 +385,16 @@ export const drawPlanet3DPrototypeFrame = (
   context.fillText(`Rotation :: ${frame.rotationState}`, 72, 54);
   context.fillStyle = '#bdd5e5';
   context.font = '13px Consolas, monospace';
-  context.fillText(`Shell :: ${frame.shell.label}`, 72, 76);
-  context.fillText(`Linked shell :: ${frame.shellRelationship.linkedShellLabel}`, 72, 98);
-  context.fillText(`Connector :: ${frame.shellRelationship.connectorLabel} (${frame.shellRelationship.connectorAccessible ? 'open' : 'locked'})`, 72, 120);
-  context.fillText(`Trail :: ${frame.trail.points.map((point) => point.tileId).join(' -> ')}`, 72, 142);
-  context.fillText(`Objective proxy :: ${frame.objectiveProxy.visible ? 'visible' : 'hidden'}`, 72, 164);
+  context.fillText(`Shell stack :: ${frame.shells.map((shell) => shell.label).join(' -> ')}`, 72, 76);
+  context.fillText(`Shell :: ${frame.shell.label}`, 72, 98);
+  context.fillText(`Linked shell :: ${frame.shellRelationship.linkedShellLabel}`, 72, 120);
+  context.fillText(`Connector :: ${frame.shellRelationship.connectorLabel} (${frame.shellRelationship.connectorAccessible ? 'open' : 'locked'})`, 72, 142);
+  context.fillText(`Trail :: ${frame.trail.points.map((point) => point.tileId).join(' -> ')}`, 72, 164);
+  context.fillText(`Objective proxy :: ${frame.objectiveProxy.visible ? (frame.objectiveProxy.proxied ? 'proxied' : 'visible') : 'hidden'}`, 72, 186);
   context.fillText(
-    `Content proof :: trap ${frame.contentProof.trapInferencePass ? 'pass' : 'fail'} | warden ${frame.contentProof.wardenReadabilityPass ? 'pass' : 'fail'} | item ${frame.contentProof.itemProxyPass ? 'pass' : 'fail'} | puzzle ${frame.contentProof.puzzleProxyPass ? 'pass' : 'fail'} | shell ${frame.contentProof.shellRelationshipPass ? 'pass' : 'fail'} | bridge ${frame.contentProof.connectorReadabilityPass ? 'pass' : 'fail'} | recover ${frame.contentProof.rotationRecoveryPass ? 'pass' : 'fail'} | signal ${frame.contentProof.signalOverloadPass ? 'pass' : 'fail'}`,
+    `Content proof :: trap ${frame.contentProof.trapInferencePass ? 'pass' : 'fail'} | warden ${frame.contentProof.wardenReadabilityPass ? 'pass' : 'fail'} | item ${frame.contentProof.itemProxyPass ? 'pass' : 'fail'} | puzzle ${frame.contentProof.puzzleProxyPass ? 'pass' : 'fail'} | shell ${frame.contentProof.shellRelationshipPass ? 'pass' : 'fail'} | hierarchy ${frame.contentProof.shellHierarchyPass ? 'pass' : 'fail'} | bridge ${frame.contentProof.connectorReadabilityPass ? 'pass' : 'fail'} | objective ${frame.contentProof.objectiveProxyPass ? 'pass' : 'fail'} | recover ${frame.contentProof.rotationRecoveryPass ? 'pass' : 'fail'} | signal ${frame.contentProof.signalOverloadPass ? 'pass' : 'fail'}`,
     72,
-    186
+    208
   );
 };
 

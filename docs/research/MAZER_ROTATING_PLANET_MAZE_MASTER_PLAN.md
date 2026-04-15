@@ -253,11 +253,13 @@ The first prototype lane is successful only if it proves:
 - the player and active objective remain visible without heavy HUD dependence
 - bounded regional goals feel satisfying before the core is reached
 
-The next follow-on gate is a sparse two-shell proof:
-- one landmarked connector pair must open only after a discrete alignment state is solved
-- the connector must stay readable without turning into multi-bridge density
-- the inner shell must remain legible as a second shell, not as a hidden sub-map
+The next follow-on gate is a constrained three-shell proof:
+- exactly one third shell is introduced between the current outer and inner shells
+- the added connector family must stay scarce, landmarked, and discrete rotation-gated
+- the observatory/vantage reveal must explain the full shell stack rather than implying it through hidden state
 - rotation recovery must still return the player to clear bearings after shell access changes
+- objective proxies must remain visible or proxied without introducing density creep
+- future-runtime proof packets should gate `shellHierarchyPass`, `connectorReadabilityPass`, `rotationRecoveryPass`, `objectiveProxyPass`, and `signalOverloadPass` for the three-shell lane
 
 ## Replay And Logging
 

@@ -11,7 +11,7 @@ import type {
 import type { LocalObservation, TileId, VisibleLandmark } from '../../mazer-core/agent/types';
 import type { IntentImportance, IntentSpeaker } from '../../mazer-core/intent';
 
-export type Planet3DShellId = 'outer-shell' | 'inner-shell';
+export type Planet3DShellId = 'outer-shell' | 'middle-shell' | 'inner-shell';
 export type Planet3DRotationStateId = 'north' | 'east' | 'south' | 'west';
 
 export interface Planet3DPoint3D {
@@ -91,8 +91,10 @@ export interface FutureRuntimeContentProof {
   itemProxyPass: boolean;
   puzzleProxyPass: boolean;
   shellRelationshipPass: boolean;
+  shellHierarchyPass: boolean;
   connectorReadabilityPass: boolean;
   rotationRecoveryPass: boolean;
+  objectiveProxyPass: boolean;
   signalOverloadPass: boolean;
 }
 
@@ -115,6 +117,7 @@ export interface Planet3DPrototypeFrame {
     tileId: TileId | null;
     label: string | null;
     visible: boolean;
+    proxied: boolean;
     screen: Planet3DPoint2D | null;
   };
   landmarks: Array<{
