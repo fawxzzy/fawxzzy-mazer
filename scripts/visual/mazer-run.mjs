@@ -27,6 +27,7 @@ import {
 import { renderContactSheet } from '../../tools/visual-pipeline/contactSheet.mjs';
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const VISUAL_PROOF_SOURCE_PATH = 'scripts/visual/mazer-run.mjs';
 const DEFAULT_READABILITY_GATES = Object.freeze({
   trailHeadGapPx: 0.75,
   minimumNonTextContrast: 3,
@@ -41,6 +42,37 @@ const resolveCommandSpec = (command, args) => (
     ? { command: 'cmd.exe', args: ['/d', '/s', '/c', `${command} ${args.join(' ')}`] }
     : { command, args }
 );
+
+const writeCaptureTrace = (previewLog, event) => {
+  const line = `[visual-proof] ${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    ...event
+  })}\n`;
+  previewLog?.write(line);
+  process.stdout.write(line);
+};
+
+const resolveProofAppLocator = (page) => page.locator('main.proof-app');
+
+const waitForVisualProofState = async (page, expectedStateId, timeoutMs) => {
+  await page.waitForFunction((stateId) => (
+    Boolean(window.__MAZER_VISUAL_PROOF__?.getDiagnostics?.()?.stateId === stateId)
+  ), expectedStateId, { timeout: timeoutMs });
+};
+
+const captureClippedScreenshot = async (page, locator, path, timeoutMs) => {
+  await locator.waitFor({ state: 'visible', timeout: timeoutMs });
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error(`Could not resolve a visible capture box for ${path}.`);
+  }
+
+  await page.screenshot({
+    path,
+    clip: box,
+    animations: 'disabled'
+  });
+};
 
 const runCommand = (command, args, options = {}) => new Promise((resolvePromise, rejectPromise) => {
   const commandSpec = resolveCommandSpec(command, args);
@@ -394,7 +426,8 @@ const captureScenarioPacket = async ({
   viewport,
   runId,
   commitSha,
-  timeoutMs
+  timeoutMs,
+  previewLog
 }) => {
   const packet = await ensurePacketPaths(REPO_ROOT, artifactRoot, scenario.id, viewport.id, runId);
   const context = await browser.newContext({
@@ -412,6 +445,16 @@ const captureScenarioPacket = async ({
 
   const page = await context.newPage();
   const url = `${normalizeBaseUrl(baseUrl)}${scenario.route}${scenario.route.includes('?') ? '&' : '?'}viewport=${encodeURIComponent(viewport.id)}`;
+  writeCaptureTrace(previewLog, {
+    phase: 'packet-start',
+    scenarioId: scenario.id,
+    scenarioLabel: scenario.label,
+    viewportId: viewport.id,
+    viewportLabel: viewport.label,
+    stateId: null,
+    artifactRoot,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir)
+  });
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
   await page.waitForFunction(() => Boolean(window.__MAZER_VISUAL_PROOF__?.ready), null, { timeout: timeoutMs });
   const sceneScoresByState = new Map();
@@ -430,15 +473,36 @@ const captureScenarioPacket = async ({
   };
 
   const beforeDiagnostics = await setState(scenario.beforeState);
+  await waitForVisualProofState(page, scenario.beforeState, timeoutMs);
   await rememberSceneScore(beforeDiagnostics);
-  await page.screenshot({ path: packet.beforePath, fullPage: false, animations: 'disabled' });
+  writeCaptureTrace(previewLog, {
+    phase: 'before-screenshot',
+    scenarioId: scenario.id,
+    viewportId: viewport.id,
+    stateId: beforeDiagnostics?.stateId ?? scenario.beforeState,
+    artifactRoot,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+    target: 'main.proof-app'
+  });
+  await captureClippedScreenshot(page, resolveProofAppLocator(page), packet.beforePath, timeoutMs);
 
   const keyframePaths = [];
   for (const [index, stateId] of scenario.keyframes.entries()) {
     const diagnostics = await setState(stateId);
+    await waitForVisualProofState(page, stateId, timeoutMs);
     await rememberSceneScore(diagnostics);
     const keyframePath = resolve(packet.keyframesDir, `${String(index + 1).padStart(2, '0')}-${stateId}.png`);
-    await page.locator(config.selectors.stage).screenshot({ path: keyframePath, animations: 'disabled' });
+    writeCaptureTrace(previewLog, {
+      phase: 'keyframe-screenshot',
+      scenarioId: scenario.id,
+      viewportId: viewport.id,
+      stateId,
+      artifactRoot,
+      packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+      target: config.selectors.stage,
+      keyframeIndex: index + 1
+    });
+    await captureClippedScreenshot(page, page.locator(config.selectors.stage), keyframePath, timeoutMs);
     keyframePaths.push({ label: stateId, path: keyframePath });
   }
 
@@ -450,9 +514,28 @@ const captureScenarioPacket = async ({
   }
 
   const afterDiagnostics = await setState(scenario.afterState);
+  await waitForVisualProofState(page, scenario.afterState, timeoutMs);
   await rememberSceneScore(afterDiagnostics);
-  await page.screenshot({ path: packet.afterPath, fullPage: false, animations: 'disabled' });
-  await page.locator(config.selectors.focus).screenshot({ path: packet.focusPath, animations: 'disabled' });
+  writeCaptureTrace(previewLog, {
+    phase: 'after-screenshot',
+    scenarioId: scenario.id,
+    viewportId: viewport.id,
+    stateId: afterDiagnostics?.stateId ?? scenario.afterState,
+    artifactRoot,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+    target: 'main.proof-app'
+  });
+  await captureClippedScreenshot(page, resolveProofAppLocator(page), packet.afterPath, timeoutMs);
+  writeCaptureTrace(previewLog, {
+    phase: 'focus-screenshot',
+    scenarioId: scenario.id,
+    viewportId: viewport.id,
+    stateId: afterDiagnostics?.stateId ?? scenario.afterState,
+    artifactRoot,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+    target: config.selectors.focus
+  });
+  await captureClippedScreenshot(page, page.locator(config.selectors.focus), packet.focusPath, timeoutMs);
   await renderContactSheet(browser, {
     frames: keyframePaths,
     outputPath: packet.contactSheetPath,
@@ -467,6 +550,14 @@ const captureScenarioPacket = async ({
   });
   const recoveryDiagnostics = recovery.stateId ? await page.evaluate(() => window.__MAZER_VISUAL_PROOF__?.getDiagnostics()) : null;
   await rememberSceneScore(recoveryDiagnostics);
+  writeCaptureTrace(previewLog, {
+    phase: 'packet-complete',
+    scenarioId: scenario.id,
+    viewportId: viewport.id,
+    stateId: recovery.stateId ?? afterDiagnostics?.stateId ?? scenario.afterState,
+    artifactRoot,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir)
+  });
 
   const orderedSceneIds = [...new Set([
     scenario.beforeState,
@@ -635,7 +726,8 @@ export const runVisualProofSuite = async ({
           viewport,
           runId: resolvedRunId,
           commitSha,
-          timeoutMs: captureTimeoutMs
+          timeoutMs: captureTimeoutMs,
+          previewLog
         });
         packets.push(packetResult);
         if (!packetResult.semanticScore.summary.passed) {
@@ -674,26 +766,44 @@ export const runVisualProofSuite = async ({
   }
 };
 
+const buildVisualProofGateResult = (summary) => ({
+  schemaVersion: 1,
+  ok: summary.failures.length === 0,
+  runId: summary.runId,
+  artifactRoot: summary.artifactRoot,
+  packetCount: summary.packetCount,
+  indexPath: summary.indexPath,
+  failureCount: summary.failures.length,
+  failures: summary.failures,
+  sourceFilePath: VISUAL_PROOF_SOURCE_PATH
+});
+
+export const runVisualProofGate = async (options = {}) => {
+  const summary = await runVisualProofSuite({
+    ...options,
+    allowFailures: true
+  });
+
+  return buildVisualProofGateResult(summary);
+};
+
 const main = async () => {
   const args = parseCliArgs();
-  const summary = await runVisualProofSuite({
+  const result = await runVisualProofGate({
     baseUrl: args['base-url'] ?? process.env.MAZER_VISUAL_BASE_URL ?? DEFAULT_BASE_URL,
     configPath: typeof args.config === 'string' ? args.config : 'playwright.visual.config.json',
     artifactRoot: typeof args['artifact-root'] === 'string' ? args['artifact-root'] : undefined,
     previewTimeoutMs: parseIntegerArg(args['preview-timeout'], DEFAULT_PREVIEW_TIMEOUT_MS),
     captureTimeoutMs: parseIntegerArg(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
     skipBuild: args['skip-build'] === true || args['skip-build'] === 'true',
-    runId: typeof args.run === 'string' ? args.run : undefined,
-    allowFailures: args['allow-failures'] === true || args['allow-failures'] === 'true'
+    runId: typeof args.run === 'string' ? args.run : undefined
   });
 
-  process.stdout.write(`${JSON.stringify({
-    runId: summary.runId,
-    artifactRoot: summary.artifactRoot,
-    packetCount: summary.packetCount,
-    indexPath: summary.indexPath,
-    failureCount: summary.failures.length
-  }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+
+  if (!result.ok && !(args['allow-failures'] === true || args['allow-failures'] === 'true')) {
+    process.exitCode = 1;
+  }
 };
 
 if (isDirectRun) {
@@ -703,3 +813,8 @@ if (isDirectRun) {
     process.exitCode = 1;
   });
 }
+
+export {
+  VISUAL_PROOF_SOURCE_PATH,
+  buildVisualProofGateResult
+};

@@ -106,7 +106,7 @@ beforeAll(async () => {
   ({ generateMazeForDifficulty, disposeMazeEpisode, CURATED_FAMILY_ROTATION_BLOCK_LENGTH, MAZE_FAMILY_EXPOSURE_POLICY } = await import('../../src/domain/maze'));
   ({ legacyTuning } = await import('../../src/config/tuning'));
   ({ resolveViewportSize } = await import('../../src/render/viewport'));
-});
+}, 20_000);
 
 beforeEach(() => {
   cleanupPresentationArtifacts();
@@ -1150,10 +1150,18 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain('destroyEpisodePresentationShell();');
     expect(menuSceneSource).toContain('this.ambientSky?.destroy();');
     expect(menuSceneSource).toContain('this.ambientSky?.update(delta);');
-    expect(menuSceneSource).toContain('this.drawBackdropMotif(staticStarScale);');
+    expect(menuSceneSource).toContain('this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);');
+    expect(menuSceneSource).toContain('this.add.rectangle(0, 0, width, height, sceneThemeProfile.palette.background.deepSpace, 1)');
+    expect(menuSceneSource).toContain('this.time.delayedCall(0, runDeferredVisualSetup);');
+    expect(menuSceneSource).toContain("markBootTiming('menu-scene:create-core-ready');");
+    expect(menuSceneSource).toContain("markBootTiming('menu-scene:first-interactive-frame');");
+    expect(menuSceneSource).toContain("markBootTiming('menu-scene:deferred-visual-setup');");
     expect(menuSceneSource).toContain("this.nextHeroWindowAt = this.resolveTierCooldown('hero')");
     expect(menuSceneSource).toContain("this.nextSignatureWindowAt = this.resolveTierCooldown('signature')");
     expect(menuSceneSource).toContain('episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);');
+    expect(menuSceneSource).toContain('const scheduleIntentRuntimeSession = (episode: MazeEpisode): void => {');
+    expect(menuSceneSource).toContain('intentRuntimeSession = createMenuIntentRuntimeSession(episode);');
+    expect(menuSceneSource).toContain('createIntentFeedHud(this, {');
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
     expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");

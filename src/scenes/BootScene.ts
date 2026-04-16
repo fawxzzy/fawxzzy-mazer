@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DEFAULT_PRESENTATION_LAUNCH_CONFIG, resolveBootPresentationConfig } from '../boot/presentation';
+import { markBootTiming } from '../boot/bootTiming';
 import { resolveSceneViewport } from '../render/viewport';
 
 export class BootScene extends Phaser.Scene {
@@ -8,10 +9,13 @@ export class BootScene extends Phaser.Scene {
   }
 
   public preload(): void {
+    markBootTiming('boot-scene:preload-start');
     // Intentionally empty for foundation wave.
+    markBootTiming('boot-scene:preload-end');
   }
 
   public create(): void {
+    markBootTiming('boot-scene:create-start');
     let launchConfig = { ...DEFAULT_PRESENTATION_LAUNCH_CONFIG };
 
     try {
@@ -26,6 +30,8 @@ export class BootScene extends Phaser.Scene {
       console.error('BootScene failed to start MenuScene; rendering recovery shell.', error);
       this.renderRecoveryShell();
     }
+
+    markBootTiming('boot-scene:create-end');
   }
 
   private renderRecoveryShell(): void {

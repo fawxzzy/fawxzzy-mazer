@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runVisualProofGate } from '../visual/mazer-run.mjs';
 import {
   createDefaultPlaybookTuningWeights,
   getCurrentBlessedWeightRecord,
@@ -123,6 +124,10 @@ const createGovernanceGateStatus = () => Object.fromEntries(
   REQUIRED_GLOBAL_GATES.map((gateName) => [gateName, false])
 );
 
+const createGovernanceGateEvidence = () => ({
+  visualProof: null
+});
+
 const loadGovernedCandidateExperimentPack = async (packPath = DEFAULT_PACK_PATH) => {
   const rawPack = await readJson(packPath);
 
@@ -166,8 +171,10 @@ const buildGovernedCandidateExperimentRecord = ({
   candidate,
   registry,
   gateStatus,
+  gateEvidence,
   evalSummary,
   createdAt,
+  governedRunId,
   artifactPaths
 }) => {
   const normalizedWeights = normalizeWeights(candidate.weights);
@@ -254,6 +261,12 @@ const buildGovernedCandidateExperimentRecord = ({
         ...gateStatus,
         runtimeEval: runtimeEvalGreen
       },
+      gateEvidence: gateEvidence
+        ? {
+            visualProof: gateEvidence.visualProof
+          }
+        : undefined,
+      governedRunId,
       artifactPaths: artifactPaths
         ? {
             weightsPath: toRepoPath(artifactPaths.weightsPath),
@@ -265,6 +278,10 @@ const buildGovernedCandidateExperimentRecord = ({
     notes: [
       ...reasons,
       `candidatePath: ${artifactPaths ? toRepoPath(artifactPaths.weightsPath) : 'n/a'}`,
+      ...(governedRunId ? [`governedRunId: ${governedRunId}`] : []),
+      ...(gateEvidence?.visualProof?.runId ? [`visualProofRunId: ${gateEvidence.visualProof.runId}`] : []),
+      ...(gateEvidence?.visualProof?.artifactRoot ? [`visualProofArtifactRoot: ${gateEvidence.visualProof.artifactRoot}`] : []),
+      ...(gateEvidence?.visualProof?.sourceFilePath ? [`visualProofSource: ${gateEvidence.visualProof.sourceFilePath}`] : []),
       ...(artifactPaths ? [`evalSummaryPath: ${toRepoPath(artifactPaths.evalSummaryPath)}`] : [])
     ]
   };
@@ -274,8 +291,10 @@ const buildGovernedCandidateExperimentRegistry = ({
   pack,
   registry,
   gateStatus,
+  gateEvidence,
   evalSummaries,
-  createdAt
+  createdAt,
+  governedRunId
 }) => {
   const candidateRecords = pack.candidates.map((candidate) => (
     buildGovernedCandidateExperimentRecord({
@@ -283,7 +302,9 @@ const buildGovernedCandidateExperimentRegistry = ({
       candidate,
       registry,
       gateStatus,
+      gateEvidence,
       evalSummary: evalSummaries[candidate.candidateId]?.evalSummary ?? null,
+      governedRunId,
       artifactPaths: evalSummaries[candidate.candidateId]?.artifactPaths ?? null,
       createdAt
     })
@@ -312,11 +333,32 @@ const runGovernanceGate = (name, command, args) => {
   };
 };
 
-const runGovernanceGatePack = () => ([
+const runVisualProofGovernanceGate = async () => {
+  try {
+    const parsedResult = await runVisualProofGate({ skipBuild: true });
+    return {
+      key: 'visualProof',
+      ok: parsedResult.ok,
+      stdout: `${JSON.stringify(parsedResult, null, 2)}\n`,
+      stderr: '',
+      parsedResult
+    };
+  } catch (error) {
+    return {
+      key: 'visualProof',
+      ok: false,
+      stdout: '',
+      stderr: error instanceof Error ? error.stack ?? error.message : String(error),
+      parsedResult: null
+    };
+  }
+};
+
+const runGovernanceGatePack = async () => ([
   runGovernanceGate('architectureCheck', 'npm', ['run', 'architecture:check']),
   runGovernanceGate('tests', 'npm', ['test']),
   runGovernanceGate('build', 'npm', ['run', 'build']),
-  runGovernanceGate('visualProof', 'npm', ['run', 'visual:proof']),
+  await runVisualProofGovernanceGate(),
   runGovernanceGate('visualCanaries', 'npm', ['run', 'visual:canaries']),
   runGovernanceGate('contentProof', 'npm', ['run', 'future:content-proof']),
   runGovernanceGate('twoShellProof', 'npm', ['run', 'future:two-shell-proof']),
@@ -376,8 +418,19 @@ const evaluateGovernedCandidateExperimentPack = async ({
   const pack = await loadGovernedCandidateExperimentPack(packPath);
   const registry = await readJson(registryPath).catch(() => createEmptyRegistry());
   const createdAt = new Date().toISOString();
-  const gateResults = runGovernanceGatePack();
+  const governedRunId = `governed-${hashStableValue({
+    packId: pack.packId,
+    createdAt,
+    outputRoot: toRepoPath(outputRoot),
+    evalOutputRoot: toRepoPath(evalOutputRoot)
+  })}`;
+  const gateResults = await runGovernanceGatePack();
   const gateStatus = Object.fromEntries(gateResults.map((gateResult) => [gateResult.key, gateResult.ok]));
+  const gateEvidence = createGovernanceGateEvidence();
+  const visualProofGate = gateResults.find((gateResult) => gateResult.key === 'visualProof');
+  if (visualProofGate?.parsedResult) {
+    gateEvidence.visualProof = visualProofGate.parsedResult;
+  }
   const evalSummaries = {};
 
   for (const candidate of pack.candidates) {
@@ -393,17 +446,21 @@ const evaluateGovernedCandidateExperimentPack = async ({
     pack,
     registry,
     gateStatus,
+    gateEvidence,
     evalSummaries,
-    createdAt
+    createdAt,
+    governedRunId
   });
   const report = {
     schemaVersion: 1,
     packId: pack.packId,
     benchmarkPackId: pack.benchmarkPackId,
     seedPackId: pack.seedPackId,
+    governedRunId,
     createdAt,
     promotionBlockedUntil: [...pack.promotionBlockedUntil],
     gateStatus,
+    gateEvidence,
     candidateResults: candidateRecords.map((record) => ({
       recordId: record.recordId,
       candidateId: record.metadata.candidateId,
@@ -437,7 +494,9 @@ const evaluateGovernedCandidateExperimentPack = async ({
     pack,
     registry: nextRegistry,
     report,
+    governedRunId,
     gateStatus,
+    gateEvidence,
     gateResults,
     candidateRecords,
     reportPath
@@ -456,9 +515,11 @@ const main = async () => {
 
   process.stdout.write(`${JSON.stringify({
     packId: result.pack.packId,
+    governedRunId: result.governedRunId,
     reportPath: toRepoPath(result.reportPath),
     registryPath: typeof args.registry === 'string' ? toRepoPath(resolve(REPO_ROOT, args.registry)) : toRepoPath(DEFAULT_REGISTRY_PATH),
     gateStatus: result.gateStatus,
+    gateEvidence: result.gateEvidence,
     candidateDecisions: result.report.candidateResults
   }, null, 2)}\n`);
 };

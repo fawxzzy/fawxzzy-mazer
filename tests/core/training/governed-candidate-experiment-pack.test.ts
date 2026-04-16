@@ -260,6 +260,19 @@ describe('governed candidate experiment pack', () => {
       twoShellProof: true,
       threeShellProof: true
     };
+    const gateEvidence = {
+      visualProof: {
+        schemaVersion: 1,
+        ok: true,
+        runId: 'visual-proof-run',
+        artifactRoot: 'tmp/captures/mazer-visual-proof',
+        packetCount: 25,
+        indexPath: 'tmp/captures/mazer-visual-proof/index.json',
+        failureCount: 0,
+        failures: [],
+        sourceFilePath: 'scripts/visual/mazer-run.mjs'
+      }
+    };
     const evaluationResults = {
       'connector-recovery-biased': {
         evalSummary: makeEvalSummary('eval-frontier', {
@@ -288,8 +301,10 @@ describe('governed candidate experiment pack', () => {
       pack,
       registry,
       gateStatus,
+      gateEvidence,
       evalSummaries: evaluationResults,
-      createdAt: '2026-04-14T01:00:00.000Z'
+      createdAt: '2026-04-14T01:00:00.000Z',
+      governedRunId: 'governed-fnv1a-test'
     });
 
     expect(candidateRecords).toHaveLength(2);
@@ -303,12 +318,18 @@ describe('governed candidate experiment pack', () => {
     expect(acceptedRecord?.status).toBe('candidate');
     expect(acceptedRecord?.notes.join(' | ')).toContain('accepted: all required promotion gates green');
     expect(acceptedRecord?.notes.join(' | ')).toContain('promotion blocked: manual blessing required');
+    expect(acceptedRecord?.notes.join(' | ')).toContain('governedRunId: governed-fnv1a-test');
+    expect(acceptedRecord?.notes.join(' | ')).toContain('visualProofRunId: visual-proof-run');
+    expect(acceptedRecord?.notes.join(' | ')).toContain('visualProofSource: scripts/visual/mazer-run.mjs');
     expect(acceptedRecord?.metadata.gates.runtimeEval).toBe(true);
+    expect(acceptedRecord?.metadata.governedRunId).toBe('governed-fnv1a-test');
+    expect(acceptedRecord?.metadata.gateEvidence.visualProof).toEqual(gateEvidence.visualProof);
 
     expect(rejectedRecord?.governanceDecision).toBe('rejected');
     expect(rejectedRecord?.status).toBe('rejected');
     expect(rejectedRecord?.notes.join(' | ')).toContain('metric-band failures: scavenger-checkpoint-item-usefulness-charlie: trapFalsePositiveRate=0.31 outside [0, 0.2]');
     expect(rejectedRecord?.notes.join(' | ')).toContain('warden-cautious-biased/weights.json');
+    expect(rejectedRecord?.metadata.gateEvidence.visualProof).toEqual(gateEvidence.visualProof);
     expect(rejectedRecord?.metadata.gates.runtimeEval).toBe(false);
   });
 });

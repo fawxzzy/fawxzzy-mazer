@@ -28,10 +28,13 @@ import {
   subscribeInstallSurface,
   type InstallSurfaceState
 } from '../boot/installSurface';
+import { buildBootTimingReport, logBootTimingReport, markBootTiming } from '../boot/bootTiming';
 import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue, type DemoWalkerViewFrame } from '../domain/ai';
 import {
   disposeMazeEpisode,
   generateMazeForDifficulty,
+  xFromIndex,
+  yFromIndex,
   type MazeFamily,
   MAZE_SIZE_ORDER,
   type MazePresentationPreset,
@@ -52,12 +55,14 @@ import {
   type TrailRenderDiagnostics
 } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
+import { createIntentFeedHud } from '../render/intentFeedRenderer';
 import {
   applyPresentationContrastFloors,
   getPaletteReadabilityReport,
   palette,
   type PaletteReadabilityReport
 } from '../render/palette';
+import { createMenuIntentRuntimeSession, type MenuIntentRuntimeSession } from './menuIntentRuntime';
 import {
   DEFAULT_VIEWPORT_HEIGHT,
   DEFAULT_VIEWPORT_WIDTH,
@@ -204,6 +209,7 @@ interface EpisodePresentationShell {
   boardCenterY: number;
   boardRenderer: BoardRenderer;
   demoStatusHud: ReturnType<typeof createDemoStatusHud>;
+  intentFeedHud: ReturnType<typeof createIntentFeedHud>;
   boardAura: Phaser.GameObjects.Ellipse;
   boardHalo: Phaser.GameObjects.Ellipse;
   boardShade: Phaser.GameObjects.Rectangle;
@@ -1284,9 +1290,9 @@ export const resolveAmbientSkyProfileTuning = (
 ): AmbientSkyProfileTuning => {
   const safeVariant = sanitizePresentationVariant(variant);
   let tuning: AmbientSkyProfileTuning = {
-    densityScale: 1,
-    motionScale: 1,
-    eventIntervalScale: 1,
+    densityScale: 1.08,
+    motionScale: 1.06,
+    eventIntervalScale: 0.94,
     twinkleCount: legacyTuning.menu.ambientSky.twinkleCount,
     driftMoteCount: legacyTuning.menu.ambientSky.driftMoteCount,
     movingEventCap: 2,
@@ -2044,6 +2050,7 @@ export interface MenuSceneVisualDiagnostics {
     render: TrailRenderDiagnostics;
   };
   paletteReadability: PaletteReadabilityReport;
+  bootTiming?: ReturnType<typeof buildBootTimingReport>;
   ambient?: AmbientSkyDiagnostics;
 }
 
@@ -3493,11 +3500,14 @@ export class MenuScene extends Phaser.Scene {
   }
 
   public init(data: MenuSceneInitData = {}): void {
+    markBootTiming('menu-scene:init-start');
     this.launchConfig = sanitizePresentationLaunchConfig(data);
     this.presentationVariant = sanitizePresentationVariant(this.launchConfig.presentation);
+    markBootTiming('menu-scene:init-end');
   }
 
   public create(): void {
+    markBootTiming('menu-scene:create-start');
     const launchConfig = sanitizePresentationLaunchConfig(this.launchConfig);
     const variant = sanitizePresentationVariant(launchConfig.presentation);
     const chrome = resolveEffectivePresentationChrome(launchConfig);
@@ -3529,6 +3539,8 @@ export class MenuScene extends Phaser.Scene {
     let patternEngine: PatternEngine | undefined;
     let patternFrame: PatternFrame | undefined;
     let episodePresentationShell: EpisodePresentationShell | undefined;
+    let intentRuntimeSession: MenuIntentRuntimeSession | undefined;
+    let intentRuntimeBootstrap: Phaser.Time.TimerEvent | undefined;
     let resizeRestart: Phaser.Time.TimerEvent | undefined;
     let lastResizeRestartKey: string | undefined;
     let handleVisibilityChange: (() => void) | undefined;
@@ -3544,6 +3556,10 @@ export class MenuScene extends Phaser.Scene {
     let activeInstallFrame: InstallChromeFrame | undefined;
     let activeInstallBounds: VisualSceneBounds | undefined;
     let activeInstallState: InstallSurfaceState = resolveMenuSceneInstallSurfaceState(getInstallSurfaceState(), visualCaptureConfig);
+    let firstInteractiveFrameSeen = false;
+    let deferredVisualSetupComplete = false;
+    let bootTimingReportLogged = false;
+    let renderDemo: () => void = () => undefined;
 
     const runOptional = (label: string, render: () => void): void => {
       try {
@@ -3582,6 +3598,7 @@ export class MenuScene extends Phaser.Scene {
         episodePresentationShell.boardVeil
       ]);
       episodePresentationShell.demoStatusHud.destroy();
+      episodePresentationShell.intentFeedHud.destroy();
       episodePresentationShell.boardRenderer.destroy();
       episodePresentationShell.motifSecondary.destroy();
       episodePresentationShell.motifPrimary.destroy();
@@ -3591,6 +3608,9 @@ export class MenuScene extends Phaser.Scene {
       episodePresentationShell.boardHalo.destroy();
       episodePresentationShell.boardAura.destroy();
       episodePresentationShell = undefined;
+      intentRuntimeBootstrap?.remove(false);
+      intentRuntimeBootstrap = undefined;
+      intentRuntimeSession = undefined;
     };
     const destroyPresentation = (destroyEngine: boolean): void => {
       resizeRestart?.remove(false);
@@ -3684,10 +3704,65 @@ export class MenuScene extends Phaser.Scene {
       pendingCyclePlan = undefined;
       this.activeTheme = demoCyclePlan.theme;
       const sceneThemeProfile = resolveAmbientThemeProfile(demoCyclePlan.theme);
-      this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
+      this.add.rectangle(0, 0, width, height, sceneThemeProfile.palette.background.deepSpace, 1)
+        .setOrigin(0)
+        .setDepth(AMBIENT_SKY_DEPTHS.base - 1);
       let sceneHidden = typeof document !== 'undefined' && document.hidden;
       let installPromptPending = false;
       const compactInstallChrome = sceneLayout.isTiny || sceneLayout.isNarrow;
+      const maybeLogBootTimingReport = (): void => {
+        if (bootTimingReportLogged || !firstInteractiveFrameSeen || !deferredVisualSetupComplete) {
+          return;
+        }
+
+        bootTimingReportLogged = true;
+        logBootTimingReport('Mazer 2D boot timing');
+      };
+      const hydrateEpisodePresentationDecorations = (
+        shell: EpisodePresentationShell | undefined,
+        themeProfile: AmbientThemeProfile
+      ): void => {
+        if (!shell) {
+          return;
+        }
+
+        runOptional('blueprint accent setup', () => {
+          drawBlueprintAccent(shell.blueprintAccent, shell.layout, themeProfile.palette.board.topHighlight);
+        });
+        runOptional('theme motif setup', () => {
+          drawThemeMotifs(themeProfile, shell.motifPrimary, shell.motifSecondary, shell.layout);
+        });
+      };
+      const runDeferredVisualSetup = (): void => {
+        if (recoveryActivated || deferredVisualSetupComplete) {
+          return;
+        }
+
+        try {
+          this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
+          if (episodePresentationShell) {
+            hydrateEpisodePresentationDecorations(episodePresentationShell, sceneThemeProfile);
+            syncAmbientSkyReservedFrames();
+          }
+        } catch (error) {
+          console.error('MenuScene deferred visual setup failed.', error);
+        } finally {
+          markBootTiming('menu-scene:deferred-visual-setup');
+          deferredVisualSetupComplete = true;
+          maybeLogBootTimingReport();
+        }
+      };
+      const scheduleIntentRuntimeSession = (episode: MazeEpisode): void => {
+        intentRuntimeBootstrap?.remove(false);
+        intentRuntimeBootstrap = this.time.delayedCall(0, () => {
+          if (recoveryActivated || !episodePresentationShell || patternFrame?.episode !== episode) {
+            return;
+          }
+
+          intentRuntimeSession = createMenuIntentRuntimeSession(episode);
+          renderDemo();
+        });
+      };
       const publishVisualDiagnostics = (
         view?: DemoWalkerViewFrame,
         renderedTrail?: { start: number; limit: number }
@@ -3698,6 +3773,7 @@ export class MenuScene extends Phaser.Scene {
 
         const themeProfile = resolveAmbientThemeProfile(this.activeTheme);
         const trailRender = episodePresentationShell.boardRenderer.getTrailRenderDiagnostics();
+        const bootTiming = buildBootTimingReport();
         const activePath = patternFrame?.episode.raster.pathIndices;
         const renderedHeadIndex = renderedTrail && activePath && renderedTrail.limit > 0
           ? activePath[renderedTrail.limit - 1] ?? null
@@ -3782,6 +3858,7 @@ export class MenuScene extends Phaser.Scene {
             render: trailRender
           },
           paletteReadability: getPaletteReadabilityReport(themeProfile.palette),
+          ...(bootTiming ? { bootTiming } : {}),
           ...(this.ambientSky
             ? {
                 ambient: this.ambientSky.getDiagnostics(
@@ -3886,10 +3963,10 @@ export class MenuScene extends Phaser.Scene {
         const boardRenderer = new BoardRenderer(this, episode, layout, {
           theme: {
             ...themeProfile.boardTheme,
-            trailFillAlphaScale: (themeProfile.boardTheme.trailFillAlphaScale ?? 1) * 0.94,
-            trailGlowAlphaScale: (themeProfile.boardTheme.trailGlowAlphaScale ?? 1) * 0.96,
-            trailCoreAlphaScale: (themeProfile.boardTheme.trailCoreAlphaScale ?? 1) * 0.98,
-            actorHaloAlphaScale: (themeProfile.boardTheme.actorHaloAlphaScale ?? 1) * 1.12,
+            trailFillAlphaScale: (themeProfile.boardTheme.trailFillAlphaScale ?? 1) * 0.88,
+            trailGlowAlphaScale: (themeProfile.boardTheme.trailGlowAlphaScale ?? 1) * 0.9,
+            trailCoreAlphaScale: (themeProfile.boardTheme.trailCoreAlphaScale ?? 1) * 0.94,
+            actorHaloAlphaScale: (themeProfile.boardTheme.actorHaloAlphaScale ?? 1) * 1.18,
             palette: themeProfile.palette
           }
         });
@@ -3930,12 +4007,6 @@ export class MenuScene extends Phaser.Scene {
         const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
         const motifPrimary = this.add.graphics().setDepth(5.8);
         const motifSecondary = this.add.graphics().setDepth(6.15);
-        runOptional('blueprint accent setup', () => {
-          drawBlueprintAccent(blueprintAccent, layout, themeProfile.palette.board.topHighlight);
-        });
-        runOptional('theme motif setup', () => {
-          drawThemeMotifs(themeProfile, motifPrimary, motifSecondary, layout);
-        });
 
         return {
           layout,
@@ -3950,6 +4021,9 @@ export class MenuScene extends Phaser.Scene {
               ...themeProfile.hudTheme,
               palette: themeProfile.palette
             }
+          }),
+          intentFeedHud: createIntentFeedHud(this, {
+            palette: themeProfile.palette
           }),
           boardAura,
           boardHalo,
@@ -4250,6 +4324,14 @@ export class MenuScene extends Phaser.Scene {
         destroyEpisodePresentationShell();
         this.activeTheme = demoCyclePlan.theme;
         episodePresentationShell = createEpisodePresentationShell(patternFrame.episode, demoCyclePlan.theme);
+        intentRuntimeSession = undefined;
+        scheduleIntentRuntimeSession(patternFrame.episode);
+        if (deferredVisualSetupComplete) {
+          hydrateEpisodePresentationDecorations(
+            episodePresentationShell,
+            resolveAmbientThemeProfile(demoCyclePlan.theme)
+          );
+        }
         syncAmbientSkyReservedFrames();
         demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
         demoPresentation = resolveMenuDemoPresentation(
@@ -4316,7 +4398,7 @@ export class MenuScene extends Phaser.Scene {
           pulseBoard(0.11, 0.12, 0.16, 240, 1.014);
         }
       };
-      const renderDemo = (): void => {
+      renderDemo = (): void => {
         const shell = episodePresentationShell;
         if (!patternFrame || !shell) {
           return;
@@ -4339,6 +4421,7 @@ export class MenuScene extends Phaser.Scene {
         );
         const path = episode.raster.pathIndices;
         const renderedTrail = resolveDemoTrailRenderBounds(path, view);
+        const intentStep = Math.max(0, renderedTrail.limit - 1);
 
         applyPresentationLayer(demoPresentation);
 
@@ -4373,6 +4456,7 @@ export class MenuScene extends Phaser.Scene {
             demoPresentation.actorPulseBoost
           );
         }
+        intentRuntimeSession?.advanceToStep(intentStep);
 
         runOptional('hud metadata', () => {
           shell.demoStatusHud.setState(
@@ -4386,6 +4470,56 @@ export class MenuScene extends Phaser.Scene {
             demoPresentation.hudOffsetX,
             demoPresentation.hudOffsetY
           );
+        });
+        runOptional('intent feed', () => {
+          const trailDiagnostics = shell.boardRenderer.getTrailRenderDiagnostics();
+          const fallbackPlayerX = shell.layout.boardX
+            + (xFromIndex(view.currentIndex, episode.raster.width) * shell.layout.tileSize)
+            + (shell.layout.tileSize / 2);
+          const fallbackPlayerY = shell.layout.boardY
+            + (yFromIndex(view.currentIndex, episode.raster.width) * shell.layout.tileSize)
+            + (shell.layout.tileSize / 2);
+          const objectiveX = shell.layout.boardX
+            + (xFromIndex(episode.raster.endIndex, episode.raster.width) * shell.layout.tileSize)
+            + (shell.layout.tileSize / 2);
+          const objectiveY = shell.layout.boardY
+            + (yFromIndex(episode.raster.endIndex, episode.raster.width) * shell.layout.tileSize)
+            + (shell.layout.tileSize / 2);
+          const anchorSize = legacyTuning.menu.intentFeed.anchorSizePx;
+          const feedState = intentRuntimeSession?.getFeedState(intentStep) ?? null;
+
+          shell.intentFeedHud.setState(feedState, {
+            player: {
+              x: (trailDiagnostics.headCenter?.x ?? fallbackPlayerX) + demoPresentation.frameOffsetX,
+              y: (trailDiagnostics.headCenter?.y ?? fallbackPlayerY) + demoPresentation.frameOffsetY,
+              width: anchorSize,
+              height: anchorSize
+            },
+            objective: {
+              x: objectiveX + demoPresentation.frameOffsetX,
+              y: objectiveY + demoPresentation.frameOffsetY,
+              width: anchorSize,
+              height: anchorSize
+            },
+            avoid: [
+              ...(activeTitleBandFrame
+                ? [{
+                  x: activeTitleBandFrame.centerX,
+                  y: activeTitleBandFrame.centerY,
+                  width: activeTitleBandFrame.width,
+                  height: activeTitleBandFrame.height
+                }]
+                : []),
+              ...(activeInstallBounds
+                ? [{
+                  x: activeInstallBounds.centerX,
+                  y: activeInstallBounds.centerY,
+                  width: activeInstallBounds.width,
+                  height: activeInstallBounds.height
+                }]
+                : [])
+            ]
+          });
         });
         publishVisualDiagnostics(view, renderedTrail);
         if (view.cue !== lastCue) {
@@ -4475,6 +4609,8 @@ export class MenuScene extends Phaser.Scene {
       };
 
       renderDemo();
+      markBootTiming('menu-scene:create-core-ready');
+      this.time.delayedCall(0, runDeferredVisualSetup);
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', handleVisibilityChange);
       }
@@ -4482,6 +4618,12 @@ export class MenuScene extends Phaser.Scene {
       updateDemo = (_time: number, delta: number): void => {
         if (sceneHidden) {
           return;
+        }
+
+        if (!firstInteractiveFrameSeen) {
+          firstInteractiveFrameSeen = true;
+          markBootTiming('menu-scene:first-interactive-frame');
+          maybeLogBootTimingReport();
         }
 
         this.ambientSky?.update(delta);
@@ -4514,6 +4656,7 @@ export class MenuScene extends Phaser.Scene {
         removeRuntimeListeners();
         destroyPresentation(true);
       });
+      markBootTiming('menu-scene:create-end');
     } catch (error) {
       failOpen(error);
     }

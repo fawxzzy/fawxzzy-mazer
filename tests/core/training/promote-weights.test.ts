@@ -150,6 +150,19 @@ describe('manual blessing review pack', () => {
               threeShellProof: true,
               runtimeEval: true
             },
+            gateEvidence: {
+              visualProof: {
+                schemaVersion: 1,
+                ok: true,
+                runId: 'visual-proof-frontier',
+                artifactRoot: 'tmp/captures/mazer-visual-proof',
+                packetCount: 25,
+                indexPath: 'tmp/captures/mazer-visual-proof/index.json',
+                failureCount: 0,
+                failures: [],
+                sourceFilePath: 'scripts/visual/mazer-run.mjs'
+              }
+            },
             artifactPaths: {
               evalSummaryPath: 'tmp/eval/governed-candidate-experiment-pack/connector-recovery-biased/runtime-eval-summary.json'
             }
@@ -211,6 +224,19 @@ describe('manual blessing review pack', () => {
               visualCanaries: true,
               futureRuntimeContentProof: true,
               runtimeEval: true
+            },
+            gateEvidence: {
+              visualProof: {
+                schemaVersion: 1,
+                ok: true,
+                runId: 'visual-proof-baseline',
+                artifactRoot: 'tmp/captures/mazer-visual-proof',
+                packetCount: 25,
+                indexPath: 'tmp/captures/mazer-visual-proof/index.json',
+                failureCount: 0,
+                failures: [],
+                sourceFilePath: 'scripts/visual/mazer-run.mjs'
+              }
             }
           },
           diff: {
@@ -336,6 +362,17 @@ describe('manual blessing review pack', () => {
     expect(artifact.blockedReasons).toEqual([]);
     expect(artifact.dryRunNote).toContain('Review-only run.');
     expect(artifact.humanReadableScenarioDeltas.join(' | ')).toContain('new mazer-runtime-benchmark-v4 coverage kept green');
+    expect(artifact.surfaceComparisons.find((surface: { surfaceKey: string }) => surface.surfaceKey === 'visualProof')?.candidateEvidence).toEqual({
+      schemaVersion: 1,
+      ok: true,
+      runId: 'visual-proof-frontier',
+      artifactRoot: 'tmp/captures/mazer-visual-proof',
+      packetCount: 25,
+      indexPath: 'tmp/captures/mazer-visual-proof/index.json',
+      failureCount: 0,
+      failures: [],
+      sourceFilePath: 'scripts/visual/mazer-run.mjs'
+    });
   });
 
   test('applies an explicit manual blessing by updating only the blessed record pointer', () => {

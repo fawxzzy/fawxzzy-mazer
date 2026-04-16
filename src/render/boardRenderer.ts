@@ -92,6 +92,19 @@ export interface TrailRenderDiagnostics {
   };
 }
 
+export interface TrailHeadRenderState {
+  committedHeadCenter: {
+    x: number;
+    y: number;
+  };
+  visibleHeadCenter: {
+    x: number;
+    y: number;
+  };
+  attachedToActor: boolean;
+  bridgeRendered: boolean;
+}
+
 interface BoardRenderPresetProfile {
   floorInsetAlphaScale: number;
   floorGridAlphaScale: number;
@@ -118,7 +131,6 @@ const ACTOR_PERPENDICULAR_OFFSETS = [
 
 const MIN_BOARD_SIZE = 24;
 const ANIMATION_TIME_WRAP_MS = 600_000;
-const TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX = 0.75;
 const MIDNIGHT_RAINBOW_STOPS = [
   0x1e1238,
   0x35206a,
@@ -138,6 +150,42 @@ const createEmptyTrailRenderDiagnostics = (): TrailRenderDiagnostics => ({
   bridgeRendered: false,
   attachedToActor: true
 });
+export const resolveTrailHeadRenderState = (
+  committedHeadCenter: {
+    x: number;
+    y: number;
+  },
+  motionHeadCenter?: {
+    x: number;
+    y: number;
+  },
+  hasActiveMotion = false
+): TrailHeadRenderState => {
+  if (!hasActiveMotion) {
+    return {
+      committedHeadCenter,
+      visibleHeadCenter: committedHeadCenter,
+      attachedToActor: true,
+      bridgeRendered: false
+    };
+  }
+
+  if (!motionHeadCenter) {
+    return {
+      committedHeadCenter,
+      visibleHeadCenter: committedHeadCenter,
+      attachedToActor: false,
+      bridgeRendered: false
+    };
+  }
+
+  return {
+    committedHeadCenter,
+    visibleHeadCenter: motionHeadCenter,
+    attachedToActor: true,
+    bridgeRendered: true
+  };
+};
 const BOARD_RENDER_PRESET_PROFILES: Record<MazeEpisode['presentationPreset'], BoardRenderPresetProfile> = {
   classic: {
     floorInsetAlphaScale: 1,
@@ -542,11 +590,11 @@ export class BoardRenderer {
     const bandHeight = fillHeight / bandCount;
     const progress = visibleLength <= 1 ? 1 : order / Math.max(1, visibleLength - 1);
     const motionWave = 0.5 + (Math.sin((now * 0.0052) + (index * 0.31)) * 0.5);
-    const baseAlpha = Phaser.Math.Clamp(alpha * (isBacktrack ? 0.68 : 1), 0.06, 0.56);
+    const baseAlpha = Phaser.Math.Clamp(alpha * (isBacktrack ? 0.56 : 0.8), 0.04, 0.34);
     const shellColor = mixHexColor(colors.board.shadow, colors.board.panel, 0.44);
     const phase = (now / 1500) + (index * 0.33) + (order * 0.58);
 
-    this.visitedFloor.fillStyle(shellColor, baseAlpha * 0.36);
+    this.visitedFloor.fillStyle(shellColor, baseAlpha * 0.2);
     this.visitedFloor.fillRect(
       tileX + (fillInset * 0.78),
       tileY + (fillInset * 0.78),
@@ -562,9 +610,9 @@ export class BoardRenderer {
       const bandColor = resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + (band * 0.84));
       const fillColor = mixHexColor(bandColor, colors.board.shadow, 0.16);
       const bandAlpha = Phaser.Math.Clamp(
-        baseAlpha * (0.54 + (progress * 0.16) + (motionWave * 0.14) - (band * 0.08)),
-        0.04,
-        0.44
+        baseAlpha * (0.4 + (progress * 0.1) + (motionWave * 0.08) - (band * 0.08)),
+        0.03,
+        0.24
       );
 
       this.visitedFloor.fillStyle(fillColor, bandAlpha);
@@ -576,7 +624,7 @@ export class BoardRenderer {
       colors.board.topHighlight,
       0.16
     );
-    this.visitedFloor.fillStyle(coreColor, Phaser.Math.Clamp(baseAlpha * (0.32 + (motionWave * 0.08)), 0.04, 0.24));
+    this.visitedFloor.fillStyle(coreColor, Phaser.Math.Clamp(baseAlpha * (0.18 + (motionWave * 0.05)), 0.02, 0.12));
     this.visitedFloor.fillRect(tileX + coreInset, tileY + coreInset, coreWidth, coreHeight);
 
     const strokeColor = mixHexColor(
@@ -584,7 +632,7 @@ export class BoardRenderer {
       colors.board.innerStroke,
       0.32
     );
-    this.visitedFloor.lineStyle(Math.max(1, tileSize * 0.034), strokeColor, Phaser.Math.Clamp(baseAlpha * 0.72, 0.08, 0.3));
+    this.visitedFloor.lineStyle(Math.max(1, tileSize * 0.034), strokeColor, Phaser.Math.Clamp(baseAlpha * 0.64, 0.06, 0.24));
     this.visitedFloor.strokeRect(
       tileX + fillInset + 0.5,
       tileY + fillInset + 0.5,
@@ -592,7 +640,7 @@ export class BoardRenderer {
       Math.max(1, fillHeight - 1)
     );
 
-    this.visitedFloor.fillStyle(colors.board.topHighlight, Phaser.Math.Clamp(baseAlpha * 0.18, 0.03, 0.12));
+    this.visitedFloor.fillStyle(colors.board.topHighlight, Phaser.Math.Clamp(baseAlpha * 0.14, 0.02, 0.08));
     this.visitedFloor.fillRect(
       tileX + fillInset + 1,
       tileY + fillInset + 1,
@@ -636,13 +684,13 @@ export class BoardRenderer {
       topHighlightHeightPx,
       topHighlightAlpha
     } = legacyTuning.board.frame;
-    const outerAlphaGlass = Math.min(0.38, outerAlpha * 0.26);
-    const panelAlphaGlass = Math.min(0.32, panelAlpha * 0.38);
-    const wellAlphaGlass = Math.min(0.14, (wellAlpha * 0.52) + 0.01);
-    const shadowAlphaGlass = Math.min(0.2, shadowAlpha * 0.36);
-    const glowAlphaGlass = Math.min(0.05, glowAlpha * 0.22);
-    const edgeShadeAlphaGlass = edgeShadeAlpha * 0.14;
-    const topHighlightAlphaGlass = topHighlightAlpha * 0.24;
+    const outerAlphaGlass = Math.min(0.26, outerAlpha * 0.17);
+    const panelAlphaGlass = Math.min(0.2, panelAlpha * 0.24);
+    const wellAlphaGlass = Math.min(0.08, (wellAlpha * 0.34) + 0.006);
+    const shadowAlphaGlass = Math.min(0.14, shadowAlpha * 0.24);
+    const glowAlphaGlass = Math.min(0.032, glowAlpha * 0.14);
+    const edgeShadeAlphaGlass = edgeShadeAlpha * 0.08;
+    const topHighlightAlphaGlass = topHighlightAlpha * 0.14;
 
     this.chromeBack.clear();
     this.chromeFront.clear();
@@ -677,7 +725,7 @@ export class BoardRenderer {
       boardWidth + scaleMetric(outerExpandPx),
       boardHeight + scaleMetric(outerExpandPx)
     );
-    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.18);
+    this.chromeBack.lineStyle(1, colors.board.panelStroke, 0.14);
     this.chromeBack.strokeRect(
       centerX - (boardWidth + scaleMetric(outerExpandPx - 6)) / 2,
       centerY - (boardHeight + scaleMetric(outerExpandPx - 6)) / 2,
@@ -694,7 +742,7 @@ export class BoardRenderer {
       boardWidth - scaleMetric(10),
       boardHeight - scaleMetric(10)
     );
-    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.32);
+    this.chromeBack.lineStyle(scaleMetric(innerStrokeWidth), colors.board.innerStroke, 0.26);
     this.chromeBack.strokeRect(boardX + 1, boardY + 1, boardWidth - 2, boardHeight - 2);
 
     this.chromeBack.fillStyle(colors.board.well, wellAlphaGlass);
@@ -709,9 +757,9 @@ export class BoardRenderer {
     const sheenWidth = Math.max(12, boardWidth - (sheenInset * 2));
     const upperSheenHeight = Math.max(2, scaleMetric(12));
     const lowerShadeHeight = Math.max(2, scaleMetric(8));
-    this.chromeBack.fillStyle(colors.board.topHighlight, 0.032);
+    this.chromeBack.fillStyle(colors.board.topHighlight, 0.022);
     this.chromeBack.fillRect(boardX + sheenInset, boardY + sheenInset, sheenWidth, upperSheenHeight);
-    this.chromeBack.fillStyle(colors.board.shadow, 0.032);
+    this.chromeBack.fillStyle(colors.board.shadow, 0.024);
     this.chromeBack.fillRect(
       boardX + sheenInset,
       boardY + boardHeight - sheenInset - lowerShadeHeight,
@@ -779,7 +827,7 @@ export class BoardRenderer {
     this.visitedFloor.clear();
     this.grid.clear();
 
-    this.base.fillStyle(colors.board.panel, 0.025);
+    this.base.fillStyle(colors.board.panel, 0.012);
     this.base.fillRect(boardX, boardY, boardWidth, boardHeight);
 
     for (let index = 0; index < this.episode.raster.tiles.length; index += 1) {
@@ -787,14 +835,14 @@ export class BoardRenderer {
       const y = this.tileY(index);
 
       if (isTileFloor(this.episode.raster.tiles, index)) {
-        this.base.fillStyle(colors.board.path, 0.82);
+        this.base.fillStyle(colors.board.path, 0.7);
         this.base.fillRect(x, y, tileSize, tileSize);
 
         const floorInset = tileSize * legacyTuning.board.tile.floorInsetRatio;
         this.base.fillStyle(colors.board.floor, legacyTuning.board.tile.floorInsetAlpha * presetProfile.floorInsetAlphaScale);
         this.base.fillRect(x + floorInset, y + floorInset, tileSize - floorInset * 2, tileSize - floorInset * 2);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha * 0.72);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha * 0.46);
         this.base.fillRect(x + bevel, y + bevel, tileSize - (bevel * 2), bevel);
         this.base.fillRect(x + bevel, y + bevel, bevel, tileSize - (bevel * 2));
 
@@ -802,7 +850,7 @@ export class BoardRenderer {
           const hintInset = tileSize * 0.26;
           this.base.fillStyle(
             colors.board.route,
-            0.3 * solutionPathAlpha * presetProfile.pathGlowAlphaScale
+            0.22 * solutionPathAlpha * presetProfile.pathGlowAlphaScale
           );
           this.base.fillRect(
             x + hintInset,
@@ -813,7 +861,7 @@ export class BoardRenderer {
           this.grid.lineStyle(
             Math.max(1, tileSize * 0.048),
             colors.board.routeGlow,
-            0.34 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
+            0.24 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
           );
           this.grid.strokeRect(
             x + hintInset + 0.5,
@@ -824,7 +872,7 @@ export class BoardRenderer {
           this.grid.lineStyle(
             Math.max(1, tileSize * 0.03),
             colors.board.routeCore,
-            0.64 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
+            0.54 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
           );
           this.grid.strokeRect(
             x + hintInset + tileSize * 0.08 + 0.5,
@@ -838,11 +886,11 @@ export class BoardRenderer {
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
         this.base.fillRect(x + bevel, y + tileSize - (bevel * 2), tileSize - (bevel * 2), bevel);
 
-        const floorGridAlpha = legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale;
+        const floorGridAlpha = legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale * 0.62;
         this.grid.lineStyle(1, colors.board.innerStroke, floorGridAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha * 0.58);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha * 0.3);
         this.base.fillRect(x + 1, y + 1, tileSize - 2, Math.max(1, tileSize * 0.2));
       } else {
         this.base.fillStyle(colors.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale);
@@ -850,9 +898,9 @@ export class BoardRenderer {
       }
     }
 
-    this.base.fillStyle(colors.board.topHighlight, 0.025);
+    this.base.fillStyle(colors.board.topHighlight, 0.018);
     this.base.fillRect(boardX + 1, boardY + 1, Math.max(2, boardWidth - 2), Math.max(2, Math.round(tileSize * 0.55)));
-    this.base.fillStyle(colors.board.shadow, 0.05);
+    this.base.fillStyle(colors.board.shadow, 0.038);
     this.base.fillRect(
       boardX + 1,
       boardY + boardHeight - Math.max(2, Math.round(tileSize * 0.46)) - 1,
@@ -1185,13 +1233,17 @@ export class BoardRenderer {
               : legacyTuning.board.trail.nodeRadiusRatio
         )
       );
-      const renderCenterX = isHead && liveHeadMotion
-        ? motionHeadCenter?.x ?? centerX
+      const committedHeadCenter = { x: centerX, y: centerY };
+      const headRenderState = isHead
+        ? resolveTrailHeadRenderState(committedHeadCenter, motionHeadCenter, liveHeadMotion)
+        : undefined;
+      const renderCenterX = isHead
+        ? headRenderState?.visibleHeadCenter.x ?? centerX
         : centerX;
-      const renderCenterY = isHead && liveHeadMotion
-        ? motionHeadCenter?.y ?? centerY
+      const renderCenterY = isHead
+        ? headRenderState?.visibleHeadCenter.y ?? centerY
         : centerY;
-      const movingHead = isHead && liveHeadMotion && !isGoalStep;
+      const movingHead = isHead && headRenderState?.bridgeRendered === true && !isGoalStep;
       const segmentCoreColor = isGoalStep
         ? colors.board.goalCore
         : isBacktrack
@@ -1314,13 +1366,16 @@ export class BoardRenderer {
       previousCenterY = renderCenterY;
     }
 
-    bridgeRendered = liveHeadMotion;
-    const attachedToActor = !hasActiveMotion
-      || !motionHeadCenter
-      || (
-        Math.abs(headCenterX - motionHeadCenter.x) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX
-        && Math.abs(headCenterY - motionHeadCenter.y) <= TRAIL_HEAD_ATTACHMENT_TOLERANCE_PX
-      );
+    const committedHeadCenter = { x: headCenterX, y: headCenterY };
+    const headRenderState = resolveTrailHeadRenderState(
+      committedHeadCenter,
+      motionHeadCenter,
+      liveHeadMotion
+    );
+    headCenterX = headRenderState.visibleHeadCenter.x;
+    headCenterY = headRenderState.visibleHeadCenter.y;
+    bridgeRendered = headRenderState.bridgeRendered;
+    const attachedToActor = headRenderState.attachedToActor;
 
     this.lastTrailDiagnostics = {
       cue,
@@ -1539,47 +1594,48 @@ export class BoardRenderer {
       : cue === 'backtrack'
         ? colors.board.topHighlight
         : colors.board.playerCore;
-    const actorTileAlpha = cue === 'anticipate'
-      ? 0.22
-      : cue === 'goal'
-        ? 0.2
-        : 0.16;
-    const actorStrokeAlpha = cue === 'dead-end'
-      ? 0.82
-      : cue === 'backtrack'
-        ? 0.64
-        : 0.72;
+    const minVisibleRadius = tileSize * actorTuning.minimumVisibleRadiusRatio;
+    const silhouetteRadius = Math.max(minVisibleRadius, tileSize * actorTuning.silhouetteRadiusRatio);
+    const silhouetteStrokeWidth = Math.max(2, tileSize * actorTuning.silhouetteStrokeWidthRatio);
+    const haloRadius = Math.max(minVisibleRadius, tileSize * actorTuning.haloRadiusRatio);
+    const coreRadius = Math.max(minVisibleRadius * 0.78, tileSize * actorTuning.coreRadiusRatio);
+    const brightCoreRadius = Math.max(minVisibleRadius * 0.56, coreRadius * 0.74);
+    const outerRingRadius = Math.max(coreRadius, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
 
     this.actor.clear();
-    this.actor.fillStyle(colors.board.player, actorTileAlpha);
-    this.actor.fillRect(tileX + 1, tileY + 1, tileSize - 2, tileSize - 2);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.05), colors.board.playerHalo, actorStrokeAlpha * actorHaloScale);
-    this.actor.strokeRect(tileX + 1.5, tileY + 1.5, tileSize - 3, tileSize - 3);
-    this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha * 0.72);
+    this.actor.fillStyle(colors.board.shadow, 0.94);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, silhouetteRadius);
+    this.actor.lineStyle(silhouetteStrokeWidth, colors.board.shadow, 0.98);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, silhouetteRadius + (silhouetteStrokeWidth / 2));
+    this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha * 0.74);
     this.actor.fillCircle(
       bodyCenterX,
       bodyCenterY + tileSize * actorTuning.shadowOffsetYRatio,
       tileSize * actorTuning.shadowRadiusRatio
     );
 
-    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.94 * actorHaloScale);
-    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.haloRadiusRatio * actorPulse);
+    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.76 * actorHaloScale);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, haloRadius * actorPulse);
 
+    this.actor.lineStyle(Math.max(1, tileSize * 0.024), colors.board.playerCore, 0.68);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, coreRadius * 1.08);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.028), colors.board.shadow, 0.96);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, coreRadius * 1.04);
     this.actor.fillStyle(colors.board.player, 1);
-    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio * 1.06);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, coreRadius * 1.04);
     this.actor.fillStyle(colors.board.playerCore, 1);
-    this.actor.fillCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.coreRadiusRatio * 0.58);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, brightCoreRadius);
 
-    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), colors.board.playerHalo, cue === 'backtrack' ? 0.8 : 0.96);
+    this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), ringColor, cue === 'backtrack' ? 0.78 : 0.94);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.ringRadiusRatio);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.03), ringColor, outerRingAlpha * 0.78);
-    this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.025), ringColor, outerRingAlpha * 0.72);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, outerRingRadius);
 
-    this.actor.fillStyle(colors.board.playerHalo, 0.78 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, 0.56 * actorHaloScale);
     this.actor.fillCircle(
       bodyCenterX - tileSize * actorTuning.highlightOffsetRatio,
       bodyCenterY - tileSize * actorTuning.highlightOffsetRatio,
-      tileSize * actorTuning.highlightRadiusRatio
+      Math.max(minVisibleRadius * 0.34, tileSize * actorTuning.highlightRadiusRatio)
     );
 
     if (direction !== null && facingVector !== null && perpendicular !== null) {

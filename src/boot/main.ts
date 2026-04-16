@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import '../styles/base.css';
+import { startBootTiming } from './bootTiming';
 import { initializeInstallSurface } from './installSurface';
 import { phaserConfig } from './phaserConfig';
 import { resolveBrowserViewport } from '../render/viewport';
@@ -62,6 +63,8 @@ const installViewportSurfaceSync = (game: Phaser.Game): (() => void) => {
     window.visualViewport?.removeEventListener('resize', requestSync);
   };
 };
+
+startBootTiming('boot:main-start');
 
 if ('serviceWorker' in navigator && isLocalhost) {
   navigator.serviceWorker

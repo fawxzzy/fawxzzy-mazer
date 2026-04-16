@@ -75,10 +75,31 @@ const resolveCandidateEvalSummaryPath = (record) => resolveRepoPath(
 );
 
 const resolveGateValue = (record, keys) => {
+  const gateEvidence = record?.metadata?.gateEvidence;
+
+  for (const key of keys) {
+    const evidence = gateEvidence?.[key];
+    if (typeof evidence?.ok === 'boolean') {
+      return evidence.ok;
+    }
+  }
+
   for (const key of keys) {
     const value = record?.metadata?.gates?.[key];
     if (typeof value === 'boolean') {
       return value;
+    }
+  }
+
+  return null;
+};
+
+const resolveGateEvidence = (record, keys) => {
+  const gateEvidence = record?.metadata?.gateEvidence;
+
+  for (const key of keys) {
+    if (gateEvidence?.[key]) {
+      return gateEvidence[key];
     }
   }
 
@@ -153,12 +174,20 @@ const buildSurfaceComparisons = ({ baselineRecord, baselineEvalSummary, candidat
     const candidateStatus = surface.key === 'runtimeEvalBands'
       ? candidateEvalSummary?.metricBandValidation?.allScenariosWithinBands ?? false
       : resolveGateValue(candidateRecord, surface.gateKeys ?? []);
+    const baselineEvidence = surface.key === 'runtimeEvalBands'
+      ? null
+      : resolveGateEvidence(baselineRecord, surface.gateKeys ?? []);
+    const candidateEvidence = surface.key === 'runtimeEvalBands'
+      ? null
+      : resolveGateEvidence(candidateRecord, surface.gateKeys ?? []);
 
     return {
       surfaceKey: surface.key,
       label: surface.candidateLabel,
       baselineStatus,
       candidateStatus,
+      baselineEvidence,
+      candidateEvidence,
       verdict: candidateStatus === true ? 'kept-green' : 'failed',
       note: baselineStatus === null
         ? 'current blessed baseline does not record this surface separately'

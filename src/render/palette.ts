@@ -157,19 +157,19 @@ const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number 
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
-  route: 0x2e9760,
-  trail: 0x4059ca,
-  player: 0x12b9f2,
-  start: 0xc98a21,
-  goal: 0xa52a53
+  route: 0x28995d,
+  trail: 0x4a59bb,
+  player: 0x08b8f4,
+  start: 0xcb8f2a,
+  goal: 0x9d234a
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
-  route: 0.18,
-  trail: 0.24,
-  player: 0.18,
-  start: 0.22,
-  goal: 0.22
+  route: 0.2,
+  trail: 0.28,
+  player: 0.24,
+  start: 0.18,
+  goal: 0.24
 };
 
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {
@@ -445,17 +445,17 @@ export const palette: PresentationPalette = {
     route: 0x25c571,
     routeCore: 0xf6fff9,
     routeGlow: 0x154e38,
-    trail: 0x4560d4,
-    trailCore: 0xf1f5ff,
-    trailGlow: 0x8fa4ff,
+    trail: 0x3447a0,
+    trailCore: 0xe0e8ff,
+    trailGlow: 0x6272c2,
     start: 0xc99a41,
     startCore: 0xfff4d4,
     startGlow: 0x7d5921,
     goal: 0xb63d60,
     goalCore: 0xfff0f4,
-    player: 0x19d8ff,
-    playerCore: 0xfbffff,
-    playerHalo: 0x98efff,
+    player: 0x12324a,
+    playerCore: 0xffffff,
+    playerHalo: 0xd4fbff,
     playerShadow: legacyTuning.colors.playerShadow
   },
   hud: {

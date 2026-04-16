@@ -238,7 +238,8 @@ describe('intent bus', () => {
   test('keeps visual-proof intent contracts as thin adapters over mazer-core', () => {
     const adapterFiles = [
       '../../../src/visual-proof/intent/IntentBus.ts',
-      '../../../src/visual-proof/intent/IntentEvent.ts'
+      '../../../src/visual-proof/intent/IntentEvent.ts',
+      '../../../src/visual-proof/intent/IntentFeed.ts'
     ];
 
     for (const relativePath of adapterFiles) {
