@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173 --strictPort",
     "preview:health": "vite preview --strictPort",
+    "verify": "npm run architecture:check && npm test && npm run build",
     "health": "node ./scripts/gates/future-lane-health.mjs",
     "gate:future-lane": "node ./scripts/gates/future-lane-health.mjs",
     "test": "vitest run --exclude tests/maze/maze-soak.test.ts",
