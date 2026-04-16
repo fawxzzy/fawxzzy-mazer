@@ -3553,11 +3553,14 @@ export class MenuScene extends Phaser.Scene {
     let activeTitlePlateContainer: Phaser.GameObjects.Container | undefined;
     let activeTitleText: Phaser.GameObjects.Text | undefined;
     let activeTitleSubtitle: Phaser.GameObjects.Text | undefined;
+    let installChrome: Phaser.GameObjects.Container | undefined;
     let activeInstallFrame: InstallChromeFrame | undefined;
     let activeInstallBounds: VisualSceneBounds | undefined;
     let activeInstallState: InstallSurfaceState = resolveMenuSceneInstallSurfaceState(getInstallSurfaceState(), visualCaptureConfig);
     let firstInteractiveFrameSeen = false;
     let deferredVisualSetupComplete = false;
+    let deferredVisualSetupQueued = false;
+    let deferredSceneChromeReady = false;
     let bootTimingReportLogged = false;
     let renderDemo: () => void = () => undefined;
 
@@ -3635,6 +3638,7 @@ export class MenuScene extends Phaser.Scene {
       activeTitlePlateContainer = undefined;
       activeTitleText = undefined;
       activeTitleSubtitle = undefined;
+      installChrome = undefined;
       activeInstallFrame = undefined;
       activeInstallBounds = undefined;
       clearMenuSceneVisualDiagnostics();
@@ -3658,7 +3662,7 @@ export class MenuScene extends Phaser.Scene {
 
     try {
       this.cameras.main.roundPixels = true;
-      this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 220 : 280, 0, 0, 0);
+      this.cameras.main.fadeIn(reducedMotion ? 0 : variant === 'loading' ? 180 : 240, 0, 0, 0);
       const themeLock = launchConfig.theme === 'auto' ? undefined : launchConfig.theme;
       const familyLock = launchConfig.family && launchConfig.family !== 'auto' ? launchConfig.family : undefined;
       const scheduleSeed = launchConfig.seed ?? legacyTuning.demo.seed;
@@ -3739,6 +3743,7 @@ export class MenuScene extends Phaser.Scene {
         }
 
         try {
+          renderSceneChrome();
           this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
           if (episodePresentationShell) {
             hydrateEpisodePresentationDecorations(episodePresentationShell, sceneThemeProfile);
@@ -3751,6 +3756,17 @@ export class MenuScene extends Phaser.Scene {
           deferredVisualSetupComplete = true;
           maybeLogBootTimingReport();
         }
+      };
+      const scheduleDeferredVisualSetup = (): void => {
+        if (recoveryActivated || deferredVisualSetupComplete || deferredVisualSetupQueued) {
+          return;
+        }
+
+        deferredVisualSetupQueued = true;
+        this.time.delayedCall(0, () => {
+          deferredVisualSetupQueued = false;
+          runDeferredVisualSetup();
+        });
       };
       const scheduleIntentRuntimeSession = (episode: MazeEpisode): void => {
         intentRuntimeBootstrap?.remove(false);
@@ -3864,7 +3880,7 @@ export class MenuScene extends Phaser.Scene {
                 ambient: this.ambientSky.getDiagnostics(
                   Math.min(0, episodePresentationShell.boardAura.depth, episodePresentationShell.boardHalo.depth, episodePresentationShell.boardShade.depth),
                   activeTitleContainer?.depth,
-                  installChrome.depth
+                  installChrome?.depth
                 )
               }
             : {})
@@ -4045,8 +4061,8 @@ export class MenuScene extends Phaser.Scene {
         );
       };
       syncAmbientSkyReservedFrames();
-      const installChrome = this.add.container(0, 0).setDepth(11);
       const renderInstallChrome = (state: InstallSurfaceState = getInstallSurfaceState()): void => {
+        installChrome ??= this.add.container(0, 0).setDepth(11);
         const resolvedState = resolveMenuSceneInstallSurfaceState(state, visualCaptureConfig);
         installChrome.removeAll(true);
         activeInstallState = resolvedState;
@@ -4154,22 +4170,17 @@ export class MenuScene extends Phaser.Scene {
         activeInstallBounds = toVisualSceneBounds(chip.getBounds());
         syncAmbientSkyReservedFrames();
       };
-      renderInstallChrome();
-      removeInstallSurfaceListener = subscribeInstallSurface((state) => {
-        try {
-          renderInstallChrome(state);
-        } catch (error) {
-          console.error('MenuScene optional install surface skipped.', error);
+      const renderTitleChrome = (): void => {
+        activeTitleBandFrame = undefined;
+        activeTitleLockupLayout = undefined;
+        activeTitleContainer = undefined;
+        activeTitlePlateContainer = undefined;
+        activeTitleText = undefined;
+        activeTitleSubtitle = undefined;
+        if (!titleVisible) {
+          return;
         }
-      });
 
-      activeTitleBandFrame = undefined;
-      activeTitleLockupLayout = undefined;
-      activeTitleContainer = undefined;
-      activeTitlePlateContainer = undefined;
-      activeTitleText = undefined;
-      activeTitleSubtitle = undefined;
-      if (titleVisible) {
         const titleBandFrame = resolveTitleBandFrame(width, sceneLayout, layout, viewportSafeInsets, deploymentProfileId);
         const titleLockup = resolveTitleLockupLayout(layout, sceneLayout, titleBandFrame, variant, chrome, deploymentProfileId);
         let titleY = titleLockup.titleY;
@@ -4249,34 +4260,51 @@ export class MenuScene extends Phaser.Scene {
         if (reducedMotion || chrome === 'minimal') {
           titleContainer.setAlpha(1).setScale(1);
           titleShadowContainer.setAlpha(1).setScale(1);
-        } else {
-          titleContainer.setAlpha(0);
-          titleContainer.y -= 8;
-          titleContainer.setScale(0.992);
-          titleShadowContainer.setAlpha(0);
-          titleShadowContainer.y -= 4;
-          titleShadowContainer.setScale(1);
-          runOptional('title motion', () => {
-            this.tweens.add({
-              targets: titleContainer,
-              alpha: 1,
-              y: titleY,
-              scaleX: 1,
-              scaleY: 1,
-              duration: 760,
-              ease: 'Cubic.easeOut'
-            });
-            this.tweens.add({
-              targets: titleShadowContainer,
-              alpha: 1,
-              y: titleShadowY,
-              duration: 640,
-              ease: 'Cubic.easeOut'
-            });
-          });
+          return;
         }
-      }
-      syncAmbientSkyReservedFrames();
+
+        titleContainer.setAlpha(0);
+        titleContainer.y -= 8;
+        titleContainer.setScale(0.992);
+        titleShadowContainer.setAlpha(0);
+        titleShadowContainer.y -= 4;
+        titleShadowContainer.setScale(1);
+        runOptional('title motion', () => {
+          this.tweens.add({
+            targets: titleContainer,
+            alpha: 1,
+            y: titleY,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 760,
+            ease: 'Cubic.easeOut'
+          });
+          this.tweens.add({
+            targets: titleShadowContainer,
+            alpha: 1,
+            y: titleShadowY,
+            duration: 640,
+            ease: 'Cubic.easeOut'
+          });
+        });
+      };
+      const renderSceneChrome = (): void => {
+        if (deferredSceneChromeReady) {
+          return;
+        }
+
+        deferredSceneChromeReady = true;
+        renderInstallChrome();
+        removeInstallSurfaceListener = subscribeInstallSurface((state) => {
+          try {
+            renderInstallChrome(state);
+          } catch (error) {
+            console.error('MenuScene optional install surface skipped.', error);
+          }
+        });
+        renderTitleChrome();
+        syncAmbientSkyReservedFrames();
+      };
 
       let lastCue: DemoWalkerCue = 'spawn';
       let demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
@@ -4610,7 +4638,6 @@ export class MenuScene extends Phaser.Scene {
 
       renderDemo();
       markBootTiming('menu-scene:create-core-ready');
-      this.time.delayedCall(0, runDeferredVisualSetup);
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', handleVisibilityChange);
       }
@@ -4623,6 +4650,7 @@ export class MenuScene extends Phaser.Scene {
         if (!firstInteractiveFrameSeen) {
           firstInteractiveFrameSeen = true;
           markBootTiming('menu-scene:first-interactive-frame');
+          scheduleDeferredVisualSetup();
           maybeLogBootTimingReport();
         }
 
@@ -4845,16 +4873,83 @@ export function resolveSceneLayoutProfile(
   };
 }
 
-const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): DemoWalkerConfig => ({
-  ...legacyTuning.demo,
-  cadence: {
-    ...legacyTuning.demo.cadence,
-    spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs + (cycle.mood === 'blueprint' ? 60 : 0),
-    exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs + (cycle.mood === 'scan' ? 8 : 0),
-    goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs + (episode.difficulty === 'brutal' ? 100 : 0),
-    resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs + (cycle.mood === 'solve' ? 18 : 0)
-  }
-});
+const roundClampedCadenceMs = (value: number, min: number, max: number): number => (
+  Math.round(clamp(value, min, max))
+);
+
+const resolveTargetTraverseMs = (episode: MazeEpisode, cycle: MenuDemoCycle, pathSegments: number): number => {
+  const difficultyBias = episode.difficulty === 'chill'
+    ? -140
+    : episode.difficulty === 'standard'
+      ? -40
+      : episode.difficulty === 'spicy'
+        ? 90
+        : 170;
+  const sizeBias = episode.size === 'small'
+    ? -120
+    : episode.size === 'medium'
+      ? 0
+      : episode.size === 'large'
+        ? 110
+        : 170;
+  const moodBias = cycle.mood === 'scan'
+    ? -60
+    : cycle.mood === 'blueprint'
+      ? 90
+      : 25;
+
+  return clamp(
+    1420 + Math.min(1200, pathSegments * 24) + difficultyBias + sizeBias + moodBias,
+    1400,
+    3200
+  );
+};
+
+export const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): DemoWalkerConfig => {
+  const pathSegments = Math.max(1, episode.raster.pathIndices.length - 1);
+  const baseSpawnHoldMs = legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs + (cycle.mood === 'blueprint' ? 60 : 0);
+  const baseExploreStepMs = legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs + (cycle.mood === 'scan' ? 8 : 0);
+  const baseGoalHoldMs = legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs + (episode.difficulty === 'brutal' ? 100 : 0);
+  const baseResetHoldMs = legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs + (cycle.mood === 'solve' ? 18 : 0);
+  const targetExploreStepMs = resolveTargetTraverseMs(episode, cycle, pathSegments) / pathSegments;
+  const spawnHoldMs = roundClampedCadenceMs(
+    baseSpawnHoldMs
+      + (pathSegments <= 10 ? 34 : pathSegments >= 28 ? 10 : 20)
+      + (episode.size === 'small' ? 18 : episode.size === 'huge' ? -10 : 0),
+    180,
+    340
+  );
+  const exploreStepMs = roundClampedCadenceMs(
+    (baseExploreStepMs * 0.44) + (targetExploreStepMs * 0.56),
+    72,
+    132
+  );
+  const goalHoldMs = roundClampedCadenceMs(
+    baseGoalHoldMs
+      + Math.min(420, pathSegments * 9)
+      + (episode.difficulty === 'chill' ? -90 : episode.difficulty === 'brutal' ? 120 : 0),
+    2400,
+    3900
+  );
+  const resetHoldMs = roundClampedCadenceMs(
+    baseResetHoldMs
+      + (pathSegments <= 10 ? 52 : 82)
+      + (cycle.mood === 'blueprint' ? 24 : 0),
+    320,
+    520
+  );
+
+  return {
+    ...legacyTuning.demo,
+    cadence: {
+      ...legacyTuning.demo.cadence,
+      spawnHoldMs,
+      exploreStepMs,
+      goalHoldMs,
+      resetHoldMs
+    }
+  };
+};
 
 export const resolveDemoTrailRenderBounds = (
   path: ArrayLike<number>,

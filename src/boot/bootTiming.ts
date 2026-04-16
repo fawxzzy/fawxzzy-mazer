@@ -14,6 +14,33 @@ export interface BootTimingReport {
   summary: string;
 }
 
+export const BOOT_TIMING_METRIC_LABELS = {
+  preloadStart: 'boot-scene:preload-start',
+  createCoreReady: 'menu-scene:create-core-ready',
+  deferredVisualSetup: 'menu-scene:deferred-visual-setup',
+  firstInteractiveFrame: 'menu-scene:first-interactive-frame'
+} as const;
+
+export type BootTimingMetricKey = keyof typeof BOOT_TIMING_METRIC_LABELS;
+
+export interface BootTimingMetricSummary extends BootTimingCheckpoint {
+  key: BootTimingMetricKey;
+}
+
+export interface BootTimingArtifact {
+  schemaVersion: 1;
+  createdAt: string;
+  totalMs: number;
+  summary: string;
+  metrics: Record<BootTimingMetricKey, BootTimingMetricSummary | null>;
+  checkpoints: BootTimingCheckpoint[];
+}
+
+export interface BootTimingArtifactDiff {
+  totalMsDelta: number;
+  metricDeltas: Record<BootTimingMetricKey, number | null>;
+}
+
 interface BootTimingState {
   enabled: boolean;
   startedAtMs?: number;
@@ -156,6 +183,61 @@ export const buildBootTimingReport = (
   const report = composeBootTimingReport(finishedAtMs);
   publishBootTimingReport(report);
   return report;
+};
+
+export const resolveBootTimingMetrics = (
+  report: BootTimingReport | undefined
+): Record<BootTimingMetricKey, BootTimingMetricSummary | null> => {
+  const metrics = {} as Record<BootTimingMetricKey, BootTimingMetricSummary | null>;
+  const checkpoints = report?.checkpoints ?? [];
+
+  (Object.entries(BOOT_TIMING_METRIC_LABELS) as Array<[BootTimingMetricKey, string]>).forEach(([key, label]) => {
+    const checkpoint = checkpoints.find((entry) => entry.label === label);
+    metrics[key] = checkpoint ? { key, ...checkpoint } : null;
+  });
+
+  return metrics;
+};
+
+export const createBootTimingArtifact = (
+  report: BootTimingReport | undefined,
+  options: { createdAt?: string } = {}
+): BootTimingArtifact | undefined => {
+  if (!report) {
+    return undefined;
+  }
+
+  return {
+    schemaVersion: 1,
+    createdAt: options.createdAt ?? new Date().toISOString(),
+    totalMs: report.totalMs,
+    summary: report.summary,
+    metrics: resolveBootTimingMetrics(report),
+    checkpoints: report.checkpoints
+  };
+};
+
+export const diffBootTimingArtifacts = (
+  before: BootTimingArtifact | undefined,
+  after: BootTimingArtifact | undefined
+): BootTimingArtifactDiff | undefined => {
+  if (!before || !after) {
+    return undefined;
+  }
+
+  const metricDeltas = {} as Record<BootTimingMetricKey, number | null>;
+  (Object.keys(BOOT_TIMING_METRIC_LABELS) as BootTimingMetricKey[]).forEach((key) => {
+    const beforeMetric = before.metrics[key];
+    const afterMetric = after.metrics[key];
+    metricDeltas[key] = beforeMetric && afterMetric
+      ? Number((afterMetric.elapsedMs - beforeMetric.elapsedMs).toFixed(1))
+      : null;
+  });
+
+  return {
+    totalMsDelta: Number((after.totalMs - before.totalMs).toFixed(1)),
+    metricDeltas
+  };
 };
 
 export const logBootTimingReport = (

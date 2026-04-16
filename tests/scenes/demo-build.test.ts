@@ -36,6 +36,7 @@ let resolveMenuDemoCycle: typeof import('../../src/scenes/MenuScene').resolveMen
 let resolveMenuDemoPreset: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPreset;
 let resolveMenuDemoPresentation: typeof import('../../src/scenes/MenuScene').resolveMenuDemoPresentation;
 let resolveMenuDemoSequence: typeof import('../../src/scenes/MenuScene').resolveMenuDemoSequence;
+let resolveDemoConfig: typeof import('../../src/scenes/MenuScene').resolveDemoConfig;
 let resolveMenuPresentationModel: typeof import('../../src/scenes/MenuScene').resolveMenuPresentationModel;
 let resolveDemoTrailRenderBounds: typeof import('../../src/scenes/MenuScene').resolveDemoTrailRenderBounds;
 let resolveBoardCompositionFrame: typeof import('../../src/scenes/MenuScene').resolveBoardCompositionFrame;
@@ -86,6 +87,7 @@ beforeAll(async () => {
     resolveMenuDemoPreset,
     resolveMenuDemoPresentation,
     resolveMenuDemoSequence,
+    resolveDemoConfig,
     resolveMenuPresentationModel,
     resolveDemoTrailRenderBounds,
     resolveBoardCompositionFrame,
@@ -123,16 +125,10 @@ const createViewportSceneStub = (width: number, height: number) => ({
   }
 }) as never;
 
-const createDemoConfig = (cycle: Parameters<typeof resolveMenuDemoPresentation>[1]) => ({
-  ...legacyTuning.demo,
-  cadence: {
-    ...legacyTuning.demo.cadence,
-    spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
-    exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
-    goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
-    resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
-  }
-});
+const createDemoConfig = (
+  episode: Parameters<typeof resolveDemoConfig>[0],
+  cycle: Parameters<typeof resolveMenuDemoPresentation>[1]
+) => resolveDemoConfig(episode, cycle);
 
 const resolveCycleDurationMs = (episode: { raster: { pathIndices: ArrayLike<number> } }, config: ReturnType<typeof createDemoConfig>): number => (
   Math.max(1, config.cadence.spawnHoldMs)
@@ -957,17 +953,8 @@ describe('demo-only build', () => {
       checkPointModifier: 0.35,
       shortcutCountModifier: 0.13
     }, cycle.difficulty, 0, 1);
-    const config = {
-      ...legacyTuning.demo,
-      cadence: {
-        ...legacyTuning.demo.cadence,
-        spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
-        exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
-        goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
-        resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
-      }
-    };
     const episode = resolved.episode;
+    const config = resolveDemoConfig(episode, cycle);
     const traverseMs = (episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs;
     const checkpoints = [
       { elapsedMs: Math.max(1, Math.floor(config.cadence.spawnHoldMs * 0.5)), sequence: 'intro' },
@@ -1064,7 +1051,7 @@ describe('demo-only build', () => {
       shortcutCountModifier: cycle.entropy.shortcutCountModifier
     }, cycle.difficulty, 0, 1);
     const episode = resolved.episode;
-    const config = createDemoConfig(cycle);
+    const config = createDemoConfig(episode, cycle);
     const arrivalMs = config.cadence.spawnHoldMs + ((episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs);
     const arrivalFrame = resolveDemoWalkerViewFrame(episode, arrivalMs, config, 6);
     const holdFrame = resolveDemoWalkerViewFrame(episode, arrivalMs + 1, config, 6);
@@ -1102,7 +1089,7 @@ describe('demo-only build', () => {
       shortcutCountModifier: cycle.entropy.shortcutCountModifier
     }, cycle.difficulty, 0, 1);
     const episode = resolved.episode;
-    const config = createDemoConfig(cycle);
+    const config = createDemoConfig(episode, cycle);
     const midTraverseMs = config.cadence.spawnHoldMs + Math.max(1, Math.floor(config.cadence.exploreStepMs * 2.5));
     const view = resolveDemoWalkerViewFrame(episode, midTraverseMs, config, 6);
     const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, view);
@@ -1152,7 +1139,8 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain('this.ambientSky?.update(delta);');
     expect(menuSceneSource).toContain('this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);');
     expect(menuSceneSource).toContain('this.add.rectangle(0, 0, width, height, sceneThemeProfile.palette.background.deepSpace, 1)');
-    expect(menuSceneSource).toContain('this.time.delayedCall(0, runDeferredVisualSetup);');
+    expect(menuSceneSource).toContain('const scheduleDeferredVisualSetup = (): void => {');
+    expect(menuSceneSource).toContain('scheduleDeferredVisualSetup();');
     expect(menuSceneSource).toContain("markBootTiming('menu-scene:create-core-ready');");
     expect(menuSceneSource).toContain("markBootTiming('menu-scene:first-interactive-frame');");
     expect(menuSceneSource).toContain("markBootTiming('menu-scene:deferred-visual-setup');");
@@ -1209,7 +1197,7 @@ describe('demo-only build', () => {
         shortcutCountModifier: 0.13
       }, cycle.difficulty, 0, 1);
       const episode = resolved.episode;
-      const config = createDemoConfig(cycle);
+      const config = createDemoConfig(episode, cycle);
       const cycleDurationMs = resolveCycleDurationMs(episode, config);
       const elapsedSamples = [
         Math.max(1, Math.floor(config.cadence.spawnHoldMs * 0.5)),
@@ -1388,16 +1376,7 @@ describe('demo-only build', () => {
       sidePadding: presentationModel.layout.sidePadding,
       bottomPadding: presentationModel.layout.bottomPadding
     });
-    const config = {
-      ...legacyTuning.demo,
-      cadence: {
-        ...legacyTuning.demo.cadence,
-        spawnHoldMs: legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs,
-        exploreStepMs: legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs,
-        goalHoldMs: legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs,
-        resetHoldMs: legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs
-      }
-    };
+    const config = resolveDemoConfig(episode, cycle);
     const presentation = resolveMenuDemoPresentation(episode, cycle, config.cadence.spawnHoldMs, config, 'ambient', 'obs');
     const finalBounds = resolveBoardPresentationBounds(layout, presentation.frameOffsetX, presentation.frameOffsetY);
 

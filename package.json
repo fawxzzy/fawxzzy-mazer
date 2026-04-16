@@ -23,6 +23,7 @@
     "visual:regressions": "node ./scripts/visual/index-artifacts.mjs --regressions",
     "visual:proof": "node ./scripts/visual/mazer-run.mjs",
     "visual:canaries": "node ./scripts/visual/run-canaries.mjs",
+    "boot:timing": "node ./scripts/analysis/capture-boot-timing.mjs",
     "future:content-proof": "node ./scripts/visual/future-runtime-run.mjs --run content-proof",
     "future:two-shell-proof": "node ./scripts/visual/future-runtime-run.mjs --run two-shell-proof",
     "future:three-shell-proof": "node ./scripts/visual/future-runtime-run.mjs --run three-shell-proof",
