@@ -76,17 +76,20 @@ Rule:
 ## Governed Candidate Experiment Pack
 
 - `node scripts/training/governed-candidate-experiment-pack.mjs` evaluates the governed experiment pack defined in `artifacts/training/governed-candidate-experiment-pack.json`.
-- The v2 pack currently covers four non-neutral advisory-only profiles:
-  - `frontier-biased`
-  - `caution-biased`
-  - `pursuit-avoidance-biased`
-  - `item-priority-biased`
-- The governed benchmark contract now rides on `mazer-runtime-benchmark-v3`, which keeps the original five single-focus probes and adds five combined-system probes:
+- The v5 pack narrows the advisory-only profiles to three intentionally separable lanes:
+  - `connector-recovery-biased`
+  - `item-puzzle-clarity-biased`
+  - `warden-cautious-biased`
+- The governed benchmark contract now rides on `mazer-runtime-benchmark-v4`, which keeps the original five single-focus probes and adds five combined-system probes:
   - traps plus Warden pressure plus item relevance
   - recovery after discrete alignment changes
   - puzzle visibility during rotation
   - multi-speaker intent load
   - three-shell connector reasoning
+- The v5 pack keeps the same benchmark surface, but narrows each profile to a single review job:
+  - connector recovery contrasts the readable middle-latch path against the safer outer detour
+  - item/puzzle clarity contrasts high-value cache confirmation and explicit state reading against lower-signal safe routes
+  - Warden caution contrasts mixed-pressure recovery against the more aggressive gauntlet trace
 - The experiment pack runs the required global gate surface once per pack:
   - `npm run architecture:check`
   - `npm test`
@@ -97,12 +100,16 @@ Rule:
   - `npm run future:two-shell-proof`
   - `npm run future:three-shell-proof`
 - Each candidate is then evaluated locally over the governed benchmark pack through `scripts/eval/run-eval.mjs`, using candidate-specific weights written under `tmp/training/governed-candidate-experiment-pack/` and eval summaries under `tmp/eval/governed-candidate-experiment-pack/`.
+- Governed candidate reports must surface the differentiating review data directly:
+  - aggregate metrics
+  - per-scenario first-choice traces
+  - condensed scenario highlights for manual blessing review
 - Registry updates remain governed and advisory-only:
   - accepted candidates are recorded as `candidate`
   - rejected candidates are recorded as `rejected`
   - no experiment-pack candidate is blessed automatically
 - Reject reasons must stay explicit. Metric-band failures are recorded per scenario in the candidate notes, alongside any failed gate names, scenario-id mismatches, or replay-integrity failures.
-- Candidate promotion remains blocked until the v3 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
+- Candidate promotion remains blocked until the v4 benchmark pack, content-proof, two-shell proof, three-shell proof, visual proof, and visual canaries all stay green for the evaluated weights.
 - The experiment-pack lane does not widen legality. Candidate evaluation still routes through the legal local-candidate scoring path and cannot bypass the existing planner firewall.
 
 ## Manual Blessing Workflow
@@ -110,16 +117,17 @@ Rule:
 - `artifacts/training/manual-blessing-review-pack.json` is the repo-owned source of truth for which governed candidates enter manual blessing review.
 - `node scripts/training/promote-weights.mjs` is review-only by default:
   - it resolves the current blessed advisory baseline from `artifacts/training/playbook-weight-registry.json`
-  - it loads the current governed v3 candidates from the registry
-  - the review-pack scenario ids must exactly match `mazer-runtime-benchmark-v3`
-  - it writes one review artifact per candidate under `tmp/training/manual-blessing-review-pack-v3/`
-  - it writes `tmp/training/manual-blessing-review-pack-v3/manifest.json`
+  - it loads the current governed v5 candidates from the registry
+  - the review-pack scenario ids must exactly match `mazer-runtime-benchmark-v4`
+  - it writes one review artifact per candidate under `tmp/training/manual-blessing-review-pack-v5/`
+  - it writes `tmp/training/manual-blessing-review-pack-v5/manifest.json`
   - it does not mutate `currentBlessedRecordId`
 - Every candidate review artifact must emit:
   - `keptGreen` for the required proof surfaces that stayed green
   - `improved` for aggregate or shared-scenario gains relative to the current blessed advisory baseline
   - `worsened` for aggregate or shared-scenario regressions relative to the current blessed advisory baseline
   - `blockedReasons` for any failed governed surface, missing scenario delta, benchmark mismatch, or rejected registry state
+  - shared-scenario delta summaries that include the first-choice shift whenever the candidate diverges from the current blessed baseline
   - `recommendation` with exactly one of:
     - `keep-as-candidate`
     - `ready-for-manual-blessing`
@@ -128,7 +136,26 @@ Rule:
   - review artifacts must exist first
   - proof, eval, and human-readable scenario deltas must all be present
   - `node scripts/training/promote-weights.mjs --candidate-id <id> --bless` is the only path that may update `currentBlessedRecordId`
-- Do not bless from metrics alone. Shared benchmark deltas and the added benchmark-v3 coverage must agree with the proof surface before any blessing change.
+- Do not bless from metrics alone. Shared benchmark deltas and the added benchmark-v4 coverage must agree with the proof surface before any blessing change.
+
+## Candidate Diagnostics
+
+- `artifacts/training/candidate-diagnostics-pack.json` preserves the narrowing analysis that justified the v5 pack from the broader v4 candidate set.
+- `node scripts/training/candidate-diagnostics.mjs` is diagnosis-only:
+  - it resolves the current blessed advisory record from `artifacts/training/playbook-weight-registry.json`
+  - it materializes a same-pack blessed eval summary for `mazer-runtime-benchmark-v4` under `tmp/eval/candidate-diagnostics/current-blessed/`
+  - it compares each governed v4 candidate against that same-pack blessed baseline, not against the older v1 aggregate alone
+  - it writes `tmp/training/candidate-diagnostics-v5/report.json`
+  - it writes `tmp/training/candidate-diagnostics-v5/report.md`
+  - it writes `tmp/training/candidate-diagnostics-v5/manifest.json`
+  - it does not mutate `currentBlessedRecordId`
+- The diagnostics report must stay compact and actionable:
+  - shared gate blockers across the full candidate set
+  - per-candidate trace collapse counts versus the blessed v4 baseline
+  - family-grouped scenario diagnosis for Warden pressure, item usefulness, puzzle-state clarity, multi-speaker intent load, and three-shell connector recovery
+  - scenario-level first-target shifts and focused metric deltas where a candidate actually diverges
+  - a smaller next-profile hint that identifies which v4 behaviors were retained as the narrowed v5 lanes
+- This lane is diagnosis-first only. It must explain why a candidate still blocks or collapses without blessing anything automatically.
 
 ## Burn-In Workflow
 

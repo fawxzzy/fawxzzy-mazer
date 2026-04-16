@@ -13,6 +13,7 @@ import {
   parseCliArgs,
   parseIntegerArg
 } from './common.mjs';
+import { launchPreviewServer, stopPreviewServer } from './preview-server.mjs';
 import { readVisualProofConfig } from '../../tools/visual-pipeline/config.mjs';
 import {
   ensurePacketPaths,
@@ -59,42 +60,6 @@ const runCommand = (command, args, options = {}) => new Promise((resolvePromise,
     rejectPromise(new Error(`${commandSpec.command} ${commandSpec.args.join(' ')} exited with code ${code ?? 'unknown'}.`));
   });
 });
-
-const waitForPreview = async (baseUrl, timeoutMs, child) => {
-  const startedAt = Date.now();
-
-  while ((Date.now() - startedAt) < timeoutMs) {
-    if (child.exitCode !== null) {
-      throw new Error(`Preview process exited before ${baseUrl} became ready.`);
-    }
-
-    try {
-      const response = await fetch(baseUrl, { redirect: 'manual' });
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // Preview is still starting.
-    }
-
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
-  }
-
-  throw new Error(`Timed out waiting for preview at ${baseUrl}.`);
-};
-
-const stopPreview = async (child) => {
-  if (!child || child.exitCode !== null) {
-    return;
-  }
-
-  if (process.platform === 'win32') {
-    await runCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }).catch(() => {});
-    return;
-  }
-
-  child.kill('SIGTERM');
-};
 
 const getCommitSha = () => {
   try {
@@ -635,7 +600,7 @@ export const runVisualProofSuite = async ({
   allowFailures = false
 } = {}) => {
   const resolvedConfig = config ?? await readVisualProofConfig(REPO_ROOT, configPath);
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const requestedBaseUrl = normalizeBaseUrl(baseUrl);
   const resolvedArtifactRoot = typeof artifactRoot === 'string' ? artifactRoot : resolvedConfig.artifactRoot;
   const commitSha = getCommitSha();
   const resolvedRunId = resolveRunId(commitSha, runId);
@@ -648,34 +613,22 @@ export const runVisualProofSuite = async ({
     await runCommand('npm', ['run', 'build']);
   }
 
-  const previewCommand = resolveCommandSpec('npm', ['run', 'preview']);
-  const previewChild = spawn(previewCommand.command, previewCommand.args, {
-    cwd: REPO_ROOT,
-    shell: false,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-
-  previewChild.stdout?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stdout.write(String(chunk));
-  });
-  previewChild.stderr?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stderr.write(String(chunk));
+  const preview = await launchPreviewServer({
+    requestedBaseUrl,
+    previewTimeoutMs,
+    previewLog
   });
 
   const browser = await chromium.launch({ headless: true, args: ['--use-gl=swiftshader'] });
 
   try {
-    await waitForPreview(normalizedBaseUrl, previewTimeoutMs, previewChild);
-
     const packets = [];
     const failures = [];
     for (const scenario of resolvedConfig.scenarios) {
       for (const viewport of resolvedConfig.viewports) {
         const packetResult = await captureScenarioPacket({
           browser,
-          baseUrl: normalizedBaseUrl,
+          baseUrl: preview.baseUrl,
           config: resolvedConfig,
           artifactRoot: resolvedArtifactRoot,
           scenario,
@@ -716,7 +669,7 @@ export const runVisualProofSuite = async ({
     return summary;
   } finally {
     await browser.close();
-    await stopPreview(previewChild);
+    await stopPreviewServer(preview.child);
     previewLog.end();
   }
 };

@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('phaser', () => ({
   default: {
     AUTO: 'AUTO',
+    CANVAS: 'CANVAS',
     Scale: {
       RESIZE: 'RESIZE',
       CENTER_BOTH: 'CENTER_BOTH'
@@ -14,7 +15,10 @@ vi.mock('phaser', () => ({
 }));
 
 import { createFuturePhaserGameConfig, FUTURE_PHASER_GAME_PARENT_ID } from '../../../src/future-runtime/phaser/config';
-import { createFuturePhaserRuntimeSession } from '../../../src/future-runtime/phaser/runtime';
+import {
+  createFuturePhaserRuntimeProofController,
+  createFuturePhaserRuntimeSession
+} from '../../../src/future-runtime/phaser/runtime';
 import { FuturePhaserScene } from '../../../src/future-runtime/phaser/scene';
 
 const readSourceFiles = (directory: string): string[] => {
@@ -74,11 +78,30 @@ describe('future phaser runtime', () => {
       .toBe(session.host.appliedMoves.length);
   });
 
+  test('exposes a deterministic proof controller for runtime capture', () => {
+    const controller = createFuturePhaserRuntimeProofController();
+    const session = createFuturePhaserRuntimeSession();
+
+    expect(controller.getStatus().readyState).toBe('booting');
+
+    controller.attachSession(session);
+    const stepStatus = controller.advanceToStep(2);
+    const completeStatus = controller.completeProof();
+
+    expect(stepStatus.readyState).toBe('ready');
+    expect(stepStatus.currentStep).toBeGreaterThanOrEqual(2);
+    expect(stepStatus.snapshot?.results.length).toBe(stepStatus.currentStep);
+    expect(completeStatus.completionState).toBe('complete');
+    expect(completeStatus.isComplete).toBe(true);
+    expect(completeStatus.snapshot?.contentProof.signalOverloadPass).toBe(true);
+  });
+
   test('exposes one isolated Phaser scene entry point', () => {
     const config = createFuturePhaserGameConfig();
     const scenes = Array.isArray(config.scene) ? config.scene : [config.scene];
 
     expect(config.parent).toBe(FUTURE_PHASER_GAME_PARENT_ID);
+    expect(config.type).toBe('CANVAS');
     expect(scenes).toHaveLength(1);
     expect(scenes[0]).toBe(FuturePhaserScene);
   });

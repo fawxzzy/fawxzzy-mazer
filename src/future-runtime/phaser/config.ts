@@ -4,7 +4,7 @@ import { FuturePhaserScene } from './scene';
 export const FUTURE_PHASER_GAME_PARENT_ID = 'future-phaser-root';
 
 export const createFuturePhaserGameConfig = (): Phaser.Types.Core.GameConfig => ({
-  type: Phaser.AUTO,
+  type: Phaser.CANVAS,
   parent: FUTURE_PHASER_GAME_PARENT_ID,
   width: 1040,
   height: 480,
@@ -23,4 +23,3 @@ export const createFuturePhaserGameConfig = (): Phaser.Types.Core.GameConfig => 
     autoCenter: Phaser.Scale.CENTER_BOTH
   }
 });
-

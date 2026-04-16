@@ -14,6 +14,7 @@ import {
   parseCliArgs,
   parseIntegerArg
 } from './common.mjs';
+import { launchPreviewServer, stopPreviewServer } from './preview-server.mjs';
 import {
   FUTURE_RUNTIME_ARTIFACT_ROOT,
   DEFAULT_FUTURE_RUNTIME_GATES,
@@ -49,6 +50,8 @@ const FUTURE_RUNTIME_VIEWPORTS = Object.freeze([
     height: 844
   }
 ]);
+
+const FUTURE_PHASER_PROOF_SIGNAL_KEY = '__MAZER_FUTURE_PHASER_SIGNAL__';
 
 const FUTURE_RUNTIME_SCENARIOS = Object.freeze([
   {
@@ -196,42 +199,6 @@ const resetRunArtifacts = async (artifactRoot, runId) => {
   )));
 };
 
-const waitForPreview = async (baseUrl, timeoutMs, child) => {
-  const startedAt = Date.now();
-
-  while ((Date.now() - startedAt) < timeoutMs) {
-    if (child.exitCode !== null) {
-      throw new Error(`Preview process exited before ${baseUrl} became ready.`);
-    }
-
-    try {
-      const response = await fetch(baseUrl, { redirect: 'manual' });
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // Preview is still starting.
-    }
-
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
-  }
-
-  throw new Error(`Timed out waiting for preview at ${baseUrl}.`);
-};
-
-const stopPreview = async (child) => {
-  if (!child || child.exitCode !== null) {
-    return;
-  }
-
-  if (process.platform === 'win32') {
-    await runCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }).catch(() => {});
-    return;
-  }
-
-  child.kill('SIGTERM');
-};
-
 const getCommitSha = () => {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
@@ -240,15 +207,12 @@ const getCommitSha = () => {
   }
 };
 
-const waitForStep = async (page, bridgeKey, minimumStep, timeoutMs) => {
-  await page.waitForFunction(
-    ([key, step]) => {
-      const runtime = window[key];
-      return Boolean(runtime) && Number(runtime.currentStep ?? runtime.snapshot?.currentStep ?? runtime.prototype?.currentFrame?.step ?? 0) >= step;
-    },
-    [bridgeKey, minimumStep],
-    { timeout: timeoutMs }
-  );
+const recordCaptureStage = (stages, stage, details = {}) => {
+  stages.push({
+    stage,
+    at: new Date().toISOString(),
+    ...details
+  });
 };
 
 const waitForRuntimeReady = async (page, bridgeKey, timeoutMs) => {
@@ -259,18 +223,49 @@ const waitForRuntimeReady = async (page, bridgeKey, timeoutMs) => {
   );
 };
 
-const readFuturePhaserSession = async (page, bridgeKey) => page.evaluate((key) => {
-  const session = window[key];
-  if (!session) {
+const waitForFuturePhaserReady = async (page, timeoutMs) => {
+  await page.waitForFunction(
+    (key) => {
+      const signal = window[key];
+      if (!signal) {
+        return false;
+      }
+
+      const status = typeof signal.getStatus === 'function' ? signal.getStatus() : signal;
+      return status?.readyState === 'ready' || status?.readyState === 'error';
+    },
+    FUTURE_PHASER_PROOF_SIGNAL_KEY,
+    { timeout: timeoutMs }
+  );
+};
+
+const readFuturePhaserProofStatus = async (page) => page.evaluate((key) => {
+  const signal = window[key];
+  if (!signal) {
     return null;
   }
 
-  return {
-    currentStep: session.currentStep ?? null,
-    isComplete: session.isComplete ?? false,
-    ...(session.snapshot ?? {})
-  };
-}, bridgeKey);
+  return typeof signal.getStatus === 'function'
+    ? signal.getStatus()
+    : {
+        readyState: signal.readyState ?? null,
+        completionState: signal.completionState ?? null,
+        currentStep: signal.currentStep ?? null,
+        isComplete: signal.isComplete ?? false,
+        error: signal.error ?? null,
+        snapshot: signal.snapshot ?? null
+      };
+}, FUTURE_PHASER_PROOF_SIGNAL_KEY);
+
+const readFuturePhaserSession = async (page) => {
+  const proofStatus = await readFuturePhaserProofStatus(page);
+  return proofStatus?.snapshot ?? null;
+};
+
+const advanceFuturePhaserProof = async (page, minimumStep) => page.evaluate(
+  ([key, step]) => window[key].advanceToStep(step),
+  [FUTURE_PHASER_PROOF_SIGNAL_KEY, minimumStep]
+);
 
 const captureCanvas = async (page, timeoutMs) => {
   const canvas = page.locator('canvas').first();
@@ -287,34 +282,65 @@ const resolveDiagnosticStep = (diagnostics) => (
   ?? null
 );
 
+const completeFuturePhaserProof = async (page, maxSteps = 12) => page.evaluate(
+  ([key, stepLimit]) => window[key].completeProof(stepLimit),
+  [FUTURE_PHASER_PROOF_SIGNAL_KEY, maxSteps]
+);
+
 const capturePhaserScenario = async ({
   page,
   packet,
-  timeoutMs
+  timeoutMs,
+  stages
 }) => {
   const canvas = await captureCanvas(page, timeoutMs);
-  const bridgeKey = '__MAZER_FUTURE_PHASER__';
+  recordCaptureStage(stages, 'canvas-visible');
+  await waitForFuturePhaserReady(page, timeoutMs);
+  const readyStatus = await readFuturePhaserProofStatus(page);
+  if (readyStatus?.readyState === 'error') {
+    throw new Error(`Future Phaser proof surface entered error state before capture: ${readyStatus.error ?? 'unknown error'}.`);
+  }
+  recordCaptureStage(stages, 'runtime-ready', {
+    readyState: readyStatus?.readyState ?? null,
+    completionState: readyStatus?.completionState ?? null,
+    currentStep: readyStatus?.currentStep ?? null
+  });
 
-  await waitForRuntimeReady(page, bridgeKey, timeoutMs);
-  await waitForStep(page, bridgeKey, 1, timeoutMs);
-
-  const beforeDiagnostics = await readFuturePhaserSession(page, bridgeKey);
+  await advanceFuturePhaserProof(page, 1);
+  const beforeDiagnostics = await readFuturePhaserSession(page);
+  recordCaptureStage(stages, 'before-step-captured', {
+    currentStep: beforeDiagnostics?.currentStep ?? null
+  });
   await page.screenshot({ path: packet.beforePath, fullPage: false, animations: 'disabled' });
 
   const keyframeSteps = [2, 3];
   const keyframePaths = [];
   const keyframeDiagnostics = [];
   for (const [index, minimumStep] of keyframeSteps.entries()) {
-    await waitForStep(page, bridgeKey, minimumStep, timeoutMs);
-    const diagnostics = await readFuturePhaserSession(page, bridgeKey);
+    await advanceFuturePhaserProof(page, minimumStep);
+    const diagnostics = await readFuturePhaserSession(page);
     keyframeDiagnostics.push(diagnostics);
     const keyframePath = resolve(packet.keyframesDir, `${String(index + 1).padStart(2, '0')}-step-${minimumStep}.png`);
     await canvas.screenshot({ path: keyframePath, animations: 'disabled' });
     keyframePaths.push({ label: `step-${minimumStep}`, path: keyframePath });
+    recordCaptureStage(stages, 'keyframe-captured', {
+      minimumStep,
+      currentStep: diagnostics?.currentStep ?? null,
+      keyframePath: relativeFromRepo(REPO_ROOT, keyframePath)
+    });
   }
 
-  await waitForFunctionComplete(page, bridgeKey, timeoutMs, 'isComplete');
-  const afterDiagnostics = await readFuturePhaserSession(page, bridgeKey);
+  await completeFuturePhaserProof(page);
+  const afterStatus = await readFuturePhaserProofStatus(page);
+  if (afterStatus?.completionState === 'error') {
+    throw new Error(`Future Phaser proof surface entered error state during completion: ${afterStatus.error ?? 'unknown error'}.`);
+  }
+  const afterDiagnostics = afterStatus?.snapshot ?? null;
+  recordCaptureStage(stages, 'proof-complete', {
+    readyState: afterStatus?.readyState ?? null,
+    completionState: afterStatus?.completionState ?? null,
+    currentStep: afterStatus?.currentStep ?? null
+  });
   await page.screenshot({ path: packet.afterPath, fullPage: false, animations: 'disabled' });
   await canvas.screenshot({ path: packet.focusPath, animations: 'disabled' });
   const browser = page.context().browser();
@@ -333,14 +359,6 @@ const capturePhaserScenario = async ({
     keyframeDiagnostics,
     keyframePaths
   };
-};
-
-const waitForFunctionComplete = async (page, bridgeKey, timeoutMs, propertyName) => {
-  await page.waitForFunction(
-    ([key, name]) => Boolean(window[key]) && Boolean(window[key][name]),
-    [bridgeKey, propertyName],
-    { timeout: timeoutMs }
-  );
 };
 
 const capturePlanet3DScenario = async ({
@@ -440,7 +458,8 @@ const buildPacketMetadata = ({
   keyframeDiagnostics,
   keyframePaths,
   proofGates,
-  semanticScore
+  semanticScore,
+  captureStages
 }) => {
   const latestIntentEntries = scenario.kind === 'future-phaser'
     ? (afterDiagnostics?.intentDeliveries?.at(-1)?.bus?.records ?? []).slice(-4)
@@ -522,9 +541,51 @@ const buildPacketMetadata = ({
       connectorReadability: afterDiagnostics?.contentProof?.connectorReadabilityPass ?? false,
       rotationRecovery: afterDiagnostics?.contentProof?.rotationRecoveryPass ?? false,
       signalOverloadPass: semanticScore.contract.signalOverloadPassEveryScene
+    },
+    capture: {
+      stages: captureStages ?? []
     }
   };
 };
+
+const collectRuntimeFailureSnapshot = async (page, scenario, packet) => page.evaluate(
+  ({ phaserSignalKey, kind, packetPath }) => {
+    const phaserSignal = window[phaserSignalKey];
+    const planetController = window.__MAZER_FUTURE_PLANET3D__;
+    return {
+      location: window.location.href,
+      documentReadyState: document.readyState,
+      canvasCount: document.querySelectorAll('canvas').length,
+      artifactPath: packetPath,
+      proofSignal: phaserSignal
+        ? (
+          typeof phaserSignal.getStatus === 'function'
+            ? phaserSignal.getStatus()
+            : {
+                readyState: phaserSignal.readyState ?? null,
+                completionState: phaserSignal.completionState ?? null,
+                currentStep: phaserSignal.currentStep ?? null,
+                isComplete: phaserSignal.isComplete ?? false,
+                error: phaserSignal.error ?? null,
+                snapshot: phaserSignal.snapshot ?? null
+              }
+        )
+        : null,
+      planet3d: kind === 'planet3d'
+        ? {
+            step: planetController?.frame?.step ?? null,
+            rotationState: planetController?.frame?.rotationState ?? null,
+            playerTileId: planetController?.frame?.player?.tileId ?? null
+          }
+        : null
+    };
+  },
+  {
+    phaserSignalKey: FUTURE_PHASER_PROOF_SIGNAL_KEY,
+    kind: scenario.kind,
+    packetPath: relativeFromRepo(REPO_ROOT, packet.packetDir)
+  }
+);
 
 const captureScenarioPacket = async ({
   browser,
@@ -537,6 +598,14 @@ const captureScenarioPacket = async ({
   timeoutMs
 }) => {
   const packet = await ensurePacketPaths(REPO_ROOT, artifactRoot, scenario.id, viewport.id, runId);
+  const failureSummaryPath = resolve(packet.packetDir, 'failure-summary.json');
+  const stages = [];
+  recordCaptureStage(stages, 'packet-created', {
+    artifactPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+    runId,
+    scenarioId: scenario.id,
+    viewportId: viewport.id
+  });
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: 1,
@@ -553,16 +622,18 @@ const captureScenarioPacket = async ({
   const page = await context.newPage();
   const url = `${normalizeBaseUrl(baseUrl)}${scenario.route}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+  recordCaptureStage(stages, 'page-loaded', { url });
 
   let captureResult;
   try {
     if (scenario.kind === 'future-phaser') {
-      captureResult = await capturePhaserScenario({ page, packet, timeoutMs });
+      captureResult = await capturePhaserScenario({ page, packet, timeoutMs, stages });
     } else if (scenario.kind === 'planet3d') {
       captureResult = await capturePlanet3DScenario({ page, packet, timeoutMs, scenario });
     } else {
       throw new Error(`Unsupported future runtime scenario kind: ${scenario.kind}`);
     }
+    recordCaptureStage(stages, 'capture-finished');
 
     const beforeDiagnostics = captureResult.beforeDiagnostics;
     const afterDiagnostics = captureResult.afterDiagnostics;
@@ -608,7 +679,8 @@ const captureScenarioPacket = async ({
       keyframeDiagnostics,
       keyframePaths: captureResult.keyframePaths,
       proofGates: scenario.kind === 'planet3d' ? evaluatePlanet3DProofGates(afterDiagnostics) : null,
-      semanticScore
+      semanticScore,
+      captureStages: stages
     });
 
     const video = page.video();
@@ -631,6 +703,27 @@ const captureScenarioPacket = async ({
       metadata,
       semanticScore
     };
+  } catch (error) {
+    const failureSummary = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      runId,
+      scenarioId: scenario.id,
+      viewportId: viewport.id,
+      scenarioKind: scenario.kind,
+      artifactPath: relativeFromRepo(REPO_ROOT, packet.packetDir),
+      stages,
+      failure: {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack ?? error.message : String(error)
+      },
+      runtimeSnapshot: await collectRuntimeFailureSnapshot(page, scenario, packet).catch(() => null)
+    };
+    await writeMetadata(failureSummaryPath, failureSummary);
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)} `
+      + `(runId=${runId}, scenarioId=${scenario.id}, viewportId=${viewport.id}, artifactPath=${relativeFromRepo(REPO_ROOT, packet.packetDir)}, failureSummary=${relativeFromRepo(REPO_ROOT, failureSummaryPath)})`
+    );
   } finally {
     await context.close().catch(() => {});
   }
@@ -647,7 +740,7 @@ export const runFutureRuntimeProofSuite = async ({
   runId,
   allowFailures = false
 } = {}) => {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const requestedBaseUrl = normalizeBaseUrl(baseUrl);
   const commitSha = getCommitSha();
   const workflow = FUTURE_RUNTIME_WORKFLOWS[workflowId] ?? FUTURE_RUNTIME_WORKFLOWS['full-proof'];
   const scenarioSet = new Set(
@@ -671,34 +764,22 @@ export const runFutureRuntimeProofSuite = async ({
     await runCommand('npm', ['run', 'build']);
   }
 
-  const previewCommand = resolveCommandSpec('npm', ['run', 'preview']);
-  const previewChild = spawn(previewCommand.command, previewCommand.args, {
-    cwd: REPO_ROOT,
-    shell: false,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-
-  previewChild.stdout?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stdout.write(String(chunk));
-  });
-  previewChild.stderr?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stderr.write(String(chunk));
+  const preview = await launchPreviewServer({
+    requestedBaseUrl,
+    previewTimeoutMs,
+    previewLog
   });
 
   const browser = await chromium.launch({ headless: true, args: ['--use-gl=swiftshader'] });
 
   try {
-    await waitForPreview(normalizedBaseUrl, previewTimeoutMs, previewChild);
-
     const packets = [];
     const failures = [];
     for (const scenario of scenarios) {
       for (const viewport of FUTURE_RUNTIME_VIEWPORTS) {
         const packetResult = await captureScenarioPacket({
           browser,
-          baseUrl: normalizedBaseUrl,
+          baseUrl: preview.baseUrl,
           scenario,
           viewport,
           artifactRoot,
@@ -742,7 +823,7 @@ export const runFutureRuntimeProofSuite = async ({
     return summary;
   } finally {
     await browser.close();
-    await stopPreview(previewChild);
+    await stopPreviewServer(preview.child);
     previewLog.end();
   }
 };

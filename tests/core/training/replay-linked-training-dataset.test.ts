@@ -228,11 +228,13 @@ describe('replay-linked training dataset', () => {
       }
     };
     const dataset = createReplayLinkedTrainingDataset(log, evalSummary, {
-      packId: 'mazer-runtime-benchmark-v3',
+      packId: 'mazer-runtime-benchmark-v4',
       scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
+      scenarioLabel: 'Scavenger / checkpoint item usefulness separation',
       districtType: 'scavenger-checkpoint',
       shellCount: 1,
       seed: 'seed-training',
+      variant: 'item-usefulness',
       expectedMetricBands: {
         itemUsefulnessScore: {
           min: 0.6,
@@ -241,11 +243,13 @@ describe('replay-linked training dataset', () => {
       }
     });
     const repeat = createReplayLinkedTrainingDataset(log, evalSummary, {
-      packId: 'mazer-runtime-benchmark-v3',
+      packId: 'mazer-runtime-benchmark-v4',
       scenarioId: 'scavenger-checkpoint-item-usefulness-charlie',
+      scenarioLabel: 'Scavenger / checkpoint item usefulness separation',
       districtType: 'scavenger-checkpoint',
       shellCount: 1,
       seed: 'seed-training',
+      variant: 'item-usefulness',
       expectedMetricBands: {
         itemUsefulnessScore: {
           min: 0.6,
@@ -255,7 +259,9 @@ describe('replay-linked training dataset', () => {
     });
 
     expect(dataset.benchmark?.scenarioId).toBe('scavenger-checkpoint-item-usefulness-charlie');
+    expect(dataset.benchmark?.scenarioLabel).toBe('Scavenger / checkpoint item usefulness separation');
     expect(dataset.benchmark?.shellCount).toBe(1);
+    expect(dataset.benchmark?.variant).toBe('item-usefulness');
     expect(dataset.replayLink.seed).toBe('seed-training');
     expect(dataset.replayLink.episodeCount).toBe(1);
     expect(dataset.evalSummary?.summaryId).toBe(evalSummary.summaryId);

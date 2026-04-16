@@ -106,12 +106,16 @@ export interface RuntimeEvalScenarioSummary {
   summaryId: string;
   runId: string;
   scenarioId: string;
+  scenarioLabel: string;
   focus: RuntimeEvalFocus;
   districtType: RuntimeBenchmarkDistrictType;
   shellCount: number;
   seed: string;
+  variant: string;
   startTileId: TileId;
   startHeading: HeadingToken;
+  firstTargetTileId: TileId | null;
+  decisionSignature: string;
   replayVerified: boolean;
   metrics: RuntimeEvalMetricSummary;
   log: {
@@ -851,6 +855,10 @@ const validateMetricBands = (
   };
 };
 
+const buildDecisionSignature = (
+  stepSummaries: readonly RuntimeEvalStepSummary[]
+): string => stepSummaries.map((summary) => summary.targetTileId ?? 'null').join('>');
+
 const runReplayScenario = (scenario: RuntimeEvalScenarioSpec) => {
   const maxSteps = scenario.steps.length + 1;
   const host = new DeterministicEvalHost(scenario);
@@ -919,12 +927,16 @@ export const runRuntimeEvalScenario = (
     summaryId,
     runId,
     scenarioId: scenario.id,
+    scenarioLabel: scenario.label,
     focus: resolveScenarioFocus(scenario),
     districtType: scenario.districtType,
     shellCount: scenario.shellCount,
     seed: scenario.seed,
+    variant: scenario.variant,
     startTileId: replayScenario.startTileId,
     startHeading: replayScenario.startHeading,
+    firstTargetTileId: evaluation.stepSummaries[0]?.targetTileId ?? null,
+    decisionSignature: buildDecisionSignature(evaluation.stepSummaries),
     replayVerified: replay.replayVerified,
     metrics: evaluation.metrics,
     log: {

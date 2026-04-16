@@ -16,6 +16,7 @@ import {
  */
 
 const DEFAULT_PLAYBOOK_WEIGHT_REGISTRY_PATH = 'artifacts/training/playbook-weight-registry.json';
+const WRITE_JSON_RETRYABLE_ERROR_CODES = new Set(['EBUSY', 'EPERM']);
 
 const metricDirection = {
   discoveryEfficiency: 'up',
@@ -114,9 +115,31 @@ const parseCliArgs = (argv = process.argv.slice(2)) => {
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, 'utf8'));
 
+const sleep = (ms) => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
+
+const isRetryableWriteError = (error) => (
+  WRITE_JSON_RETRYABLE_ERROR_CODES.has(error?.code)
+  || WRITE_JSON_RETRYABLE_ERROR_CODES.has(error?.cause?.code)
+);
+
 const writeJson = async (filePath, value) => {
   const text = `${JSON.stringify(value, null, 2)}\n`;
-  await writeFile(filePath, text, 'utf8');
+  const maxAttempts = 5;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await writeFile(filePath, text, 'utf8');
+      return;
+    } catch (error) {
+      if (!isRetryableWriteError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+
+      await sleep(attempt * 50);
+    }
+  }
 };
 
 const resolveRuntimeBenchmarkPack = () => resolveLifelineBenchmarkPack();

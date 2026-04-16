@@ -8,6 +8,7 @@ Single-command health pack:
 - It runs architecture check, tests, build, visual proof, visual canaries, future-runtime content-proof, the dedicated two-shell proof, the three-shell proof, and a runtime eval summary in that order.
 - The wrapper fails fast, prints the broken gate name, and writes a short machine-readable summary to `tmp/gates/future-lane-health-summary.json`.
 - `npm run health -- --with-headless-smoke true` adds an optional blessed headless smoke on the benchmark-pack lane without changing the default matrix.
+- Health-owned preview startup asks for `127.0.0.1:4173` first, falls back to a free loopback port if that port is already busy, then launches `vite preview` with `--strictPort` on the chosen port for that run.
 
 Commands:
 
@@ -118,6 +119,7 @@ Future runtime lane:
 - `node scripts/visual/future-runtime-run.mjs --run content-proof` is the shared content-proof workflow for this lane; it captures `future-phaser.html` plus the non-baselined `planet3d-content-proof` packet set under the `content-proof` run id.
 - `node scripts/visual/future-runtime-run.mjs --run two-shell-proof` is the dedicated future-baseline workflow; it captures only `planet3d-two-shell-proof` under the `two-shell-proof` run id.
 - `node scripts/visual/future-runtime-run.mjs --run three-shell-proof` is the merged three-shell verification workflow; it captures only `planet3d-three-shell-proof` under the `three-shell-proof` run id.
+- The Phaser content-proof capture now waits on the explicit `__MAZER_FUTURE_PHASER_SIGNAL__` surface and drives proof progression through its `ready` and `complete` states instead of passive DOM timing.
 - The content-proof packet contract now includes `trapInferencePass`, `wardenReadabilityPass`, `itemProxyPass`, `puzzleProxyPass`, and `signalOverloadPass`, with world pings kept subordinate to the readable intent feed.
 - `scripts/visual/index-artifacts.mjs` accepts `--future-artifact-root tmp/captures/mazer-future-runtime` so index/compare/promote stay on the future lane without touching the visual-proof baseline.
 - Future baseline promotion is lane-specific: use `--run-id two-shell-proof` so `artifacts/visual/future-runtime-baseline.json` points only at the dedicated two-shell packet set.

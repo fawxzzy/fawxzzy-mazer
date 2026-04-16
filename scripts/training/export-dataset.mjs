@@ -114,9 +114,11 @@ const buildDataset = (log, evalSummary = null, benchmarkScenario = null) => {
       ? {
           packId: benchmarkPack.packId,
           scenarioId: benchmarkScenario.id,
+          scenarioLabel: benchmarkScenario.label,
           districtType: benchmarkScenario.districtType,
           shellCount: benchmarkScenario.shellCount,
           seed: benchmarkScenario.seed,
+          variant: benchmarkScenario.variant,
           expectedMetricBands: Object.fromEntries(
             Object.entries(benchmarkScenario.expectedMetricBands ?? {}).map(([metricName, band]) => [
               metricName,

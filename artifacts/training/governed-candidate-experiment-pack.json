@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "packId": "governed-candidate-experiment-pack-v3",
-  "seedPackId": "mazer-runtime-benchmark-v3",
-  "benchmarkPackId": "mazer-runtime-benchmark-v3",
+  "packId": "governed-candidate-experiment-pack-v5",
+  "seedPackId": "mazer-runtime-benchmark-v4",
+  "benchmarkPackId": "mazer-runtime-benchmark-v4",
   "scenarioIds": [
     "labyrinth-tutorial-trap-inference-alpha",
     "loopy-combat-capable-warden-pressure-bravo",
@@ -29,21 +29,8 @@
   ],
   "candidates": [
     {
-      "candidateId": "frontier-biased",
-      "label": "Frontier Biased",
-      "weights": {
-        "frontierValue": 1.3,
-        "backtrackUrgency": 0.9,
-        "trapSuspicion": 0.95,
-        "enemyRisk": 0.92,
-        "itemValue": 1.05,
-        "puzzleValue": 1,
-        "rotationTiming": 1.08
-      }
-    },
-    {
-      "candidateId": "caution-biased",
-      "label": "Caution Biased",
+      "candidateId": "connector-recovery-biased",
+      "label": "Connector Recovery Biased",
       "weights": {
         "frontierValue": 0.92,
         "backtrackUrgency": 1.08,
@@ -55,29 +42,29 @@
       }
     },
     {
-      "candidateId": "pursuit-avoidance-biased",
-      "label": "Pursuit Avoidance Biased",
+      "candidateId": "item-puzzle-clarity-biased",
+      "label": "Item Puzzle Clarity Biased",
       "weights": {
-        "frontierValue": 1,
-        "backtrackUrgency": 1.05,
-        "trapSuspicion": 1.18,
-        "enemyRisk": 1.3,
-        "itemValue": 0.94,
-        "puzzleValue": 0.96,
-        "rotationTiming": 1.02
+        "frontierValue": 0.94,
+        "backtrackUrgency": 0.96,
+        "trapSuspicion": 0.96,
+        "enemyRisk": 1.02,
+        "itemValue": 1.28,
+        "puzzleValue": 1.18,
+        "rotationTiming": 1.04
       }
     },
     {
-      "candidateId": "item-priority-biased",
-      "label": "Item Priority Biased",
+      "candidateId": "warden-cautious-biased",
+      "label": "Warden Cautious Biased",
       "weights": {
-        "frontierValue": 0.96,
-        "backtrackUrgency": 0.94,
-        "trapSuspicion": 0.92,
-        "enemyRisk": 0.9,
-        "itemValue": 1.32,
-        "puzzleValue": 1.08,
-        "rotationTiming": 0.98
+        "frontierValue": 0.6,
+        "backtrackUrgency": 1.6,
+        "trapSuspicion": 1.6,
+        "enemyRisk": 1.6,
+        "itemValue": 0.9,
+        "puzzleValue": 0.9,
+        "rotationTiming": 0.9
       }
     }
   ]

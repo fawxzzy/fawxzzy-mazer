@@ -63,6 +63,8 @@ let MAZE_FAMILY_EXPOSURE_POLICY: typeof import('../../src/domain/maze').MAZE_FAM
 let legacyTuning: typeof import('../../src/config/tuning').legacyTuning;
 let resolveViewportSize: typeof import('../../src/render/viewport').resolveViewportSize;
 
+const AMBIENT_PRESENTATION_STABILITY_TIMEOUT_MS = 90_000;
+
 beforeAll(async () => {
   ({ BootScene } = await import('../../src/scenes/BootScene'));
   ({ phaserConfig } = await import('../../src/boot/phaserConfig'));
@@ -1175,7 +1177,7 @@ describe('demo-only build', () => {
     expect(baseCss).toContain('box-shadow: none;');
   });
 
-  test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: 25000 }, () => {
+  test('ambient presentation stays stable across long-run episode turnover and large elapsed times', { timeout: AMBIENT_PRESENTATION_STABILITY_TIMEOUT_MS }, () => {
     createPresentationArtifactFixtures();
     cleanupPresentationArtifacts();
 

@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
 import { formatIntentSpeakerHandle, type IntentSpeaker } from '../../mazer-core/intent';
 import { FUTURE_PHASER_ROUTE, FUTURE_PHASER_TOPOLOGY, resolveFutureTile } from './topology';
-import { createFuturePhaserRuntimeSession, type FuturePhaserRuntimeSession } from './runtime';
+import {
+  createFuturePhaserRuntimeSession,
+  FUTURE_PHASER_WINDOW_KEY,
+  getOrCreateFuturePhaserProofController,
+  type FuturePhaserRuntimeProofController,
+  type FuturePhaserRuntimeSession
+} from './runtime';
 
 const BG = '#09131d';
 const TEXT = '#e7f4ff';
@@ -12,6 +18,8 @@ const GOAL = 0xffb07a;
 
 export class FuturePhaserScene extends Phaser.Scene {
   private runtime: FuturePhaserRuntimeSession | null = null;
+
+  private proofController: FuturePhaserRuntimeProofController | null = null;
 
   private trailGraphics: Phaser.GameObjects.Graphics | null = null;
 
@@ -32,64 +40,78 @@ export class FuturePhaserScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.runtime = createFuturePhaserRuntimeSession();
-    if (typeof window !== 'undefined') {
-      (window as Window & { __MAZER_FUTURE_PHASER__?: FuturePhaserRuntimeSession }).__MAZER_FUTURE_PHASER__ = this.runtime;
+    try {
+      this.runtime = createFuturePhaserRuntimeSession();
+      if (typeof window !== 'undefined') {
+        const futureWindow = window as Window & { [FUTURE_PHASER_WINDOW_KEY]?: FuturePhaserRuntimeSession };
+        this.proofController = getOrCreateFuturePhaserProofController(futureWindow);
+        futureWindow[FUTURE_PHASER_WINDOW_KEY] = this.runtime;
+        this.proofController.attachSession(this.runtime);
+      }
+      this.cameras.main.setBackgroundColor(BG);
+
+      this.trailGraphics = this.add.graphics();
+      this.nodeGraphics = this.add.graphics();
+
+      this.add.rectangle(520, 240, 1000, 430, 0x0c1926, 1).setStrokeStyle(1, 0x31506a, 0.9);
+      this.add.rectangle(520, 240, 970, 390, 0x0f1d2c, 1).setStrokeStyle(1, 0x1d3950, 0.8);
+
+      this.add.text(32, 24, 'Future Phaser adapter', {
+        color: TEXT,
+        fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
+        fontSize: '28px',
+        fontStyle: 'bold'
+      });
+      this.add.text(32, 58, 'RuntimeAdapterBridge + bounded scorer + local trail/intent projection', {
+        color: MUTED,
+        fontFamily: 'Consolas, "Lucida Console", monospace',
+        fontSize: '14px'
+      });
+
+      this.statusText = this.add.text(32, 312, '', {
+        color: TEXT,
+        fontFamily: 'Consolas, "Lucida Console", monospace',
+        fontSize: '14px',
+        wordWrap: { width: 360 }
+      }).setDepth(2);
+
+      this.intentText = this.add.text(700, 62, '', {
+        color: TEXT,
+        fontFamily: 'Consolas, "Lucida Console", monospace',
+        fontSize: '14px',
+        wordWrap: { width: 300 }
+      }).setDepth(2);
+
+      this.episodeText = this.add.text(700, 322, '', {
+        color: MUTED,
+        fontFamily: 'Consolas, "Lucida Console", monospace',
+        fontSize: '13px',
+        wordWrap: { width: 300 }
+      }).setDepth(2);
+
+      this.renderFrame();
+      this.nextAdvanceAt = 0;
+    } catch (error) {
+      this.proofController?.fail(error);
+      throw error;
     }
-    this.cameras.main.setBackgroundColor(BG);
-
-    this.trailGraphics = this.add.graphics();
-    this.nodeGraphics = this.add.graphics();
-
-    this.add.rectangle(520, 240, 1000, 430, 0x0c1926, 1).setStrokeStyle(1, 0x31506a, 0.9);
-    this.add.rectangle(520, 240, 970, 390, 0x0f1d2c, 1).setStrokeStyle(1, 0x1d3950, 0.8);
-
-    this.add.text(32, 24, 'Future Phaser adapter', {
-      color: TEXT,
-      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif',
-      fontSize: '28px',
-      fontStyle: 'bold'
-    });
-    this.add.text(32, 58, 'RuntimeAdapterBridge + bounded scorer + local trail/intent projection', {
-      color: MUTED,
-      fontFamily: 'Consolas, "Lucida Console", monospace',
-      fontSize: '14px'
-    });
-
-    this.statusText = this.add.text(32, 312, '', {
-      color: TEXT,
-      fontFamily: 'Consolas, "Lucida Console", monospace',
-      fontSize: '14px',
-      wordWrap: { width: 360 }
-    }).setDepth(2);
-
-    this.intentText = this.add.text(700, 62, '', {
-      color: TEXT,
-      fontFamily: 'Consolas, "Lucida Console", monospace',
-      fontSize: '14px',
-      wordWrap: { width: 300 }
-    }).setDepth(2);
-
-    this.episodeText = this.add.text(700, 322, '', {
-      color: MUTED,
-      fontFamily: 'Consolas, "Lucida Console", monospace',
-      fontSize: '13px',
-      wordWrap: { width: 300 }
-    }).setDepth(2);
-
-    this.renderFrame();
-    this.nextAdvanceAt = 0;
   }
 
   update(time: number): void {
     if (!this.runtime || this.runtime.isComplete) {
+      this.proofController?.sync();
       return;
     }
 
     if (time >= this.nextAdvanceAt) {
-      this.runtime.step();
-      this.renderFrame();
-      this.nextAdvanceAt = time + 650;
+      try {
+        this.runtime.step();
+        this.renderFrame();
+        this.nextAdvanceAt = time + 650;
+      } catch (error) {
+        this.proofController?.fail(error);
+        throw error;
+      }
     }
   }
 
@@ -124,6 +146,7 @@ export class FuturePhaserScene extends Phaser.Scene {
 
     this.intentText.setText(this.formatIntentLines(snapshot.intentDeliveries));
     this.episodeText.setText(this.formatEpisodeLines(latestEpisode, latestIntent));
+    this.proofController?.sync();
   }
 
   private drawLane(): void {

@@ -18,7 +18,7 @@ const makeEvalSummary = (runId: string, options: {
 }) => ({
   schemaVersion: 1,
   suiteId: 'mazer-core-deterministic-runtime-eval',
-  benchmarkPackId: options.benchmarkPackId ?? 'mazer-runtime-benchmark-v3',
+  benchmarkPackId: options.benchmarkPackId ?? 'mazer-runtime-benchmark-v4',
   summaryId: `eval-summary-${runId}`,
   runId,
   generatedAt: '2026-04-14T00:00:00.000Z',
@@ -82,10 +82,10 @@ const makeEvalSummary = (runId: string, options: {
 });
 
 describe('governed candidate experiment pack', () => {
-  test('declares the four non-neutral advisory profiles and required gate policy', async () => {
+  test('declares the three narrowed v5 advisory profiles and required gate policy', async () => {
     const pack = await loadGovernedCandidateExperimentPack();
 
-    expect(pack.packId).toBe('governed-candidate-experiment-pack-v3');
+    expect(pack.packId).toBe('governed-candidate-experiment-pack-v5');
     expect(pack.promotionBlockedUntil).toEqual([
       'architectureCheck',
       'tests',
@@ -119,10 +119,9 @@ describe('governed candidate experiment pack', () => {
       'runtimeEval'
     ]);
     expect(pack.candidates.map((candidate: { candidateId: string }) => candidate.candidateId)).toEqual([
-      'frontier-biased',
-      'caution-biased',
-      'pursuit-avoidance-biased',
-      'item-priority-biased'
+      'connector-recovery-biased',
+      'item-puzzle-clarity-biased',
+      'warden-cautious-biased'
     ]);
     expect(
       pack.candidates.every((candidate: { weights: Record<string, number> }) => (
@@ -135,9 +134,9 @@ describe('governed candidate experiment pack', () => {
   test('records accept and reject reasons without auto-blessing', () => {
     const pack = {
       schemaVersion: 1,
-      packId: 'governed-candidate-experiment-pack-v3',
-      seedPackId: 'mazer-runtime-benchmark-v3',
-      benchmarkPackId: 'mazer-runtime-benchmark-v3',
+      packId: 'governed-candidate-experiment-pack-v5',
+      seedPackId: 'mazer-runtime-benchmark-v4',
+      benchmarkPackId: 'mazer-runtime-benchmark-v4',
       promotionBlockedUntil: [
         'architectureCheck',
         'tests',
@@ -151,21 +150,8 @@ describe('governed candidate experiment pack', () => {
       ],
       candidates: [
         {
-          candidateId: 'frontier-biased',
-          label: 'Frontier Biased',
-          weights: {
-            frontierValue: 1.3,
-            backtrackUrgency: 0.9,
-            trapSuspicion: 0.95,
-            enemyRisk: 0.92,
-            itemValue: 1.05,
-            puzzleValue: 1,
-            rotationTiming: 1.08
-          }
-        },
-        {
-          candidateId: 'caution-biased',
-          label: 'Caution Biased',
+          candidateId: 'connector-recovery-biased',
+          label: 'Connector Recovery Biased',
           weights: {
             frontierValue: 0.92,
             backtrackUrgency: 1.08,
@@ -175,16 +161,29 @@ describe('governed candidate experiment pack', () => {
             puzzleValue: 0.94,
             rotationTiming: 0.9
           }
+        },
+        {
+          candidateId: 'warden-cautious-biased',
+          label: 'Warden Cautious Biased',
+          weights: {
+            frontierValue: 0.6,
+            backtrackUrgency: 1.6,
+            trapSuspicion: 1.6,
+            enemyRisk: 1.6,
+            itemValue: 0.9,
+            puzzleValue: 0.9,
+            rotationTiming: 0.9
+          }
         }
       ]
     };
     const registry = {
       ...createEmptyRegistry(),
-      currentBlessedRecordId: 'mazer-runtime-benchmark-v3:eval-current',
+      currentBlessedRecordId: 'mazer-runtime-benchmark-v4:eval-current',
       blessed: [
         {
           schemaVersion: 1,
-          recordId: 'mazer-runtime-benchmark-v3:eval-current',
+          recordId: 'mazer-runtime-benchmark-v4:eval-current',
           advisoryOnly: true,
           status: 'blessed',
           weights: {
@@ -197,7 +196,7 @@ describe('governed candidate experiment pack', () => {
             rotationTiming: 1
           },
           metadata: {
-            seedPackId: 'mazer-runtime-benchmark-v3',
+            seedPackId: 'mazer-runtime-benchmark-v4',
             createdAt: '2026-04-14T00:00:00.000Z',
             runId: 'eval-current',
             date: '2026-04-14',
@@ -262,16 +261,16 @@ describe('governed candidate experiment pack', () => {
       threeShellProof: true
     };
     const evaluationResults = {
-      'frontier-biased': {
+      'connector-recovery-biased': {
         evalSummary: makeEvalSummary('eval-frontier', {
           bandsGreen: true
         }),
         artifactPaths: {
-          weightsPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/governed-candidate-experiment-pack/frontier-biased/weights.json',
-          evalSummaryPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/eval/governed-candidate-experiment-pack/frontier-biased/runtime-eval-summary.json'
+          weightsPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/governed-candidate-experiment-pack/connector-recovery-biased/weights.json',
+          evalSummaryPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/eval/governed-candidate-experiment-pack/connector-recovery-biased/runtime-eval-summary.json'
         }
       },
-      'caution-biased': {
+      'warden-cautious-biased': {
         evalSummary: makeEvalSummary('eval-caution', {
           bandsGreen: false,
           metricBandFailures: [
@@ -279,8 +278,8 @@ describe('governed candidate experiment pack', () => {
           ]
         }),
         artifactPaths: {
-          weightsPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/governed-candidate-experiment-pack/caution-biased/weights.json',
-          evalSummaryPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/eval/governed-candidate-experiment-pack/caution-biased/runtime-eval-summary.json'
+          weightsPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/training/governed-candidate-experiment-pack/warden-cautious-biased/weights.json',
+          evalSummaryPath: 'C:/ATLAS/repos/fawxzzy-mazer/tmp/eval/governed-candidate-experiment-pack/warden-cautious-biased/runtime-eval-summary.json'
         }
       }
     };
@@ -295,10 +294,10 @@ describe('governed candidate experiment pack', () => {
 
     expect(candidateRecords).toHaveLength(2);
     expect(nextRegistry.blessed).toHaveLength(1);
-    expect(nextRegistry.currentBlessedRecordId).toBe('mazer-runtime-benchmark-v3:eval-current');
+    expect(nextRegistry.currentBlessedRecordId).toBe('mazer-runtime-benchmark-v4:eval-current');
 
-    const acceptedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'frontier-biased');
-    const rejectedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'caution-biased');
+    const acceptedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'connector-recovery-biased');
+    const rejectedRecord = candidateRecords.find((record: { metadata: { candidateId: string } }) => record.metadata.candidateId === 'warden-cautious-biased');
 
     expect(acceptedRecord?.governanceDecision).toBe('accepted');
     expect(acceptedRecord?.status).toBe('candidate');
@@ -309,7 +308,7 @@ describe('governed candidate experiment pack', () => {
     expect(rejectedRecord?.governanceDecision).toBe('rejected');
     expect(rejectedRecord?.status).toBe('rejected');
     expect(rejectedRecord?.notes.join(' | ')).toContain('metric-band failures: scavenger-checkpoint-item-usefulness-charlie: trapFalsePositiveRate=0.31 outside [0, 0.2]');
-    expect(rejectedRecord?.notes.join(' | ')).toContain('candidatePath: tmp/training/governed-candidate-experiment-pack/caution-biased/weights.json');
+    expect(rejectedRecord?.notes.join(' | ')).toContain('warden-cautious-biased/weights.json');
     expect(rejectedRecord?.metadata.gates.runtimeEval).toBe(false);
   });
 });

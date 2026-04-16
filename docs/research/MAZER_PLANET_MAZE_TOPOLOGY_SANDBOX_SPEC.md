@@ -161,13 +161,21 @@ Current mechanic coverage inside the pack:
 - puzzle visibility
 - rotation timing
 
-Combined-system coverage in `mazer-runtime-benchmark-v3`:
+Combined-system coverage in `mazer-runtime-benchmark-v4`:
 
 - traps plus Warden pressure plus item relevance
 - recovery after discrete alignment changes
 - puzzle visibility during rotation
 - multi-speaker intent load
 - three-shell connector reasoning
+
+v4 separation emphasis:
+
+- item usefulness now forces a visible choice between high-value cache confirmation and lower-value safe scavenging
+- puzzle clarity now forces a visible choice between shortcut progress and explicit state-reading
+- multi-speaker intent now separates pressure charging, quiet cover, and full brief intake under Warden load
+- three-shell review now separates readable connector recovery from the safer outer detour
+- the shared v4 review surface should produce materially different first-choice traces and scenario metrics across the governed advisory candidates before any manual blessing
 
 ## Schema Summary
 

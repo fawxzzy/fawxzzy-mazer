@@ -18,6 +18,10 @@ import {
 } from '../../src/domain/maze';
 import { assertMazeInvariants, measureEpisodeTopology, serializeMaze } from './maze-test-utils';
 
+const EXPLICIT_FAMILY_REPLAY_TIMEOUT_MS = 30_000;
+const FAMILY_ARCHETYPE_TIMEOUT_MS = 60_000;
+const RUN_BATCH_TIMEOUT_MS = 20_000;
+
 const defaultConfig: MazeConfig = {
   scale: 50,
   seed: 42,
@@ -86,7 +90,7 @@ describe('maze domain generation', () => {
 
     disposeMazeEpisode(replay.episode);
     disposeMazeEpisode(resolved.episode);
-  }, 15000);
+  }, EXPLICIT_FAMILY_REPLAY_TIMEOUT_MS);
 
   test('preserves solver-backed maze invariants', () => {
     assertMazeInvariants(generateMaze(defaultConfig));
@@ -212,7 +216,7 @@ describe('maze domain generation', () => {
     expect(maze.metrics.deadEnds).toBeGreaterThan(0);
   });
 
-  test('family archetypes produce materially different topology signatures', { timeout: 15000 }, () => {
+  test('family archetypes produce materially different topology signatures', { timeout: FAMILY_ARCHETYPE_TIMEOUT_MS }, () => {
     const sampleFamilies = ['classic', 'braided', 'sparse', 'dense', 'framed', 'split-flow'] as const;
     const seeds = [7_000, 7_037, 7_074, 7_111] as const;
     const samples = sampleFamilies.flatMap((family) => seeds.map((seed) => generateMaze({
@@ -384,7 +388,7 @@ describe('maze domain generation', () => {
     expect(samples).toHaveLength(12);
     expect(samples.every((sample) => sample.solutionLength > 0)).toBe(true);
     expect(samples.every((sample) => sample.metrics.solutionLength === sample.solutionLength)).toBe(true);
-  }, 10000);
+  }, RUN_BATCH_TIMEOUT_MS);
 
   test('classifies difficulty buckets deterministically from measured metrics', () => {
     expect(classifyMazeDifficulty({

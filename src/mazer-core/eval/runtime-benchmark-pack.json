@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "packId": "mazer-runtime-benchmark-v3",
-  "label": "Mazer runtime benchmark pack v3",
+  "packId": "mazer-runtime-benchmark-v4",
+  "label": "Mazer runtime benchmark pack v4",
   "scenarios": [
     {
       "id": "labyrinth-tutorial-trap-inference-alpha",
@@ -404,7 +404,7 @@
     },
     {
       "id": "scavenger-checkpoint-item-usefulness-charlie",
-      "label": "Scavenger / checkpoint item usefulness",
+      "label": "Scavenger / checkpoint item usefulness separation",
       "districtType": "scavenger-checkpoint",
       "shellCount": 1,
       "seed": "benchmark-scavenger-item-charlie",
@@ -450,14 +450,14 @@
                 "item-entry",
                 "item-mid"
               ],
-              "heuristicScore": 0.16,
+              "heuristicScore": 0.15,
               "visitCount": 0,
-              "unexploredNeighborCount": 2,
-              "trapRisk": 0.08,
-              "enemyPressure": 0.1,
-              "itemOpportunity": 0.63,
-              "puzzleOpportunity": 0.16,
-              "timingWindow": 0.28,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.06,
+              "enemyPressure": 0.06,
+              "itemOpportunity": 1,
+              "puzzleOpportunity": 0.34,
+              "timingWindow": 0.24,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
@@ -468,7 +468,8 @@
                 "timingCueCount": 0,
                 "localCues": [
                   "item cache",
-                  "checkpoint hum"
+                  "checkpoint hum",
+                  "high-value shard"
                 ]
               }
             },
@@ -479,23 +480,24 @@
                 "item-entry",
                 "item-spur"
               ],
-              "heuristicScore": 0.12,
+              "heuristicScore": 0.17,
               "visitCount": 0,
-              "unexploredNeighborCount": 1,
-              "trapRisk": 0.06,
-              "enemyPressure": 0.06,
-              "itemOpportunity": 0.12,
-              "puzzleOpportunity": 0.05,
-              "timingWindow": 0.08,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.02,
+              "enemyPressure": 0.02,
+              "itemOpportunity": 0.22,
+              "puzzleOpportunity": 0.1,
+              "timingWindow": 0.12,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
                 "trapCueCount": 0,
                 "enemyCueCount": 0,
-                "itemCueCount": 0,
+                "itemCueCount": 1,
                 "puzzleCueCount": 0,
                 "timingCueCount": 0,
                 "localCues": [
+                  "spent cache",
                   "empty alcove"
                 ]
               }
@@ -603,7 +605,7 @@
     },
     {
       "id": "puzzle-visibility-delta",
-      "label": "Puzzle visibility and state clarity",
+      "label": "Puzzle visibility and state clarity separation",
       "districtType": "puzzle",
       "shellCount": 1,
       "seed": "benchmark-puzzle-visibility-delta",
@@ -649,25 +651,26 @@
                 "puzzle-entry",
                 "puzzle-mid"
               ],
-              "heuristicScore": 0.17,
+              "heuristicScore": 0.15,
               "visitCount": 0,
-              "unexploredNeighborCount": 2,
-              "trapRisk": 0.08,
-              "enemyPressure": 0.09,
-              "itemOpportunity": 0.06,
-              "puzzleOpportunity": 0.57,
-              "timingWindow": 0.3,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.03,
+              "enemyPressure": 0.03,
+              "itemOpportunity": 0.5,
+              "puzzleOpportunity": 0.9,
+              "timingWindow": 0.4,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
                 "trapCueCount": 0,
                 "enemyCueCount": 0,
-                "itemCueCount": 0,
+                "itemCueCount": 1,
                 "puzzleCueCount": 1,
                 "timingCueCount": 0,
                 "localCues": [
                   "puzzle state",
-                  "cipher plate"
+                  "cipher plate",
+                  "state mirror"
                 ]
               }
             },
@@ -678,14 +681,14 @@
                 "puzzle-entry",
                 "puzzle-spur"
               ],
-              "heuristicScore": 0.12,
+              "heuristicScore": 0.16,
               "visitCount": 0,
-              "unexploredNeighborCount": 1,
-              "trapRisk": 0.04,
-              "enemyPressure": 0.04,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.02,
+              "enemyPressure": 0.02,
               "itemOpportunity": 0.06,
-              "puzzleOpportunity": 0.09,
-              "timingWindow": 0.05,
+              "puzzleOpportunity": 0.18,
+              "timingWindow": 0.16,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
@@ -695,6 +698,7 @@
                 "puzzleCueCount": 0,
                 "timingCueCount": 0,
                 "localCues": [
+                  "partial glyph",
                   "quiet corridor"
                 ]
               }
@@ -1751,7 +1755,7 @@
     },
     {
       "id": "labyrinth-tutorial-multi-speaker-intent-india",
-      "label": "Tutorial / multi-speaker intent load",
+      "label": "Tutorial / multi-speaker intent load under pressure",
       "districtType": "labyrinth-tutorial",
       "seed": "benchmark-labyrinth-intent-india",
       "variant": "puzzle-visibility",
@@ -1779,6 +1783,7 @@
           "label": "Intent Entry",
           "heading": "east",
           "traversableTileIds": [
+            "intent-charge",
             "intent-brief",
             "intent-quiet"
           ],
@@ -1797,32 +1802,63 @@
           "moveToTileId": "intent-brief",
           "candidates": [
             {
+              "tileId": "intent-charge",
+              "targetKind": "frontier",
+              "path": [
+                "intent-entry",
+                "intent-charge"
+              ],
+              "heuristicScore": 0.19,
+              "visitCount": 0,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.18,
+              "enemyPressure": 0.44,
+              "itemOpportunity": 0.18,
+              "puzzleOpportunity": 0.16,
+              "timingWindow": 0.22,
+              "outcome": {
+                "discoveredTilesDelta": 1,
+                "backtrackDelta": 0,
+                "trapCueCount": 0,
+                "enemyCueCount": 1,
+                "itemCueCount": 0,
+                "puzzleCueCount": 0,
+                "timingCueCount": 0,
+                "localCues": [
+                  "speaker:Runner",
+                  "speaker:Warden",
+                  "speaker:TrapNet"
+                ]
+              }
+            },
+            {
               "tileId": "intent-brief",
               "targetKind": "frontier",
               "path": [
                 "intent-entry",
                 "intent-brief"
               ],
-              "heuristicScore": 0.18,
+              "heuristicScore": 0.14,
               "visitCount": 0,
-              "unexploredNeighborCount": 2,
-              "trapRisk": 0.18,
-              "enemyPressure": 0.34,
-              "itemOpportunity": 0.74,
-              "puzzleOpportunity": 0.68,
-              "timingWindow": 0.46,
+              "unexploredNeighborCount": 1,
+              "trapRisk": 0.12,
+              "enemyPressure": 0.28,
+              "itemOpportunity": 0.94,
+              "puzzleOpportunity": 0.9,
+              "timingWindow": 0.42,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
                 "trapCueCount": 0,
-                "enemyCueCount": 0,
+                "enemyCueCount": 1,
                 "itemCueCount": 1,
                 "puzzleCueCount": 1,
                 "timingCueCount": 0,
                 "localCues": [
                   "speaker:Runner",
                   "speaker:Inventory",
-                  "speaker:Puzzle"
+                  "speaker:Puzzle",
+                  "speaker:Warden"
                 ]
               }
             },
@@ -1833,24 +1869,25 @@
                 "intent-entry",
                 "intent-quiet"
               ],
-              "heuristicScore": 0.1,
+              "heuristicScore": 0.16,
               "visitCount": 0,
-              "unexploredNeighborCount": 1,
-              "trapRisk": 0.04,
+              "unexploredNeighborCount": 2,
+              "trapRisk": 0.03,
               "enemyPressure": 0.04,
-              "itemOpportunity": 0.08,
-              "puzzleOpportunity": 0.1,
-              "timingWindow": 0.06,
+              "itemOpportunity": 0.16,
+              "puzzleOpportunity": 0.18,
+              "timingWindow": 0.18,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
                 "trapCueCount": 0,
                 "enemyCueCount": 0,
-                "itemCueCount": 0,
-                "puzzleCueCount": 0,
+                "itemCueCount": 1,
+                "puzzleCueCount": 1,
                 "timingCueCount": 0,
                 "localCues": [
-                  "quiet corridor"
+                  "quiet corridor",
+                  "speaker:Runner"
                 ]
               }
             }
@@ -1963,7 +2000,7 @@
     },
     {
       "id": "vantage-observatory-three-shell-connector-juliet",
-      "label": "Vantage / three-shell connector reasoning",
+      "label": "Vantage / three-shell connector recovery",
       "districtType": "vantage-observatory",
       "seed": "benchmark-vantage-three-shell-juliet",
       "variant": "rotation-timing",
@@ -2019,14 +2056,14 @@
                 "three-shell-entry",
                 "middle-latch"
               ],
-              "heuristicScore": 0.18,
+              "heuristicScore": 0.17,
               "visitCount": 0,
-              "unexploredNeighborCount": 2,
+              "unexploredNeighborCount": 1,
               "trapRisk": 0.04,
-              "enemyPressure": 0.08,
-              "itemOpportunity": 0.04,
-              "puzzleOpportunity": 0.74,
-              "timingWindow": 0.96,
+              "enemyPressure": 0.1,
+              "itemOpportunity": 0.03,
+              "puzzleOpportunity": 1,
+              "timingWindow": 1,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
@@ -2038,7 +2075,7 @@
                 "localCues": [
                   "connector-readable",
                   "shell-hierarchy: outer-middle-inner",
-                  "speaker:Puzzle"
+                  "rotation recovered"
                 ]
               }
             },
@@ -2049,24 +2086,25 @@
                 "three-shell-entry",
                 "outer-detour"
               ],
-              "heuristicScore": 0.1,
+              "heuristicScore": 0.18,
               "visitCount": 0,
-              "unexploredNeighborCount": 1,
+              "unexploredNeighborCount": 2,
               "trapRisk": 0.03,
-              "enemyPressure": 0.04,
+              "enemyPressure": 0.03,
               "itemOpportunity": 0.08,
-              "puzzleOpportunity": 0.16,
-              "timingWindow": 0.12,
+              "puzzleOpportunity": 0.2,
+              "timingWindow": 0.14,
               "outcome": {
                 "discoveredTilesDelta": 1,
                 "backtrackDelta": 0,
                 "trapCueCount": 0,
                 "enemyCueCount": 0,
                 "itemCueCount": 0,
-                "puzzleCueCount": 0,
-                "timingCueCount": 0,
+                "puzzleCueCount": 1,
+                "timingCueCount": 1,
                 "localCues": [
-                  "outer shell echo"
+                  "outer shell echo",
+                  "partial connector trace"
                 ]
               }
             }

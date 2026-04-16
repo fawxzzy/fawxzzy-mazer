@@ -6,11 +6,16 @@ import { describe, expect, test } from 'vitest';
 import { runContinuousLifeline } from '../../../scripts/lifeline/continuous.ts';
 import { resolveBlessedPlaybookWeights } from '../../../scripts/training/common.mjs';
 
+const CONTINUOUS_LIFELINE_TIMEOUT_MS = 25000;
+const CONTINUOUS_LIFELINE_GUARD_TIMEOUT_MS = 15000;
+
 const makeTempRoot = () => resolve('tmp', 'lifeline-tests', `continuous-${randomUUID()}`);
 const makeHealthRunner = () => () => ({ ok: true, stdout: '', stderr: '' });
 
 describe('continuous lifeline runner', () => {
-  test('checkpoints batches, resumes from the last completed batch, and prunes outside the retention window', async () => {
+  test('checkpoints batches, resumes from the last completed batch, and prunes outside the retention window', {
+    timeout: CONTINUOUS_LIFELINE_TIMEOUT_MS
+  }, async () => {
     const outputRoot = makeTempRoot();
     await mkdir(outputRoot, { recursive: true });
 
@@ -81,9 +86,11 @@ describe('continuous lifeline runner', () => {
     } finally {
       await rm(outputRoot, { recursive: true, force: true });
     }
-  }, 15000);
+  });
 
-  test('fails the soak when the active blessed weight id drifts between batches', async () => {
+  test('fails the soak when the active blessed weight id drifts between batches', {
+    timeout: CONTINUOUS_LIFELINE_GUARD_TIMEOUT_MS
+  }, async () => {
     const outputRoot = makeTempRoot();
     await mkdir(outputRoot, { recursive: true });
     const blessed = await resolveBlessedPlaybookWeights();
@@ -127,7 +134,9 @@ describe('continuous lifeline runner', () => {
     }
   });
 
-  test('preserves latest batch pointers when a resumed soak is interrupted before the next batch completes', async () => {
+  test('preserves latest batch pointers when a resumed soak is interrupted before the next batch completes', {
+    timeout: CONTINUOUS_LIFELINE_GUARD_TIMEOUT_MS
+  }, async () => {
     const outputRoot = makeTempRoot();
     await mkdir(outputRoot, { recursive: true });
     const latestBatchManifestPath = resolve(outputRoot, 'latest-batch-manifest.json');

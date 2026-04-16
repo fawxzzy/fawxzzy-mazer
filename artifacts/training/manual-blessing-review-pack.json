@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "reviewPackId": "manual-blessing-review-pack-v3",
-  "sourcePackId": "governed-candidate-experiment-pack-v3",
-  "benchmarkPackId": "mazer-runtime-benchmark-v3",
+  "reviewPackId": "manual-blessing-review-pack-v5",
+  "sourcePackId": "governed-candidate-experiment-pack-v5",
+  "benchmarkPackId": "mazer-runtime-benchmark-v4",
   "scenarioIds": [
     "labyrinth-tutorial-trap-inference-alpha",
     "loopy-combat-capable-warden-pressure-bravo",
@@ -16,10 +16,9 @@
     "vantage-observatory-three-shell-connector-juliet"
   ],
   "candidateIds": [
-    "frontier-biased",
-    "caution-biased",
-    "pursuit-avoidance-biased",
-    "item-priority-biased"
+    "connector-recovery-biased",
+    "item-puzzle-clarity-biased",
+    "warden-cautious-biased"
   ],
   "requiredReviewSurfaces": [
     "runtimeEvalBands",
@@ -29,6 +28,5 @@
     "twoShellProof",
     "threeShellProof"
   ],
-  "outputRoot": "tmp/training/manual-blessing-review-pack-v3"
+  "outputRoot": "tmp/training/manual-blessing-review-pack-v5"
 }
-

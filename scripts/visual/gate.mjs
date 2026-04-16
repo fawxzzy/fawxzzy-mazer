@@ -15,6 +15,7 @@ import {
   resolveSessionId,
   resolveSessionPaths
 } from './common.mjs';
+import { launchPreviewServer, stopPreviewServer } from './preview-server.mjs';
 import { captureVisualSet } from './capture.mjs';
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -50,52 +51,6 @@ const runCommand = (command, args, options = {}) => new Promise((resolvePromise,
   });
 });
 
-const waitForPreview = async (baseUrl, timeoutMs, child) => {
-  const startedAt = Date.now();
-
-  while ((Date.now() - startedAt) < timeoutMs) {
-    if (child.exitCode !== null) {
-      throw new Error(`Preview process exited before ${baseUrl} became ready.`);
-    }
-
-    try {
-      const response = await fetch(baseUrl, { redirect: 'manual' });
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // Preview is still starting.
-    }
-
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
-  }
-
-  throw new Error(`Timed out waiting for preview at ${baseUrl}.`);
-};
-
-const stopPreview = async (child) => {
-  if (!child || child.exitCode !== null) {
-    return;
-  }
-
-  if (process.platform === 'win32') {
-    await runCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' }).catch(() => {});
-    return;
-  }
-
-  child.kill('SIGTERM');
-  await new Promise((resolvePromise) => {
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      resolvePromise();
-    }, 5_000);
-    child.once('exit', () => {
-      clearTimeout(timer);
-      resolvePromise();
-    });
-  });
-};
-
 export const runVisualGate = async ({
   baseUrl = DEFAULT_BASE_URL,
   label = 'capture',
@@ -104,7 +59,7 @@ export const runVisualGate = async ({
   captureTimeoutMs = DEFAULT_CAPTURE_TIMEOUT_MS,
   skipBuild = false
 } = {}) => {
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const requestedBaseUrl = normalizeBaseUrl(baseUrl);
   const resolvedSessionId = resolveSessionId(sessionId);
   const sessionPaths = resolveSessionPaths(resolvedSessionId, label);
 
@@ -117,32 +72,21 @@ export const runVisualGate = async ({
     await access(resolve(REPO_ROOT, 'dist'));
   }
 
-  const previewCommand = resolveCommandSpec('npm', ['run', 'preview']);
-  const previewChild = spawn(previewCommand.command, previewCommand.args, {
-    cwd: REPO_ROOT,
-    shell: false,
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-
-  previewChild.stdout?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stdout.write(String(chunk));
-  });
-  previewChild.stderr?.on('data', (chunk) => {
-    previewLog.write(chunk);
-    process.stderr.write(String(chunk));
+  const preview = await launchPreviewServer({
+    requestedBaseUrl,
+    previewTimeoutMs,
+    previewLog
   });
 
   try {
-    await waitForPreview(normalizedBaseUrl, previewTimeoutMs, previewChild);
     return await captureVisualSet({
-      baseUrl: normalizedBaseUrl,
+      baseUrl: preview.baseUrl,
       label,
       sessionId: resolvedSessionId,
       timeoutMs: captureTimeoutMs
     });
   } finally {
-    await stopPreview(previewChild);
+    await stopPreviewServer(preview.child);
     previewLog.end();
   }
 };

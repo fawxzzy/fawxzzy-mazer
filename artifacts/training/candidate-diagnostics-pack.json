@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "diagnosticsPackId": "candidate-diagnostics-v5",
+  "sourcePackId": "governed-candidate-experiment-pack-v4",
+  "benchmarkPackId": "mazer-runtime-benchmark-v4",
+  "scenarioIds": [
+    "labyrinth-tutorial-trap-inference-alpha",
+    "loopy-combat-capable-warden-pressure-bravo",
+    "scavenger-checkpoint-item-usefulness-charlie",
+    "puzzle-visibility-delta",
+    "vantage-observatory-rotation-timing-echo",
+    "loopy-combat-capable-trap-warden-item-foxtrot",
+    "vantage-observatory-discrete-alignment-recovery-golf",
+    "vantage-observatory-puzzle-rotation-hotel",
+    "labyrinth-tutorial-multi-speaker-intent-india",
+    "vantage-observatory-three-shell-connector-juliet"
+  ],
+  "candidateIds": [
+    "frontier-biased",
+    "caution-biased",
+    "pursuit-avoidance-biased",
+    "item-priority-biased"
+  ],
+  "baselineEvalOutputPath": "tmp/eval/candidate-diagnostics/current-blessed/runtime-eval-summary.json",
+  "outputRoot": "tmp/training/candidate-diagnostics-v5",
+  "familyGroups": [
+    {
+      "familyId": "warden-pressure-exposure",
+      "label": "Warden pressure exposure",
+      "metricKeys": [
+        "wardenPressureExposure"
+      ],
+      "scenarioIds": [
+        "loopy-combat-capable-warden-pressure-bravo",
+        "loopy-combat-capable-trap-warden-item-foxtrot",
+        "labyrinth-tutorial-multi-speaker-intent-india"
+      ]
+    },
+    {
+      "familyId": "item-usefulness",
+      "label": "Item usefulness",
+      "metricKeys": [
+        "itemUsefulnessScore"
+      ],
+      "scenarioIds": [
+        "scavenger-checkpoint-item-usefulness-charlie",
+        "loopy-combat-capable-trap-warden-item-foxtrot",
+        "labyrinth-tutorial-multi-speaker-intent-india"
+      ]
+    },
+    {
+      "familyId": "puzzle-state-clarity",
+      "label": "Puzzle-state clarity",
+      "metricKeys": [
+        "puzzleStateClarityScore"
+      ],
+      "scenarioIds": [
+        "puzzle-visibility-delta",
+        "vantage-observatory-discrete-alignment-recovery-golf",
+        "vantage-observatory-puzzle-rotation-hotel",
+        "labyrinth-tutorial-multi-speaker-intent-india"
+      ]
+    },
+    {
+      "familyId": "multi-speaker-intent-load",
+      "label": "Multi-speaker intent load",
+      "metricKeys": [
+        "wardenPressureExposure",
+        "itemUsefulnessScore",
+        "puzzleStateClarityScore"
+      ],
+      "scenarioIds": [
+        "labyrinth-tutorial-multi-speaker-intent-india"
+      ]
+    },
+    {
+      "familyId": "three-shell-connector-recovery",
+      "label": "Three-shell connector recovery",
+      "metricKeys": [
+        "puzzleStateClarityScore",
+        "wardenPressureExposure"
+      ],
+      "scenarioIds": [
+        "vantage-observatory-three-shell-connector-juliet"
+      ]
+    }
+  ]
+}

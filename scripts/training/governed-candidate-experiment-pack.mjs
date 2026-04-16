@@ -145,6 +145,22 @@ const collectMetricBandFailures = (evalSummary) => (
   )) ?? []
 );
 
+const summarizeEvalScenarioHighlights = (evalSummary) => (
+  evalSummary?.scenarioSummaries?.map((scenarioSummary) => ({
+    scenarioId: scenarioSummary.scenarioId,
+    scenarioLabel: scenarioSummary.scenarioLabel ?? null,
+    variant: scenarioSummary.variant ?? null,
+    districtType: scenarioSummary.districtType,
+    shellCount: scenarioSummary.shellCount,
+    firstTargetTileId: scenarioSummary.firstTargetTileId
+      ?? scenarioSummary?.evaluation?.stepSummaries?.[0]?.targetTileId
+      ?? null,
+    decisionSignature: scenarioSummary.decisionSignature
+      ?? (scenarioSummary?.evaluation?.stepSummaries ?? []).map((summary) => summary.targetTileId ?? 'null').join('>'),
+    metrics: { ...(scenarioSummary.metrics ?? {}) }
+  })) ?? []
+);
+
 const buildGovernedCandidateExperimentRecord = ({
   pack,
   candidate,
@@ -394,7 +410,21 @@ const evaluateGovernedCandidateExperimentPack = async ({
       governanceDecision: record.governanceDecision,
       status: record.status,
       reasons: [...record.notes],
-      evalRunId: record.metadata.runId
+      evalRunId: record.metadata.runId,
+      metrics: { ...(record.metadata.evalSummary?.metrics ?? {}) },
+      scenarioHighlights: summarizeEvalScenarioHighlights(
+        evalSummaries[record.metadata.candidateId]?.evalSummary ?? null
+      ),
+      differentiationSignature: hashStableValue({
+        metrics: record.metadata.evalSummary?.metrics ?? null,
+        scenarioHighlights: summarizeEvalScenarioHighlights(
+          evalSummaries[record.metadata.candidateId]?.evalSummary ?? null
+        ).map((highlight) => ({
+          scenarioId: highlight.scenarioId,
+          firstTargetTileId: highlight.firstTargetTileId,
+          decisionSignature: highlight.decisionSignature
+        }))
+      })
     }))
   };
 

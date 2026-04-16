@@ -16,7 +16,7 @@ const SCRIPT_DIR = dirname(SCRIPT_PATH);
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const DEFAULT_REGISTRY_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'playbook-weight-registry.json');
 const DEFAULT_REVIEW_PACK_PATH = resolve(REPO_ROOT, 'artifacts', 'training', 'manual-blessing-review-pack.json');
-const DEFAULT_REVIEW_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'training', 'manual-blessing-review-pack-v3');
+const DEFAULT_REVIEW_OUTPUT_ROOT = resolve(REPO_ROOT, 'tmp', 'training', 'manual-blessing-review-pack-v5');
 const DEFAULT_RUNTIME_BENCHMARK_SCENARIO_IDS = resolveRuntimeBenchmarkPack().scenarios.map((scenario) => scenario.id);
 
 const SURFACE_DEFINITIONS = [
@@ -139,6 +139,12 @@ const mapScenarioSummaries = (evalSummary) => new Map(
   (evalSummary?.scenarioSummaries ?? []).map((scenarioSummary) => [scenarioSummary.scenarioId, scenarioSummary])
 );
 
+const resolveScenarioFirstTargetTileId = (scenarioSummary) => (
+  scenarioSummary?.firstTargetTileId
+  ?? scenarioSummary?.evaluation?.stepSummaries?.[0]?.targetTileId
+  ?? null
+);
+
 const buildSurfaceComparisons = ({ baselineRecord, baselineEvalSummary, candidateRecord, candidateEvalSummary }) => (
   SURFACE_DEFINITIONS.map((surface) => {
     const baselineStatus = surface.key === 'runtimeEvalBands'
@@ -161,7 +167,15 @@ const buildSurfaceComparisons = ({ baselineRecord, baselineEvalSummary, candidat
   })
 );
 
-const describeScenarioDelta = ({ scenarioId, districtType, comparison, bandPassed, replayVerified }) => {
+const describeScenarioDelta = ({
+  scenarioId,
+  districtType,
+  comparison,
+  bandPassed,
+  replayVerified,
+  baselineFirstTargetTileId,
+  candidateFirstTargetTileId
+}) => {
   const parts = [];
 
   if (comparison.improved.length > 0) {
@@ -178,6 +192,12 @@ const describeScenarioDelta = ({ scenarioId, districtType, comparison, bandPasse
 
   if (!replayVerified) {
     parts.push('replay verification failed');
+  }
+
+  if (baselineFirstTargetTileId !== candidateFirstTargetTileId) {
+    parts.push(
+      `first choice ${baselineFirstTargetTileId ?? 'none'} -> ${candidateFirstTargetTileId ?? 'none'}`
+    );
   }
 
   if (parts.length === 0) {
@@ -205,7 +225,9 @@ const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
         verdict: keptGreen ? 'kept-green' : 'worsened',
         improved: [],
         worsened: keptGreen ? [] : ['new coverage failed expected validation'],
-        summary: `${candidateSummary.scenarioId} (${candidateSummary.districtType ?? 'unknown'}): new benchmark-v3 coverage ${keptGreen ? 'kept green' : 'failed validation'}`
+        baselineFirstTargetTileId: null,
+        candidateFirstTargetTileId: resolveScenarioFirstTargetTileId(candidateSummary),
+        summary: `${candidateSummary.scenarioId} (${candidateSummary.districtType ?? 'unknown'}): new ${candidateEvalSummary?.benchmarkPackId ?? 'benchmark'} coverage ${keptGreen ? 'kept green' : 'failed validation'}`
       });
       continue;
     }
@@ -227,6 +249,8 @@ const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
       districtType: candidateSummary.districtType ?? 'unknown',
       newCoverage: false,
       verdict,
+      baselineFirstTargetTileId: resolveScenarioFirstTargetTileId(baselineSummary),
+      candidateFirstTargetTileId: resolveScenarioFirstTargetTileId(candidateSummary),
       improved: [...comparison.improved],
       worsened: [
         ...comparison.regressed,
@@ -238,7 +262,9 @@ const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
         districtType: candidateSummary.districtType ?? 'unknown',
         comparison,
         bandPassed,
-        replayVerified
+        replayVerified,
+        baselineFirstTargetTileId: resolveScenarioFirstTargetTileId(baselineSummary),
+        candidateFirstTargetTileId: resolveScenarioFirstTargetTileId(candidateSummary)
       })
     });
   }
@@ -253,6 +279,8 @@ const buildScenarioDeltas = ({ baselineEvalSummary, candidateEvalSummary }) => {
       districtType: baselineSummary.districtType ?? 'unknown',
       newCoverage: false,
       verdict: 'worsened',
+      baselineFirstTargetTileId: resolveScenarioFirstTargetTileId(baselineSummary),
+      candidateFirstTargetTileId: null,
       improved: [],
       worsened: ['missing benchmark coverage'],
       summary: `${baselineSummary.scenarioId} (${baselineSummary.districtType ?? 'unknown'}): missing from candidate benchmark coverage`

@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
 import { createFuturePhaserGameConfig, FUTURE_PHASER_GAME_PARENT_ID } from './config';
+import { getOrCreateFuturePhaserProofController } from './runtime';
 
 const bootstrapFuturePhaserRuntime = (): Phaser.Game | null => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return null;
   }
+
+  const futureWindow = window as Parameters<typeof getOrCreateFuturePhaserProofController>[0];
+  const proofController = getOrCreateFuturePhaserProofController(futureWindow);
 
   const existingParent = document.getElementById(FUTURE_PHASER_GAME_PARENT_ID);
   if (!existingParent) {
@@ -16,7 +20,12 @@ const bootstrapFuturePhaserRuntime = (): Phaser.Game | null => {
     document.body.appendChild(parent);
   }
 
-  return new Phaser.Game(createFuturePhaserGameConfig());
+  try {
+    return new Phaser.Game(createFuturePhaserGameConfig());
+  } catch (error) {
+    proofController.fail(error);
+    throw error;
+  }
 };
 
 if (typeof window !== 'undefined') {
@@ -24,4 +33,3 @@ if (typeof window !== 'undefined') {
 }
 
 export { bootstrapFuturePhaserRuntime };
-
