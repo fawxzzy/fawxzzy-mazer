@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "lane": "shipping-2d",
+  "status": "active",
+  "promotedAt": "2026-04-16T23:27:10.070Z",
+  "baselinePointerPath": "artifacts/visual/baseline.json",
+  "baselineRunId": "f98cebb-2026-04-16T21-45-53-862Z",
+  "artifactRoot": "tmp/captures/mazer-visual-proof",
+  "futureRuntimeBaselinePointerPath": "artifacts/visual/future-runtime-baseline.json",
+  "futureRuntimeBaselineRunId": "two-shell-proof",
+  "laneNotes": [
+    "The 2D Phaser runtime is the active shipping lane.",
+    "Future-runtime and planet/3D packets remain parked and do not define the shipping baseline."
+  ],
+  "comparison": {
+    "scorePath": "tmp/captures/mazer-visual-proof/score.json",
+    "diffSummaryPath": "tmp/captures/mazer-visual-proof/diff-summary.json",
+    "packetCount": 25,
+    "cleanPacketCount": 25,
+    "regressionCount": 0,
+    "averageStability": 1
+  },
+  "receiptPack": {
+    "pathBase": "repo-root",
+    "representativePacket": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z",
+    "screenshots": [
+      {
+        "role": "before",
+        "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/before.png"
+      },
+      {
+        "role": "after",
+        "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/after.png"
+      },
+      {
+        "role": "focus",
+        "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/focus.png"
+      }
+    ],
+    "clip": {
+      "role": "motion",
+      "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/run.webm"
+    },
+    "metadata": {
+      "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/metadata.json"
+    },
+    "report": {
+      "path": "tmp/captures/mazer-visual-proof/bounded-progression-slice/desktop-wide/f98cebb-2026-04-16T21-45-53-862Z/REPORT.md"
+    }
+  },
+  "bootTiming": {
+    "pathBase": "stack-root",
+    "path": "tmp/captures/mazer-boot-timing/latest.json",
+    "capturedAt": "2026-04-16T23:24:14.502Z",
+    "commitSha": "a0277e79dcbace70969dd718cf45e82e16c807d2",
+    "totalMs": 210.1,
+    "metrics": {
+      "preloadStartMs": 38.6,
+      "createCoreReadyMs": 153.5,
+      "firstInteractiveFrameMs": 160.3,
+      "deferredVisualSetupMs": 210.1
+    }
+  }
+}
