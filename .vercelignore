@@ -5,8 +5,10 @@ node_modules/
 dist/
 tmp/
 scratch/
-export/
-exports/
+# Keep only root-level dump/export folders out of the upload; nested source
+# directories like src/mazer-core/logging/export are required for the build.
+/export/
+/exports/
 *.log
 npm-debug.log*
 yarn-debug.log*

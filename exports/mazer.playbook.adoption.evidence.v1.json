@@ -1,0 +1,207 @@
+{
+  "artifact_id": "mazer_playbook_adoption_evidence_v1",
+  "generated_at": "2026-04-17T16:45:00Z",
+  "repo": {
+    "repo_id": "mazer",
+    "role": "vertical_owner_repo",
+    "repo_identity": "remote",
+    "repo_path": "repos/fawxzzy-mazer",
+    "notes": [
+      "Main live operator fixture for the current application rollout tranche.",
+      "This export is repo-owned evidence for ATLAS root to consume read-only without repo-specific scraping."
+    ]
+  },
+  "contract_claim": {
+    "contract_id": "playbook_convergence_contract",
+    "contract_version": "1.0.0",
+    "source_repo_id": "playbook",
+    "source_export_path": "repos/fawxzzy-playbook/exports/playbook.contract.example.v1.json",
+    "claim_state": "declared",
+    "notes": [
+      "The repo references the Playbook owner export directly instead of copying the contract into local doctrine.",
+      "Move this claim to verified only when the targeted adoption test and repo verify surface stay green reproducibly."
+    ]
+  },
+  "summary": {
+    "adoption_status": "adopted",
+    "verification_state": "targeted",
+    "continuity_status": "structured",
+    "drift_status": "none_detected",
+    "initiative_refs": [
+      "initiative-playbook-convergence-and-continuity",
+      "initiative-mazer-d2-learning-scorer"
+    ],
+    "notes": [
+      "Repo-local truth stays in Mazer while the live operator path remains rooted in docs/memory/initiatives/initiative-mazer-d2-learning-scorer.json.",
+      "Proposal-only and manual blessing posture are cited by reference through runtime/atlas/proposed-sessions/session-proposed-mazer-d2-fixed-blessed-id-soak/session.manifest.json instead of being duplicated as repo-owned state.",
+      "The governed candidate and manual-blessing packs remain advisory-only until the root-owned review path advances."
+    ]
+  },
+  "implemented_patterns": [
+    {
+      "id": "pattern_ground_work_in_current_awareness",
+      "status": "implemented",
+      "evidence_refs": [
+        "README.md",
+        "docs/current-truth.md",
+        "docs/roadmap.md"
+      ],
+      "notes": [
+        "Current repo truth starts from the active 2D shipping lane, current visual receipts, and anti-drift notes before broader recommendations or changes."
+      ]
+    },
+    {
+      "id": "pattern_proposal_before_execution",
+      "status": "not_applicable",
+      "evidence_refs": [
+        "docs/memory/initiatives/initiative-mazer-d2-learning-scorer.json",
+        "runtime/atlas/proposed-sessions/session-proposed-mazer-d2-fixed-blessed-id-soak/session.manifest.json"
+      ],
+      "notes": [
+        "Proposal and governed execution separation are currently owned by ATLAS root, Lifeline, and _stack rather than by a repo-local Mazer approval surface."
+      ]
+    },
+    {
+      "id": "pattern_explicit_trust_posture",
+      "status": "implemented",
+      "evidence_refs": [
+        "docs/INTEGRATION_SCOPE.md",
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+        "exports/mazer.playbook.adoption.evidence.v1.json"
+      ],
+      "notes": [
+        "The repo renders advisory-only, candidate, blessed, proposal-only, and pending-review states explicitly rather than implying verified execution readiness."
+      ]
+    },
+    {
+      "id": "pattern_owner_repo_keeps_owner_truth",
+      "status": "implemented",
+      "evidence_refs": [
+        "docs/INTEGRATION_SCOPE.md",
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+        "exports/mazer.playbook.adoption.evidence.v1.json"
+      ],
+      "notes": [
+        "Repo-owned runtime and training doctrine stay here, while the Playbook contract and root operator state are referenced from their owning surfaces."
+      ]
+    },
+    {
+      "id": "pattern_convergence_is_measurable",
+      "status": "implemented",
+      "evidence_refs": [
+        "tests/playbook-adoption-evidence.test.mjs",
+        "package.json"
+      ],
+      "notes": [
+        "A targeted node test validates schema conformance, contract-id alignment, continuity posture, and non-duplicative linkage to the root-owned initiative and proposal surfaces."
+      ]
+    },
+    {
+      "id": "pattern_structured_handoff_and_promotion",
+      "status": "implemented",
+      "evidence_refs": [
+        "docs/INTEGRATION_SCOPE.md",
+        "docs/current-truth.md",
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md"
+      ],
+      "notes": [
+        "Structured handoffs stay required for serious operator work, while durable repo facts promote into repo-owned docs and training artifacts instead of transcript residue."
+      ]
+    }
+  ],
+  "adoption_checks": [
+    {
+      "id": "adoption_playbook_exports_contract",
+      "status": "not_applicable",
+      "notes": [
+        "This check belongs to the Playbook owner repo, not the downstream Mazer repo."
+      ]
+    },
+    {
+      "id": "adoption_atlas_consumes_owner_truth_read_only",
+      "status": "not_applicable",
+      "notes": [
+        "This check belongs to ATLAS root as the read-only consumer of owner truth."
+      ]
+    },
+    {
+      "id": "adoption_proposal_and_execution_are_separate",
+      "status": "not_applicable",
+      "evidence_refs": [
+        "docs/memory/initiatives/initiative-mazer-d2-learning-scorer.json",
+        "runtime/atlas/proposed-sessions/session-proposed-mazer-d2-fixed-blessed-id-soak/session.manifest.json"
+      ],
+      "notes": [
+        "The current proposal-only and blessing-review loop is real, but the governed boundary is root-owned rather than repo-owned."
+      ]
+    },
+    {
+      "id": "adoption_continuity_lane_is_structured",
+      "status": "implemented",
+      "evidence_refs": [
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+        "docs/INTEGRATION_SCOPE.md",
+        "docs/current-truth.md"
+      ],
+      "notes": [
+        "Mazer routes serious Codex or ChatGPT work through the ATLAS continuity handoff contract and promotes durable outcomes into repo-owned truth surfaces."
+      ]
+    },
+    {
+      "id": "adoption_trust_posture_is_negative_safe",
+      "status": "implemented",
+      "evidence_refs": [
+        "artifacts/training/governed-candidate-experiment-pack.json",
+        "artifacts/training/manual-blessing-review-pack.json",
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+        "exports/mazer.playbook.adoption.evidence.v1.json"
+      ],
+      "notes": [
+        "Candidate and blessing states remain visible, advisory-only, and non-green until the root-owned review path moves them forward."
+      ]
+    }
+  ],
+  "continuity": {
+    "structured_handoff_required": true,
+    "transcript_role": "trace_only",
+    "handoff_schema_refs": [
+      "schemas/atlas.continuity.handoff.v1.json"
+    ],
+    "promotion_targets": [
+      "initiative",
+      "plan",
+      "knowledge",
+      "receipt"
+    ],
+    "search_surfaces": [
+      "docs/INTEGRATION_SCOPE.md",
+      "docs/current-truth.md",
+      "docs/roadmap.md",
+      "artifacts/training/",
+      "runtime/receipts/handoffs/"
+    ],
+    "notes": [
+      "Raw transcript history stays traceability-only.",
+      "Durable scorer, workflow, and repo-truth outcomes promote into repo docs and artifacts, with serious cross-session work linked back through the structured ATLAS handoff lane."
+    ]
+  },
+  "verification_commands": [
+    "npm run test:playbook-adoption",
+    "npm run verify"
+  ],
+  "evidence_refs": [
+    "README.md",
+    "docs/current-truth.md",
+    "docs/roadmap.md",
+    "docs/INTEGRATION_SCOPE.md",
+    "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+    "exports/repo.playbook.adoption.evidence.schema.v1.json",
+    "exports/mazer.playbook.adoption.evidence.v1.json",
+    "tests/playbook-adoption-evidence.test.mjs",
+    "artifacts/training/governed-candidate-experiment-pack.json",
+    "artifacts/training/manual-blessing-review-pack.json",
+    "artifacts/training/playbook-weight-registry.json",
+    "docs/memory/initiatives/initiative-mazer-d2-learning-scorer.json",
+    "runtime/atlas/proposed-sessions/session-proposed-mazer-d2-fixed-blessed-id-soak/session.manifest.json"
+  ]
+}

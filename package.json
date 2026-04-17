@@ -16,6 +16,7 @@
     "architecture:check": "node ./scripts/check-architecture.mjs",
     "test:soak": "vitest run tests/maze/maze-soak.test.ts",
     "lint": "tsc --noEmit",
+    "test:playbook-adoption": "vitest run tests/playbook-adoption-evidence.test.mjs",
     "visual:capture": "node ./scripts/visual/capture.mjs",
     "visual:gate": "node ./scripts/visual/gate.mjs",
     "visual:index": "node ./scripts/visual/index-artifacts.mjs",

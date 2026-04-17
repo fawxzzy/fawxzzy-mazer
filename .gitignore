@@ -20,6 +20,9 @@ node_modules/
 /scratch/
 /export/
 /exports/
+!/exports/
+!/exports/repo.playbook.adoption.evidence.schema.v1.json
+!/exports/mazer.playbook.adoption.evidence.v1.json
 
 *.log
 npm-debug.log*

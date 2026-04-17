@@ -26,6 +26,7 @@ npm run build
 npm run preview
 npm run lint
 npm run test
+npm run test:playbook-adoption
 npm run test:soak
 npm run visual:capture
 npm run visual:gate
