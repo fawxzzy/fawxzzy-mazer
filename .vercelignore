@@ -1,0 +1,27 @@
+# Keep deploy uploads scoped to build-required inputs.
+.vercel/
+.env*.local
+node_modules/
+dist/
+tmp/
+scratch/
+export/
+exports/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local/editor state
+.codex/
+.playbook/
+fawxzzy-mazer.code-workspace
+
+# Non-build repo surfaces
+artifacts/
+docs/
+legacy/
+tests/
+tools/
+PLAYBOOK.md
+README.md
