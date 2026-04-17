@@ -266,6 +266,24 @@ export const legacyTuning = {
       occlusionPadPx: 40,
       anchorSizePx: 56
     },
+    runtime: {
+      diagnosticsPublishIntervalMs: 1000,
+      recentFrameWindow: 180,
+      degradeAverageFrameMs: 19,
+      recoverAverageFrameMs: 16.5,
+      spikeFrameMs: 50,
+      lowPowerHardwareConcurrencyMax: 4,
+      ambientUpdateIntervalMs: {
+        full: 16,
+        throttled: 66,
+        hidden: 1000
+      },
+      deferredTasksPerFrame: {
+        full: 2,
+        throttled: 1,
+        hidden: 0
+      }
+    },
     utilityButton: {
       insetTopPx: 16,
       insetSidePx: 16,

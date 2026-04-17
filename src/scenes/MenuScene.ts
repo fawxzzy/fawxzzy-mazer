@@ -56,6 +56,7 @@ import {
 } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
 import { createIntentFeedHud } from '../render/intentFeedRenderer';
+import { MAX_INTENT_VISIBLE_ENTRIES } from '../mazer-core/intent';
 import {
   applyPresentationContrastFloors,
   getPaletteReadabilityReport,
@@ -63,6 +64,16 @@ import {
   type PaletteReadabilityReport
 } from '../render/palette';
 import { createMenuIntentRuntimeSession, type MenuIntentRuntimeSession } from './menuIntentRuntime';
+import {
+  clearMenuSceneRuntimeDiagnostics,
+  nextMenuSceneInstanceId,
+  publishMenuSceneRuntimeDiagnostics,
+  resolveMenuScenePerformanceMode,
+  resolveMenuSceneRuntimeConfig,
+  summarizeMenuSceneFrameWindow,
+  type MenuScenePerformanceMode,
+  type MenuSceneRuntimeDiagnostics
+} from './menuRuntimeDiagnostics';
 import {
   DEFAULT_VIEWPORT_HEIGHT,
   DEFAULT_VIEWPORT_WIDTH,
@@ -338,6 +349,9 @@ interface AmbientSkyDiagnostics {
   reducedMotion: boolean;
   configuredFamilies: readonly string[];
   activeCounts: {
+    clouds: number;
+    farStars: number;
+    nearStars: number;
     twinkles: number;
     veils: number;
     driftMotes: number;
@@ -1974,6 +1988,7 @@ interface TitleBandMetrics {
 
 export const MENU_SCENE_VISUAL_CAPTURE_KEY = '__MAZER_VISUAL_CAPTURE__' as const;
 export const MENU_SCENE_VISUAL_DIAGNOSTICS_KEY = '__MAZER_VISUAL_DIAGNOSTICS__' as const;
+export { MENU_SCENE_RUNTIME_DIAGNOSTICS_KEY } from './menuRuntimeDiagnostics';
 
 type VisualCaptureInstallMode = InstallSurfaceState['mode'];
 
@@ -2195,6 +2210,11 @@ class AmbientSkyLayer {
   private readonly driftMotes: AmbientSkyDriftMoteState[] = [];
   private readonly veils: AmbientSkyVeilState[] = [];
   private readonly movingEvents: AmbientSkyMovingEvent[] = [];
+  private backdropCounts = {
+    clouds: 0,
+    farStars: 0,
+    nearStars: 0
+  };
   private timelineMs = 0;
   private rngState: number;
   private nextShootingAt = 0;
@@ -2319,6 +2339,9 @@ class AmbientSkyLayer {
       reducedMotion: this.reducedMotion,
       configuredFamilies: this.themeProfile.ambientSky.configuredFamilies,
       activeCounts: {
+        clouds: this.backdropCounts.clouds,
+        farStars: this.backdropCounts.farStars,
+        nearStars: this.backdropCounts.nearStars,
         twinkles: this.twinkles.length,
         veils: this.veils.length,
         driftMotes: this.driftMotes.length,
@@ -2424,6 +2447,11 @@ class AmbientSkyLayer {
     const cloudCount = Math.max(3, Math.round(legacyTuning.menu.starfield.cloudCount * staticStarScale * 0.74));
     const farStarCount = Math.max(96, Math.floor(legacyTuning.menu.starfield.starCount * 0.5 * staticStarScale));
     const nearStarCount = Math.max(72, Math.ceil(legacyTuning.menu.starfield.starCount * 0.24 * staticStarScale));
+    this.backdropCounts = {
+      clouds: cloudCount,
+      farStars: farStarCount,
+      nearStars: nearStarCount
+    };
 
     this.base.clear();
     this.base.fillGradientStyle(
@@ -3528,12 +3556,30 @@ export class MenuScene extends Phaser.Scene {
     );
     const { width, height } = presentationModel.viewport;
     const visualCaptureConfig = resolveMenuSceneVisualCaptureConfig();
+    const runtimeConfig = resolveMenuSceneRuntimeConfig(
+      typeof window === 'undefined' ? undefined : window.location?.search,
+      {
+        hardwareConcurrency: typeof navigator !== 'undefined' && Number.isFinite(navigator.hardwareConcurrency)
+          ? navigator.hardwareConcurrency
+          : null,
+        saveData: Boolean(
+          (
+            typeof navigator !== 'undefined'
+              ? (navigator as Navigator & { connection?: { saveData?: boolean } })
+              : undefined
+          )?.connection?.saveData
+        ),
+        lowPowerHardwareConcurrencyMax: legacyTuning.menu.runtime.lowPowerHardwareConcurrencyMax
+      }
+    );
     const reducedMotion = prefersReducedMotion();
     const variantProfile = VARIANT_PROFILES[variant];
     const chromeProfile = CHROME_PROFILES[chrome];
     const sceneLayout = presentationModel.layout;
     const sceneStartedAt = this.time.now;
+    const sceneInstanceId = nextMenuSceneInstanceId();
     let visualDiagnosticsRevision = 0;
+    let runtimeDiagnosticsRevision = 0;
     let recoveryActivated = false;
     let recoveryEpisode: MazeEpisode | undefined;
     let patternEngine: PatternEngine | undefined;
@@ -3560,8 +3606,25 @@ export class MenuScene extends Phaser.Scene {
     let firstInteractiveFrameSeen = false;
     let deferredVisualSetupComplete = false;
     let deferredVisualSetupQueued = false;
+    let deferredVisualSetupActive = false;
+    let deferredVisualTaskQueue: Array<{ label: string; run: () => void }> = [];
     let deferredSceneChromeReady = false;
     let bootTimingReportLogged = false;
+    let performanceMode: MenuScenePerformanceMode = runtimeConfig.lowPowerActive ? 'throttled' : 'full';
+    let visibilityChangeCount = 0;
+    let visibilitySuspendCount = 0;
+    let activeTweenCount = 0;
+    let activeTimerCount = 0;
+    let activeListenerCount = 0;
+    let lastTrailSegmentCount = 0;
+    let lastIntentEntryCount = 0;
+    let ambientSkyDeltaBudgetMs = 0;
+    let lastRuntimeDiagnosticsPublishedAt = sceneStartedAt;
+    let totalFrameCount = 0;
+    let totalFrameTimeMs = 0;
+    let worstFrameTimeMs = 0;
+    let totalSpikeCount = 0;
+    const recentFrameTimesMs: number[] = [];
     let renderDemo: () => void = () => undefined;
 
     const runOptional = (label: string, render: () => void): void => {
@@ -3570,6 +3633,153 @@ export class MenuScene extends Phaser.Scene {
       } catch (error) {
         console.error(`MenuScene optional ${label} skipped.`, error);
       }
+    };
+    const countEmitterListeners = (emitter: unknown, eventName: string): number => {
+      const listenerCount = (emitter as { listenerCount?: (event: string) => number })?.listenerCount;
+      if (typeof listenerCount !== 'function') {
+        return 0;
+      }
+
+      try {
+        return Math.max(0, listenerCount.call(emitter, eventName));
+      } catch {
+        return 0;
+      }
+    };
+    const resolveActiveTweenCount = (): number => {
+      const tweens = (this.tweens as Phaser.Tweens.TweenManager & { getTweens?: () => unknown[] }).getTweens?.();
+      return Array.isArray(tweens) ? tweens.length : 0;
+    };
+    const resolveActiveTimerCount = (): number => {
+      const timers = (this.time as Phaser.Time.Clock & { getAllEvents?: () => unknown[] }).getAllEvents?.();
+      return Array.isArray(timers) ? timers.length : 0;
+    };
+    const resolveHeapSample = (): MenuSceneRuntimeDiagnostics['resources']['jsHeap'] | undefined => {
+      const memory = (typeof performance !== 'undefined'
+        ? (performance as Performance & {
+          memory?: {
+            usedJSHeapSize?: number;
+            totalJSHeapSize?: number;
+            jsHeapSizeLimit?: number;
+          };
+        }).memory
+        : undefined);
+      if (!memory || !Number.isFinite(memory.usedJSHeapSize)) {
+        return undefined;
+      }
+
+      return {
+        usedBytes: Math.max(0, Math.round(memory.usedJSHeapSize ?? 0)),
+        ...(Number.isFinite(memory.totalJSHeapSize) ? { totalBytes: Math.max(0, Math.round(memory.totalJSHeapSize ?? 0)) } : {}),
+        ...(Number.isFinite(memory.jsHeapSizeLimit) ? { limitBytes: Math.max(0, Math.round(memory.jsHeapSizeLimit ?? 0)) } : {})
+      };
+    };
+    const updatePerformanceMode = (sceneHidden: boolean): void => {
+      performanceMode = resolveMenuScenePerformanceMode(performanceMode, {
+        hidden: sceneHidden,
+        lowPowerActive: runtimeConfig.lowPowerActive,
+        recentAverageFrameMs: summarizeMenuSceneFrameWindow(
+          recentFrameTimesMs,
+          legacyTuning.menu.runtime.spikeFrameMs
+        ).averageMs,
+        tuning: legacyTuning.menu.runtime
+      });
+    };
+    const publishRuntimeDiagnostics = (sceneHidden: boolean, force = false): void => {
+      if (!runtimeConfig.enabled) {
+        return;
+      }
+
+      const nowMs = this.time.now;
+      if (!force && nowMs - lastRuntimeDiagnosticsPublishedAt < legacyTuning.menu.runtime.diagnosticsPublishIntervalMs) {
+        return;
+      }
+
+      const recentFrames = summarizeMenuSceneFrameWindow(recentFrameTimesMs, legacyTuning.menu.runtime.spikeFrameMs);
+      const averageFrameMs = totalFrameCount > 0
+        ? Number((totalFrameTimeMs / totalFrameCount).toFixed(3))
+        : 0;
+      const sceneUpdateListeners = countEmitterListeners(this.events, Phaser.Scenes.Events.UPDATE);
+      const sceneShutdownListeners = countEmitterListeners(this.events, Phaser.Scenes.Events.SHUTDOWN);
+      const scaleResizeListeners = countEmitterListeners(this.scale, Phaser.Scale.Events.RESIZE);
+      const listenerCount = sceneUpdateListeners
+        + sceneShutdownListeners
+        + scaleResizeListeners
+        + (handleVisibilityChange ? 1 : 0)
+        + (removeInstallSurfaceListener ? 1 : 0);
+      const ambientDiagnostics = this.ambientSky?.getDiagnostics(
+        episodePresentationShell
+          ? Math.min(
+            0,
+            episodePresentationShell.boardAura.depth,
+            episodePresentationShell.boardHalo.depth,
+            episodePresentationShell.boardShade.depth
+          )
+          : 0,
+        activeTitleContainer?.depth,
+        installChrome?.depth
+      );
+      const heapSample = resolveHeapSample();
+
+      activeTweenCount = resolveActiveTweenCount();
+      activeTimerCount = resolveActiveTimerCount();
+      activeListenerCount = listenerCount;
+      lastRuntimeDiagnosticsPublishedAt = nowMs;
+      publishMenuSceneRuntimeDiagnostics({
+        revision: ++runtimeDiagnosticsRevision,
+        sceneInstanceId,
+        updatedAt: nowMs,
+        runtimeMs: Math.max(0, nowMs - sceneStartedAt),
+        visibility: {
+          hidden: sceneHidden,
+          changeCount: visibilityChangeCount,
+          suspendCount: visibilitySuspendCount
+        },
+        performance: {
+          mode: performanceMode,
+          averageFrameMs,
+          recentAverageFrameMs: recentFrames.averageMs,
+          worstFrameMs: Number(worstFrameTimeMs.toFixed(3)),
+          worstRecentFrameMs: recentFrames.worstMs,
+          spikeCount: totalSpikeCount,
+          estimatedFps: recentFrames.fps,
+          lowPowerDetected: runtimeConfig.lowPowerDetected,
+          lowPowerForced: runtimeConfig.lowPowerForced,
+          lowPowerActive: runtimeConfig.lowPowerActive,
+          hardwareConcurrency: runtimeConfig.hardwareConcurrency,
+          saveData: runtimeConfig.saveData
+        },
+        resources: {
+          activeTweens: activeTweenCount,
+          activeTimers: activeTimerCount,
+          listenerCount: activeListenerCount,
+          listenerBreakdown: {
+            sceneUpdate: sceneUpdateListeners,
+            sceneShutdown: sceneShutdownListeners,
+            scaleResize: scaleResizeListeners,
+            visibilityAttached: Boolean(handleVisibilityChange),
+            installSurfaceAttached: Boolean(removeInstallSurfaceListener)
+          },
+          trailSegmentCount: lastTrailSegmentCount,
+          trailSegmentCap: legacyTuning.demo.behavior.trailMaxLength,
+          intentEntryCount: lastIntentEntryCount,
+          intentEntryCap: MAX_INTENT_VISIBLE_ENTRIES,
+          deferredVisualTasksRemaining: deferredVisualTaskQueue.length,
+          deferredTasksPerFrameCap: legacyTuning.menu.runtime.deferredTasksPerFrame[performanceMode],
+          background: {
+            clouds: ambientDiagnostics?.activeCounts.clouds ?? 0,
+            farStars: ambientDiagnostics?.activeCounts.farStars ?? 0,
+            nearStars: ambientDiagnostics?.activeCounts.nearStars ?? 0,
+            twinkles: ambientDiagnostics?.activeCounts.twinkles ?? 0,
+            veils: ambientDiagnostics?.activeCounts.veils ?? 0,
+            driftMotes: ambientDiagnostics?.activeCounts.driftMotes ?? 0,
+            moving: ambientDiagnostics?.activeCounts.moving ?? 0,
+            movingCap: ambientDiagnostics?.caps.moving ?? 0,
+            signatureCap: ambientDiagnostics?.caps.signatureEvents ?? 0
+          },
+          ...(heapSample ? { jsHeap: heapSample } : {})
+        }
+      });
     };
     const removeRuntimeListeners = (options: { keepResize?: boolean } = {}): void => {
       if (typeof document !== 'undefined' && handleVisibilityChange) {
@@ -3641,7 +3851,11 @@ export class MenuScene extends Phaser.Scene {
       installChrome = undefined;
       activeInstallFrame = undefined;
       activeInstallBounds = undefined;
+      deferredVisualSetupActive = false;
+      deferredVisualSetupQueued = false;
+      deferredVisualTaskQueue = [];
       clearMenuSceneVisualDiagnostics();
+      clearMenuSceneRuntimeDiagnostics();
     };
     const renderVisibleRecovery = (): void => {
       const viewport = resolveSceneViewport(this);
@@ -3737,24 +3951,79 @@ export class MenuScene extends Phaser.Scene {
           drawThemeMotifs(themeProfile, shell.motifPrimary, shell.motifSecondary, shell.layout);
         });
       };
+      const completeDeferredVisualSetup = (): void => {
+        if (deferredVisualSetupComplete) {
+          return;
+        }
+
+        deferredVisualSetupComplete = true;
+        deferredVisualSetupActive = false;
+        deferredVisualTaskQueue = [];
+        markBootTiming('menu-scene:deferred-visual-setup');
+        maybeLogBootTimingReport();
+      };
+      const drainDeferredVisualSetup = (): void => {
+        if (recoveryActivated || deferredVisualSetupComplete || !deferredVisualSetupActive) {
+          return;
+        }
+
+        const taskBudget = legacyTuning.menu.runtime.deferredTasksPerFrame[performanceMode];
+        if (taskBudget <= 0) {
+          return;
+        }
+
+        let tasksRemaining = taskBudget;
+        while (tasksRemaining > 0 && deferredVisualTaskQueue.length > 0) {
+          const nextTask = deferredVisualTaskQueue.shift();
+          if (!nextTask) {
+            break;
+          }
+
+          runOptional(nextTask.label, nextTask.run);
+          tasksRemaining -= 1;
+        }
+
+        if (deferredVisualTaskQueue.length === 0) {
+          completeDeferredVisualSetup();
+        }
+      };
       const runDeferredVisualSetup = (): void => {
         if (recoveryActivated || deferredVisualSetupComplete) {
           return;
         }
 
+        if (!deferredVisualSetupActive) {
+          deferredVisualSetupActive = true;
+          deferredVisualTaskQueue = [
+            {
+              label: 'scene chrome',
+              run: () => {
+                renderSceneChrome();
+              }
+            },
+            {
+              label: 'ambient sky',
+              run: () => {
+                this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
+              }
+            },
+            {
+              label: 'presentation decorations',
+              run: () => {
+                if (episodePresentationShell) {
+                  hydrateEpisodePresentationDecorations(episodePresentationShell, sceneThemeProfile);
+                  syncAmbientSkyReservedFrames();
+                }
+              }
+            }
+          ];
+        }
+
         try {
-          renderSceneChrome();
-          this.drawStarfield(width, height, sceneThemeProfile, scheduleSeed, variant, deploymentProfileId, reducedMotion);
-          if (episodePresentationShell) {
-            hydrateEpisodePresentationDecorations(episodePresentationShell, sceneThemeProfile);
-            syncAmbientSkyReservedFrames();
-          }
+          drainDeferredVisualSetup();
         } catch (error) {
           console.error('MenuScene deferred visual setup failed.', error);
-        } finally {
-          markBootTiming('menu-scene:deferred-visual-setup');
-          deferredVisualSetupComplete = true;
-          maybeLogBootTimingReport();
+          completeDeferredVisualSetup();
         }
       };
       const scheduleDeferredVisualSetup = (): void => {
@@ -4450,6 +4719,7 @@ export class MenuScene extends Phaser.Scene {
         const path = episode.raster.pathIndices;
         const renderedTrail = resolveDemoTrailRenderBounds(path, view);
         const intentStep = Math.max(0, renderedTrail.limit - 1);
+        lastTrailSegmentCount = Math.max(0, renderedTrail.limit - renderedTrail.start);
 
         applyPresentationLayer(demoPresentation);
 
@@ -4515,6 +4785,7 @@ export class MenuScene extends Phaser.Scene {
             + (shell.layout.tileSize / 2);
           const anchorSize = legacyTuning.menu.intentFeed.anchorSizePx;
           const feedState = intentRuntimeSession?.getFeedState(intentStep) ?? null;
+          lastIntentEntryCount = feedState?.entries.length ?? 0;
 
           shell.intentFeedHud.setState(feedState, {
             player: {
@@ -4578,14 +4849,45 @@ export class MenuScene extends Phaser.Scene {
           disposeMazeEpisode(previousEpisode);
         }
       };
+      const setSceneHiddenState = (hidden: boolean): void => {
+        if (sceneHidden === hidden) {
+          return;
+        }
+
+        sceneHidden = hidden;
+        visibilityChangeCount += 1;
+        if (hidden) {
+          visibilitySuspendCount += 1;
+        }
+
+        const sceneTweens = this.tweens as Phaser.Tweens.TweenManager & {
+          pauseAll?: () => void;
+          resumeAll?: () => void;
+        };
+        const sceneClock = this.time as Phaser.Time.Clock & { paused?: boolean };
+
+        if (hidden) {
+          patternEngine?.suspend();
+          sceneClock.paused = true;
+          sceneTweens.pauseAll?.();
+          ambientSkyDeltaBudgetMs = 0;
+          updatePerformanceMode(true);
+          publishRuntimeDiagnostics(true, true);
+          return;
+        }
+
+        sceneClock.paused = false;
+        sceneTweens.resumeAll?.();
+        ambientSkyDeltaBudgetMs = 0;
+        updatePerformanceMode(false);
+      };
       handleVisibilityChange = (): void => {
         if (typeof document === 'undefined' || recoveryActivated) {
           return;
         }
 
         if (document.hidden) {
-          sceneHidden = true;
-          patternEngine?.suspend();
+          setSceneHiddenState(true);
           return;
         }
 
@@ -4593,7 +4895,7 @@ export class MenuScene extends Phaser.Scene {
           return;
         }
 
-        sceneHidden = false;
+        setSceneHiddenState(false);
         try {
           patternEngine?.resumeFresh();
           if (patternEngine) {
@@ -4642,10 +4944,32 @@ export class MenuScene extends Phaser.Scene {
         document.addEventListener('visibilitychange', handleVisibilityChange);
       }
       this.scale.on(Phaser.Scale.Events.RESIZE, handleResize);
+      if (sceneHidden) {
+        const sceneTweens = this.tweens as Phaser.Tweens.TweenManager & { pauseAll?: () => void };
+        const sceneClock = this.time as Phaser.Time.Clock & { paused?: boolean };
+        patternEngine?.suspend();
+        sceneClock.paused = true;
+        sceneTweens.pauseAll?.();
+        updatePerformanceMode(true);
+      }
+      publishRuntimeDiagnostics(sceneHidden, true);
       updateDemo = (_time: number, delta: number): void => {
         if (sceneHidden) {
           return;
         }
+
+        const safeDelta = Math.max(0, Math.min(delta, 250));
+        totalFrameCount += 1;
+        totalFrameTimeMs += safeDelta;
+        worstFrameTimeMs = Math.max(worstFrameTimeMs, safeDelta);
+        if (safeDelta >= legacyTuning.menu.runtime.spikeFrameMs) {
+          totalSpikeCount += 1;
+        }
+        recentFrameTimesMs.push(safeDelta);
+        if (recentFrameTimesMs.length > legacyTuning.menu.runtime.recentFrameWindow) {
+          recentFrameTimesMs.splice(0, recentFrameTimesMs.length - legacyTuning.menu.runtime.recentFrameWindow);
+        }
+        updatePerformanceMode(false);
 
         if (!firstInteractiveFrameSeen) {
           firstInteractiveFrameSeen = true;
@@ -4654,27 +4978,40 @@ export class MenuScene extends Phaser.Scene {
           maybeLogBootTimingReport();
         }
 
-        this.ambientSky?.update(delta);
+        if (deferredVisualSetupActive) {
+          drainDeferredVisualSetup();
+        }
+
+        ambientSkyDeltaBudgetMs += safeDelta;
+        if (ambientSkyDeltaBudgetMs >= legacyTuning.menu.runtime.ambientUpdateIntervalMs[performanceMode]) {
+          const delta = Math.min(ambientSkyDeltaBudgetMs, AMBIENT_SKY_MAX_DELTA_MS);
+          ambientSkyDeltaBudgetMs = 0;
+          this.ambientSky?.update(delta);
+        }
         if (recoveryActivated || !patternEngine) {
+          publishRuntimeDiagnostics(false);
           return;
         }
 
         try {
-          const nextFrame = patternEngine.next(delta / 1000);
+          const nextFrame = patternEngine.next(safeDelta / 1000);
           if (!patternFrame) {
             patternFrame = nextFrame;
             recoveryEpisode = nextFrame.episode;
             renderDemo();
+            publishRuntimeDiagnostics(false);
             return;
           }
 
           if (nextFrame.episode !== patternFrame.episode) {
             applyPatternFrame(nextFrame);
+            publishRuntimeDiagnostics(false);
             return;
           }
 
           patternFrame = nextFrame;
           renderDemo();
+          publishRuntimeDiagnostics(false);
         } catch (error) {
           failOpen(error);
         }
@@ -4995,7 +5332,7 @@ const resolveDemoTrailWindow = (episode: MazeEpisode, mood: DemoMood): number =>
   return clamp(
     Math.round((difficultyBase + sizeOffset + moodProfile.trailWindowOffset) * moodProfile.trailWindowScale),
     4,
-    46
+    legacyTuning.demo.behavior.trailMaxLength
   );
 };
 
