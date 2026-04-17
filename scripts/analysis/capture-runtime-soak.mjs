@@ -23,6 +23,7 @@ const DEFAULT_CAPTURE_TIMEOUT_MS = 30_000;
 const DEFAULT_DURATION_SECONDS = 60;
 const DEFAULT_SAMPLE_INTERVAL_MS = 1_000;
 const DEFAULT_RESTART_CYCLES = 0;
+const DEFAULT_RESTART_MODE = 'resize';
 const DEFAULT_HIDDEN_WINDOW_MS = 0;
 const DEFAULT_VIEWPORT = Object.freeze({ width: 1440, height: 1024 });
 const RESTART_VIEWPORT = Object.freeze({ width: 1280, height: 720 });
@@ -49,6 +50,10 @@ const runNpmCommand = (args) => {
 
   execFileSync('npm', args, { cwd: REPO_ROOT, stdio: 'inherit' });
 };
+
+const normalizeRestartMode = (value) => (
+  value === 'route-reset' ? 'route-reset' : 'resize'
+);
 
 const getCommitSha = () => {
   try {
@@ -100,10 +105,19 @@ const createMetricWindow = (samples, selector, fallback = 0) => {
   };
 };
 
-const buildSummary = ({ samples, durationSeconds, lowPower, restartCycles, hiddenWindowMs }) => {
+const buildSummary = ({
+  samples,
+  durationSeconds,
+  lowPower,
+  restartCycles,
+  restartMode,
+  completedRestartCycles,
+  hiddenWindowMs
+}) => {
   const first = samples[0] ?? null;
   const last = samples.at(-1) ?? null;
   const sceneInstanceIds = [...new Set(samples.map((sample) => sample.sceneInstanceId))];
+  const captureEpochs = [...new Set(samples.map((sample) => sample.captureEpoch).filter((value) => Number.isFinite(value)))];
   const steadyStateStartIndex = samples.length > 0
     ? Math.min(samples.length - 1, Math.max(0, Math.floor(samples.length * 0.25)))
     : 0;
@@ -133,9 +147,12 @@ const buildSummary = ({ samples, durationSeconds, lowPower, restartCycles, hidde
     durationSeconds,
     lowPower,
     restartCycles,
+    restartMode,
+    completedRestartCycles,
     hiddenWindowMs,
     sampleCount: samples.length,
     sceneInstanceIds,
+    captureEpochs,
     frame: {
       startAverageMs: frameWindow.start,
       endAverageMs: frameWindow.end,
@@ -186,6 +203,14 @@ const buildSummary = ({ samples, durationSeconds, lowPower, restartCycles, hidde
       changeCount: last?.visibility.changeCount ?? 0,
       suspendCount: last?.visibility.suspendCount ?? 0
     },
+    restart: {
+      mode: restartMode,
+      requestedCycles: restartCycles,
+      completedCycles: completedRestartCycles,
+      observedEpochs: captureEpochs.length,
+      pass: completedRestartCycles >= restartCycles
+        && (restartMode !== 'route-reset' || captureEpochs.length >= completedRestartCycles + 1)
+    },
     heap: heapSummary,
     final: last,
     initial: first
@@ -199,6 +224,7 @@ const captureRuntimeSoak = async ({
   sampleIntervalMs,
   lowPower,
   restartCycles,
+  restartMode,
   hiddenWindowMs
 }) => {
   const browser = await chromium.launch({ headless: true, args: ['--disable-gpu'] });
@@ -241,17 +267,23 @@ const captureRuntimeSoak = async ({
   }
 
   const url = `${normalizeBaseUrl(baseUrl)}/?${params.toString()}`;
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-  await waitForRuntimeDiagnostics(page, timeoutMs);
+  const navigateToRuntime = async () => {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await waitForRuntimeDiagnostics(page, timeoutMs);
+  };
+
+  await navigateToRuntime();
 
   const samples = [];
   const startedAt = Date.now();
-  const finishedAt = startedAt + (durationSeconds * 1000);
+  const durationMs = durationSeconds * 1000;
+  const finishedAt = startedAt + durationMs;
   const restartIntervalMs = restartCycles > 0
-    ? Math.max(sampleIntervalMs, Math.floor((durationSeconds * 1000) / restartCycles))
+    ? Math.max(sampleIntervalMs, Math.floor(durationMs / (restartCycles + 1)))
     : Number.POSITIVE_INFINITY;
   let nextRestartAt = startedAt + restartIntervalMs;
   let restartCount = 0;
+  let captureEpoch = 0;
   let usingAltViewport = false;
   let hiddenApplied = false;
   let hiddenReleased = false;
@@ -264,11 +296,19 @@ const captureRuntimeSoak = async ({
     const now = Date.now();
 
     if (restartCount < restartCycles && now >= nextRestartAt) {
-      usingAltViewport = !usingAltViewport;
-      await page.setViewportSize(usingAltViewport ? RESTART_VIEWPORT : DEFAULT_VIEWPORT);
-      await page.evaluate(() => {
-        window.dispatchEvent(new Event('resize'));
-      });
+      if (restartMode === 'route-reset') {
+        captureEpoch += 1;
+        await navigateToRuntime();
+        if (hiddenApplied && !hiddenReleased) {
+          await setSimulatedVisibility(page, true);
+        }
+      } else {
+        usingAltViewport = !usingAltViewport;
+        await page.setViewportSize(usingAltViewport ? RESTART_VIEWPORT : DEFAULT_VIEWPORT);
+        await page.evaluate(() => {
+          window.dispatchEvent(new Event('resize'));
+        });
+      }
       restartCount += 1;
       nextRestartAt += restartIntervalMs;
       await page.waitForTimeout(500);
@@ -288,6 +328,7 @@ const captureRuntimeSoak = async ({
     if (diagnostics) {
       samples.push({
         capturedAt: new Date().toISOString(),
+        captureEpoch,
         ...diagnostics
       });
     }
@@ -304,7 +345,8 @@ const captureRuntimeSoak = async ({
   return {
     url,
     consoleMessages,
-    samples
+    samples,
+    completedRestartCycles: restartCount
   };
 };
 
@@ -318,6 +360,7 @@ export const runRuntimeSoakCapture = async ({
   sampleIntervalMs = DEFAULT_SAMPLE_INTERVAL_MS,
   lowPower = false,
   restartCycles = DEFAULT_RESTART_CYCLES,
+  restartMode = DEFAULT_RESTART_MODE,
   hiddenWindowMs = DEFAULT_HIDDEN_WINDOW_MS,
   skipBuild = false
 } = {}) => {
@@ -339,6 +382,7 @@ export const runRuntimeSoakCapture = async ({
       sampleIntervalMs,
       lowPower,
       restartCycles,
+      restartMode: normalizeRestartMode(restartMode),
       hiddenWindowMs
     });
     const summary = buildSummary({
@@ -346,6 +390,8 @@ export const runRuntimeSoakCapture = async ({
       durationSeconds,
       lowPower,
       restartCycles,
+      restartMode: normalizeRestartMode(restartMode),
+      completedRestartCycles: capture.completedRestartCycles,
       hiddenWindowMs
     });
     const samplesPath = resolve(artifactRoot, `${label}.samples.json`);
@@ -359,6 +405,7 @@ export const runRuntimeSoakCapture = async ({
       sampleIntervalMs,
       lowPower,
       restartCycles,
+      restartMode: normalizeRestartMode(restartMode),
       hiddenWindowMs,
       consoleMessages: capture.consoleMessages,
       samples: capture.samples
@@ -389,6 +436,7 @@ const main = async () => {
     sampleIntervalMs: parseIntegerArg(args['sample-interval-ms'], DEFAULT_SAMPLE_INTERVAL_MS),
     lowPower: args['low-power'] === true || args['low-power'] === 'true',
     restartCycles: parseIntegerArg(args['restart-cycles'], DEFAULT_RESTART_CYCLES),
+    restartMode: normalizeRestartMode(args['restart-mode']),
     hiddenWindowMs: parseIntegerArg(args['hidden-window-ms'], DEFAULT_HIDDEN_WINDOW_MS),
     skipBuild: args['skip-build'] === true || args['skip-build'] === 'true'
   });
@@ -397,8 +445,10 @@ const main = async () => {
     summaryPath: result.summaryPath,
     samplesPath: result.samplesPath,
     sceneInstanceIds: result.summary.sceneInstanceIds,
+    captureEpochs: result.summary.captureEpochs,
     sampleCount: result.summary.sampleCount,
     framePass: result.summary.frame.pass,
+    restart: result.summary.restart,
     growth: result.summary.growth,
     caps: result.summary.caps
   }, null, 2)}\n`);

@@ -1092,7 +1092,7 @@ describe('demo-only build', () => {
     const config = createDemoConfig(episode, cycle);
     const midTraverseMs = config.cadence.spawnHoldMs + Math.max(1, Math.floor(config.cadence.exploreStepMs * 2.5));
     const view = resolveDemoWalkerViewFrame(episode, midTraverseMs, config, 6);
-    const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, view);
+    const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, view, 6);
 
     expect(view.currentIndex).not.toBe(view.nextIndex);
     expect(view.progress).toBeGreaterThan(0);
@@ -1106,11 +1106,37 @@ describe('demo-only build', () => {
       config,
       6
     );
-    const spawnTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, spawnFrame);
+    const spawnTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, spawnFrame, 6);
 
     expect(spawnFrame.progress).toBe(0);
     expect(spawnTrail.limit).toBe(1);
     expect(episode.raster.pathIndices[spawnTrail.limit - 1]).toBe(spawnFrame.currentIndex);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('demo trail render bounds stay inside the visible window during goal hold', () => {
+    const cycle = resolveMenuDemoCycle(777, 4);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 777,
+      size: cycle.size,
+      family: cycle.family,
+      presentationPreset: cycle.presentationPreset,
+      checkPointModifier: cycle.entropy.checkPointModifier,
+      shortcutCountModifier: cycle.entropy.shortcutCountModifier
+    }, cycle.difficulty, 0, 1);
+    const episode = resolved.episode;
+    const config = createDemoConfig(episode, cycle);
+    const visibleWindow = 6;
+    const arrivalMs = config.cadence.spawnHoldMs + ((episode.raster.pathIndices.length - 1) * config.cadence.exploreStepMs);
+    const holdFrame = resolveDemoWalkerViewFrame(episode, arrivalMs + 1, config, visibleWindow);
+    const renderedTrail = resolveDemoTrailRenderBounds(episode.raster.pathIndices, holdFrame, visibleWindow);
+
+    expect(holdFrame.trailLimit).toBe(episode.raster.pathIndices.length);
+    expect(renderedTrail.limit - renderedTrail.start).toBeLessThanOrEqual(visibleWindow);
+    expect(episode.raster.pathIndices[renderedTrail.limit - 1]).toBe(episode.raster.endIndex);
+    expect(renderedTrail.start).toBeGreaterThanOrEqual(0);
 
     disposeMazeEpisode(episode);
   });

@@ -4717,7 +4717,7 @@ export class MenuScene extends Phaser.Scene {
           demoPresentation.trailWindow
         );
         const path = episode.raster.pathIndices;
-        const renderedTrail = resolveDemoTrailRenderBounds(path, view);
+        const renderedTrail = resolveDemoTrailRenderBounds(path, view, demoPresentation.trailWindow);
         const intentStep = Math.max(0, renderedTrail.limit - 1);
         lastTrailSegmentCount = Math.max(0, renderedTrail.limit - renderedTrail.start);
 
@@ -5290,12 +5290,27 @@ export const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): D
 
 export const resolveDemoTrailRenderBounds = (
   path: ArrayLike<number>,
-  view: DemoWalkerViewFrame
+  view: DemoWalkerViewFrame,
+  trailWindow = Math.max(1, view.trailLimit - view.trailStart)
 ): { start: number; limit: number } => {
   if (path.length <= 0) {
     return { start: 0, limit: 0 };
   }
 
+  const visibleWindow = Math.max(
+    1,
+    Math.min(
+      path.length,
+      Math.max(1, trailWindow)
+    )
+  );
+  const clampWindow = (limit: number): { start: number; limit: number } => {
+    const safeLimit = Math.max(0, Math.min(path.length, limit));
+    return {
+      start: Math.max(0, safeLimit - visibleWindow),
+      limit: safeLimit
+    };
+  };
   const headIndex = resolveLiveTrailHeadIndex(view);
   let headCursor = -1;
   for (let index = 0; index < path.length; index += 1) {
@@ -5306,17 +5321,10 @@ export const resolveDemoTrailRenderBounds = (
   }
 
   if (headCursor < 0) {
-    const fallbackLimit = Math.max(1, Math.min(path.length, view.trailLimit));
-    return {
-      start: Math.max(0, Math.min(view.trailStart, Math.max(0, fallbackLimit - 1))),
-      limit: fallbackLimit
-    };
+    return clampWindow(Math.max(1, Math.min(path.length, view.trailLimit)));
   }
 
-  return {
-    start: 0,
-    limit: Math.min(path.length, headCursor + 1)
-  };
+  return clampWindow(headCursor + 1);
 };
 
 const resolveDemoTrailWindow = (episode: MazeEpisode, mood: DemoMood): number => {
