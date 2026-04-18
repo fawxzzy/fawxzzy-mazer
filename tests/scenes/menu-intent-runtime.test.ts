@@ -58,10 +58,16 @@ const createFeedState = (
   ids: string[],
   step = ids.length,
   summaries?: string[],
-  statusSummary?: string
+  statusSummary?: string,
+  statusKind?: IntentFeedStatus['kind']
 ): IntentFeedState => {
   const events = ids.map((id, index) => createEntry(id, index, summaries?.[index] ?? `scanning ${id}`));
-  const status = events[0] ? createStatus(events[0], statusSummary ?? events[0].summary) : null;
+  const status = events[0]
+    ? {
+        ...createStatus(events[0], statusSummary ?? events[0].summary),
+        kind: statusKind ?? events[0].kind
+      }
+    : null;
 
   return {
     step,
@@ -110,8 +116,9 @@ describe('menu intent runtime', () => {
     const secondState = session.getFeedState(1);
     expect(secondState).not.toBeNull();
     expect(secondState?.status).not.toBeNull();
+    expect(secondState?.status?.kind).toBe('goal-observed');
     expect(secondState?.events?.length ?? secondState?.entries.length).toBeLessThanOrEqual(4);
-    expect((secondState?.events ?? secondState?.entries ?? []).some((entry) => entry.kind === 'goal-observed')).toBe(true);
+    expect(secondState?.status?.summary).toContain('exit route');
   });
 
   test('holds feed entries for a minimum dwell and coalesces rapid replacements', () => {
@@ -184,7 +191,7 @@ describe('menu intent runtime', () => {
     expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
   });
 
-  test('stabilizes the session feed at human pace instead of replacing every raw step', () => {
+  test('keeps quick thoughts stable while the route status advances independently', () => {
     const session = createMenuIntentRuntimeSession(createCorridorEpisode());
 
     session.advanceToStep(0);
@@ -195,9 +202,43 @@ describe('menu intent runtime', () => {
     session.advanceToStep(1);
     const held = session.getDisplayFeedState(1, 400);
     expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id));
+    expect(held?.status?.kind).toBe('goal-observed');
+    expect(held?.step).toBe(1);
 
     const released = session.getDisplayFeedState(1, 2_100);
-    expect(released?.events?.map((entry) => entry.id) ?? released?.entries.map((entry) => entry.id)).not.toEqual(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id));
+    expect(released?.status?.kind).toBe('goal-observed');
+    expect(released?.step).toBe(1);
+    expect(released?.events?.map((entry) => entry.id) ?? released?.entries.map((entry) => entry.id)).toEqual(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id));
     expect(released?.events?.length ?? released?.entries.length).toBeLessThanOrEqual(3);
+  });
+
+  test('holds commit and recall narratives longer than scan narratives', () => {
+    const scanController = new MenuIntentFeedDisplayController({
+      maxVisibleEntries: 2,
+      minimumDwellMs: 1_600,
+      replacementDebounceMs: 700
+    });
+    const commitController = new MenuIntentFeedDisplayController({
+      maxVisibleEntries: 2,
+      minimumDwellMs: 1_600,
+      replacementDebounceMs: 700
+    });
+
+    const scanInitial = createFeedState(['scan-a', 'scan-b'], 1, ['scanning west branch', 'reading gate timing'], 'scanning west branch', 'frontier-chosen');
+    const scanReplacement = createFeedState(['scan-c', 'scan-d'], 2, ['scanning east gate', 'reading exit line'], 'scanning east gate', 'frontier-chosen');
+    const commitInitial = createFeedState(['commit-a', 'commit-b'], 1, ['locking exit route', 'recalling the branch'], 'locking exit route', 'route-commitment-changed');
+    const commitReplacement = createFeedState(['commit-c', 'commit-d'], 2, ['locking exit route', 'recalling the branch'], 'locking exit route', 'route-commitment-changed');
+
+    scanController.advance(scanInitial, 0);
+    commitController.advance(commitInitial, 0);
+
+    scanController.advance(scanReplacement, 800);
+    commitController.advance(commitReplacement, 800);
+
+    const scanReleased = scanController.advance(scanReplacement, 1_450);
+    const commitHeld = commitController.advance(commitReplacement, 1_450);
+
+    expect(scanReleased?.events?.map((entry) => entry.id) ?? scanReleased?.entries.map((entry) => entry.id)).toEqual(['scan-c', 'scan-d']);
+    expect(commitHeld?.events?.map((entry) => entry.id) ?? commitHeld?.entries.map((entry) => entry.id)).toEqual(['commit-a', 'commit-b']);
   });
 });

@@ -29,11 +29,14 @@ npm run test
 npm run test:playbook-adoption
 npm run test:soak
 npm run visual:capture
+npm run visual:matrix
 npm run visual:gate
 ```
 
 `npm run preview` serves the production build locally on port `4173`.
 `dist/` is generated build output and is ignored by git.
+`npm run visual:matrix` captures the shipping layout across the core viewport matrix into `../tmp/captures/mazer-layout-matrix/<run-id>/`.
+`npm run visual:matrix -- --url https://<preview-host>` reuses a hosted preview instead of launching a local preview server.
 
 ## Branch lanes
 
@@ -78,6 +81,12 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 ## Install Mazer
 - The install surface lives in the bottom-center shell lane when the browser actually exposes `beforeinstallprompt`.
 - Installed or standalone launches hide the action cleanly and keep the ambient presentation running unchanged.
+
+## Layout Matrix
+- Core matrix presets are `390x844`, `430x932`, `844x390`, `768x1024`, `1024x768`, `1366x768`, `1440x900`, and `1920x1080`.
+- Extended presets add `2560x1080` and `1280x720` when you need wider or shorter shells.
+- Each matrix run emits full-frame screenshots, gameplay-only board clips, per-viewport metadata, a markdown summary, and one contact sheet under `../tmp/captures/mazer-layout-matrix/<run-id>/`.
+- Use `npm run visual:matrix -- --route "/?theme=ember"` to lock the route or theme without changing the preset file.
 - Unsupported/manual-install surfaces fail open. On iOS-style browsers the bottom-center lane swaps to `Use Share > Add to Home Screen`.
 - Install UX is optional by rule: if install APIs are unavailable or throw, the title/demo shell still renders normally.
 

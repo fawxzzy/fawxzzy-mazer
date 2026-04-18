@@ -50,13 +50,14 @@ import type { IntentFeedState } from '../mazer-core/intent';
 import {
   createBoardLayout,
   BoardRenderer,
+  resolveBoardPresentationBounds,
   type BoardBounds,
   type BoardLayout,
   type BoardThemeStyle,
   type TrailRenderDiagnostics
 } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
-import { createIntentFeedHud } from '../render/intentFeedRenderer';
+import { createIntentFeedHud, type IntentFeedHudLayoutSnapshot } from '../render/intentFeedRenderer';
 import {
   applyPresentationContrastFloors,
   getPaletteReadabilityReport,
@@ -205,6 +206,8 @@ export interface ViewportSafeInsets {
   bottom: number;
   left: number;
 }
+
+export type IntentFeedPresentationMode = 'bottom-panel' | 'commentary-rail';
 
 interface PresentationOffsets {
   frameOffsetX: number;
@@ -2094,6 +2097,15 @@ export interface MenuSceneVisualDiagnostics {
     frame?: InstallChromeFrame;
     bounds?: VisualSceneBounds;
   };
+  intentFeed: {
+    visible: boolean;
+    dock?: IntentFeedHudLayoutSnapshot['dock'];
+    compact: boolean;
+    statusVisible: boolean;
+    quickThoughtCount: number;
+    maxVisibleEvents: number;
+    bounds?: VisualSceneBounds;
+  };
   trail: {
     start: number;
     limit: number;
@@ -3530,7 +3542,7 @@ export function resolveBoardCompositionFrame(
   const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
   const boardBuffer = resolveBoardEdgeBufferPx(sceneLayout, profile);
   const left = Math.max(viewportSafeInsets.left + boardBuffer, boardBuffer);
-  const right = Math.max(
+  let right = Math.max(
     left + 24,
     safeWidth - Math.max(viewportSafeInsets.right + boardBuffer, boardBuffer)
   );
@@ -3554,7 +3566,72 @@ export function resolveBoardCompositionFrame(
     bottom = Math.max(bottom, fallbackTop + 24);
   }
 
+  const presentationMode = resolveIntentFeedPresentationMode(
+    safeWidth,
+    safeHeight,
+    sceneLayout,
+    profile
+  );
+  if (presentationMode === 'commentary-rail') {
+    const commentaryRailWidth = resolveIntentFeedCommentaryRailWidth(safeWidth, sceneLayout);
+    const commentaryRailReserve = commentaryRailWidth + legacyTuning.menu.intentFeed.commentaryRailGapPx;
+    const reservedRight = right - commentaryRailReserve;
+    if (reservedRight >= left + 24) {
+      right = reservedRight;
+    }
+  }
+
   return createSceneBounds(left, top, right, bottom);
+}
+
+export function resolveIntentFeedPresentationMode(
+  viewportWidth: number,
+  viewportHeight: number,
+  sceneLayout: SceneLayoutProfile,
+  profile?: PresentationDeploymentProfile
+): IntentFeedPresentationMode {
+  const tuning = legacyTuning.menu.intentFeed;
+  const safeWidth = sanitizePositive(viewportWidth, DEFAULT_VIEWPORT_WIDTH, 1);
+  const safeHeight = sanitizePositive(viewportHeight, DEFAULT_VIEWPORT_HEIGHT, 1);
+  const aspectRatio = safeWidth / Math.max(1, safeHeight);
+  const wideEnough = safeWidth >= tuning.commentaryRailMinViewportWidthPx;
+  const tallEnough = safeHeight >= tuning.commentaryRailMinViewportHeightPx;
+  const landscapeEnough = aspectRatio >= tuning.commentaryRailMinAspectRatio;
+
+  if (profile === 'obs') {
+    return 'bottom-panel';
+  }
+
+  if (
+    sceneLayout.isPortrait
+    || sceneLayout.isTiny
+    || sceneLayout.isNarrow
+    || sceneLayout.isShort
+  ) {
+    return 'bottom-panel';
+  }
+
+  return wideEnough && tallEnough && landscapeEnough
+    ? 'commentary-rail'
+    : 'bottom-panel';
+}
+
+function resolveIntentFeedCommentaryRailWidth(
+  viewportWidth: number,
+  sceneLayout: SceneLayoutProfile
+): number {
+  const tuning = legacyTuning.menu.intentFeed;
+  const compact = sceneLayout.isTiny || sceneLayout.isNarrow;
+  const insetX = tuning.insetXPx;
+  const maxWidth = compact ? tuning.compactWidthPx : tuning.widthPx;
+  const minWidth = compact ? tuning.compactMinWidthPx : tuning.minWidthPx;
+  const widthRatio = compact ? tuning.compactMaxWidthRatio : tuning.maxWidthRatio;
+  const availableWidth = Math.max(96, viewportWidth - (insetX * 2));
+  const desiredWidth = Math.round(viewportWidth * widthRatio);
+  const cappedWidth = Math.min(maxWidth, availableWidth);
+  const floorWidth = Math.min(minWidth, cappedWidth);
+
+  return Math.max(floorWidth, Math.min(cappedWidth, desiredWidth));
 }
 
 export class MenuScene extends Phaser.Scene {
@@ -4179,6 +4256,11 @@ export class MenuScene extends Phaser.Scene {
         const trailRender = episodePresentationShell.boardRenderer.getTrailRenderDiagnostics();
         const bootTiming = buildBootTimingReport();
         const activePath = patternFrame?.episode.raster.pathIndices;
+        const presentedBoardBounds = resolveBoardPresentationBounds(
+          episodePresentationShell.layout,
+          demoPresentation.frameOffsetX,
+          demoPresentation.frameOffsetY
+        );
         const renderedHeadIndex = renderedTrail && activePath && renderedTrail.limit > 0
           ? activePath[renderedTrail.limit - 1] ?? null
           : null;
@@ -4195,6 +4277,15 @@ export class MenuScene extends Phaser.Scene {
           : undefined;
         const subtitleGapBelowPlate = subtitleBounds && titlePlateBounds
           ? subtitleBounds.top - titlePlateBounds.bottom
+          : undefined;
+        const intentFeedLayout = episodePresentationShell.intentFeedHud.getLayoutSnapshot();
+        const intentFeedBounds = intentFeedLayout.rect
+          ? toVisualSceneBounds({
+            x: intentFeedLayout.rect.left,
+            y: intentFeedLayout.rect.top,
+            width: intentFeedLayout.rect.width,
+            height: intentFeedLayout.rect.height
+          })
           : undefined;
         const subtitleDiagnostics = activeTitleSubtitle
           ? {
@@ -4220,7 +4311,7 @@ export class MenuScene extends Phaser.Scene {
             safeInsets: viewportSafeInsets
           },
           board: {
-            bounds: episodePresentationShell.layout.boardBounds,
+            bounds: presentedBoardBounds,
             safeBounds: episodePresentationShell.layout.safeBounds,
             tileSize: episodePresentationShell.layout.tileSize
           },
@@ -4240,6 +4331,15 @@ export class MenuScene extends Phaser.Scene {
             state: activeInstallState.mode,
             ...(activeInstallFrame ? { frame: activeInstallFrame } : {}),
             ...(activeInstallBounds ? { bounds: activeInstallBounds } : {})
+          },
+          intentFeed: {
+            visible: intentFeedLayout.visible,
+            dock: intentFeedLayout.dock,
+            compact: intentFeedLayout.compact,
+            statusVisible: intentFeedLayout.statusVisible,
+            quickThoughtCount: intentFeedLayout.quickThoughtCount,
+            maxVisibleEvents: intentFeedLayout.maxVisibleEvents,
+            ...(intentFeedBounds ? { bounds: intentFeedBounds } : {})
           },
           trail: {
             start: renderedTrail?.start ?? trailRender.trailStart,
@@ -4892,6 +4992,11 @@ export class MenuScene extends Phaser.Scene {
         });
         runOptional('intent feed', () => {
           const trailDiagnostics = shell.boardRenderer.getTrailRenderDiagnostics();
+          const presentedBoardBounds = resolveBoardPresentationBounds(
+            shell.layout,
+            demoPresentation.frameOffsetX,
+            demoPresentation.frameOffsetY
+          );
           const fallbackPlayerX = shell.layout.boardX
             + (xFromIndex(view.currentIndex, episode.raster.width) * shell.layout.tileSize)
             + (shell.layout.tileSize / 2);
@@ -4927,6 +5032,28 @@ export class MenuScene extends Phaser.Scene {
               width: anchorSize,
               height: anchorSize
             },
+            board: {
+              x: presentedBoardBounds.centerX,
+              y: presentedBoardBounds.centerY,
+              width: presentedBoardBounds.width,
+              height: presentedBoardBounds.height
+            },
+            title: activeTitleBandFrame
+              ? {
+                x: activeTitleBandFrame.centerX,
+                y: activeTitleBandFrame.centerY,
+                width: activeTitleBandFrame.width,
+                height: activeTitleBandFrame.height
+              }
+              : undefined,
+            install: activeInstallBounds
+              ? {
+                x: activeInstallBounds.centerX,
+                y: activeInstallBounds.centerY,
+                width: activeInstallBounds.width,
+                height: activeInstallBounds.height
+              }
+              : undefined,
             avoid: [
               ...(activeTitleBandFrame
                 ? [{

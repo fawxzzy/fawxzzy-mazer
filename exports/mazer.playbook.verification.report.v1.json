@@ -1,0 +1,92 @@
+{
+  "artifact_id": "mazer_playbook_verification_report_v1",
+  "generated_at": "2026-04-18T06:42:43Z",
+  "repo": {
+    "repo_id": "mazer",
+    "repo_identity": "remote",
+    "repo_path": "repos/fawxzzy-mazer",
+    "notes": [
+      "This report is repo-owned verification truth for the Mazer Playbook convergence slice.",
+      "ATLAS root consumes this artifact read-only and does not synthesize a second verification store."
+    ]
+  },
+  "summary": {
+    "adoption_status": "adopted",
+    "verification_status": "verified",
+    "blocking_gaps": [],
+    "last_verified_at": "2026-04-18T06:42:43Z",
+    "notes": [
+      "Mazer remains adoption_status=adopted while verified promotion is expressed through verification_status=verified.",
+      "The verified claim is scoped to the targeted repo-owned convergence slice described below."
+    ]
+  },
+  "scope": {
+    "verification_kind": "targeted",
+    "covered_surfaces": [
+      "Repo-owned Playbook adoption export shape and contract-id coverage.",
+      "Repo-owned Playbook verification report shape, scope declaration, and evidence references.",
+      "Repo-local architecture check, test suite, and production build path used for this convergence slice."
+    ],
+    "excluded_surfaces": [
+      "Cross-repo Lifeline or _stack operator controls.",
+      "Manual blessing review, proposal execution, or broader product certification outside this targeted convergence slice."
+    ],
+    "notes": [
+      "Verified here means the repo-owned Mazer convergence lane is green and reproducible.",
+      "This report does not overclaim every product or operator behavior path as fully verified."
+    ]
+  },
+  "criteria": {
+    "adoption_export": {
+      "status": "passed",
+      "evidence_refs": [
+        "exports/mazer.playbook.adoption.evidence.v1.json",
+        "exports/repo.playbook.adoption.evidence.schema.v1.json",
+        "docs/ops/MAZER-PLAYBOOK-ADOPTION.md"
+      ],
+      "notes": [
+        "The repo-owned adoption export stays green and remains aligned to the Playbook owner contract."
+      ]
+    },
+    "adoption_test": {
+      "status": "passed",
+      "evidence_refs": [
+        "tests/playbook-adoption-evidence.test.mjs",
+        "package.json",
+        "docs/COMMANDS.md"
+      ],
+      "notes": [
+        "The targeted adoption test validates the local export against the repo schema and owner contract ids."
+      ]
+    },
+    "verification_path": {
+      "status": "passed",
+      "commands": [
+        "npm run test:playbook-verification",
+        "npm run test:playbook-adoption",
+        "npm run verify"
+      ],
+      "evidence_refs": [
+        "tests/playbook-verification-report.test.mjs",
+        "docs/ops/MAZER-PLAYBOOK-VERIFICATION.md",
+        "docs/COMMANDS.md",
+        "package.json"
+      ],
+      "notes": [
+        "The canonical repo-local green path is the verification report test, the adoption export test, and the existing repo verify bridge.",
+        "The verification report test keeps the report schema, scope declaration, and command references honest."
+      ]
+    }
+  },
+  "evidence_refs": [
+    "exports/mazer.playbook.adoption.evidence.v1.json",
+    "exports/mazer.playbook.verification.report.v1.json",
+    "exports/repo.playbook.adoption.evidence.schema.v1.json",
+    "tests/playbook-adoption-evidence.test.mjs",
+    "tests/playbook-verification-report.test.mjs",
+    "docs/ops/MAZER-PLAYBOOK-ADOPTION.md",
+    "docs/ops/MAZER-PLAYBOOK-VERIFICATION.md",
+    "docs/COMMANDS.md",
+    "package.json"
+  ]
+}

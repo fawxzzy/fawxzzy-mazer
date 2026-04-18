@@ -136,7 +136,7 @@ const BOARD_READABILITY_MINIMUMS = Object.freeze({
   floorVsPlayer: 2.85,
   floorVsStart: 1.85,
   floorVsGoal: 3,
-  routeVsTrail: 1.3,
+  routeVsTrail: 1.22,
   trailVsPlayer: 1.88,
   startVsGoal: 1.6,
   startVsPlayer: 1.52,
@@ -149,27 +149,27 @@ const BOARD_READABILITY_MINIMUMS = Object.freeze({
 const COLOR_REPAIR_STEPS = 18;
 
 const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number }> = {
-  route: { light: 0x9ae0b2, dark: 0x17492d },
-  trail: { light: 0xa7bbff, dark: 0x101936 },
+  route: { light: 0x9de0b9, dark: 0x1f5a35 },
+  trail: { light: 0x8ea5f0, dark: 0x050b18 },
   player: { light: 0xf0feff, dark: 0x06465a },
   start: { light: 0xffd27a, dark: 0x8d5b14 },
   goal: { light: 0xf57f9f, dark: 0x4d0d1b }
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
-  route: 0x28995d,
-  trail: 0x1b2548,
+  route: 0x2a8050,
+  trail: 0x0b1222,
   player: 0x06465a,
   start: 0xcb8f2a,
-  goal: 0x53111f
+  goal: 0x4a1020
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
-  route: 0.2,
-  trail: 0.22,
-  player: 0.24,
+  route: 0.24,
+  trail: 0.34,
+  player: 0.18,
   start: 0.18,
-  goal: 0.2
+  goal: 0.22
 };
 
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {

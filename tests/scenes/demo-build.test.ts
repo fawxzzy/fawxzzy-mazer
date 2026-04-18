@@ -49,6 +49,7 @@ let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').reso
 let resolveAmbientSkyProfileTuning: typeof import('../../src/scenes/MenuScene').resolveAmbientSkyProfileTuning;
 let resolvePresentationBackdropFrame: typeof import('../../src/scenes/MenuScene').resolvePresentationBackdropFrame;
 let resolveMenuResizeRecoveryDecision: typeof import('../../src/scenes/MenuScene').resolveMenuResizeRecoveryDecision;
+let resolveIntentFeedPresentationMode: typeof import('../../src/scenes/MenuScene').resolveIntentFeedPresentationMode;
 let MENU_SCENE_VISUAL_CAPTURE_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_CAPTURE_KEY;
 let MENU_SCENE_VISUAL_DIAGNOSTICS_KEY: typeof import('../../src/scenes/MenuScene').MENU_SCENE_VISUAL_DIAGNOSTICS_KEY;
 let TITLE_SIGNATURE_TEXT: typeof import('../../src/scenes/MenuScene').TITLE_SIGNATURE_TEXT;
@@ -100,6 +101,7 @@ beforeAll(async () => {
     resolveAmbientSkyProfileTuning,
     resolvePresentationBackdropFrame,
     resolveMenuResizeRecoveryDecision,
+    resolveIntentFeedPresentationMode,
     TITLE_SIGNATURE_TEXT
   } = await import('../../src/scenes/MenuScene'));
   ({ resolveDemoWalkerViewFrame } = await import('../../src/domain/ai'));
@@ -474,6 +476,81 @@ describe('demo-only build', () => {
     expect(layout.boardY - titleBand.bottom).toBeLessThanOrEqual(12);
     expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThanOrEqual(5);
     expect(installFrame.top - layout.boardBounds.bottom).toBeLessThanOrEqual(12);
+    expect(layout.boardHeight).toBeGreaterThan(550);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('watch layout keeps portrait phones bottom-docked and promotes roomy landscape viewports into a commentary rail', () => {
+    const phonePortrait = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile');
+    const phoneLandscape = resolveMenuPresentationModel(844, 390, 'ambient', 'full', true, 'mobile');
+    const tabletLandscape = resolveMenuPresentationModel(1024, 768, 'ambient', 'full', true, 'mobile');
+    const desktopLandscape = resolveMenuPresentationModel(1366, 768, 'ambient', 'full', true);
+
+    expect(resolveIntentFeedPresentationMode(
+      phonePortrait.viewport.width,
+      phonePortrait.viewport.height,
+      phonePortrait.layout,
+      'mobile'
+    )).toBe('bottom-panel');
+    expect(resolveIntentFeedPresentationMode(
+      phoneLandscape.viewport.width,
+      phoneLandscape.viewport.height,
+      phoneLandscape.layout,
+      'mobile'
+    )).toBe('bottom-panel');
+    expect(resolveIntentFeedPresentationMode(
+      tabletLandscape.viewport.width,
+      tabletLandscape.viewport.height,
+      tabletLandscape.layout,
+      'mobile'
+    )).toBe('commentary-rail');
+    expect(resolveIntentFeedPresentationMode(
+      desktopLandscape.viewport.width,
+      desktopLandscape.viewport.height,
+      desktopLandscape.layout
+    )).toBe('commentary-rail');
+  });
+
+  test('desktop board composition reserves a right commentary rail while keeping the maze dominant', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 9166,
+      size: 'medium',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1366, 768, 'ambient', 'full', true);
+    const titleBand = resolveTitleBandFrame(
+      presentationModel.viewport.width,
+      presentationModel.layout,
+      undefined
+    );
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      126,
+      25
+    );
+    const boardFrame = resolveBoardCompositionFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      titleBand,
+      installFrame
+    );
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: 1,
+      safeBounds: boardFrame
+    });
+    const reservedRightLane = presentationModel.viewport.width - boardFrame.right;
+
+    expect(reservedRightLane).toBeGreaterThan(legacyTuning.menu.intentFeed.minWidthPx);
+    expect(boardFrame.centerX).toBeLessThan(presentationModel.viewport.width / 2);
+    expect(layout.boardBounds.centerX).toBeLessThan(presentationModel.viewport.width / 2);
     expect(layout.boardHeight).toBeGreaterThan(550);
 
     disposeMazeEpisode(episode);

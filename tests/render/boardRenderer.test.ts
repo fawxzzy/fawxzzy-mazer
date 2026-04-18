@@ -152,6 +152,21 @@ const createLayout = (): BoardLayout => ({
   }
 });
 
+const getAlphaForColor = (
+  calls: GraphicsCall[],
+  method: 'fillStyle' | 'lineStyle',
+  color: number
+): number | undefined => {
+  const call = calls.find((entry) => entry.method === method && entry.args.includes(color));
+  if (!call) {
+    return undefined;
+  }
+
+  return method === 'fillStyle'
+    ? Number(call.args[1])
+    : Number(call.args[2]);
+};
+
 describe('board renderer', () => {
   test('attaches the trail head when the live head matches the actor transform', () => {
     const attached = resolveTrailHeadRenderState(
@@ -227,6 +242,38 @@ describe('board renderer', () => {
     expect(neighborhoodRadius).toBeGreaterThan(floorRadius);
     expect(firstFocusFillRadius).toBeGreaterThan(8);
     expect(playerCoreStrokeRadii.some((radius) => radius > 5)).toBe(true);
+  });
+
+  test('reduces competing trail and target signal strength when the player is the focus', () => {
+    const trail: Array<number | DemoTrailStep> = [
+      0,
+      { index: 1, mode: 'explore' }
+    ];
+
+    const defaultScene = createSceneStub(1_000);
+    const defaultRenderer = new BoardRenderer(defaultScene.scene, createEpisode(), createLayout());
+    defaultRenderer.drawTrail(trail, { cue: 'anticipate', targetIndex: 1 });
+
+    const playerScene = createSceneStub(1_000);
+    const playerRenderer = new BoardRenderer(playerScene.scene, createEpisode(), createLayout());
+    playerRenderer.drawTrail(trail, { cue: 'anticipate', targetIndex: 1, emphasis: 'player' });
+
+    const defaultTrailGraphics = defaultScene.graphics.at(7);
+    const defaultSignalGraphics = defaultScene.graphics.at(6);
+    const playerTrailGraphics = playerScene.graphics.at(7);
+    const playerSignalGraphics = playerScene.graphics.at(6);
+
+    const defaultTrailGlowAlpha = getAlphaForColor(defaultTrailGraphics!.calls, 'fillStyle', palette.board.trailGlow);
+    const defaultSignalAlpha = getAlphaForColor(defaultSignalGraphics!.calls, 'lineStyle', palette.board.topHighlight);
+    const playerTrailGlowAlpha = getAlphaForColor(playerTrailGraphics!.calls, 'fillStyle', palette.board.trailGlow);
+    const playerSignalAlpha = getAlphaForColor(playerSignalGraphics!.calls, 'lineStyle', palette.board.topHighlight);
+
+    expect(defaultTrailGlowAlpha).toBeDefined();
+    expect(defaultSignalAlpha).toBeDefined();
+    expect(playerTrailGlowAlpha).toBeDefined();
+    expect(playerSignalAlpha).toBeDefined();
+    expect(playerTrailGlowAlpha!).toBeLessThan(defaultTrailGlowAlpha!);
+    expect(playerSignalAlpha!).toBeLessThan(defaultSignalAlpha!);
   });
 
   test('exposes a live trail head when committed trail and motion head match', () => {

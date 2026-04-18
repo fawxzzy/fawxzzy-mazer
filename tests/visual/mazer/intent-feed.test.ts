@@ -4,6 +4,7 @@ import { buildIntentBus, type IntentSourceState } from '../../../src/visual-proo
 import { buildIntentFeed, resolveVisibleIntentEntries } from '../../../src/visual-proof/intent/IntentFeed';
 import { INTENT_SLOT_OPACITIES } from '../../../src/visual-proof/intent/IntentEvent';
 import { renderIntentFeedMarkup } from '../../../src/visual-proof/intent/IntentRenderer';
+import { resolveIntentFeedRole } from '../../../src/mazer-core/intent/IntentFeed';
 
 const makeState = (overrides: Partial<IntentSourceState> & Pick<IntentSourceState, 'step'>): IntentSourceState => ({
   step: overrides.step,
@@ -182,6 +183,39 @@ describe('intent bus', () => {
     expect(visibleAtStepFour.some((entry) => entry.kind === 'frontier-chosen')).toBe(false);
     expect(feed.metrics.highImportanceStickyPass).toBe(true);
     expect(feed.metrics.importanceTtlPass).toBe(true);
+  });
+
+  test('keeps route context in status while newer observations become quick thoughts', () => {
+    const { bus, feed } = buildFeedFromStates([
+      makeState({
+        step: 0,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch'
+      }),
+      makeState({
+        step: 1,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch',
+        localCues: ['trap rhythm']
+      })
+    ]);
+
+    const state = feed.states.get(1);
+    const visible = resolveVisibleIntentEntries(bus.records, 1);
+
+    expect(state?.status?.kind).toBe('frontier-chosen');
+    expect(state?.status?.summary).toContain('West branch');
+    expect(visible[0]?.kind).toBe('trap-inferred');
+    expect(visible[0]?.summary).toContain('trap rhythm');
+    expect(visible[0]?.summary).not.toBe(state?.status?.summary);
+    expect(resolveIntentFeedRole(state?.status?.kind ?? null)).toBe('scan');
+    expect(resolveIntentFeedRole(visible[0]?.kind ?? null)).toBe('hypothesis');
   });
 
   test('flags synthetic per-step chatter as spam in the canary lane', () => {

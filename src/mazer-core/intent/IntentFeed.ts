@@ -6,6 +6,7 @@ import {
   MAX_WORLD_PINGS,
   WORLD_PING_OPACITIES,
   WORLD_PING_TTL_STEPS,
+  type IntentKind,
   type IntentFeedStatus,
   type IntentBusRecord,
   type IntentFeedMetrics,
@@ -32,8 +33,51 @@ const INTENT_MAX_STREAK = 3;
 const WORLD_PING_RATE_LIMIT = 1.05;
 const DEBOUNCE_WINDOW_STEPS = 2;
 const IMPORTANT_RECORDS = new Set(['goal-observed', 'enemy-seen', 'trap-inferred', 'item-spotted', 'puzzle-state-observed']);
+const PERSISTENT_STATUS_KINDS = new Set([
+  'goal-observed',
+  'route-commitment-changed',
+  'replan-triggered',
+  'dead-end-confirmed',
+  'frontier-chosen'
+]);
+export type IntentFeedRole = 'scan' | 'hypothesis' | 'commit' | 'recall';
+const INTENT_ROLE_ORDER: Record<IntentFeedRole, number> = {
+  scan: 0,
+  hypothesis: 1,
+  commit: 2,
+  recall: 3
+};
+const INTENT_ROLE_BY_KIND: Record<IntentKind, IntentFeedRole> = {
+  'frontier-chosen': 'scan',
+  'landmark-spotted': 'scan',
+  'item-spotted': 'scan',
+  'trap-inferred': 'hypothesis',
+  'enemy-seen': 'hypothesis',
+  'puzzle-state-observed': 'hypothesis',
+  'replan-triggered': 'hypothesis',
+  'route-commitment-changed': 'commit',
+  'goal-observed': 'commit',
+  'gate-aligned': 'commit',
+  'dead-end-confirmed': 'recall'
+};
 
 const isFeedRecord = (record: IntentBusRecord): boolean => record.kind !== 'gate-aligned';
+
+export const resolveIntentFeedRole = (kind: IntentKind | null | undefined): IntentFeedRole => (
+  kind ? INTENT_ROLE_BY_KIND[kind] ?? 'scan' : 'scan'
+);
+
+export const resolveIntentFeedRoleOrder = (kind: IntentKind | null | undefined): number => (
+  INTENT_ROLE_ORDER[resolveIntentFeedRole(kind)]
+);
+
+export const resolveIntentFeedRoleRank = (role: IntentFeedRole): number => (
+  INTENT_ROLE_ORDER[role]
+);
+
+export const formatIntentFeedRole = (kind: IntentKind | null | undefined): string => (
+  resolveIntentFeedRole(kind).toUpperCase()
+);
 
 const compareVisibleRecords = (left: IntentBusRecord, right: IntentBusRecord): number => (
   right.step - left.step
@@ -68,10 +112,16 @@ export const resolveVisibleIntentEntries = (
   const visible = [...records]
     .filter((record) => isFeedRecord(record))
     .filter((record) => record.step <= step && (step - record.step) <= record.ttlSteps)
-    .sort(compareVisibleRecords)
+    .sort(compareVisibleRecords);
+  const statusRecord = visible.find((record) => PERSISTENT_STATUS_KINDS.has(record.kind)) ?? visible[0] ?? null;
+  const quickThoughts = visible
+    .filter((record) => record.id !== statusRecord?.id)
     .slice(0, maxVisibleEntries);
+  const resolvedVisible = quickThoughts.length > 0
+    ? quickThoughts
+    : visible.slice(0, maxVisibleEntries);
 
-  return visible.map((record, index) => ({
+  return resolvedVisible.map((record, index) => ({
     ...record,
     ageSteps: step - record.step,
     slot: index,
@@ -88,7 +138,8 @@ export const resolveVisibleIntentStatus = (
     .filter((record) => record.step <= step)
     .sort(compareVisibleRecords);
 
-  return visible.length > 0 ? toVisibleStatus(visible[0]) : null;
+  const statusRecord = visible.find((record) => PERSISTENT_STATUS_KINDS.has(record.kind)) ?? visible[0] ?? null;
+  return statusRecord ? toVisibleStatus(statusRecord) : null;
 };
 
 export const resolveVisibleWorldPings = (

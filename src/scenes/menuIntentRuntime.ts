@@ -16,6 +16,10 @@ import {
   type IntentFeedState
 } from '../mazer-core/intent';
 import {
+  resolveIntentFeedRole,
+  type IntentFeedRole
+} from '../mazer-core/intent/IntentFeed';
+import {
   getNeighborIndex,
   isTileFloor,
   xFromIndex,
@@ -48,25 +52,78 @@ export interface MenuIntentFeedDisplayControllerOptions {
   replacementDebounceMs?: number;
 }
 
+const cloneFeedStateStatus = (state: IntentFeedState): IntentFeedState['status'] => (
+  state.status
+    ? {
+        ...state.status,
+        ...(state.status.anchor ? { anchor: { ...state.status.anchor } } : {})
+      }
+    : null
+);
+
+const cloneFeedEntries = (entries: readonly IntentFeedState['entries'][number][]) => (
+  entries.map((entry, slot) => ({
+    ...entry,
+    ...(entry.anchor ? { anchor: { ...entry.anchor } } : {}),
+    slot
+  }))
+);
+
+const cloneFeedPings = (pings: IntentFeedState['pings']) => (
+  pings.map((ping) => ({
+    ...ping,
+    ...(ping.anchor ? { anchor: { ...ping.anchor } } : {})
+  }))
+);
+
+const cloneFeedState = (
+  state: IntentFeedState,
+  eventsSource: readonly IntentFeedState['entries'][number][] = state.events ?? state.entries
+): IntentFeedState => {
+  const events = cloneFeedEntries(eventsSource);
+  return {
+    ...state,
+    status: cloneFeedStateStatus(state),
+    events,
+    entries: cloneFeedEntries(events),
+    pings: cloneFeedPings(state.pings)
+  };
+};
+
+const resolveFeedRole = (state: IntentFeedState | null): IntentFeedRole => (
+  resolveIntentFeedRole(state?.status?.kind ?? state?.events?.[0]?.kind ?? state?.entries?.[0]?.kind ?? null)
+);
+
+const resolvePacingMultiplier = (role: IntentFeedRole): number => {
+  switch (role) {
+    case 'scan':
+      return 0.9;
+    case 'hypothesis':
+      return 1;
+    case 'commit':
+      return 1.18;
+    case 'recall':
+      return 1.28;
+  }
+};
+
+const resolveDebounceMultiplier = (role: IntentFeedRole): number => {
+  switch (role) {
+    case 'scan':
+      return 0.85;
+    case 'hypothesis':
+      return 1;
+    case 'commit':
+      return 1.1;
+    case 'recall':
+      return 1.2;
+  }
+};
+
 const normalizeFeedStateForDisplay = (
   state: IntentFeedState,
   maxVisibleEntries: number
-): IntentFeedState => ({
-  ...state,
-  status: state.status ? { ...state.status } : null,
-  events: (state.events ?? state.entries)
-    .slice(0, maxVisibleEntries)
-    .map((entry, slot) => ({
-      ...entry,
-      slot
-    })),
-  entries: (state.events ?? state.entries)
-    .slice(0, maxVisibleEntries)
-    .map((entry, slot) => ({
-      ...entry,
-      slot
-    }))
-});
+): IntentFeedState => cloneFeedState(state, (state.events ?? state.entries).slice(0, maxVisibleEntries));
 
 const normalizeText = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -110,6 +167,19 @@ const createEventsSignature = (state: IntentFeedState | null, maxVisibleEntries:
     .join('|');
 };
 
+const mergeDisplayState = (
+  current: IntentFeedState,
+  next: IntentFeedState,
+  preserveCurrentEvents: boolean
+): IntentFeedState => cloneFeedState(
+  {
+    ...next,
+    status: cloneFeedStateStatus(next),
+    pings: cloneFeedPings(next.pings)
+  },
+  preserveCurrentEvents ? (current.events ?? current.entries) : (next.events ?? next.entries)
+);
+
 export class MenuIntentFeedDisplayController {
   private readonly maxVisibleEntries: number;
 
@@ -140,7 +210,9 @@ export class MenuIntentFeedDisplayController {
     const rawEntries = rawState?.events ?? rawState?.entries ?? [];
     if (!rawState || (rawEntries.length === 0 && !rawState.status)) {
       this.pending = null;
-      if (this.current && (nowMs - this.current.shownAtMs) >= this.minimumDwellMs) {
+      const currentRole = resolveFeedRole(this.current?.state ?? null);
+      const currentMinimumDwellMs = Math.round(this.minimumDwellMs * resolvePacingMultiplier(currentRole));
+      if (this.current && (nowMs - this.current.shownAtMs) >= currentMinimumDwellMs) {
         this.current = null;
       }
       return this.current?.state ?? null;
@@ -149,6 +221,11 @@ export class MenuIntentFeedDisplayController {
     const statusSignature = createStatusSignature(rawState);
     const eventsSignature = createEventsSignature(rawState, this.maxVisibleEntries);
     const state = normalizeFeedStateForDisplay(rawState, this.maxVisibleEntries);
+    const nextRole = resolveFeedRole(state);
+    const currentRole = resolveFeedRole(this.current?.state ?? null);
+    const currentMinimumDwellMs = Math.round(this.minimumDwellMs * resolvePacingMultiplier(currentRole));
+    const currentReplacementDebounceMs = Math.round(this.replacementDebounceMs * resolveDebounceMultiplier(currentRole));
+    const pendingMinimumDebounceMs = Math.round(this.replacementDebounceMs * resolveDebounceMultiplier(nextRole));
 
     if (!this.current) {
       this.current = {
@@ -165,10 +242,12 @@ export class MenuIntentFeedDisplayController {
         this.current = {
           ...this.current,
           statusSignature,
-          state: {
-            ...this.current.state,
-            status: state.status ?? null
-          }
+          state: mergeDisplayState(this.current.state, state, true)
+        };
+      } else {
+        this.current = {
+          ...this.current,
+          state: mergeDisplayState(this.current.state, state, true)
         };
       }
 
@@ -193,7 +272,7 @@ export class MenuIntentFeedDisplayController {
 
     const currentDwellElapsed = nowMs - this.current.shownAtMs;
     const pendingDebounceElapsed = nowMs - this.pending.queuedAtMs;
-    if (currentDwellElapsed >= this.minimumDwellMs && pendingDebounceElapsed >= this.replacementDebounceMs) {
+    if (currentDwellElapsed >= currentMinimumDwellMs && pendingDebounceElapsed >= Math.min(currentReplacementDebounceMs, pendingMinimumDebounceMs)) {
       this.current = {
         statusSignature: this.pending.statusSignature,
         eventsSignature: this.pending.eventsSignature,
@@ -208,10 +287,12 @@ export class MenuIntentFeedDisplayController {
       this.current = {
         ...this.current,
         statusSignature,
-        state: {
-          ...this.current.state,
-          status: state.status ?? null
-        }
+        state: mergeDisplayState(this.current.state, state, true)
+      };
+    } else {
+      this.current = {
+        ...this.current,
+        state: mergeDisplayState(this.current.state, state, true)
       };
     }
 

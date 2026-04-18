@@ -1,4 +1,5 @@
 import { PlaybookAdapter } from '../playbook/PlaybookAdapter';
+import { resolveIntentFeedRole, resolveIntentFeedRoleRank, type IntentFeedRole } from './IntentFeed';
 import {
   INTENT_TTL_STEPS,
   type IntentAnchor,
@@ -39,6 +40,7 @@ export interface IntentSourceState {
 interface IntentCandidate {
   priority: number;
   debounceKey: string;
+  role: IntentFeedRole;
   record: IntentBusRecord;
 }
 
@@ -151,6 +153,7 @@ const makePlaybookIntentCandidate = (
 ): IntentCandidate => ({
   priority,
   debounceKey,
+  role: resolveIntentFeedRole(input.kind),
   record: makeIntentRecord(step, playbookAdapter.summarizeIntent(input))
 });
 
@@ -297,7 +300,10 @@ const selectIntentCandidates = (
     }));
   }
 
-  return candidates.sort((left, right) => right.priority - left.priority);
+  return candidates.sort((left, right) => (
+    right.priority - left.priority
+    || resolveIntentFeedRoleRank(left.role) - resolveIntentFeedRoleRank(right.role)
+  ));
 };
 
 export const buildIntentBus = (
