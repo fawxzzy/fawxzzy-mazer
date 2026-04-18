@@ -6,7 +6,7 @@ The active product lane is the 2D Phaser shipping runtime. Current work should t
 
 ## Current scope
 - The shipping baseline is the current 2D Phaser runtime and its repo-owned verification surfaces.
-- Current near-term work stays on 2D readability, composition, installability, and baseline freeze quality.
+- Current near-term work stays on repo-owned verification surfaces, runtime observe/soak visibility, composition, installability, and baseline freeze quality.
 - TV, OBS, mobile, and preview profiles remain part of the active 2D delivery surface.
 - Future-runtime and rotating-planet work stay isolated, deferred, and non-authoritative for shipping claims.
 
@@ -43,13 +43,15 @@ npm run visual:gate
 
 ## Current truth
 - The active shipping lane is the 2D Phaser build.
-- The immediate next-step lane is a 2D readability and truth-alignment pass, not a 3D reopen.
+- The repo-owned proof path is green locally as of April 17, 2026: `npm run verify` passed after the active theme readability repairs.
+- The immediate next-step lane is repo-owned verification and visibility follow-through, not a 3D reopen.
 - Future-runtime and rotating-planet work remain parked behind isolated entrypoints and future-facing docs.
 - Visual truth is owned by the screenshot gate first, then `tests/scenes/demo-build.test.ts`, then older prose.
 - The latest local baseline is only production truth after that visual pass is committed and deployed.
 - Trail attach plus no-future-preview is the active trail contract.
 - Desktop, TV, and OBS composition now targets the tight 5px board-fit between the title band and the bottom-center install CTA lane.
 - Generator-side endpoint strategy spread is improved but still unfinished; variety work is not closed.
+- Runtime observe/soak visibility rollup work remains repo-local analysis WIP and is not part of the shipping claim yet.
 - See `docs/current-truth.md` when older notes or pasted diffs disagree.
 
 ## Launch profiles

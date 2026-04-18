@@ -14,6 +14,7 @@ import {
   parseIntegerArg
 } from '../visual/common.mjs';
 import { launchPreviewServer, stopPreviewServer } from '../visual/preview-server.mjs';
+import { buildVisibilityRollup } from './runtime-visibility-rollup.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === SCRIPT_PATH;
@@ -105,7 +106,7 @@ const createMetricWindow = (samples, selector, fallback = 0) => {
   };
 };
 
-const buildSummary = ({
+export const buildSummary = ({
   samples,
   durationSeconds,
   lowPower,
@@ -132,6 +133,7 @@ const buildSummary = ({
   const heapValues = samples
     .map((sample) => sample.resources.jsHeap?.usedBytes)
     .filter((value) => Number.isFinite(value));
+  const visibility = buildVisibilityRollup(samples);
   const heapSummary = heapValues.length > 0
     ? {
         startUsedBytes: heapValues[0],
@@ -199,9 +201,11 @@ const buildSummary = ({
       }
     },
     visibility: {
-      hiddenSampleCount: samples.filter((sample) => sample.visibility.hidden).length,
-      changeCount: last?.visibility.changeCount ?? 0,
-      suspendCount: last?.visibility.suspendCount ?? 0
+      hiddenSampleCount: visibility.hiddenSampleCount,
+      changeCount: visibility.changeCount,
+      suspendCount: visibility.suspendCount,
+      epochCount: visibility.epochCount,
+      epochs: visibility.epochs
     },
     restart: {
       mode: restartMode,

@@ -151,7 +151,7 @@ const COLOR_REPAIR_STEPS = 18;
 const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number }> = {
   route: { light: 0x9ae0b2, dark: 0x17492d },
   trail: { light: 0xa7bbff, dark: 0x101936 },
-  player: { light: 0xf0feff, dark: 0x085f8f },
+  player: { light: 0xf0feff, dark: 0x06465a },
   start: { light: 0xffd27a, dark: 0x8d5b14 },
   goal: { light: 0xf57f9f, dark: 0x4d0d1b }
 };
@@ -159,7 +159,7 @@ const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
   route: 0x28995d,
   trail: 0x1b2548,
-  player: 0x0e7aa6,
+  player: 0x06465a,
   start: 0xcb8f2a,
   goal: 0x53111f
 };
@@ -556,6 +556,7 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
   const panelPrefer = getRelativeLuminance(hudPanel) >= 0.52 ? 'dark' : 'light';
   const backdropPrefer = getRelativeLuminance(input.background.deepSpace) >= 0.52 ? 'dark' : 'light';
   const roleCorePrefer = prefer === 'dark' ? 'light' : 'dark';
+  const playerLocalSignalPrefer = prefer === 'dark' ? 'light' : 'dark';
   const routeBase = ensureRoleContrast('route', input.board.route, floor, BOARD_READABILITY_MINIMUMS.floorVsRoute, prefer);
   const trailBase = ensureRoleContrast('trail', input.board.trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
   const playerBase = ensureRoleContrast('player', input.board.player, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
@@ -577,7 +578,15 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
     trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
 
-    const playerTrailRepair = ensureRolePairContrast('player', player, 'trail', trail, BOARD_READABILITY_MINIMUMS.trailVsPlayer, prefer, prefer);
+    const playerTrailRepair = ensureRolePairContrast(
+      'player',
+      player,
+      'trail',
+      trail,
+      BOARD_READABILITY_MINIMUMS.trailVsPlayer,
+      prefer,
+      playerLocalSignalPrefer
+    );
     player = ensureRoleContrast('player', playerTrailRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
     trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
@@ -589,7 +598,7 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
       trail,
       BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance,
       prefer,
-      prefer
+      playerLocalSignalPrefer
     );
     player = ensureRoleContrast('player', playerTrailLuminanceRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
@@ -606,7 +615,15 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
     start = ensureRoleContrast('start', playerStartRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsStart, prefer);
 
-    const playerGoalRepair = ensureRolePairContrast('player', player, 'goal', goal, BOARD_READABILITY_MINIMUMS.goalVsPlayer, prefer, prefer);
+    const playerGoalRepair = ensureRolePairContrast(
+      'player',
+      player,
+      'goal',
+      goal,
+      BOARD_READABILITY_MINIMUMS.goalVsPlayer,
+      prefer,
+      playerLocalSignalPrefer
+    );
     player = ensureRoleContrast('player', playerGoalRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
     goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
@@ -614,7 +631,15 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
   }
 
   for (let pass = 0; pass < 2; pass += 1) {
-    const playerTrailRepair = ensureRolePairContrast('player', player, 'trail', trail, BOARD_READABILITY_MINIMUMS.trailVsPlayer, prefer, prefer);
+    const playerTrailRepair = ensureRolePairContrast(
+      'player',
+      player,
+      'trail',
+      trail,
+      BOARD_READABILITY_MINIMUMS.trailVsPlayer,
+      prefer,
+      playerLocalSignalPrefer
+    );
     player = ensureRoleContrast('player', playerTrailRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
     trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
@@ -623,7 +648,15 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
     trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
 
-    const playerGoalRepair = ensureRolePairContrast('player', player, 'goal', goal, BOARD_READABILITY_MINIMUMS.goalVsPlayer, prefer, prefer);
+    const playerGoalRepair = ensureRolePairContrast(
+      'player',
+      player,
+      'goal',
+      goal,
+      BOARD_READABILITY_MINIMUMS.goalVsPlayer,
+      prefer,
+      playerLocalSignalPrefer
+    );
     player = ensureRoleContrast('player', playerGoalRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
     player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
     goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
@@ -639,9 +672,14 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     trail,
     player,
     BOARD_READABILITY_MINIMUMS.trailVsPlayer,
-    prefer === 'dark' ? 0x08111f : 0xf5f8ff
+    ROLE_CONTRAST_TARGETS.trail[playerLocalSignalPrefer]
   );
-  trail = ensureMinLuminanceDelta(trail, player, BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance, prefer);
+  trail = ensureMinLuminanceDeltaToward(
+    trail,
+    player,
+    BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance,
+    ROLE_CONTRAST_TARGETS.trail[playerLocalSignalPrefer]
+  );
   trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
   trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
 
@@ -649,7 +687,7 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     goal,
     player,
     BOARD_READABILITY_MINIMUMS.goalVsPlayer,
-    prefer === 'dark' ? 0x4a0e1b : 0xff95b4
+    ROLE_CONTRAST_TARGETS.goal[playerLocalSignalPrefer]
   );
   goal = ensureRoleContrast('goal', goal, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
   goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);

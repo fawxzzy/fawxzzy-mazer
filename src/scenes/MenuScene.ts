@@ -614,50 +614,62 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
   ember: {
     id: 'ember',
     label: 'EMBER',
-    palette: createThemePalette({
-      background: {
-        deepSpace: 0x120b09,
-        nebula: 0x241412,
-        nebulaCore: 0x3a201b,
-        vignette: 0x060302,
-        star: 0xffddc2,
-        cloud: 0x4a271d
-      },
-      board: {
-        glow: 0x29140f,
-        panel: 0x190d09,
-        panelStroke: 0xae7550,
-        well: 0x120907,
-        shadow: 0x050201,
-        outer: 0x301610,
-        outerStroke: 0xd7a073,
-        innerStroke: 0xc98557,
-        topHighlight: 0xffd19d,
-        wall: 0x2d170e,
-        floor: 0xe8c7a8,
-        path: 0xb27653,
-        route: 0x238652,
-        routeCore: 0xf4ffef,
-        routeGlow: 0x1f3f2a,
-        trail: 0x576bde,
-        trailCore: 0xf6f1ff,
-        trailGlow: 0x97a6ff,
-        start: 0xd39a2c,
-        startCore: 0xfff0ca,
-        startGlow: 0x794d1c,
-        goal: 0xa33050,
-        goalCore: 0xffefef,
-        player: 0x11c8ea,
-        playerCore: 0xf0fdff,
-        playerHalo: 0x92ebff,
-        playerShadow: 0x1b0c07
-      },
-      hud: {
-        panelStroke: 0xcd8f60,
-        accent: 0xffd1a5,
-        hintText: 0xeac59e
-      }
-    }),
+    palette: (() => {
+      const resolved = createThemePalette({
+        background: {
+          deepSpace: 0x120b09,
+          nebula: 0x241412,
+          nebulaCore: 0x3a201b,
+          vignette: 0x060302,
+          star: 0xffddc2,
+          cloud: 0x4a271d
+        },
+        board: {
+          glow: 0x29140f,
+          panel: 0x190d09,
+          panelStroke: 0xae7550,
+          well: 0x120907,
+          shadow: 0x050201,
+          outer: 0x301610,
+          outerStroke: 0xd7a073,
+          innerStroke: 0xc98557,
+          topHighlight: 0xffd19d,
+          wall: 0x2d170e,
+          floor: 0xe8c7a8,
+          path: 0xb27653,
+          route: 0x238652,
+          routeCore: 0xf4ffef,
+          routeGlow: 0x1f3f2a,
+          trail: 0x576bde,
+          trailCore: 0xf6f1ff,
+          trailGlow: 0x97a6ff,
+          start: 0xd39a2c,
+          startCore: 0xfff0ca,
+          startGlow: 0x794d1c,
+          goal: 0xa33050,
+          goalCore: 0xffefef,
+          player: 0x11c8ea,
+          playerCore: 0xf0fdff,
+          playerHalo: 0x92ebff,
+          playerShadow: 0x1b0c07
+        },
+        hud: {
+          panelStroke: 0xcd8f60,
+          accent: 0xffd1a5,
+          hintText: 0xeac59e
+        }
+      });
+
+      return {
+        ...resolved,
+        board: {
+          ...resolved.board,
+          trail: 0x466299,
+          goal: 0xa24f68,
+          player: 0x063848
+        }
+      };
+    })(),
     boardTheme: {
       solutionPathGlowAlphaScale: 1.08,
       solutionPathCoreAlphaScale: 1.04,
@@ -755,50 +767,62 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
   aurora: {
     id: 'aurora',
     label: 'AURORA',
-    palette: createThemePalette({
-      background: {
-        deepSpace: 0x07111f,
-        nebula: 0x12243f,
-        nebulaCore: 0x1d3560,
-        vignette: 0x02050a,
-        star: 0xdffcff,
-        cloud: 0x244c74
-      },
-      board: {
-        glow: 0x0d1b33,
-        panel: 0x0a1426,
-        panelStroke: 0x5ea0ff,
-        well: 0x09101f,
-        shadow: 0x02050c,
-        outer: 0x13233e,
-        outerStroke: 0xb89cff,
-        innerStroke: 0x90c2ef,
-        topHighlight: 0xcffeff,
-        wall: 0x112848,
-        floor: 0xd8f1ff,
-        path: 0x69a9cf,
-        route: 0x24c979,
-        routeCore: 0xf0fff8,
-        routeGlow: 0x195f46,
-        trail: 0x5b5fe0,
-        trailCore: 0xf0fbff,
-        trailGlow: 0xa8a4ff,
-        start: 0xc99733,
-        startCore: 0xfff1d1,
-        startGlow: 0x7a5b22,
-        goal: 0xc84a7f,
-        goalCore: 0xfff4fa,
-        player: 0x1adfff,
-        playerCore: 0xf3ffff,
-        playerHalo: 0x9aefff,
-        playerShadow: 0x040916
-      },
-      hud: {
-        panelStroke: 0x85c3f5,
-        accent: 0xd8fcff,
-        hintText: 0xbad7ef
-      }
-    }),
+    palette: (() => {
+      const resolved = createThemePalette({
+        background: {
+          deepSpace: 0x07111f,
+          nebula: 0x12243f,
+          nebulaCore: 0x1d3560,
+          vignette: 0x02050a,
+          star: 0xdffcff,
+          cloud: 0x244c74
+        },
+        board: {
+          glow: 0x0d1b33,
+          panel: 0x0a1426,
+          panelStroke: 0x5ea0ff,
+          well: 0x09101f,
+          shadow: 0x02050c,
+          outer: 0x13233e,
+          outerStroke: 0xb89cff,
+          innerStroke: 0x90c2ef,
+          topHighlight: 0xcffeff,
+          wall: 0x112848,
+          floor: 0xd8f1ff,
+          path: 0x69a9cf,
+          route: 0x24c979,
+          routeCore: 0xf0fff8,
+          routeGlow: 0x195f46,
+          trail: 0x5b5fe0,
+          trailCore: 0xf0fbff,
+          trailGlow: 0xa8a4ff,
+          start: 0xc99733,
+          startCore: 0xfff1d1,
+          startGlow: 0x7a5b22,
+          goal: 0xc84a7f,
+          goalCore: 0xfff4fa,
+          player: 0x1adfff,
+          playerCore: 0xf3ffff,
+          playerHalo: 0x9aefff,
+          playerShadow: 0x040916
+        },
+        hud: {
+          panelStroke: 0x85c3f5,
+          accent: 0xd8fcff,
+          hintText: 0xbad7ef
+        }
+      });
+
+      return {
+        ...resolved,
+        board: {
+          ...resolved.board,
+          trail: 0x5969ba,
+          goal: 0xaa568c,
+          player: 0x06465a
+        }
+      };
+    })(),
     boardTheme: {
       solutionPathGlowAlphaScale: 1.12,
       solutionPathCoreAlphaScale: 1.08,
@@ -942,7 +966,7 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         }
       });
 
-      return applyPresentationContrastFloors({
+      const adjusted = applyPresentationContrastFloors({
         ...resolved,
         board: {
           ...resolved.board,
@@ -950,6 +974,16 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
           floor: 0xe7dfcf
         }
       });
+
+      return {
+        ...adjusted,
+        board: {
+          ...adjusted.board,
+          trail: 0x5974aa,
+          goal: 0x944d67,
+          player: 0x053545
+        }
+      };
     })(),
     boardTheme: {
       solutionPathGlowAlphaScale: 0.48,
@@ -1048,50 +1082,62 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
   monolith: {
     id: 'monolith',
     label: 'MONOLITH',
-    palette: createThemePalette({
-      background: {
-        deepSpace: 0x0c0d10,
-        nebula: 0x16181d,
-        nebulaCore: 0x21242a,
-        vignette: 0x020202,
-        star: 0xd7d9dd,
-        cloud: 0x25282d
-      },
-      board: {
-        glow: 0x111317,
-        panel: 0x0d0f13,
-        panelStroke: 0x8d949d,
-        well: 0x07080b,
-        shadow: 0x000000,
-        outer: 0x181a1f,
-        outerStroke: 0xd4d9df,
-        innerStroke: 0x979ea8,
-        topHighlight: 0xf1f4f8,
-        wall: 0x17191e,
-        floor: 0xc9d1d7,
-        path: 0x8a929b,
-        route: 0x2d7550,
-        routeCore: 0xf7fff9,
-        routeGlow: 0x18422f,
-        trail: 0x324ead,
-        trailCore: 0xf7f9ff,
-        trailGlow: 0x738af0,
-        start: 0xc1841a,
-        startCore: 0xfff2d1,
-        startGlow: 0x7c5314,
-        goal: 0xb0365e,
-        goalCore: 0xfff0f4,
-        player: 0x0f78b2,
-        playerCore: 0xfcffff,
-        playerHalo: 0x9df1ff,
-        playerShadow: 0x020202
-      },
-      hud: {
-        panelStroke: 0xa3a8b0,
-        accent: 0xf4f6f8,
-        hintText: 0xc0c6ce
-      }
-    }),
+    palette: (() => {
+      const resolved = createThemePalette({
+        background: {
+          deepSpace: 0x0c0d10,
+          nebula: 0x16181d,
+          nebulaCore: 0x21242a,
+          vignette: 0x020202,
+          star: 0xd7d9dd,
+          cloud: 0x25282d
+        },
+        board: {
+          glow: 0x111317,
+          panel: 0x0d0f13,
+          panelStroke: 0x8d949d,
+          well: 0x07080b,
+          shadow: 0x000000,
+          outer: 0x181a1f,
+          outerStroke: 0xd4d9df,
+          innerStroke: 0x979ea8,
+          topHighlight: 0xf1f4f8,
+          wall: 0x17191e,
+          floor: 0xc9d1d7,
+          path: 0x8a929b,
+          route: 0x2d7550,
+          routeCore: 0xf7fff9,
+          routeGlow: 0x18422f,
+          trail: 0x324ead,
+          trailCore: 0xf7f9ff,
+          trailGlow: 0x738af0,
+          start: 0xc1841a,
+          startCore: 0xfff2d1,
+          startGlow: 0x7c5314,
+          goal: 0xb0365e,
+          goalCore: 0xfff0f4,
+          player: 0x0f78b2,
+          playerCore: 0xfcffff,
+          playerHalo: 0x9df1ff,
+          playerShadow: 0x020202
+        },
+        hud: {
+          panelStroke: 0xa3a8b0,
+          accent: 0xf4f6f8,
+          hintText: 0xc0c6ce
+        }
+      });
+
+      return {
+        ...resolved,
+        board: {
+          ...resolved.board,
+          trail: 0x42599d,
+          goal: 0x8f4564,
+          player: 0x052f41
+        }
+      };
+    })(),
     boardTheme: {
       solutionPathGlowAlphaScale: 0.54,
       solutionPathCoreAlphaScale: 0.78,

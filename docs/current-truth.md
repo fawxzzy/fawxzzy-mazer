@@ -17,9 +17,11 @@ If an older note conflicts with the screenshot gate or `demo-build.test.ts`, tre
 
 - The screenshot gate is the primary visual source of truth now. Exact target URLs, diagnostics, and before/after artifacts are repo-owned.
 - The active shipping lane is the 2D Phaser runtime. Future-runtime and planet/3D proof work stay parked and non-authoritative for shipping claims.
+- The repo-owned proof path is green locally as of April 17, 2026: `npm run verify` passed after the theme readability repairs for `ember`, `aurora`, `vellum`, and `monolith`.
 - The live 2D receipt root is `tmp/captures/mazer-visual-proof/`. The committed baseline pointer at `artifacts/visual/baseline.json` is promoted explicitly from that repo-owned root.
 - Trail attach and no-future-preview are the live contract now. The trail should promote into the moving head tile and stop previewing ahead of the actor.
 - The player must remain the dominant local visual signal in the shipping 2D runtime, including worst-case high-contrast or noisy board states.
+- Theme-specific palette tuning must never allow trail or goal to outrank the player's local signal.
 - Readable HUD thought text uses a bounded queue plus minimum dwell time. It should not replace entries at raw event speed.
 - Contrast that only works on some board presets is not sufficient for the live shipping surface.
 - Desktop, TV, and OBS now use the tight 5px board-fit composition frame between the title band and the bottom-center install CTA lane.
@@ -36,4 +38,5 @@ If an older note conflicts with the screenshot gate or `demo-build.test.ts`, tre
 
 - Production can still lag behind the local baseline.
 - Endpoint strategy diversity still needs another pass.
+- Runtime observe/soak visibility rollup work is still repo-local analysis WIP and is not part of the shipping truth claim until it lands.
 - `noir` and `monolith` may still want one last small separation/polish pass if the role split feels too close by eye.

@@ -1,10 +1,31 @@
-import { describe, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   applyPresentationContrastFloors,
   getContrastRatio,
   getPaletteReadabilityReport
 } from '../../src/render/palette';
 import { palette } from '../../src/render/palette';
+
+vi.mock('phaser', () => ({
+  default: {
+    AUTO: 'AUTO',
+    Math: {
+      Clamp: (value: number, min: number, max: number) => Math.max(min, Math.min(max, value)),
+      Linear: (from: number, to: number, t: number) => from + ((to - from) * t)
+    },
+    Scale: {
+      RESIZE: 'RESIZE',
+      CENTER_BOTH: 'CENTER_BOTH'
+    },
+    Scene: class {}
+  }
+}));
+
+let resolveAmbientThemeProfile: typeof import('../../src/scenes/MenuScene').resolveAmbientThemeProfile;
+
+beforeAll(async () => {
+  ({ resolveAmbientThemeProfile } = await import('../../src/scenes/MenuScene'));
+});
 
 describe('presentation palette', () => {
   test('keeps the player more dominant than the trail and passes readability gates', () => {
@@ -39,5 +60,21 @@ describe('presentation palette', () => {
     expect(getContrastRatio(repaired.board.goal, repaired.board.player)).toBeGreaterThan(rawGoalPlayerRatio);
     expect(trailVsPlayer?.ratio).toBeGreaterThan(rawPlayerTrailRatio);
     expect(goalVsPlayer?.ratio).toBeGreaterThan(rawGoalPlayerRatio);
+  });
+
+  test('keeps shipping theme palettes readable for ember and adjacent board palettes', () => {
+    for (const theme of ['ember', 'aurora', 'vellum', 'monolith'] as const) {
+      const report = getPaletteReadabilityReport(resolveAmbientThemeProfile(theme).palette);
+      const trailVsPlayer = report.checkpoints.find((checkpoint) => checkpoint.key === 'trail-vs-player');
+      const goalVsPlayer = report.checkpoints.find((checkpoint) => checkpoint.key === 'goal-vs-player');
+      const trailVsPlayerLuminance = report.checkpoints.find(
+        (checkpoint) => checkpoint.key === 'trail-vs-player-luminance'
+      );
+
+      expect(report.failures, theme).toEqual([]);
+      expect(trailVsPlayer?.passes, `${theme}: trail-vs-player`).toBe(true);
+      expect(goalVsPlayer?.passes, `${theme}: goal-vs-player`).toBe(true);
+      expect(trailVsPlayerLuminance?.passes, `${theme}: trail-vs-player-luminance`).toBe(true);
+    }
   });
 });
