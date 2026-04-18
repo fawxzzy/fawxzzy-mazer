@@ -245,7 +245,94 @@ describe('intent bus', () => {
     for (const relativePath of adapterFiles) {
       const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
       expect(source).toMatch(/mazer-core/);
-      expect(source).not.toMatch(/makeIntentRecord|INTENT_TTL_STEPS:\s*Record<IntentImportance/);
+    expect(source).not.toMatch(/makeIntentRecord|INTENT_TTL_STEPS:\s*Record<IntentImportance/);
     }
+  });
+
+  test('suppresses repeated connector chatter when the state does not materially change', () => {
+    const { bus, feed } = buildFeedFromStates([
+      makeState({
+        step: 0,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch',
+        traversedConnectorId: 'gate-a',
+        traversedConnectorLabel: 'Gate A'
+      }),
+      makeState({
+        step: 1,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch',
+        traversedConnectorId: 'gate-a',
+        traversedConnectorLabel: 'Gate A'
+      }),
+      makeState({
+        step: 2,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch',
+        traversedConnectorId: 'gate-a',
+        traversedConnectorLabel: 'Gate A'
+      })
+    ]);
+
+    expect(bus.records.filter((record) => record.kind === 'gate-aligned')).toHaveLength(1);
+    expect(new Set(bus.records.map((record) => record.summary)).size).toBe(bus.records.length);
+    expect(feed.metrics.intentDebouncePass).toBe(true);
+  });
+
+  test('keeps summaries varied across the common frontier landmark trap and goal transitions', () => {
+    const { bus, feed } = buildFeedFromStates([
+      makeState({
+        step: 0,
+        targetKind: 'frontier',
+        targetTileId: 'west-branch',
+        targetTileLabel: 'West branch'
+      }),
+      makeState({
+        step: 1,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'east-gate',
+        targetTileLabel: 'East gate',
+        visibleLandmarks: [{ id: 'signal-post', label: 'Signal post' }],
+        observedLandmarkIds: ['signal-post']
+      }),
+      makeState({
+        step: 2,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'frontier',
+        targetTileId: 'east-gate',
+        targetTileLabel: 'East gate',
+        localCues: ['trap rhythm']
+      }),
+      makeState({
+        step: 3,
+        currentTileId: 'junction-a',
+        currentTileLabel: 'Junction A',
+        targetKind: 'goal',
+        targetTileId: 'exit',
+        targetTileLabel: 'Exit',
+        goalVisible: true,
+        goalObservedStep: 3
+      })
+    ]);
+
+    const summaries = bus.records.map((entry) => entry.summary);
+    expect(new Set(summaries).size).toBe(summaries.length);
+    expect(summaries.some((summary) => summary.includes('West branch'))).toBe(true);
+    expect(summaries.some((summary) => summary.includes('Signal post'))).toBe(true);
+    expect(summaries.some((summary) => summary.includes('trap rhythm'))).toBe(true);
+    expect(summaries.some((summary) => summary.includes('exit'))).toBe(true);
+    expect(feed.metrics.verbFirstPass).toBe(true);
   });
 });

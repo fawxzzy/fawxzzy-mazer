@@ -130,20 +130,20 @@ const BOARD_READABILITY_MINIMUMS = Object.freeze({
   wallVsFloor: 3.5,
   wallVsRoute: 1.8,
   wallVsTrail: 1.95,
-  wallVsPlayer: 1.1,
+  wallVsPlayer: 1.2,
   floorVsRoute: 2.85,
   floorVsTrail: 3.1,
-  floorVsPlayer: 2.8,
+  floorVsPlayer: 2.85,
   floorVsStart: 1.85,
   floorVsGoal: 3,
   routeVsTrail: 1.3,
-  trailVsPlayer: 1.55,
+  trailVsPlayer: 1.7,
   startVsGoal: 1.6,
-  startVsPlayer: 1.3,
+  startVsPlayer: 1.4,
   goalVsPlayer: 1.8,
   goalVsBackground: 2.1,
   trailVsWallLuminance: 0.055,
-  trailVsPlayerLuminance: 0.05
+  trailVsPlayerLuminance: 0.065
 });
 
 const COLOR_REPAIR_STEPS = 18;
@@ -167,7 +167,7 @@ const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
   route: 0.2,
   trail: 0.28,
-  player: 0.24,
+  player: 0.3,
   start: 0.18,
   goal: 0.24
 };
@@ -412,7 +412,7 @@ const applySignalPaletteCleanup = (input: PresentationPalette): PresentationPale
   }
 });
 
-export const palette: PresentationPalette = {
+const basePalette: PresentationPalette = {
   background: {
     deepSpace: legacyTuning.colors.background.deepSpace,
     nebula: legacyTuning.colors.background.nebula,
@@ -651,3 +651,5 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     }
   };
 };
+
+export const palette: PresentationPalette = applyPresentationContrastFloors(basePalette);

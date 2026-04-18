@@ -390,7 +390,7 @@ describe('PlaybookAdapter', () => {
     expect(scores.get('frontier:cache-branch') ?? 0).toBeGreaterThan(scores.get('frontier:trap-branch') ?? 0);
   });
 
-  test('returns intent summaries without bus-owned record fields', () => {
+  test('returns intent summaries without bus-owned record fields and preserves route context', () => {
     const adapter = new PlaybookAdapter();
     const summary = adapter.summarizeIntent({
       kind: 'frontier-chosen',
@@ -408,7 +408,8 @@ describe('PlaybookAdapter', () => {
 
     expect(summary.speaker).toBe('Runner');
     expect(summary.kind).toBe('frontier-chosen');
-    expect(summary.summary).toBe('Scanning West branch.');
+    expect(summary.summary).toContain('Scanning West branch');
+    expect(summary.summary).toContain('Junction A');
     expect('id' in summary).toBe(false);
     expect('ttlSteps' in summary).toBe(false);
   });

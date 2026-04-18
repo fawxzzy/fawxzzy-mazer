@@ -49,6 +49,19 @@ interface IntentFeedHudOptions {
 
 const DOCK_ORDER: readonly FeedDock[] = ['top-right', 'bottom-right', 'top-left', 'bottom-left'];
 
+export const clampIntentFeedSummary = (summary: string, maxChars: number): string => {
+  const normalized = summary.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+
+  if (maxChars <= 3) {
+    return normalized.slice(0, maxChars);
+  }
+
+  return `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
+};
+
 const normalizeAnchorRect = (
   key: string,
   anchor: IntentFeedAnchorRect | null | undefined,
@@ -249,7 +262,7 @@ export const createIntentFeedHud = (
     hintText: options.palette?.hud.hintText ?? palette.hud.hintText
   };
   const root = scene.add.container(0, 0).setDepth(10.6).setVisible(false);
-  const background = scene.add.rectangle(0, 0, 0, 0, colors.panel, 0.76).setOrigin(0);
+  const background = scene.add.rectangle(0, 0, 0, 0, colors.panel, 0.82).setOrigin(0);
   const border = scene.add.rectangle(0, 0, 0, 0).setOrigin(0).setStrokeStyle(1, colors.panelStroke, 0.9);
   const header = scene.add.text(0, 0, 'Intent Feed', {
     color: `#${colors.accent.toString(16).padStart(6, '0')}`,
@@ -264,6 +277,10 @@ export const createIntentFeedHud = (
       fontSize: `${legacyTuning.menu.intentFeed.entryFontPx}px`
     }).setOrigin(0, 0)
   ));
+  const entryTransitions = entries.map(() => ({
+    key: '',
+    changedAtMs: Number.NEGATIVE_INFINITY
+  }));
   root.add([background, border, header, ...entries]);
 
   return {
@@ -271,7 +288,8 @@ export const createIntentFeedHud = (
       state: IntentFeedState | null,
       anchors: IntentFeedLayoutAnchors = {}
     ): void {
-      const visibleEntries = state?.entries.slice(0, MAX_INTENT_VISIBLE_ENTRIES) ?? [];
+      const tuning = legacyTuning.menu.intentFeed;
+      const visibleEntries = state?.entries.slice(0, tuning.maxVisibleEntries) ?? [];
       if (visibleEntries.length === 0) {
         root.setVisible(false);
         return;
@@ -279,11 +297,14 @@ export const createIntentFeedHud = (
 
       const viewport = resolveSceneViewport(scene);
       const layout = resolveIntentFeedLayout(viewport, visibleEntries.length, anchors);
-      const tuning = legacyTuning.menu.intentFeed;
       const lineHeight = layout.compact ? tuning.compactLineHeightPx : tuning.lineHeightPx;
       const headerHeight = layout.compact ? tuning.compactHeaderHeightPx : tuning.headerHeightPx;
       const headerFontPx = layout.compact ? tuning.compactHeaderFontPx : tuning.headerFontPx;
       const entryFontPx = layout.compact ? tuning.compactEntryFontPx : tuning.entryFontPx;
+      const maxSummaryChars = layout.compact ? tuning.compactSummaryMaxChars : tuning.summaryMaxChars;
+      const transitionMs = Math.max(1, tuning.transitionMs);
+      const transitionStartAlpha = Phaser.Math.Clamp(tuning.transitionStartAlpha, 0, 1);
+      const nowMs = scene.time.now;
 
       root.setPosition(layout.rect.left, layout.rect.top).setVisible(true);
       background.setSize(layout.rect.width, layout.rect.height);
@@ -296,9 +317,19 @@ export const createIntentFeedHud = (
         const entry = entries[index];
         const record = visibleEntries[index];
         if (!record) {
+          entryTransitions[index].key = '';
+          entryTransitions[index].changedAtMs = Number.NEGATIVE_INFINITY;
           entry.setVisible(false);
           continue;
         }
+
+        const transition = entryTransitions[index];
+        if (transition.key !== record.id) {
+          transition.key = record.id;
+          transition.changedAtMs = nowMs;
+        }
+        const transitionProgress = Phaser.Math.Clamp((nowMs - transition.changedAtMs) / transitionMs, 0, 1);
+        const transitionAlpha = Phaser.Math.Linear(transitionStartAlpha, 1, transitionProgress);
 
         entry
           .setVisible(true)
@@ -308,8 +339,8 @@ export const createIntentFeedHud = (
             tuning.paddingYPx + headerHeight + (index * (lineHeight + tuning.entryGapPx))
           )
           .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
-          .setText(`${formatIntentSpeakerHandle(record.speaker)} ${record.summary}`)
-          .setAlpha(record.opacity);
+          .setText(`${formatIntentSpeakerHandle(record.speaker)} ${clampIntentFeedSummary(record.summary, maxSummaryChars)}`)
+          .setAlpha(record.opacity * transitionAlpha);
       }
     },
     destroy(): void {

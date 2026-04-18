@@ -1,6 +1,7 @@
 import { RuntimeAdapterBridge, type RuntimeAdapterHost } from '../mazer-core/adapters';
 import { EpisodicPolicyScorer } from '../mazer-core/agent/PolicyScorer';
 import type { HeadingToken, LocalObservation, TileId, VisibleLandmark } from '../mazer-core/agent/types';
+import { legacyTuning } from '../config/tuning';
 import type {
   RuntimeEpisodeDelivery,
   RuntimeIntentDelivery,
@@ -8,7 +9,12 @@ import type {
   RuntimeObservationProjection,
   RuntimeTrailDelivery
 } from '../mazer-core/adapters';
-import { buildIntentFeed, type IntentFeedBuildResult, type IntentFeedState } from '../mazer-core/intent';
+import {
+  MAX_INTENT_VISIBLE_ENTRIES,
+  buildIntentFeed,
+  type IntentFeedBuildResult,
+  type IntentFeedState
+} from '../mazer-core/intent';
 import {
   getNeighborIndex,
   isTileFloor,
@@ -29,6 +35,145 @@ const TILE_ID_PREFIX = 'tile-';
 const LANDMARK_ID_PREFIX = 'landmark-';
 const LANDMARK_VISIBILITY_RADIUS = 1;
 const GOAL_VISIBILITY_RADIUS = 1;
+
+interface MenuIntentFeedDisplaySnapshot {
+  signature: string;
+  state: IntentFeedState;
+}
+
+export interface MenuIntentFeedDisplayControllerOptions {
+  maxVisibleEntries?: number;
+  minimumDwellMs?: number;
+  replacementDebounceMs?: number;
+}
+
+const normalizeFeedStateForDisplay = (
+  state: IntentFeedState,
+  maxVisibleEntries: number
+): IntentFeedState => ({
+  ...state,
+  entries: state.entries
+    .slice(0, maxVisibleEntries)
+    .map((entry, slot) => ({
+      ...entry,
+      slot
+    }))
+});
+
+const normalizeText = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const serializeAnchor = (entry: IntentFeedState['entries'][number]): string => {
+  if (!entry.anchor) {
+    return '';
+  }
+
+  const { kind, tileId, landmarkId, connectorId } = entry.anchor;
+  return [
+    kind,
+    tileId ?? '',
+    landmarkId ?? '',
+    connectorId ?? ''
+  ].join(':');
+};
+
+const createDisplaySignature = (state: IntentFeedState | null, maxVisibleEntries: number): string => (
+  state?.entries
+    .slice(0, maxVisibleEntries)
+    .map((entry) => [
+      entry.speaker,
+      entry.kind,
+      entry.importance,
+      normalizeText(entry.summary),
+      serializeAnchor(entry)
+    ].join('|'))
+    .join('|')
+  ?? ''
+);
+
+export class MenuIntentFeedDisplayController {
+  private readonly maxVisibleEntries: number;
+
+  private readonly minimumDwellMs: number;
+
+  private readonly replacementDebounceMs: number;
+
+  private current: (MenuIntentFeedDisplaySnapshot & { shownAtMs: number }) | null = null;
+
+  private pending: (MenuIntentFeedDisplaySnapshot & { queuedAtMs: number }) | null = null;
+
+  constructor(options: MenuIntentFeedDisplayControllerOptions = {}) {
+    this.maxVisibleEntries = Math.max(
+      1,
+      Math.min(
+        MAX_INTENT_VISIBLE_ENTRIES,
+        Math.trunc(options.maxVisibleEntries ?? legacyTuning.menu.intentFeed.maxVisibleEntries)
+      )
+    );
+    this.minimumDwellMs = Math.max(0, Math.trunc(options.minimumDwellMs ?? legacyTuning.menu.intentFeed.minimumDwellMs));
+    this.replacementDebounceMs = Math.max(
+      0,
+      Math.trunc(options.replacementDebounceMs ?? legacyTuning.menu.intentFeed.replacementDebounceMs)
+    );
+  }
+
+  advance(rawState: IntentFeedState | null, nowMs: number): IntentFeedState | null {
+    if (!rawState || rawState.entries.length === 0) {
+      this.pending = null;
+      if (this.current && (nowMs - this.current.shownAtMs) >= this.minimumDwellMs) {
+        this.current = null;
+      }
+      return this.current?.state ?? null;
+    }
+
+    const signature = createDisplaySignature(rawState, this.maxVisibleEntries);
+    const state = normalizeFeedStateForDisplay(rawState, this.maxVisibleEntries);
+
+    if (!this.current) {
+      this.current = {
+        signature,
+        state,
+        shownAtMs: nowMs
+      };
+      return state;
+    }
+
+    if (signature === this.current.signature) {
+      // Keep the visible state stable when the semantic content has not changed.
+      this.pending = null;
+      return this.current.state;
+    }
+
+    if (!this.pending || this.pending.signature !== signature) {
+      this.pending = {
+        signature,
+        state,
+        queuedAtMs: nowMs
+      };
+    } else {
+      this.pending = {
+        ...this.pending,
+        state
+      };
+    }
+
+    const currentDwellElapsed = nowMs - this.current.shownAtMs;
+    const pendingDebounceElapsed = nowMs - this.pending.queuedAtMs;
+    if (currentDwellElapsed >= this.minimumDwellMs && pendingDebounceElapsed >= this.replacementDebounceMs) {
+      this.current = {
+        signature: this.pending.signature,
+        state: this.pending.state,
+        shownAtMs: nowMs
+      };
+      this.pending = null;
+    }
+
+    return this.current.state;
+  }
+}
+
+export const createMenuIntentFeedDisplayController = (
+  options: MenuIntentFeedDisplayControllerOptions = {}
+): MenuIntentFeedDisplayController => new MenuIntentFeedDisplayController(options);
 
 const toTileId = (index: number): TileId => `${TILE_ID_PREFIX}${index}`;
 
@@ -327,6 +472,8 @@ export class MenuIntentRuntimeSession {
 
   private readonly maxSteps: number;
 
+  private readonly feedDisplayController = createMenuIntentFeedDisplayController();
+
   private feed: IntentFeedBuildResult | null = null;
 
   private feedVersion = -1;
@@ -374,6 +521,10 @@ export class MenuIntentRuntimeSession {
 
     const safeStep = Math.max(0, Math.min(Math.trunc(step), this.latestStep));
     return this.feed.states.get(safeStep) ?? this.feed.states.get(this.latestStep) ?? null;
+  }
+
+  getDisplayFeedState(step = this.latestStep, nowMs = 0): IntentFeedState | null {
+    return this.feedDisplayController.advance(this.getFeedState(step), nowMs);
   }
 
   private ensureFeed(): void {

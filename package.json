@@ -26,6 +26,7 @@
     "visual:proof": "node ./scripts/visual/mazer-run.mjs",
     "visual:canaries": "node ./scripts/visual/run-canaries.mjs",
     "boot:timing": "node ./scripts/analysis/capture-boot-timing.mjs",
+    "runtime:observe": "node ./scripts/analysis/capture-runtime-observe.mjs",
     "runtime:soak": "node ./scripts/analysis/capture-runtime-soak.mjs",
     "runtime:soak:10m": "node ./scripts/analysis/capture-runtime-soak.mjs --duration-seconds 600 --label 10m --restart-cycles 3 --restart-mode route-reset --hidden-window-ms 30000",
     "runtime:soak:30m": "node ./scripts/analysis/capture-runtime-soak.mjs --duration-seconds 1800 --label 30m --restart-cycles 6 --restart-mode route-reset --hidden-window-ms 60000",

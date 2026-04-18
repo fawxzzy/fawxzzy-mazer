@@ -79,6 +79,8 @@ const toSemanticCues = (values: readonly string[]): string[] => values.filter((v
 
 const sanitizeId = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
+const normalizeSummary = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.!?]+$/u, '').toLowerCase();
+
 const clampConfidence = (value: number): number => Number(Math.min(0.99, Math.max(0.51, value)).toFixed(2));
 
 const makeIntentRecord = (
@@ -120,6 +122,14 @@ const matchesDebounceWindow = (
   step: number
 ): boolean => records.some((record) => (
   step - record.step <= DEBOUNCE_WINDOW_STEPS && debounceKeyById.get(record.id) === debounceKey
+));
+
+const matchesNearDuplicateSummary = (
+  records: readonly IntentBusRecord[],
+  summary: string,
+  step: number
+): boolean => records.some((record) => (
+  step - record.step <= DEBOUNCE_WINDOW_STEPS && normalizeSummary(record.summary) === normalizeSummary(summary)
 ));
 
 const makePlaybookIntentCandidate = (
@@ -258,7 +268,9 @@ const selectIntentCandidates = (
     }));
   }
 
-  if (state.traversedConnectorId) {
+  const connectorChanged = Boolean(previous && state.traversedConnectorId && state.traversedConnectorId !== previous.traversedConnectorId);
+
+  if (state.traversedConnectorId && (!previous || connectorChanged)) {
     candidates.push(makePlaybookIntentCandidate(state.step, 42, 'gate-aligned', {
       kind: 'gate-aligned',
       state,
@@ -305,6 +317,14 @@ export const buildIntentBus = (
       const blocked = !aggressiveMode
         && matchesDebounceWindow(records, debounceKeyById, candidate.debounceKey, state.step);
       if (blocked) {
+        debouncedEventCount += 1;
+        if (candidate.record.anchor) {
+          debouncedWorldPingCount += 1;
+        }
+        continue;
+      }
+
+      if (!aggressiveMode && matchesNearDuplicateSummary(records, candidate.record.summary, state.step)) {
         debouncedEventCount += 1;
         if (candidate.record.anchor) {
           debouncedWorldPingCount += 1;

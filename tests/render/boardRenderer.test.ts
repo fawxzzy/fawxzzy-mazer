@@ -205,6 +205,26 @@ describe('board renderer', () => {
     expect(coreFillIndex).toBeGreaterThan(playerFillIndex);
   });
 
+  test('adds an always-on emphasis floor and a large focus ring around the player signal', () => {
+    const { scene, graphics } = createSceneStub(1_000);
+    const renderer = new BoardRenderer(scene, createEpisode(), createLayout());
+
+    renderer.drawActor(0, 3, 'explore');
+
+    const actorGraphics = graphics.at(8);
+    expect(actorGraphics).toBeTruthy();
+
+    const fillCircleCalls = actorGraphics!.calls.filter((call) => call.method === 'fillCircle');
+    const strokeCircleCalls = actorGraphics!.calls.filter((call) => call.method === 'strokeCircle');
+    const firstFocusFillRadius = Number(fillCircleCalls[0]?.args[2] ?? 0);
+    const playerCoreStrokeRadii = strokeCircleCalls
+      .filter((call) => Number.isFinite(call.args[2]))
+      .map((call) => Number(call.args[2]));
+
+    expect(firstFocusFillRadius).toBeGreaterThan(6);
+    expect(playerCoreStrokeRadii.some((radius) => radius > 5)).toBe(true);
+  });
+
   test('exposes a live trail head when committed trail and motion head match', () => {
     const { scene } = createSceneStub(1_000);
     const renderer = new BoardRenderer(scene, createEpisode(), createLayout());

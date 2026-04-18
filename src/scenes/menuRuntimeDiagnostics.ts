@@ -7,6 +7,8 @@ export interface MenuSceneRuntimeTuning {
   recentFrameWindow: number;
   degradeAverageFrameMs: number;
   recoverAverageFrameMs: number;
+  degradeSpikeCount: number;
+  recoverSpikeCount: number;
   spikeFrameMs: number;
   lowPowerHardwareConcurrencyMax: number;
   ambientUpdateIntervalMs: Record<MenuScenePerformanceMode, number>;
@@ -30,6 +32,24 @@ export interface MenuSceneFrameWindowSummary {
   fps: number;
 }
 
+export interface MenuSceneRuntimeFeedEntrySnapshot {
+  id: string;
+  speaker: string;
+  kind: string;
+  importance: string;
+  summary: string;
+  slot: number;
+}
+
+export interface MenuSceneRuntimeFeedDiagnostics {
+  step: number | null;
+  signature: string;
+  visibleEntryCount: number;
+  visibleEntries: MenuSceneRuntimeFeedEntrySnapshot[];
+  changeCount: number;
+  lastChangedAt: number | null;
+}
+
 export interface MenuSceneRuntimeDiagnostics {
   revision: number;
   sceneInstanceId: number;
@@ -44,9 +64,11 @@ export interface MenuSceneRuntimeDiagnostics {
     mode: MenuScenePerformanceMode;
     averageFrameMs: number;
     recentAverageFrameMs: number;
+    recentFrameCount: number;
     worstFrameMs: number;
     worstRecentFrameMs: number;
     spikeCount: number;
+    recentSpikeCount: number;
     estimatedFps: number;
     lowPowerDetected: boolean;
     lowPowerForced: boolean;
@@ -54,6 +76,7 @@ export interface MenuSceneRuntimeDiagnostics {
     hardwareConcurrency: number | null;
     saveData: boolean;
   };
+  feed: MenuSceneRuntimeFeedDiagnostics;
   resources: {
     activeTweens: number;
     activeTimers: number;
@@ -104,6 +127,20 @@ let fallbackSceneInstanceId = 0;
 const resolveRuntimeWindow = (): Window | undefined => (
   typeof window === 'undefined' ? undefined : window
 );
+
+const normalizeFeedSummary = (value: string): string => value.trim().replace(/\s+/g, ' ');
+
+const buildFeedSignature = (
+  entries: readonly MenuSceneRuntimeFeedEntrySnapshot[]
+): string => entries
+  .map((entry) => [
+    entry.speaker,
+    entry.kind,
+    entry.importance,
+    normalizeFeedSummary(entry.summary),
+    entry.slot
+  ].join('|'))
+  .join('||');
 
 const isTruthyParam = (value: string | null | undefined): boolean => (
   value !== null && value !== undefined && TRUTHY_PARAM_VALUES.has(value.toLowerCase())
@@ -159,7 +196,8 @@ export const resolveMenuScenePerformanceMode = (
     hidden: boolean;
     lowPowerActive: boolean;
     recentAverageFrameMs: number;
-    tuning: Pick<MenuSceneRuntimeTuning, 'degradeAverageFrameMs' | 'recoverAverageFrameMs'>;
+    recentSpikeCount: number;
+    tuning: Pick<MenuSceneRuntimeTuning, 'degradeAverageFrameMs' | 'recoverAverageFrameMs' | 'degradeSpikeCount' | 'recoverSpikeCount'>;
   }
 ): MenuScenePerformanceMode => {
   if (options.hidden) {
@@ -173,14 +211,19 @@ export const resolveMenuScenePerformanceMode = (
   const recentAverageFrameMs = Number.isFinite(options.recentAverageFrameMs)
     ? options.recentAverageFrameMs
     : 0;
+  const recentSpikeCount = Number.isFinite(options.recentSpikeCount)
+    ? Math.max(0, Math.trunc(options.recentSpikeCount))
+    : 0;
 
   if (previousMode === 'throttled') {
     return recentAverageFrameMs > options.tuning.recoverAverageFrameMs
+      || recentSpikeCount > options.tuning.recoverSpikeCount
       ? 'throttled'
       : 'full';
   }
 
   return recentAverageFrameMs >= options.tuning.degradeAverageFrameMs
+    || recentSpikeCount >= options.tuning.degradeSpikeCount
     ? 'throttled'
     : 'full';
 };
@@ -220,6 +263,33 @@ export const summarizeMenuSceneFrameWindow = (
     worstMs: Number(worstMs.toFixed(3)),
     spikeCount,
     fps: averageMs > 0 ? Number((1000 / averageMs).toFixed(2)) : 0
+  };
+};
+
+export const summarizeMenuSceneRuntimeFeed = (options: {
+  step?: number | null;
+  visibleEntries?: readonly MenuSceneRuntimeFeedEntrySnapshot[] | null;
+  previous?: MenuSceneRuntimeFeedDiagnostics | null;
+  nowMs: number;
+}): MenuSceneRuntimeFeedDiagnostics => {
+  const visibleEntries = (options.visibleEntries ?? [])
+    .slice()
+    .sort((left, right) => left.slot - right.slot)
+    .map((entry) => ({
+      ...entry,
+      summary: normalizeFeedSummary(entry.summary)
+    }));
+  const signature = buildFeedSignature(visibleEntries);
+  const previous = options.previous;
+  const changed = signature !== (previous?.signature ?? '');
+
+  return {
+    step: Number.isFinite(options.step) ? Math.max(0, Math.trunc(options.step ?? 0)) : null,
+    signature,
+    visibleEntryCount: visibleEntries.length,
+    visibleEntries,
+    changeCount: (previous?.changeCount ?? 0) + (changed ? 1 : 0),
+    lastChangedAt: changed ? Math.max(0, Math.round(options.nowMs)) : (previous?.lastChangedAt ?? null)
   };
 };
 

@@ -1,5 +1,14 @@
-import { describe, expect, test } from 'vitest';
-import { resolveIntentFeedLayout } from '../../src/render/intentFeedRenderer';
+import { describe, expect, test, vi } from 'vitest';
+import { clampIntentFeedSummary, resolveIntentFeedLayout } from '../../src/render/intentFeedRenderer';
+
+vi.mock('phaser', () => ({
+  default: {
+    Math: {
+      Clamp: (value: number, min: number, max: number) => Math.max(min, Math.min(max, value)),
+      Linear: (left: number, right: number, t: number) => left + ((right - left) * t)
+    }
+  }
+}));
 
 const overlaps = (
   left: { left: number; top: number; width: number; height: number },
@@ -50,5 +59,12 @@ describe('intent feed renderer', () => {
     expect(layout.rect.top + layout.rect.height).toBeLessThanOrEqual(844);
     expect(layout.rect.left + layout.rect.width).toBeLessThanOrEqual(390);
     expect(layout.rect.top).toBeLessThan(installRect.top);
+  });
+
+  test('clamps long summaries into a single readable line', () => {
+    expect(
+      clampIntentFeedSummary('  scanning   a long branch note that should not stay as a full sentence on the HUD  ', 32)
+    ).toBe('scanning a long branch note t...');
+    expect(clampIntentFeedSummary('short note', 32)).toBe('short note');
   });
 });

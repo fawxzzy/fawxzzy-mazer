@@ -19,6 +19,9 @@ If an older note conflicts with the screenshot gate or `demo-build.test.ts`, tre
 - The active shipping lane is the 2D Phaser runtime. Future-runtime and planet/3D proof work stay parked and non-authoritative for shipping claims.
 - The live 2D receipt root is `tmp/captures/mazer-visual-proof/`. The committed baseline pointer at `artifacts/visual/baseline.json` is promoted explicitly from that repo-owned root.
 - Trail attach and no-future-preview are the live contract now. The trail should promote into the moving head tile and stop previewing ahead of the actor.
+- The player must remain the dominant local visual signal in the shipping 2D runtime, including worst-case high-contrast or noisy board states.
+- Readable HUD thought text uses a bounded queue plus minimum dwell time. It should not replace entries at raw event speed.
+- Contrast that only works on some board presets is not sufficient for the live shipping surface.
 - Desktop, TV, and OBS now use the tight 5px board-fit composition frame between the title band and the bottom-center install CTA lane.
 - Title/header cleanup landed. Current visual polish favors clearer lockup contrast, lower shadow mud, and tighter readout spacing.
 - Start/end diversity improved materially, but generator-side endpoint strategy spread is still not finished and remains too region-opposed heavy.

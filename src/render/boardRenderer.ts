@@ -1600,9 +1600,18 @@ export class BoardRenderer {
     const haloRadius = Math.max(minVisibleRadius, tileSize * actorTuning.haloRadiusRatio);
     const coreRadius = Math.max(minVisibleRadius * 0.78, tileSize * actorTuning.coreRadiusRatio);
     const brightCoreRadius = Math.max(minVisibleRadius * 0.56, coreRadius * 0.74);
+    const emphasisFloorRadius = Math.max(haloRadius, tileSize * actorTuning.emphasisFloorRadiusRatio);
+    const focusRingRadius = Math.max(emphasisFloorRadius, tileSize * actorTuning.focusRingRadiusRatio);
+    const focusRingWidth = Math.max(1, tileSize * actorTuning.focusRingWidthRatio);
     const outerRingRadius = Math.max(coreRadius, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
+    const resolvedHaloAlpha = Math.max(actorTuning.haloMinimumAlpha, haloAlpha);
+    const resolvedOuterRingAlpha = Math.max(actorTuning.outerRingMinimumAlpha, outerRingAlpha);
 
     this.actor.clear();
+    this.actor.fillStyle(colors.board.shadow, actorTuning.emphasisFloorAlpha);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, emphasisFloorRadius);
+    this.actor.lineStyle(focusRingWidth, colors.board.playerCore, actorTuning.focusRingAlpha);
+    this.actor.strokeCircle(bodyCenterX, bodyCenterY, focusRingRadius);
     this.actor.fillStyle(colors.board.shadow, 0.94);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, silhouetteRadius);
     this.actor.lineStyle(silhouetteStrokeWidth, colors.board.shadow, 0.98);
@@ -1614,7 +1623,7 @@ export class BoardRenderer {
       tileSize * actorTuning.shadowRadiusRatio
     );
 
-    this.actor.fillStyle(colors.board.playerHalo, haloAlpha * 0.76 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, resolvedHaloAlpha * 0.76 * actorHaloScale);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, haloRadius * actorPulse);
 
     this.actor.lineStyle(Math.max(1, tileSize * 0.024), colors.board.playerCore, 0.68);
@@ -1628,7 +1637,7 @@ export class BoardRenderer {
 
     this.actor.lineStyle(Math.max(2, tileSize * actorTuning.ringWidthRatio), ringColor, cue === 'backtrack' ? 0.78 : 0.94);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, tileSize * actorTuning.ringRadiusRatio);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.025), ringColor, outerRingAlpha * 0.72);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.025), ringColor, resolvedOuterRingAlpha * 0.72);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, outerRingRadius);
 
     this.actor.fillStyle(colors.board.playerHalo, 0.56 * actorHaloScale);

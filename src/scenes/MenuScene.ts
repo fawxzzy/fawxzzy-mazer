@@ -46,6 +46,7 @@ import {
   resolveCuratedFamilyRotation
 } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
+import type { IntentFeedState } from '../mazer-core/intent';
 import {
   createBoardLayout,
   BoardRenderer,
@@ -56,7 +57,6 @@ import {
 } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
 import { createIntentFeedHud } from '../render/intentFeedRenderer';
-import { MAX_INTENT_VISIBLE_ENTRIES } from '../mazer-core/intent';
 import {
   applyPresentationContrastFloors,
   getPaletteReadabilityReport,
@@ -70,6 +70,7 @@ import {
   publishMenuSceneRuntimeDiagnostics,
   resolveMenuScenePerformanceMode,
   resolveMenuSceneRuntimeConfig,
+  summarizeMenuSceneRuntimeFeed,
   summarizeMenuSceneFrameWindow,
   type MenuScenePerformanceMode,
   type MenuSceneRuntimeDiagnostics
@@ -941,19 +942,14 @@ const THEME_PROFILES: Record<PresentationThemeFamily, AmbientThemeProfile> = {
         }
       });
 
-      return {
+      return applyPresentationContrastFloors({
         ...resolved,
         board: {
           ...resolved.board,
           wall: 0x171c22,
-          floor: 0xe7dfcf,
-          route: 0x214f35,
-          trail: 0x3550ae,
-          player: 0x0e7cb6,
-          start: 0xb87d1d,
-          goal: 0x74203b
+          floor: 0xe7dfcf
         }
-      };
+      });
     })(),
     boardTheme: {
       solutionPathGlowAlphaScale: 0.48,
@@ -3618,6 +3614,14 @@ export class MenuScene extends Phaser.Scene {
     let activeListenerCount = 0;
     let lastTrailSegmentCount = 0;
     let lastIntentEntryCount = 0;
+    let lastIntentFeedDiagnostics: MenuSceneRuntimeDiagnostics['feed'] = {
+      step: null,
+      signature: '',
+      visibleEntryCount: 0,
+      visibleEntries: [],
+      changeCount: 0,
+      lastChangedAt: null
+    };
     let ambientSkyDeltaBudgetMs = 0;
     let lastRuntimeDiagnosticsPublishedAt = sceneStartedAt;
     let totalFrameCount = 0;
@@ -3627,6 +3631,18 @@ export class MenuScene extends Phaser.Scene {
     const recentFrameTimesMs: number[] = [];
     let renderDemo: () => void = () => undefined;
 
+    const toRuntimeFeedEntries = (
+      feedState: IntentFeedState | null
+    ): MenuSceneRuntimeDiagnostics['feed']['visibleEntries'] => (
+      feedState?.entries.map((entry) => ({
+        id: entry.id,
+        speaker: entry.speaker,
+        kind: entry.kind,
+        importance: entry.importance,
+        summary: entry.summary,
+        slot: entry.slot
+      })) ?? []
+    );
     const runOptional = (label: string, render: () => void): void => {
       try {
         render();
@@ -3675,13 +3691,15 @@ export class MenuScene extends Phaser.Scene {
       };
     };
     const updatePerformanceMode = (sceneHidden: boolean): void => {
+      const recentFrames = summarizeMenuSceneFrameWindow(
+        recentFrameTimesMs,
+        legacyTuning.menu.runtime.spikeFrameMs
+      );
       performanceMode = resolveMenuScenePerformanceMode(performanceMode, {
         hidden: sceneHidden,
         lowPowerActive: runtimeConfig.lowPowerActive,
-        recentAverageFrameMs: summarizeMenuSceneFrameWindow(
-          recentFrameTimesMs,
-          legacyTuning.menu.runtime.spikeFrameMs
-        ).averageMs,
+        recentAverageFrameMs: recentFrames.averageMs,
+        recentSpikeCount: recentFrames.spikeCount,
         tuning: legacyTuning.menu.runtime
       });
     };
@@ -3739,9 +3757,11 @@ export class MenuScene extends Phaser.Scene {
           mode: performanceMode,
           averageFrameMs,
           recentAverageFrameMs: recentFrames.averageMs,
+          recentFrameCount: recentFrames.count,
           worstFrameMs: Number(worstFrameTimeMs.toFixed(3)),
           worstRecentFrameMs: recentFrames.worstMs,
           spikeCount: totalSpikeCount,
+          recentSpikeCount: recentFrames.spikeCount,
           estimatedFps: recentFrames.fps,
           lowPowerDetected: runtimeConfig.lowPowerDetected,
           lowPowerForced: runtimeConfig.lowPowerForced,
@@ -3749,6 +3769,7 @@ export class MenuScene extends Phaser.Scene {
           hardwareConcurrency: runtimeConfig.hardwareConcurrency,
           saveData: runtimeConfig.saveData
         },
+        feed: lastIntentFeedDiagnostics,
         resources: {
           activeTweens: activeTweenCount,
           activeTimers: activeTimerCount,
@@ -3763,7 +3784,7 @@ export class MenuScene extends Phaser.Scene {
           trailSegmentCount: lastTrailSegmentCount,
           trailSegmentCap: legacyTuning.demo.behavior.trailMaxLength,
           intentEntryCount: lastIntentEntryCount,
-          intentEntryCap: MAX_INTENT_VISIBLE_ENTRIES,
+          intentEntryCap: legacyTuning.menu.intentFeed.maxVisibleEntries,
           deferredVisualTasksRemaining: deferredVisualTaskQueue.length,
           deferredTasksPerFrameCap: legacyTuning.menu.runtime.deferredTasksPerFrame[performanceMode],
           background: {
@@ -4245,13 +4266,15 @@ export class MenuScene extends Phaser.Scene {
         const boardAuraHeight = Math.max(24, Math.round(layout.boardHeight * 1.18));
         const boardHaloWidth = Math.max(20, Math.round(layout.boardWidth * 1.08));
         const boardHaloHeight = Math.max(20, Math.round(layout.boardHeight * 1.08));
+        const signalPriority = legacyTuning.menu.signalPriority;
         const boardRenderer = new BoardRenderer(this, episode, layout, {
           theme: {
             ...themeProfile.boardTheme,
-            trailFillAlphaScale: (themeProfile.boardTheme.trailFillAlphaScale ?? 1) * 0.88,
-            trailGlowAlphaScale: (themeProfile.boardTheme.trailGlowAlphaScale ?? 1) * 0.9,
-            trailCoreAlphaScale: (themeProfile.boardTheme.trailCoreAlphaScale ?? 1) * 0.94,
-            actorHaloAlphaScale: (themeProfile.boardTheme.actorHaloAlphaScale ?? 1) * 1.18,
+            trailFillAlphaScale: (themeProfile.boardTheme.trailFillAlphaScale ?? 1) * signalPriority.trailFillAlphaScale,
+            trailGlowAlphaScale: (themeProfile.boardTheme.trailGlowAlphaScale ?? 1) * signalPriority.trailGlowAlphaScale,
+            trailCoreAlphaScale: (themeProfile.boardTheme.trailCoreAlphaScale ?? 1) * signalPriority.trailCoreAlphaScale,
+            goalGlowAlphaScale: (themeProfile.boardTheme.goalGlowAlphaScale ?? 1) * signalPriority.goalGlowAlphaScale,
+            actorHaloAlphaScale: (themeProfile.boardTheme.actorHaloAlphaScale ?? 1) * signalPriority.actorHaloAlphaScale,
             palette: themeProfile.palette
           }
         });
@@ -4784,8 +4807,14 @@ export class MenuScene extends Phaser.Scene {
             + (yFromIndex(episode.raster.endIndex, episode.raster.width) * shell.layout.tileSize)
             + (shell.layout.tileSize / 2);
           const anchorSize = legacyTuning.menu.intentFeed.anchorSizePx;
-          const feedState = intentRuntimeSession?.getFeedState(intentStep) ?? null;
-          lastIntentEntryCount = feedState?.entries.length ?? 0;
+          const feedState = intentRuntimeSession?.getDisplayFeedState(intentStep, this.time.now) ?? null;
+          lastIntentFeedDiagnostics = summarizeMenuSceneRuntimeFeed({
+            step: feedState?.step ?? null,
+            visibleEntries: toRuntimeFeedEntries(feedState),
+            previous: lastIntentFeedDiagnostics,
+            nowMs: this.time.now
+          });
+          lastIntentEntryCount = lastIntentFeedDiagnostics.visibleEntryCount;
 
           shell.intentFeedHud.setState(feedState, {
             player: {
@@ -4880,6 +4909,7 @@ export class MenuScene extends Phaser.Scene {
         sceneTweens.resumeAll?.();
         ambientSkyDeltaBudgetMs = 0;
         updatePerformanceMode(false);
+        publishRuntimeDiagnostics(false, true);
       };
       handleVisibilityChange = (): void => {
         if (typeof document === 'undefined' || recoveryActivated) {

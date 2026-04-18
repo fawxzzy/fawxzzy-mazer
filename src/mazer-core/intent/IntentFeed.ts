@@ -103,9 +103,11 @@ const calculateMaxEmissionStreak = (records: readonly IntentBusRecord[]): number
   return maxStreak;
 };
 
+const normalizeSummary = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.!?]+$/u, '').toLowerCase();
+
 const hasRepeatedSummary = (records: readonly IntentBusRecord[]): boolean => records.some((record, index) => (
   index > 0
-  && records[index - 1].summary === record.summary
+  && normalizeSummary(records[index - 1].summary) === normalizeSummary(record.summary)
   && records[index - 1].speaker === record.speaker
   && (record.step - records[index - 1].step) <= DEBOUNCE_WINDOW_STEPS
 ));

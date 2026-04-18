@@ -18,6 +18,8 @@ export interface PlaybookIntentState {
   targetTileLabel: string | null;
   targetKind: 'frontier' | 'goal' | 'backtrack' | 'idle';
   goalVisible: boolean;
+  frontierCount?: number;
+  backtrackCount?: number;
   traversedConnectorId: string | null;
   traversedConnectorLabel: string | null;
 }
@@ -47,6 +49,10 @@ const normalizeLabel = (value: string | null | undefined, fallback: string): str
 
   return value.trim();
 };
+
+const describeCount = (value: number, singular: string, plural: string): string => (
+  value === 1 ? singular : plural
+);
 
 const buildRunnerAnchor = (
   state: PlaybookIntentState,
@@ -93,7 +99,7 @@ export class PlaybookIntentTemplates {
           kind: 'goal-observed',
           category: 'goal',
           importance: 'high',
-          summary: 'Locking exit route.',
+          summary: `Locking exit route from ${currentLabel}.`,
           confidence: 0.99,
           anchor: {
             kind: 'objective',
@@ -106,7 +112,7 @@ export class PlaybookIntentTemplates {
           kind: 'enemy-seen',
           category: 'danger',
           importance: 'high',
-          summary: `Screening ${input.cue ?? 'warden'} pressure.`,
+          summary: `Screening ${input.cue ?? 'warden'} pressure near ${currentLabel}.`,
           confidence: 0.86,
           anchor: {
             kind: 'tile',
@@ -119,7 +125,7 @@ export class PlaybookIntentTemplates {
           kind: 'trap-inferred',
           category: 'danger',
           importance: 'high',
-          summary: `Reading ${input.cue ?? 'trap'} rhythm.`,
+          summary: `Reading ${input.cue ?? 'trap'} rhythm from ${currentLabel}.`,
           confidence: 0.78,
           anchor: {
             kind: 'tile',
@@ -132,7 +138,7 @@ export class PlaybookIntentTemplates {
           kind: 'item-spotted',
           category: 'item',
           importance: 'medium',
-          summary: `Valuing ${input.cue ?? 'item'} detour.`,
+          summary: `Valuing ${input.cue ?? 'item'} detour off ${currentLabel}.`,
           confidence: 0.74,
           anchor: {
             kind: 'tile',
@@ -145,7 +151,7 @@ export class PlaybookIntentTemplates {
           kind: 'puzzle-state-observed',
           category: 'infer',
           importance: 'medium',
-          summary: `Parsing ${input.cue ?? 'puzzle'} state.`,
+          summary: `Parsing ${input.cue ?? 'puzzle'} state at ${currentLabel}.`,
           confidence: 0.72,
           anchor: {
             kind: 'tile',
@@ -153,21 +159,24 @@ export class PlaybookIntentTemplates {
           }
         };
       case 'dead-end-confirmed':
+        {
+          const backtrackCount = Math.max(1, input.state.backtrackCount ?? 1);
         return {
           speaker: 'Runner',
           kind: 'dead-end-confirmed',
           category: 'infer',
           importance: 'medium',
-          summary: `Marking ${currentLabel} low value.`,
+          summary: `Marking ${currentLabel} low value after ${describeCount(backtrackCount, '1 backtrack', `${backtrackCount} backtracks`)}.`,
           confidence: 0.89
         };
+        }
       case 'landmark-spotted':
         return {
           speaker: 'Runner',
           kind: 'landmark-spotted',
           category: 'observe',
           importance: 'medium',
-          summary: `Noting ${input.landmark?.label ?? 'landmark'}.`,
+          summary: `Noting ${input.landmark?.label ?? 'landmark'} from ${currentLabel}.`,
           confidence: 0.68,
           anchor: {
             kind: 'landmark',
@@ -175,15 +184,18 @@ export class PlaybookIntentTemplates {
           }
         };
       case 'replan-triggered':
+        {
+          const frontierCount = Math.max(1, input.state.frontierCount ?? 1);
         return {
           speaker: 'Runner',
           kind: 'replan-triggered',
           category: 'replan',
           importance: 'medium',
-          summary: `Replanning through ${targetLabel}.`,
+          summary: `Replanning ${currentLabel} toward ${targetLabel} with ${describeCount(frontierCount, '1 option', `${frontierCount} options`)}.`,
           confidence: 0.79,
           anchor: aggressiveMode ? buildRunnerAnchor(input.state) : undefined
         };
+        }
       case 'route-commitment-changed': {
         const goalCommit = input.state.targetKind === 'goal';
         return {
@@ -191,7 +203,9 @@ export class PlaybookIntentTemplates {
           kind: 'route-commitment-changed',
           category: goalCommit ? 'goal' : 'replan',
           importance: goalCommit ? 'high' : 'medium',
-          summary: goalCommit ? `Locking route to ${targetLabel}.` : `Tracking ${targetLabel}.`,
+          summary: goalCommit
+            ? `Locking route to ${targetLabel} from ${currentLabel}.`
+            : `Tracking ${targetLabel} from ${currentLabel}.`,
           confidence: goalCommit ? 0.91 : 0.73,
           anchor: aggressiveMode
             ? buildRunnerAnchor(input.state, goalCommit ? 'objective' : 'tile')
@@ -204,7 +218,7 @@ export class PlaybookIntentTemplates {
           kind: 'gate-aligned',
           category: 'observe',
           importance: 'medium',
-          summary: `Timing ${connectorLabel}.`,
+          summary: `Timing ${connectorLabel} at ${currentLabel}.`,
           confidence: 0.83,
           anchor: {
             kind: 'connector',
@@ -217,7 +231,7 @@ export class PlaybookIntentTemplates {
           kind: 'frontier-chosen',
           category: 'observe',
           importance: 'low',
-          summary: `Scanning ${targetLabel}.`,
+          summary: `Scanning ${targetLabel} from ${currentLabel}.`,
           confidence: 0.61,
           anchor: aggressiveMode ? buildRunnerAnchor(input.state) : undefined
         };
