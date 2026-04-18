@@ -75,6 +75,24 @@ describe('menu runtime diagnostics', () => {
     })).toBe('full');
 
     expect(resolveMenuScenePerformanceMode('full', {
+      hidden: false,
+      lowPowerActive: false,
+      recentAverageFrameMs: 15,
+      recentSpikeCount: 0,
+      heapPressureActive: true,
+      tuning: legacyTuning.menu.runtime
+    })).toBe('throttled');
+
+    expect(resolveMenuScenePerformanceMode('full', {
+      hidden: false,
+      lowPowerActive: false,
+      recentAverageFrameMs: 15,
+      recentSpikeCount: 0,
+      recoveryHoldActive: true,
+      tuning: legacyTuning.menu.runtime
+    })).toBe('throttled');
+
+    expect(resolveMenuScenePerformanceMode('full', {
       hidden: true,
       lowPowerActive: false,
       recentAverageFrameMs: 12,

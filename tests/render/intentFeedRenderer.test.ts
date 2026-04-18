@@ -21,6 +21,13 @@ const overlaps = (
 );
 
 describe('intent feed renderer', () => {
+  test('reserves one status line above the bounded event list', () => {
+    const withStatus = resolveIntentFeedLayout({ width: 1280, height: 720 }, 4, {}, true);
+    const withoutStatus = resolveIntentFeedLayout({ width: 1280, height: 720 }, 4, {}, false);
+
+    expect(withStatus.rect.height).toBeGreaterThan(withoutStatus.rect.height);
+  });
+
   test('moves off the default dock when player and objective anchors would be occluded', () => {
     const playerRect = { left: 1120 - 32 - 40, top: 84 - 32 - 40, width: 64 + 80, height: 64 + 80 };
     const objectiveRect = { left: 1100 - 36 - 40, top: 188 - 36 - 40, width: 72 + 80, height: 72 + 80 };

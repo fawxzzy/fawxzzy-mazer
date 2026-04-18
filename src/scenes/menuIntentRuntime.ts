@@ -37,7 +37,8 @@ const LANDMARK_VISIBILITY_RADIUS = 1;
 const GOAL_VISIBILITY_RADIUS = 1;
 
 interface MenuIntentFeedDisplaySnapshot {
-  signature: string;
+  statusSignature: string;
+  eventsSignature: string;
   state: IntentFeedState;
 }
 
@@ -52,7 +53,14 @@ const normalizeFeedStateForDisplay = (
   maxVisibleEntries: number
 ): IntentFeedState => ({
   ...state,
-  entries: state.entries
+  status: state.status ? { ...state.status } : null,
+  events: (state.events ?? state.entries)
+    .slice(0, maxVisibleEntries)
+    .map((entry, slot) => ({
+      ...entry,
+      slot
+    })),
+  entries: (state.events ?? state.entries)
     .slice(0, maxVisibleEntries)
     .map((entry, slot) => ({
       ...entry,
@@ -62,7 +70,7 @@ const normalizeFeedStateForDisplay = (
 
 const normalizeText = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
-const serializeAnchor = (entry: IntentFeedState['entries'][number]): string => {
+const serializeAnchor = (entry: { anchor?: { kind: string; tileId?: string | null; landmarkId?: string | null; connectorId?: string | null } | null | undefined }): string => {
   if (!entry.anchor) {
     return '';
   }
@@ -76,8 +84,21 @@ const serializeAnchor = (entry: IntentFeedState['entries'][number]): string => {
   ].join(':');
 };
 
-const createDisplaySignature = (state: IntentFeedState | null, maxVisibleEntries: number): string => (
-  state?.entries
+const createStatusSignature = (state: IntentFeedState | null): string => (
+  state?.status
+    ? [
+        state.status.speaker,
+        state.status.kind,
+        state.status.importance,
+        normalizeText(state.status.summary),
+        serializeAnchor(state.status)
+      ].join('|')
+    : ''
+);
+
+const createEventsSignature = (state: IntentFeedState | null, maxVisibleEntries: number): string => {
+  const entries = state?.events ?? state?.entries ?? [];
+  return entries
     .slice(0, maxVisibleEntries)
     .map((entry) => [
       entry.speaker,
@@ -86,9 +107,8 @@ const createDisplaySignature = (state: IntentFeedState | null, maxVisibleEntries
       normalizeText(entry.summary),
       serializeAnchor(entry)
     ].join('|'))
-    .join('|')
-  ?? ''
-);
+    .join('|');
+};
 
 export class MenuIntentFeedDisplayController {
   private readonly maxVisibleEntries: number;
@@ -117,7 +137,8 @@ export class MenuIntentFeedDisplayController {
   }
 
   advance(rawState: IntentFeedState | null, nowMs: number): IntentFeedState | null {
-    if (!rawState || rawState.entries.length === 0) {
+    const rawEntries = rawState?.events ?? rawState?.entries ?? [];
+    if (!rawState || (rawEntries.length === 0 && !rawState.status)) {
       this.pending = null;
       if (this.current && (nowMs - this.current.shownAtMs) >= this.minimumDwellMs) {
         this.current = null;
@@ -125,34 +146,48 @@ export class MenuIntentFeedDisplayController {
       return this.current?.state ?? null;
     }
 
-    const signature = createDisplaySignature(rawState, this.maxVisibleEntries);
+    const statusSignature = createStatusSignature(rawState);
+    const eventsSignature = createEventsSignature(rawState, this.maxVisibleEntries);
     const state = normalizeFeedStateForDisplay(rawState, this.maxVisibleEntries);
 
     if (!this.current) {
       this.current = {
-        signature,
+        statusSignature,
+        eventsSignature,
         state,
         shownAtMs: nowMs
       };
       return state;
     }
 
-    if (signature === this.current.signature) {
-      // Keep the visible state stable when the semantic content has not changed.
+    if (eventsSignature === this.current.eventsSignature) {
+      if (statusSignature !== this.current.statusSignature) {
+        this.current = {
+          ...this.current,
+          statusSignature,
+          state: {
+            ...this.current.state,
+            status: state.status ?? null
+          }
+        };
+      }
+
       this.pending = null;
       return this.current.state;
     }
 
-    if (!this.pending || this.pending.signature !== signature) {
+    if (!this.pending || this.pending.eventsSignature !== eventsSignature) {
       this.pending = {
-        signature,
+        statusSignature,
+        eventsSignature,
         state,
         queuedAtMs: nowMs
       };
     } else {
       this.pending = {
         ...this.pending,
-        state
+        state,
+        statusSignature
       };
     }
 
@@ -160,11 +195,24 @@ export class MenuIntentFeedDisplayController {
     const pendingDebounceElapsed = nowMs - this.pending.queuedAtMs;
     if (currentDwellElapsed >= this.minimumDwellMs && pendingDebounceElapsed >= this.replacementDebounceMs) {
       this.current = {
-        signature: this.pending.signature,
+        statusSignature: this.pending.statusSignature,
+        eventsSignature: this.pending.eventsSignature,
         state: this.pending.state,
         shownAtMs: nowMs
       };
       this.pending = null;
+      return this.current.state;
+    }
+
+    if (statusSignature !== this.current.statusSignature) {
+      this.current = {
+        ...this.current,
+        statusSignature,
+        state: {
+          ...this.current.state,
+          status: state.status ?? null
+        }
+      };
     }
 
     return this.current.state;

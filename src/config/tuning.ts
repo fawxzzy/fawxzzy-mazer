@@ -290,15 +290,19 @@ export const legacyTuning = {
     runtime: {
       diagnosticsPublishIntervalMs: 1000,
       recentFrameWindow: 180,
+      heapSampleWindow: 45,
       degradeAverageFrameMs: 19,
       recoverAverageFrameMs: 16.5,
       degradeSpikeCount: 4,
       recoverSpikeCount: 1,
+      heapGrowthThrottleBytes: 1250000,
+      heapGrowthRecoverBytes: 600000,
+      postHiddenRecoveryMs: 2200,
       spikeFrameMs: 50,
       lowPowerHardwareConcurrencyMax: 4,
       ambientUpdateIntervalMs: {
         full: 16,
-        throttled: 66,
+        throttled: 84,
         hidden: 1000
       },
       deferredTasksPerFrame: {

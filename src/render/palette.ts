@@ -137,39 +137,39 @@ const BOARD_READABILITY_MINIMUMS = Object.freeze({
   floorVsStart: 1.85,
   floorVsGoal: 3,
   routeVsTrail: 1.3,
-  trailVsPlayer: 1.7,
+  trailVsPlayer: 1.88,
   startVsGoal: 1.6,
-  startVsPlayer: 1.4,
-  goalVsPlayer: 1.8,
+  startVsPlayer: 1.52,
+  goalVsPlayer: 2.05,
   goalVsBackground: 2.1,
   trailVsWallLuminance: 0.055,
-  trailVsPlayerLuminance: 0.065
+  trailVsPlayerLuminance: 0.08
 });
 
 const COLOR_REPAIR_STEPS = 18;
 
 const ROLE_CONTRAST_TARGETS: Record<SemanticRole, { light: number; dark: number }> = {
   route: { light: 0x9ae0b2, dark: 0x17492d },
-  trail: { light: 0xb4c7ff, dark: 0x1b2866 },
-  player: { light: 0xe6fdff, dark: 0x0a79ae },
+  trail: { light: 0xa7bbff, dark: 0x101936 },
+  player: { light: 0xf0feff, dark: 0x085f8f },
   start: { light: 0xffd27a, dark: 0x8d5b14 },
-  goal: { light: 0xff8cab, dark: 0x731632 }
+  goal: { light: 0xf57f9f, dark: 0x4d0d1b }
 };
 
 const SIGNAL_CLEANUP_TARGETS: Record<SemanticRole, number> = {
   route: 0x28995d,
-  trail: 0x4a59bb,
-  player: 0x08b8f4,
+  trail: 0x1b2548,
+  player: 0x0e7aa6,
   start: 0xcb8f2a,
-  goal: 0x9d234a
+  goal: 0x53111f
 };
 
 const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
   route: 0.2,
-  trail: 0.28,
-  player: 0.3,
+  trail: 0.22,
+  player: 0.24,
   start: 0.18,
-  goal: 0.24
+  goal: 0.2
 };
 
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {
@@ -446,16 +446,16 @@ const basePalette: PresentationPalette = {
     routeCore: 0xf6fff9,
     routeGlow: 0x154e38,
     trail: 0x3447a0,
-    trailCore: 0xe0e8ff,
-    trailGlow: 0x6272c2,
+    trailCore: 0xd0d6ff,
+    trailGlow: 0x5a68b7,
     start: 0xc99a41,
     startCore: 0xfff4d4,
     startGlow: 0x7d5921,
-    goal: 0xb63d60,
-    goalCore: 0xfff0f4,
-    player: 0x12324a,
+    goal: 0xac395a,
+    goalCore: 0xffeef3,
+    player: 0x173852,
     playerCore: 0xffffff,
-    playerHalo: 0xd4fbff,
+    playerHalo: 0xe1fdff,
     playerShadow: legacyTuning.colors.playerShadow
   },
   hud: {
@@ -612,6 +612,47 @@ export const applyPresentationContrastFloors = (input: PresentationPalette): Pre
     goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
     goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);
   }
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const playerTrailRepair = ensureRolePairContrast('player', player, 'trail', trail, BOARD_READABILITY_MINIMUMS.trailVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerTrailRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    trail = ensureRoleContrast('trail', playerTrailRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+    trail = ensureMinLuminanceDelta(trail, wall, BOARD_READABILITY_MINIMUMS.trailVsWallLuminance, prefer);
+    trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+    trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+
+    const playerGoalRepair = ensureRolePairContrast('player', player, 'goal', goal, BOARD_READABILITY_MINIMUMS.goalVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerGoalRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    goal = ensureRoleContrast('goal', playerGoalRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
+    goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);
+
+    const playerStartRepair = ensureRolePairContrast('player', player, 'start', start, BOARD_READABILITY_MINIMUMS.startVsPlayer, prefer, prefer);
+    player = ensureRoleContrast('player', playerStartRepair.left, floor, BOARD_READABILITY_MINIMUMS.floorVsPlayer, prefer);
+    player = ensureRoleContrast('player', player, wall, BOARD_READABILITY_MINIMUMS.wallVsPlayer, wallPrefer);
+    start = ensureRoleContrast('start', playerStartRepair.right, floor, BOARD_READABILITY_MINIMUMS.floorVsStart, prefer);
+  }
+
+  trail = ensureMinContrastToward(
+    trail,
+    player,
+    BOARD_READABILITY_MINIMUMS.trailVsPlayer,
+    prefer === 'dark' ? 0x08111f : 0xf5f8ff
+  );
+  trail = ensureMinLuminanceDelta(trail, player, BOARD_READABILITY_MINIMUMS.trailVsPlayerLuminance, prefer);
+  trail = ensureRoleContrast('trail', trail, floor, BOARD_READABILITY_MINIMUMS.floorVsTrail, prefer);
+  trail = ensureRoleContrast('trail', trail, wall, BOARD_READABILITY_MINIMUMS.wallVsTrail, wallPrefer);
+
+  goal = ensureMinContrastToward(
+    goal,
+    player,
+    BOARD_READABILITY_MINIMUMS.goalVsPlayer,
+    prefer === 'dark' ? 0x4a0e1b : 0xff95b4
+  );
+  goal = ensureRoleContrast('goal', goal, floor, BOARD_READABILITY_MINIMUMS.floorVsGoal, prefer);
+  goal = ensureRoleContrast('goal', goal, input.background.deepSpace, BOARD_READABILITY_MINIMUMS.goalVsBackground, backdropPrefer);
 
   const topHighlight = ensureMinContrast(
     ensureMinContrast(input.board.topHighlight, wall, 2.6, prefer),

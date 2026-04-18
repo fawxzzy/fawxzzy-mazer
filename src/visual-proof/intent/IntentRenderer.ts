@@ -11,6 +11,12 @@ const escapeHtml = (value: string): string => value
 const categoryToken = (value: string): string => value.toUpperCase();
 const confidenceLabel = (confidence: number): string => `${Math.round(confidence * 100)}%`;
 const estimatePingWidth = (label: string): number => Math.max(78, Math.min(156, 26 + (label.length * 7.2)));
+const clampSummary = (value: string, maxChars: number): string => {
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  return normalized.length <= maxChars
+    ? normalized
+    : `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+};
 
 const pingOffsetForIndex = (index: number): { x: number; y: number } => ({
   x: index % 2 === 0 ? 24 : -24,
@@ -24,8 +30,10 @@ export const renderIntentFeedMarkup = (
   } = {}
 ): string => {
   const compact = options.compact === true;
-  const entries = [...feed.entries]
-    .slice(0, compact ? 1 : feed.entries.length)
+  const status = feed.status ?? null;
+  const sourceEntries = feed.events ?? feed.entries ?? [];
+  const entries = [...sourceEntries]
+    .slice(0, compact ? 1 : sourceEntries.length)
     .reverse();
 
   return `
@@ -33,7 +41,10 @@ export const renderIntentFeedMarkup = (
       class="proof-intent-shell"
       data-testid="intent-feed"
       data-intent-count="${entries.length}"
+      data-intent-status-present="${status ? 'true' : 'false'}"
       data-intent-emission-rate="${feed.metrics.intentEmissionRate.toFixed(3)}"
+      data-status-repeat-count="${feed.metrics.statusRepeatCount}"
+      data-status-presence-pass="${feed.metrics.statusPresencePass ? 'true' : 'false'}"
       data-intent-debounce-pass="${feed.metrics.intentDebouncePass ? 'true' : 'false'}"
       data-feed-readability-pass="${feed.metrics.feedReadabilityPass ? 'true' : 'false'}"
       data-world-ping-count="${feed.pings.length}"
@@ -46,6 +57,16 @@ export const renderIntentFeedMarkup = (
         <span class="proof-intent-title">Intent Bus</span>
         <span class="proof-intent-meta">${feed.metrics.intentEmissionRate.toFixed(2)}/step</span>
       </div>
+      ${status ? `
+        <div class="proof-intent-status" data-intent-status="true">
+          <div class="proof-intent-row">
+            <span class="proof-intent-speaker">${escapeHtml(formatIntentSpeakerHandle(status.speaker))}</span>
+            <span class="proof-intent-tag">STATUS</span>
+            <span class="proof-intent-confidence">${escapeHtml(confidenceLabel(status.confidence))}</span>
+          </div>
+          <span class="proof-intent-text">${escapeHtml(clampSummary(status.summary, compact ? 26 : 36))}</span>
+        </div>
+      ` : ''}
       <ol class="proof-intent-list">
         ${entries.map((entry) => `
           <li

@@ -193,7 +193,8 @@ const resolveFeedRect = (
 export const resolveIntentFeedLayout = (
   viewport: { width: number; height: number },
   entryCount: number,
-  anchors: IntentFeedLayoutAnchors = {}
+  anchors: IntentFeedLayoutAnchors = {},
+  hasStatus = true
 ): IntentFeedLayout => {
   const tuning = legacyTuning.menu.intentFeed;
   const compact = viewport.width <= legacyTuning.menu.layout.narrowBreakpoint;
@@ -205,6 +206,7 @@ export const resolveIntentFeedLayout = (
     compact ? tuning.compactMinHeightPx : tuning.minHeightPx,
     (tuning.paddingYPx * 2)
       + headerHeight
+      + (hasStatus ? lineHeight + tuning.entryGapPx : 0)
       + Math.max(0, visibleEntries - 1) * tuning.entryGapPx
       + (visibleEntries * lineHeight)
   );
@@ -270,6 +272,11 @@ export const createIntentFeedHud = (
     fontSize: `${legacyTuning.menu.intentFeed.headerFontPx}px`,
     fontStyle: 'bold'
   }).setOrigin(0, 0);
+  const status = scene.add.text(0, 0, '', {
+    color: `#${colors.hintText.toString(16).padStart(6, '0')}`,
+    fontFamily: '"Courier New", monospace',
+    fontSize: `${legacyTuning.menu.intentFeed.entryFontPx}px`
+  }).setOrigin(0, 0);
   const entries = Array.from({ length: MAX_INTENT_VISIBLE_ENTRIES }, () => (
     scene.add.text(0, 0, '', {
       color: `#${colors.hintText.toString(16).padStart(6, '0')}`,
@@ -281,7 +288,7 @@ export const createIntentFeedHud = (
     key: '',
     changedAtMs: Number.NEGATIVE_INFINITY
   }));
-  root.add([background, border, header, ...entries]);
+  root.add([background, border, header, status, ...entries]);
 
   return {
     setState(
@@ -289,22 +296,27 @@ export const createIntentFeedHud = (
       anchors: IntentFeedLayoutAnchors = {}
     ): void {
       const tuning = legacyTuning.menu.intentFeed;
-      const visibleEntries = state?.entries.slice(0, tuning.maxVisibleEntries) ?? [];
-      if (visibleEntries.length === 0) {
+      const visibleStatus = state?.status ?? null;
+      const visibleEntries = (state?.events ?? state?.entries ?? []).slice(0, tuning.maxVisibleEntries);
+      if (!visibleStatus && visibleEntries.length === 0) {
         root.setVisible(false);
         return;
       }
 
       const viewport = resolveSceneViewport(scene);
-      const layout = resolveIntentFeedLayout(viewport, visibleEntries.length, anchors);
+      const layout = resolveIntentFeedLayout(viewport, visibleEntries.length, anchors, Boolean(visibleStatus));
       const lineHeight = layout.compact ? tuning.compactLineHeightPx : tuning.lineHeightPx;
       const headerHeight = layout.compact ? tuning.compactHeaderHeightPx : tuning.headerHeightPx;
       const headerFontPx = layout.compact ? tuning.compactHeaderFontPx : tuning.headerFontPx;
       const entryFontPx = layout.compact ? tuning.compactEntryFontPx : tuning.entryFontPx;
       const maxSummaryChars = layout.compact ? tuning.compactSummaryMaxChars : tuning.summaryMaxChars;
+      const statusMaxChars = layout.compact
+        ? Math.min(24, maxSummaryChars)
+        : Math.min(30, maxSummaryChars);
       const transitionMs = Math.max(1, tuning.transitionMs);
       const transitionStartAlpha = Phaser.Math.Clamp(tuning.transitionStartAlpha, 0, 1);
       const nowMs = scene.time.now;
+      const eventStartY = tuning.paddingYPx + headerHeight + (visibleStatus ? lineHeight + tuning.entryGapPx : 0);
 
       root.setPosition(layout.rect.left, layout.rect.top).setVisible(true);
       background.setSize(layout.rect.width, layout.rect.height);
@@ -312,6 +324,17 @@ export const createIntentFeedHud = (
       header.setPosition(tuning.paddingXPx, tuning.paddingYPx);
       header.setFontSize(headerFontPx);
       header.setAlpha(0.92);
+      status
+        .setVisible(Boolean(visibleStatus))
+        .setFontSize(entryFontPx)
+        .setPosition(tuning.paddingXPx, tuning.paddingYPx + headerHeight)
+        .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
+        .setText(
+          visibleStatus
+            ? `${formatIntentSpeakerHandle(visibleStatus.speaker)} ${clampIntentFeedSummary(visibleStatus.summary, statusMaxChars)}`
+            : ''
+        )
+        .setAlpha(0.96);
 
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
@@ -336,7 +359,7 @@ export const createIntentFeedHud = (
           .setFontSize(entryFontPx)
           .setPosition(
             tuning.paddingXPx,
-            tuning.paddingYPx + headerHeight + (index * (lineHeight + tuning.entryGapPx))
+            eventStartY + (index * (lineHeight + tuning.entryGapPx))
           )
           .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
           .setText(`${formatIntentSpeakerHandle(record.speaker)} ${clampIntentFeedSummary(record.summary, maxSummaryChars)}`)

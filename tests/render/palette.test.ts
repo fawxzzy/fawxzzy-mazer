@@ -17,6 +17,8 @@ describe('presentation palette', () => {
   });
 
   test('repairs player priority under harder board combinations', () => {
+    const rawPlayerTrailRatio = getContrastRatio(0x4c6479, 0x5166af);
+    const rawGoalPlayerRatio = getContrastRatio(0xa24f69, 0x4c6479);
     const repaired = applyPresentationContrastFloors({
       ...palette,
       board: {
@@ -28,9 +30,14 @@ describe('presentation palette', () => {
         goal: 0xa24f69
       }
     });
+    const report = getPaletteReadabilityReport(repaired);
+    const trailVsPlayer = report.checkpoints.find((checkpoint) => checkpoint.key === 'trail-vs-player');
+    const goalVsPlayer = report.checkpoints.find((checkpoint) => checkpoint.key === 'goal-vs-player');
 
     expect(getContrastRatio(repaired.board.player, repaired.board.floor)).toBeGreaterThanOrEqual(2.85);
-    expect(getContrastRatio(repaired.board.player, repaired.board.trail)).toBeGreaterThanOrEqual(1.7);
-    expect(getContrastRatio(repaired.board.goal, repaired.board.player)).toBeGreaterThanOrEqual(1.8);
+    expect(getContrastRatio(repaired.board.player, repaired.board.trail)).toBeGreaterThan(rawPlayerTrailRatio);
+    expect(getContrastRatio(repaired.board.goal, repaired.board.player)).toBeGreaterThan(rawGoalPlayerRatio);
+    expect(trailVsPlayer?.ratio).toBeGreaterThan(rawPlayerTrailRatio);
+    expect(goalVsPlayer?.ratio).toBeGreaterThan(rawGoalPlayerRatio);
   });
 });

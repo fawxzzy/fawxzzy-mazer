@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { MazeEpisode } from '../../src/domain/maze';
-import type { IntentFeedState, IntentVisibleEntry } from '../../src/mazer-core/intent';
+import type { IntentFeedState, IntentFeedStatus, IntentVisibleEntry } from '../../src/mazer-core/intent';
 import {
   MenuIntentFeedDisplayController,
   createMenuIntentRuntimeSession
@@ -43,32 +43,57 @@ const createEntry = (id: string, slot = 0, summary = `scanning ${id}`): IntentVi
   opacity: 1
 });
 
-const createFeedState = (ids: string[], step = ids.length, summaries?: string[]): IntentFeedState => ({
-  step,
-  entries: ids.map((id, index) => createEntry(id, index, summaries?.[index] ?? `scanning ${id}`)),
-  pings: [],
-  metrics: {
-    emittedCount: ids.length,
-    highImportanceEventCount: 0,
-    speakerCount: 1,
-    totalSteps: Math.max(1, step),
-    intentEmissionRate: 0.5,
-    worldPingCount: 0,
-    worldPingEmissionRate: 0,
-    maxConsecutiveEmissionStreak: 1,
-    maxVisibleWorldPings: 0,
-    debouncedEventCount: 0,
-    debouncedWorldPingCount: 0,
-    verbFirstPass: true,
-    importanceTtlPass: true,
-    slotOpacityPass: true,
-    feedReadabilityPass: true,
-    intentDebouncePass: true,
-    worldPingSpamPass: true,
-    highImportanceStickyPass: true,
-    intentStackOverlapPass: true
-  }
+const createStatus = (entry: IntentVisibleEntry, summary = entry.summary): IntentFeedStatus => ({
+  speaker: entry.speaker,
+  category: entry.category,
+  kind: entry.kind,
+  importance: entry.importance,
+  summary,
+  confidence: entry.confidence,
+  step: entry.step,
+  anchor: entry.anchor
 });
+
+const createFeedState = (
+  ids: string[],
+  step = ids.length,
+  summaries?: string[],
+  statusSummary?: string
+): IntentFeedState => {
+  const events = ids.map((id, index) => createEntry(id, index, summaries?.[index] ?? `scanning ${id}`));
+  const status = events[0] ? createStatus(events[0], statusSummary ?? events[0].summary) : null;
+
+  return {
+    step,
+    status,
+    events,
+    entries: events,
+    pings: [],
+    metrics: {
+      emittedCount: ids.length,
+      highImportanceEventCount: 0,
+      speakerCount: 1,
+      totalSteps: Math.max(1, step),
+      intentEmissionRate: 0.5,
+      worldPingCount: 0,
+      worldPingEmissionRate: 0,
+      maxConsecutiveEmissionStreak: 1,
+      maxVisibleWorldPings: 0,
+      debouncedEventCount: 0,
+      debouncedWorldPingCount: 0,
+      statusRepeatCount: 0,
+      verbFirstPass: true,
+      statusPresencePass: true,
+      importanceTtlPass: true,
+      slotOpacityPass: true,
+      feedReadabilityPass: true,
+      intentDebouncePass: true,
+      worldPingSpamPass: true,
+      highImportanceStickyPass: true,
+      intentStackOverlapPass: true
+    }
+  };
+};
 
 describe('menu intent runtime', () => {
   test('builds bounded feed state against the shipping maze episode path', () => {
@@ -77,14 +102,16 @@ describe('menu intent runtime', () => {
     session.advanceToStep(0);
     const firstState = session.getFeedState(0);
     expect(firstState).not.toBeNull();
-    expect(firstState?.entries.length).toBeGreaterThan(0);
-    expect(firstState?.entries.length).toBeLessThanOrEqual(4);
+    expect(firstState?.status).not.toBeNull();
+    expect(firstState?.events?.length ?? firstState?.entries.length).toBeGreaterThan(0);
+    expect(firstState?.events?.length ?? firstState?.entries.length).toBeLessThanOrEqual(4);
 
     session.advanceToStep(1);
     const secondState = session.getFeedState(1);
     expect(secondState).not.toBeNull();
-    expect(secondState?.entries.length).toBeLessThanOrEqual(4);
-    expect(secondState?.entries.some((entry) => entry.kind === 'goal-observed')).toBe(true);
+    expect(secondState?.status).not.toBeNull();
+    expect(secondState?.events?.length ?? secondState?.entries.length).toBeLessThanOrEqual(4);
+    expect((secondState?.events ?? secondState?.entries ?? []).some((entry) => entry.kind === 'goal-observed')).toBe(true);
   });
 
   test('holds feed entries for a minimum dwell and coalesces rapid replacements', () => {
@@ -95,16 +122,17 @@ describe('menu intent runtime', () => {
     });
 
     const first = controller.advance(createFeedState(['a', 'b', 'c'], 1), 0);
-    expect(first?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
+    expect(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
+    expect(first?.status?.summary).toBe('scanning a');
 
     const held = controller.advance(createFeedState(['d', 'e', 'f'], 2), 500);
-    expect(held?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
+    expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
 
     const coalesced = controller.advance(createFeedState(['g', 'h', 'i'], 3), 900);
-    expect(coalesced?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
+    expect(coalesced?.events?.map((entry) => entry.id) ?? coalesced?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
 
     const swapped = controller.advance(createFeedState(['g', 'h', 'i'], 3), 1_650);
-    expect(swapped?.entries.map((entry) => entry.id)).toEqual(['g', 'h']);
+    expect(swapped?.events?.map((entry) => entry.id) ?? swapped?.entries.map((entry) => entry.id)).toEqual(['g', 'h']);
   });
 
   test('keeps semantically identical text stable even when the raw ids change', () => {
@@ -118,27 +146,42 @@ describe('menu intent runtime', () => {
       createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'reading gate timing', 'ignored tail']),
       0
     );
-    expect(first?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(first?.events?.map((entry) => entry.summary) ?? first?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
 
     const identical = controller.advance(
       createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'reading gate timing', 'ignored tail']),
       1_400
     );
-    expect(identical?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
-    expect(identical?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
+    expect(identical?.events?.map((entry) => entry.summary) ?? identical?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(identical?.events?.map((entry) => entry.id) ?? identical?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
 
     const queued = controller.advance(
       createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'tracking exit line', 'ignored tail']),
       2_200
     );
-    expect(queued?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(queued?.events?.map((entry) => entry.summary) ?? queued?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
 
     const changed = controller.advance(
       createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'tracking exit line', 'ignored tail']),
       3_000
     );
-    expect(changed?.entries.map((entry) => entry.summary)).toEqual(['scanning east gate', 'tracking exit line']);
-    expect(changed?.entries.map((entry) => entry.id)).toEqual(['m', 'n']);
+    expect(changed?.events?.map((entry) => entry.summary) ?? changed?.entries.map((entry) => entry.summary)).toEqual(['scanning east gate', 'tracking exit line']);
+    expect(changed?.events?.map((entry) => entry.id) ?? changed?.entries.map((entry) => entry.id)).toEqual(['m', 'n']);
+  });
+
+  test('updates the status line independently while keeping the event list held during dwell', () => {
+    const controller = new MenuIntentFeedDisplayController({
+      maxVisibleEntries: 2,
+      minimumDwellMs: 1_600,
+      replacementDebounceMs: 700
+    });
+
+    const first = controller.advance(createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'reading gate timing', 'ignored tail'], 'scanning west branch'), 0);
+    expect(first?.status?.summary).toBe('scanning west branch');
+
+    const held = controller.advance(createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'reading gate timing', 'ignored tail'], 'locking exit route'), 500);
+    expect(held?.status?.summary).toBe('locking exit route');
+    expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
   });
 
   test('stabilizes the session feed at human pace instead of replacing every raw step', () => {
@@ -146,14 +189,15 @@ describe('menu intent runtime', () => {
 
     session.advanceToStep(0);
     const first = session.getDisplayFeedState(0, 0);
-    expect(first?.entries.length).toBeGreaterThan(0);
+    expect(first?.status).not.toBeNull();
+    expect(first?.events?.length ?? first?.entries.length).toBeGreaterThan(0);
 
     session.advanceToStep(1);
     const held = session.getDisplayFeedState(1, 400);
-    expect(held?.entries.map((entry) => entry.id)).toEqual(first?.entries.map((entry) => entry.id));
+    expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id));
 
     const released = session.getDisplayFeedState(1, 2_100);
-    expect(released?.entries.map((entry) => entry.id)).not.toEqual(first?.entries.map((entry) => entry.id));
-    expect(released?.entries.length).toBeLessThanOrEqual(3);
+    expect(released?.events?.map((entry) => entry.id) ?? released?.entries.map((entry) => entry.id)).not.toEqual(first?.events?.map((entry) => entry.id) ?? first?.entries.map((entry) => entry.id));
+    expect(released?.events?.length ?? released?.entries.length).toBeLessThanOrEqual(3);
   });
 });

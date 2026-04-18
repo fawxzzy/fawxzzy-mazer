@@ -127,6 +127,9 @@ describe('intent bus', () => {
 
     const markup = renderIntentFeedMarkup(feed.states.get(4)!);
     expect(markup).toContain('Intent Bus');
+    expect(markup).toContain('proof-intent-status');
+    expect(markup).toContain('data-intent-status-present="true"');
+    expect(markup).toContain('data-status-presence-pass="true"');
     expect(markup).toContain('@Runner');
     expect(markup).toContain('@Warden');
     expect(markup).not.toContain('@Maze');
@@ -196,6 +199,7 @@ describe('intent bus', () => {
     expect(feed.metrics.maxVisibleWorldPings).toBeGreaterThan(2);
     expect(feed.metrics.worldPingEmissionRate).toBeGreaterThan(1);
     expect(feed.metrics.worldPingSpamPass).toBe(false);
+    expect(feed.metrics.statusPresencePass).toBe(true);
     expect(feed.metrics.feedReadabilityPass).toBe(false);
   });
 

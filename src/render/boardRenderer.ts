@@ -1606,8 +1606,12 @@ export class BoardRenderer {
     const outerRingRadius = Math.max(coreRadius, tileSize * actorTuning.outerRingRadiusRatio * actorPulse);
     const resolvedHaloAlpha = Math.max(actorTuning.haloMinimumAlpha, haloAlpha);
     const resolvedOuterRingAlpha = Math.max(actorTuning.outerRingMinimumAlpha, outerRingAlpha);
+    const neighborhoodRadius = Math.max(emphasisFloorRadius * 1.14, tileSize * 0.84);
+    const neighborhoodAlpha = Math.min(0.46, actorTuning.emphasisFloorAlpha * 1.12);
 
     this.actor.clear();
+    this.actor.fillStyle(colors.board.shadow, neighborhoodAlpha);
+    this.actor.fillCircle(bodyCenterX, bodyCenterY, neighborhoodRadius);
     this.actor.fillStyle(colors.board.shadow, actorTuning.emphasisFloorAlpha);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, emphasisFloorRadius);
     this.actor.lineStyle(focusRingWidth, colors.board.playerCore, actorTuning.focusRingAlpha);
@@ -1623,7 +1627,7 @@ export class BoardRenderer {
       tileSize * actorTuning.shadowRadiusRatio
     );
 
-    this.actor.fillStyle(colors.board.playerHalo, resolvedHaloAlpha * 0.76 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, resolvedHaloAlpha * 0.84 * actorHaloScale);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, haloRadius * actorPulse);
 
     this.actor.lineStyle(Math.max(1, tileSize * 0.024), colors.board.playerCore, 0.68);
@@ -1640,7 +1644,7 @@ export class BoardRenderer {
     this.actor.lineStyle(Math.max(1, tileSize * 0.025), ringColor, resolvedOuterRingAlpha * 0.72);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, outerRingRadius);
 
-    this.actor.fillStyle(colors.board.playerHalo, 0.56 * actorHaloScale);
+    this.actor.fillStyle(colors.board.playerHalo, 0.64 * actorHaloScale);
     this.actor.fillCircle(
       bodyCenterX - tileSize * actorTuning.highlightOffsetRatio,
       bodyCenterY - tileSize * actorTuning.highlightOffsetRatio,

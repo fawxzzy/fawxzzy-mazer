@@ -216,12 +216,16 @@ describe('board renderer', () => {
 
     const fillCircleCalls = actorGraphics!.calls.filter((call) => call.method === 'fillCircle');
     const strokeCircleCalls = actorGraphics!.calls.filter((call) => call.method === 'strokeCircle');
+    const neighborhoodRadius = Number(fillCircleCalls[0]?.args[2] ?? 0);
+    const floorRadius = Number(fillCircleCalls[1]?.args[2] ?? 0);
     const firstFocusFillRadius = Number(fillCircleCalls[0]?.args[2] ?? 0);
     const playerCoreStrokeRadii = strokeCircleCalls
       .filter((call) => Number.isFinite(call.args[2]))
       .map((call) => Number(call.args[2]));
 
-    expect(firstFocusFillRadius).toBeGreaterThan(6);
+    expect(fillCircleCalls.length).toBeGreaterThanOrEqual(6);
+    expect(neighborhoodRadius).toBeGreaterThan(floorRadius);
+    expect(firstFocusFillRadius).toBeGreaterThan(8);
     expect(playerCoreStrokeRadii.some((radius) => radius > 5)).toBe(true);
   });
 

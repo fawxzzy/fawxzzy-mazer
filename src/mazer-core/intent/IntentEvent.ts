@@ -40,6 +40,17 @@ export interface IntentVisibleEntry extends IntentBusRecord {
   opacity: number;
 }
 
+export interface IntentFeedStatus {
+  speaker: IntentSpeaker;
+  category: IntentCategory;
+  kind: IntentKind;
+  importance: IntentImportance;
+  summary: string;
+  confidence: number;
+  step: number;
+  anchor?: IntentAnchor;
+}
+
 export interface IntentVisiblePing extends IntentBusRecord {
   anchor: IntentAnchor;
   ageSteps: number;
@@ -77,7 +88,9 @@ export interface IntentFeedMetrics {
   maxVisibleWorldPings: number;
   debouncedEventCount: number;
   debouncedWorldPingCount: number;
+  statusRepeatCount: number;
   verbFirstPass: boolean;
+  statusPresencePass: boolean;
   importanceTtlPass: boolean;
   slotOpacityPass: boolean;
   feedReadabilityPass: boolean;
@@ -89,6 +102,8 @@ export interface IntentFeedMetrics {
 
 export interface IntentFeedState {
   step: number;
+  status?: IntentFeedStatus | null;
+  events?: IntentVisibleEntry[];
   entries: IntentVisibleEntry[];
   pings: IntentVisiblePing[];
   metrics: IntentFeedMetrics;

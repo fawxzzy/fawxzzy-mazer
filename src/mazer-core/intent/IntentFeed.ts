@@ -6,6 +6,7 @@ import {
   MAX_WORLD_PINGS,
   WORLD_PING_OPACITIES,
   WORLD_PING_TTL_STEPS,
+  type IntentFeedStatus,
   type IntentBusRecord,
   type IntentFeedMetrics,
   type IntentFeedState,
@@ -30,8 +31,25 @@ const INTENT_SPAM_RATE_LIMIT = 0.75;
 const INTENT_MAX_STREAK = 3;
 const WORLD_PING_RATE_LIMIT = 1.05;
 const DEBOUNCE_WINDOW_STEPS = 2;
+const IMPORTANT_RECORDS = new Set(['goal-observed', 'enemy-seen', 'trap-inferred', 'item-spotted', 'puzzle-state-observed']);
 
 const isFeedRecord = (record: IntentBusRecord): boolean => record.kind !== 'gate-aligned';
+
+const compareVisibleRecords = (left: IntentBusRecord, right: IntentBusRecord): number => (
+  right.step - left.step
+  || (IMPORTANT_RECORDS.has(right.kind) ? 1 : 0) - (IMPORTANT_RECORDS.has(left.kind) ? 1 : 0)
+);
+
+const toVisibleStatus = (record: IntentBusRecord): IntentFeedStatus => ({
+  speaker: record.speaker,
+  category: record.category,
+  kind: record.kind,
+  importance: record.importance,
+  summary: record.summary,
+  confidence: record.confidence,
+  step: record.step,
+  anchor: record.anchor
+});
 
 const isVerbFirst = (summary: string): boolean => {
   const firstWord = summary.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -50,7 +68,7 @@ export const resolveVisibleIntentEntries = (
   const visible = [...records]
     .filter((record) => isFeedRecord(record))
     .filter((record) => record.step <= step && (step - record.step) <= record.ttlSteps)
-    .sort((left, right) => right.step - left.step)
+    .sort(compareVisibleRecords)
     .slice(0, maxVisibleEntries);
 
   return visible.map((record, index) => ({
@@ -59,6 +77,18 @@ export const resolveVisibleIntentEntries = (
     slot: index,
     opacity: INTENT_SLOT_OPACITIES[index] ?? INTENT_SLOT_OPACITIES[INTENT_SLOT_OPACITIES.length - 1] ?? 0.15
   }));
+};
+
+export const resolveVisibleIntentStatus = (
+  records: readonly IntentBusRecord[],
+  step: number
+): IntentFeedStatus | null => {
+  const visible = [...records]
+    .filter((record) => isFeedRecord(record))
+    .filter((record) => record.step <= step)
+    .sort(compareVisibleRecords);
+
+  return visible.length > 0 ? toVisibleStatus(visible[0]) : null;
 };
 
 export const resolveVisibleWorldPings = (
@@ -123,6 +153,24 @@ const calculateIntentMetrics = (
   const intentEmissionRate = Number((emittedSteps.size / totalSteps).toFixed(3));
   const worldPingRecords = bus.records.filter((record) => Boolean(record.anchor));
   const worldPingEmissionRate = Number((worldPingRecords.length / totalSteps).toFixed(3));
+  const statusHistory = steps
+    .map((step) => resolveVisibleIntentStatus(bus.records, step))
+    .filter((status): status is IntentFeedStatus => Boolean(status));
+  const statusRepeatCount = statusHistory.reduce((repeatCount, status, index) => {
+    if (index === 0) {
+      return repeatCount;
+    }
+
+    return normalizeSummary(statusHistory[index - 1].summary) === normalizeSummary(status.summary)
+      && statusHistory[index - 1].speaker === status.speaker
+      ? repeatCount + 1
+      : repeatCount;
+  }, 0);
+  const statusPresencePass = steps.every((step) => {
+    const visibleRecord = resolveVisibleIntentStatus(bus.records, step);
+    const hasSeenEvent = stackRecords.some((record) => record.step <= step);
+    return !hasSeenEvent || Boolean(visibleRecord);
+  });
   const maxConsecutiveEmissionStreak = calculateMaxEmissionStreak(stackRecords);
   const highImportanceEvents = stackRecords.filter((record) => record.importance === 'high');
   const highImportanceStickyPass = highImportanceEvents.every((record) => {
@@ -145,6 +193,7 @@ const calculateIntentMetrics = (
   const feedReadabilityPass = verbFirstPass
     && slotOpacityPass
     && importanceTtlPass
+    && statusPresencePass
     && steps.every((step) => resolveVisibleIntentEntries(stackRecords, step).length <= MAX_INTENT_VISIBLE_ENTRIES)
     && intentEmissionRate <= INTENT_SPAM_RATE_LIMIT;
 
@@ -160,7 +209,9 @@ const calculateIntentMetrics = (
     maxVisibleWorldPings,
     debouncedEventCount: bus.debouncedEventCount,
     debouncedWorldPingCount: bus.debouncedWorldPingCount,
+    statusRepeatCount,
     verbFirstPass,
+    statusPresencePass,
     importanceTtlPass,
     slotOpacityPass,
     feedReadabilityPass,
@@ -181,9 +232,13 @@ export const buildIntentFeed = (
   const states = new Map<number, IntentFeedState>();
 
   for (const step of steps) {
+    const status = resolveVisibleIntentStatus(bus.records, step);
+    const events = resolveVisibleIntentEntries(bus.records, step);
     states.set(step, {
       step,
-      entries: resolveVisibleIntentEntries(bus.records, step),
+      status,
+      events,
+      entries: events,
       pings: resolveVisibleWorldPings(bus.records, step, aggressiveMode ? 3 : MAX_WORLD_PINGS),
       metrics
     });

@@ -3606,9 +3606,18 @@ export class MenuScene extends Phaser.Scene {
     let deferredVisualTaskQueue: Array<{ label: string; run: () => void }> = [];
     let deferredSceneChromeReady = false;
     let bootTimingReportLogged = false;
-    let performanceMode: MenuScenePerformanceMode = runtimeConfig.lowPowerActive ? 'throttled' : 'full';
-    let visibilityChangeCount = 0;
-    let visibilitySuspendCount = 0;
+    const isDocumentSceneHidden = (): boolean => (
+      typeof document !== 'undefined'
+      && (document.visibilityState === 'hidden' || document.hidden)
+    );
+    let sceneHidden = isDocumentSceneHidden();
+    let performanceMode: MenuScenePerformanceMode = sceneHidden
+      ? 'hidden'
+      : runtimeConfig.lowPowerActive
+        ? 'throttled'
+        : 'full';
+    let visibilityChangeCount = sceneHidden ? 1 : 0;
+    let visibilitySuspendCount = sceneHidden ? 1 : 0;
     let activeTweenCount = 0;
     let activeTimerCount = 0;
     let activeListenerCount = 0;
@@ -3629,6 +3638,9 @@ export class MenuScene extends Phaser.Scene {
     let worstFrameTimeMs = 0;
     let totalSpikeCount = 0;
     const recentFrameTimesMs: number[] = [];
+    const recentHeapSamples: Array<{ atMs: number; usedBytes: number }> = [];
+    let hiddenRecoveryThrottleUntilMs = 0;
+    let lastHeapPressureActive = false;
     let renderDemo: () => void = () => undefined;
 
     const toRuntimeFeedEntries = (
@@ -3690,26 +3702,67 @@ export class MenuScene extends Phaser.Scene {
         ...(Number.isFinite(memory.jsHeapSizeLimit) ? { limitBytes: Math.max(0, Math.round(memory.jsHeapSizeLimit ?? 0)) } : {})
       };
     };
-    const updatePerformanceMode = (sceneHidden: boolean): void => {
+    const resolveHeapPressureActive = (
+      nowMs: number,
+      heapSample?: MenuSceneRuntimeDiagnostics['resources']['jsHeap']
+    ): boolean => {
+      if (heapSample) {
+        recentHeapSamples.push({
+          atMs: nowMs,
+          usedBytes: heapSample.usedBytes
+        });
+        if (recentHeapSamples.length > legacyTuning.menu.runtime.heapSampleWindow) {
+          recentHeapSamples.splice(0, recentHeapSamples.length - legacyTuning.menu.runtime.heapSampleWindow);
+        }
+      }
+
+      if (recentHeapSamples.length < 2) {
+        lastHeapPressureActive = false;
+        return lastHeapPressureActive;
+      }
+
+      const first = recentHeapSamples[0];
+      const last = recentHeapSamples.at(-1);
+      if (!first || !last) {
+        lastHeapPressureActive = false;
+        return lastHeapPressureActive;
+      }
+
+      const growthBytes = Math.max(0, last.usedBytes - first.usedBytes);
+      const threshold = lastHeapPressureActive
+        ? legacyTuning.menu.runtime.heapGrowthRecoverBytes
+        : legacyTuning.menu.runtime.heapGrowthThrottleBytes;
+      lastHeapPressureActive = growthBytes >= threshold;
+      return lastHeapPressureActive;
+    };
+    const updatePerformanceMode = (sceneHiddenState: boolean, nowMs = this.time.now): void => {
       const recentFrames = summarizeMenuSceneFrameWindow(
         recentFrameTimesMs,
         legacyTuning.menu.runtime.spikeFrameMs
       );
       performanceMode = resolveMenuScenePerformanceMode(performanceMode, {
-        hidden: sceneHidden,
+        hidden: sceneHiddenState,
         lowPowerActive: runtimeConfig.lowPowerActive,
         recentAverageFrameMs: recentFrames.averageMs,
         recentSpikeCount: recentFrames.spikeCount,
+        heapPressureActive: lastHeapPressureActive,
+        recoveryHoldActive: hiddenRecoveryThrottleUntilMs > nowMs,
         tuning: legacyTuning.menu.runtime
       });
     };
     const publishRuntimeDiagnostics = (sceneHidden: boolean, force = false): void => {
-      if (!runtimeConfig.enabled) {
+      const nowMs = this.time.now;
+      if (!force && nowMs - lastRuntimeDiagnosticsPublishedAt < legacyTuning.menu.runtime.diagnosticsPublishIntervalMs) {
         return;
       }
 
-      const nowMs = this.time.now;
-      if (!force && nowMs - lastRuntimeDiagnosticsPublishedAt < legacyTuning.menu.runtime.diagnosticsPublishIntervalMs) {
+      const heapSample = resolveHeapSample();
+      const heapPressureActive = resolveHeapPressureActive(nowMs, heapSample);
+      const postHiddenRecoveryActive = hiddenRecoveryThrottleUntilMs > nowMs;
+      updatePerformanceMode(sceneHidden, nowMs);
+      lastRuntimeDiagnosticsPublishedAt = nowMs;
+
+      if (!runtimeConfig.enabled) {
         return;
       }
 
@@ -3737,12 +3790,10 @@ export class MenuScene extends Phaser.Scene {
         activeTitleContainer?.depth,
         installChrome?.depth
       );
-      const heapSample = resolveHeapSample();
 
       activeTweenCount = resolveActiveTweenCount();
       activeTimerCount = resolveActiveTimerCount();
       activeListenerCount = listenerCount;
-      lastRuntimeDiagnosticsPublishedAt = nowMs;
       publishMenuSceneRuntimeDiagnostics({
         revision: ++runtimeDiagnosticsRevision,
         sceneInstanceId,
@@ -3766,6 +3817,8 @@ export class MenuScene extends Phaser.Scene {
           lowPowerDetected: runtimeConfig.lowPowerDetected,
           lowPowerForced: runtimeConfig.lowPowerForced,
           lowPowerActive: runtimeConfig.lowPowerActive,
+          heapPressureActive,
+          postHiddenRecoveryActive,
           hardwareConcurrency: runtimeConfig.hardwareConcurrency,
           saveData: runtimeConfig.saveData
         },
@@ -3946,9 +3999,8 @@ export class MenuScene extends Phaser.Scene {
       this.add.rectangle(0, 0, width, height, sceneThemeProfile.palette.background.deepSpace, 1)
         .setOrigin(0)
         .setDepth(AMBIENT_SKY_DEPTHS.base - 1);
-      let sceneHidden = typeof document !== 'undefined' && document.hidden;
-      let installPromptPending = false;
-      const compactInstallChrome = sceneLayout.isTiny || sceneLayout.isNarrow;
+        let installPromptPending = false;
+        const compactInstallChrome = sceneLayout.isTiny || sceneLayout.isNarrow;
       const maybeLogBootTimingReport = (): void => {
         if (bootTimingReportLogged || !firstInteractiveFrameSeen || !deferredVisualSetupComplete) {
           return;
@@ -4887,6 +4939,8 @@ export class MenuScene extends Phaser.Scene {
         visibilityChangeCount += 1;
         if (hidden) {
           visibilitySuspendCount += 1;
+          hiddenRecoveryThrottleUntilMs = 0;
+          recentFrameTimesMs.length = 0;
         }
 
         const sceneTweens = this.tweens as Phaser.Tweens.TweenManager & {
@@ -4908,7 +4962,9 @@ export class MenuScene extends Phaser.Scene {
         sceneClock.paused = false;
         sceneTweens.resumeAll?.();
         ambientSkyDeltaBudgetMs = 0;
-        updatePerformanceMode(false);
+        recentFrameTimesMs.length = 0;
+        hiddenRecoveryThrottleUntilMs = this.time.now + legacyTuning.menu.runtime.postHiddenRecoveryMs;
+        updatePerformanceMode(false, this.time.now);
         publishRuntimeDiagnostics(false, true);
       };
       handleVisibilityChange = (): void => {
@@ -4916,7 +4972,7 @@ export class MenuScene extends Phaser.Scene {
           return;
         }
 
-        if (document.hidden) {
+        if (isDocumentSceneHidden()) {
           setSceneHiddenState(true);
           return;
         }
@@ -4980,7 +5036,7 @@ export class MenuScene extends Phaser.Scene {
         patternEngine?.suspend();
         sceneClock.paused = true;
         sceneTweens.pauseAll?.();
-        updatePerformanceMode(true);
+        updatePerformanceMode(true, sceneStartedAt);
       }
       publishRuntimeDiagnostics(sceneHidden, true);
       updateDemo = (_time: number, delta: number): void => {

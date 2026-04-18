@@ -81,6 +81,14 @@ const sanitizeId = (value: string): string => value.toLowerCase().replace(/[^a-z
 
 const normalizeSummary = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.!?]+$/u, '').toLowerCase();
 
+const summarizeFingerprint = (value: string): string => (
+  normalizeSummary(value)
+    .replace(/\b(?:a|an|and|at|from|in|into|near|of|on|the|to|toward|towards|with)\b/g, ' ')
+    .replace(/\b\d+\b/g, '#')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
 const clampConfidence = (value: number): number => Number(Math.min(0.99, Math.max(0.51, value)).toFixed(2));
 
 const makeIntentRecord = (
@@ -126,10 +134,13 @@ const matchesDebounceWindow = (
 
 const matchesNearDuplicateSummary = (
   records: readonly IntentBusRecord[],
-  summary: string,
+  record: IntentBusRecord,
   step: number
-): boolean => records.some((record) => (
-  step - record.step <= DEBOUNCE_WINDOW_STEPS && normalizeSummary(record.summary) === normalizeSummary(summary)
+): boolean => records.some((existingRecord) => (
+  step - existingRecord.step <= DEBOUNCE_WINDOW_STEPS
+  && existingRecord.speaker === record.speaker
+  && existingRecord.kind === record.kind
+  && summarizeFingerprint(existingRecord.summary) === summarizeFingerprint(record.summary)
 ));
 
 const makePlaybookIntentCandidate = (
@@ -324,7 +335,7 @@ export const buildIntentBus = (
         continue;
       }
 
-      if (!aggressiveMode && matchesNearDuplicateSummary(records, candidate.record.summary, state.step)) {
+      if (!aggressiveMode && matchesNearDuplicateSummary(records, candidate.record, state.step)) {
         debouncedEventCount += 1;
         if (candidate.record.anchor) {
           debouncedWorldPingCount += 1;

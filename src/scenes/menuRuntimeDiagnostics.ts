@@ -5,10 +5,14 @@ export type MenuScenePerformanceMode = 'full' | 'throttled' | 'hidden';
 export interface MenuSceneRuntimeTuning {
   diagnosticsPublishIntervalMs: number;
   recentFrameWindow: number;
+  heapSampleWindow: number;
   degradeAverageFrameMs: number;
   recoverAverageFrameMs: number;
   degradeSpikeCount: number;
   recoverSpikeCount: number;
+  heapGrowthThrottleBytes: number;
+  heapGrowthRecoverBytes: number;
+  postHiddenRecoveryMs: number;
   spikeFrameMs: number;
   lowPowerHardwareConcurrencyMax: number;
   ambientUpdateIntervalMs: Record<MenuScenePerformanceMode, number>;
@@ -73,6 +77,8 @@ export interface MenuSceneRuntimeDiagnostics {
     lowPowerDetected: boolean;
     lowPowerForced: boolean;
     lowPowerActive: boolean;
+    heapPressureActive: boolean;
+    postHiddenRecoveryActive: boolean;
     hardwareConcurrency: number | null;
     saveData: boolean;
   };
@@ -197,7 +203,15 @@ export const resolveMenuScenePerformanceMode = (
     lowPowerActive: boolean;
     recentAverageFrameMs: number;
     recentSpikeCount: number;
-    tuning: Pick<MenuSceneRuntimeTuning, 'degradeAverageFrameMs' | 'recoverAverageFrameMs' | 'degradeSpikeCount' | 'recoverSpikeCount'>;
+    heapPressureActive?: boolean;
+    recoveryHoldActive?: boolean;
+    tuning: Pick<
+      MenuSceneRuntimeTuning,
+      'degradeAverageFrameMs'
+      | 'recoverAverageFrameMs'
+      | 'degradeSpikeCount'
+      | 'recoverSpikeCount'
+    >;
   }
 ): MenuScenePerformanceMode => {
   if (options.hidden) {
@@ -205,6 +219,10 @@ export const resolveMenuScenePerformanceMode = (
   }
 
   if (options.lowPowerActive) {
+    return 'throttled';
+  }
+
+  if (options.heapPressureActive === true || options.recoveryHoldActive === true) {
     return 'throttled';
   }
 
