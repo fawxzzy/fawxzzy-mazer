@@ -445,6 +445,20 @@ export const legacyTuning = {
       goalPulseMs: 72,
       heroRefreshMs: 56
     },
+    ritual: {
+      decisionSlowdownFactor: 0.78,
+      decisionWindowStartRatio: 0.74,
+      decisionWindowEndRatio: 0.96,
+      failReflectionRatio: 0.58,
+      failCardAlpha: 0.84,
+      retryCardAlpha: 0.66,
+      cardWidthRatio: 0.58,
+      cardMinWidthPx: 180,
+      cardMaxWidthPx: 320,
+      cardHeightPx: 70,
+      cardTitleFontPx: 15,
+      cardSubtitleFontPx: 11
+    },
     behavior: {
       trailMaxLength: 46,
       aiTilePathAdditionalPaths: 0,

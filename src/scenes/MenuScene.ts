@@ -98,6 +98,28 @@ const LOADING_PHASE_LABELS: Record<MenuDemoSequence, readonly string[]> = {
   arrival: ['live system', 'pattern sync'],
   fade: ['routing', 'generating']
 };
+type DemoRitualPhase = 'none' | 'decision' | 'fail' | 'retry';
+const FAIL_RITUAL_TITLES = ['Timing missed', 'Route clipped', 'Loop collapsed'] as const;
+const FAIL_RITUAL_SUBTITLES: Record<DemoMood, readonly string[]> = {
+  solve: [
+    'Committed late at the live line. Hold the read, then rerun.',
+    'The exit line was visible, but the turn came a beat early.'
+  ],
+  scan: [
+    'Read the branch too shallow. Rebuild the picture, then retry.',
+    'The risk looked clean until the lane narrowed. Reset and scan again.'
+  ],
+  blueprint: [
+    'The pattern held until the gate phase slipped. Resetting the timing read.',
+    'The board was mapped, but the commit landed a beat off.'
+  ]
+};
+const RETRY_RITUAL_TITLES = ['Retrying run', 'Resetting route'] as const;
+const RETRY_RITUAL_SUBTITLES: Record<DemoMood, readonly string[]> = {
+  solve: ['Centering the line and rolling a calmer retry.'],
+  scan: ['Reopening the branch read before the next commit.'],
+  blueprint: ['Re-syncing the timing sketch before the next pass.']
+};
 
 export type DemoMood = 'solve' | 'scan' | 'blueprint';
 export type MenuDemoSequence = 'intro' | 'reveal' | 'arrival' | 'fade';
@@ -152,6 +174,11 @@ export interface MenuDemoPresentation {
   trailPulseBoost: number;
   metadataAlpha: number;
   flashAlpha: number;
+  ritualPhase: DemoRitualPhase;
+  ritualProgress: number;
+  ritualAlpha: number;
+  ritualTitle: string;
+  ritualSubtitle: string;
 }
 
 interface VariantProfile {
@@ -229,6 +256,10 @@ interface EpisodePresentationShell {
   boardHalo: Phaser.GameObjects.Ellipse;
   boardShade: Phaser.GameObjects.Rectangle;
   boardVeil: Phaser.GameObjects.Rectangle;
+  ritualCard: Phaser.GameObjects.Rectangle;
+  ritualCardStroke: Phaser.GameObjects.Rectangle;
+  ritualTitle: Phaser.GameObjects.Text;
+  ritualSubtitle: Phaser.GameObjects.Text;
   blueprintAccent: Phaser.GameObjects.Graphics;
   motifPrimary: Phaser.GameObjects.Graphics;
   motifSecondary: Phaser.GameObjects.Graphics;
@@ -3749,6 +3780,7 @@ export class MenuScene extends Phaser.Scene {
     let lastIntentFeedDiagnostics: MenuSceneRuntimeDiagnostics['feed'] = {
       step: null,
       signature: '',
+      status: null,
       visibleEntryCount: 0,
       visibleEntries: [],
       changeCount: 0,
@@ -3777,6 +3809,18 @@ export class MenuScene extends Phaser.Scene {
         summary: entry.summary,
         slot: entry.slot
       })) ?? []
+    );
+    const toRuntimeFeedStatus = (
+      feedState: IntentFeedState | null
+    ): MenuSceneRuntimeDiagnostics['feed']['status'] => (
+      feedState?.status
+        ? {
+            speaker: feedState.status.speaker,
+            kind: feedState.status.kind,
+            importance: feedState.status.importance,
+            summary: feedState.status.summary
+          }
+        : null
     );
     const runOptional = (label: string, render: () => void): void => {
       try {
@@ -4005,7 +4049,11 @@ export class MenuScene extends Phaser.Scene {
         episodePresentationShell.boardAura,
         episodePresentationShell.boardHalo,
         episodePresentationShell.boardShade,
-        episodePresentationShell.boardVeil
+        episodePresentationShell.boardVeil,
+        episodePresentationShell.ritualCard,
+        episodePresentationShell.ritualCardStroke,
+        episodePresentationShell.ritualTitle,
+        episodePresentationShell.ritualSubtitle
       ]);
       episodePresentationShell.demoStatusHud.destroy();
       episodePresentationShell.intentFeedHud.destroy();
@@ -4013,6 +4061,10 @@ export class MenuScene extends Phaser.Scene {
       episodePresentationShell.motifSecondary.destroy();
       episodePresentationShell.motifPrimary.destroy();
       episodePresentationShell.blueprintAccent.destroy();
+      episodePresentationShell.ritualSubtitle.destroy();
+      episodePresentationShell.ritualTitle.destroy();
+      episodePresentationShell.ritualCardStroke.destroy();
+      episodePresentationShell.ritualCard.destroy();
       episodePresentationShell.boardVeil.destroy();
       episodePresentationShell.boardShade.destroy();
       episodePresentationShell.boardHalo.destroy();
@@ -4510,6 +4562,40 @@ export class MenuScene extends Phaser.Scene {
           themeProfile.shell.veilColor,
           0
         ).setOrigin(0.5).setDepth(7.2);
+        const ritualTuning = legacyTuning.demo.ritual;
+        const ritualCardWidth = clamp(
+          Math.round(layout.boardWidth * ritualTuning.cardWidthRatio),
+          ritualTuning.cardMinWidthPx,
+          ritualTuning.cardMaxWidthPx
+        );
+        const ritualCardY = layout.boardY + Math.max(42, Math.round(layout.boardHeight * 0.22));
+        const ritualCard = this.add.rectangle(
+          boardCenterX,
+          ritualCardY,
+          ritualCardWidth,
+          ritualTuning.cardHeightPx,
+          themeProfile.palette.ui.overlayFill,
+          0
+        ).setOrigin(0.5).setDepth(10.72);
+        const ritualCardStroke = this.add.rectangle(
+          boardCenterX,
+          ritualCardY,
+          ritualCardWidth,
+          ritualTuning.cardHeightPx
+        ).setOrigin(0.5).setDepth(10.74).setStrokeStyle(1, themeProfile.palette.ui.overlayStroke, 0);
+        const ritualTitle = this.add.text(boardCenterX, ritualCardY - 13, '', {
+          color: `#${themeProfile.palette.ui.text.toString(16).padStart(6, '0')}`,
+          fontFamily: '"Courier New", monospace',
+          fontSize: `${ritualTuning.cardTitleFontPx}px`,
+          fontStyle: 'bold'
+        }).setOrigin(0.5).setAlpha(0).setDepth(10.76);
+        const ritualSubtitle = this.add.text(boardCenterX, ritualCardY + 9, '', {
+          color: `#${themeProfile.palette.ui.textDim.toString(16).padStart(6, '0')}`,
+          fontFamily: '"Courier New", monospace',
+          fontSize: `${ritualTuning.cardSubtitleFontPx}px`,
+          align: 'center',
+          wordWrap: { width: ritualCardWidth - 28, useAdvancedWrap: true }
+        }).setOrigin(0.5).setAlpha(0).setDepth(10.76);
         const blueprintAccent = this.add.graphics().setDepth(7.1).setBlendMode(Phaser.BlendModes.SCREEN);
         const motifPrimary = this.add.graphics().setDepth(5.8);
         const motifSecondary = this.add.graphics().setDepth(6.15);
@@ -4535,6 +4621,10 @@ export class MenuScene extends Phaser.Scene {
           boardHalo,
           boardShade,
           boardVeil,
+          ritualCard,
+          ritualCardStroke,
+          ritualTitle,
+          ritualSubtitle,
           blueprintAccent,
           motifPrimary,
           motifSecondary
@@ -4833,6 +4923,36 @@ export class MenuScene extends Phaser.Scene {
           shell.blueprintAccent.setPosition(shell.layout.boardX + offsetX, shell.layout.boardY + offsetY)
             .setAlpha(resolveBlueprintAccentAlpha(presentation, themeProfile));
         });
+        runOptional('ritual overlay', () => {
+          const ritualY = shell.layout.boardY + offsetY + Math.max(42, Math.round(shell.layout.boardHeight * 0.22));
+          const ritualScale = reducedMotion
+            ? 1
+            : presentation.ritualPhase === 'fail'
+              ? lerp(0.985, 1, presentation.ritualProgress)
+              : presentation.ritualPhase === 'retry'
+                ? lerp(1.01, 1, presentation.ritualProgress)
+                : 1;
+          const showRitual = presentation.ritualPhase === 'fail' || presentation.ritualPhase === 'retry';
+
+          shell.ritualCard
+            .setPosition(shell.boardCenterX + offsetX, ritualY)
+            .setScale(ritualScale)
+            .setAlpha(showRitual ? presentation.ritualAlpha : 0);
+          shell.ritualCardStroke
+            .setPosition(shell.boardCenterX + offsetX, ritualY)
+            .setScale(ritualScale)
+            .setAlpha(showRitual ? Math.min(0.94, presentation.ritualAlpha + 0.08) : 0);
+          shell.ritualTitle
+            .setPosition(shell.boardCenterX + offsetX, ritualY - 13)
+            .setScale(ritualScale)
+            .setText(showRitual ? presentation.ritualTitle : '')
+            .setAlpha(showRitual ? Math.min(1, presentation.ritualAlpha + 0.08) : 0);
+          shell.ritualSubtitle
+            .setPosition(shell.boardCenterX + offsetX, ritualY + 9)
+            .setScale(ritualScale)
+            .setText(showRitual ? presentation.ritualSubtitle : '')
+            .setAlpha(showRitual ? Math.min(0.96, presentation.ritualAlpha) : 0);
+        });
       };
       const applyEpisodePresentation = (): void => {
         if (!patternFrame) {
@@ -4916,6 +5036,33 @@ export class MenuScene extends Phaser.Scene {
           pulseBoard(0.11, 0.12, 0.16, 240, 1.014);
         }
       };
+      const resolvePresentationElapsedMs = (episode: MazeEpisode, elapsedMs: number, presentation: MenuDemoPresentation): number => {
+        const spawnHoldMs = Math.max(1, demoConfig.cadence.spawnHoldMs);
+        const traverseMs = Math.max(1, (Math.max(1, episode.raster.pathIndices.length) - 1) * Math.max(1, demoConfig.cadence.exploreStepMs));
+        const ritualTuning = legacyTuning.demo.ritual;
+        const commitWindowStart = spawnHoldMs + Math.max(1, Math.floor(traverseMs * ritualTuning.decisionWindowStartRatio));
+        const commitWindowEnd = spawnHoldMs + Math.max(1, Math.floor(traverseMs * ritualTuning.decisionWindowEndRatio));
+
+        if (presentation.ritualPhase === 'decision' && elapsedMs >= commitWindowStart) {
+          const slowedElapsed = Math.min(elapsedMs, commitWindowEnd);
+          const commitOffset = slowedElapsed - commitWindowStart;
+          const reducedCommit = Math.floor(commitOffset * ritualTuning.decisionSlowdownFactor);
+          return commitWindowStart + reducedCommit;
+        }
+
+        if (presentation.ritualPhase === 'fail') {
+          return Math.max(
+            spawnHoldMs,
+            (spawnHoldMs + traverseMs) - Math.max(1, Math.floor(demoConfig.cadence.exploreStepMs * 0.45))
+          );
+        }
+
+        if (presentation.ritualPhase === 'retry') {
+          return Math.max(1, Math.floor(spawnHoldMs * (0.24 + (presentation.ritualProgress * 0.32))));
+        }
+
+        return elapsedMs;
+      };
       renderDemo = (): void => {
         const shell = episodePresentationShell;
         if (!patternFrame || !shell) {
@@ -4931,9 +5078,10 @@ export class MenuScene extends Phaser.Scene {
           variant,
           deploymentProfileId
         );
+        const presentationElapsedMs = resolvePresentationElapsedMs(episode, patternFrame.t * 1000, demoPresentation);
         const view = resolveDemoWalkerViewFrame(
           episode,
-          patternFrame.t * 1000,
+          presentationElapsedMs,
           demoConfig,
           demoPresentation.trailWindow
         );
@@ -5013,6 +5161,7 @@ export class MenuScene extends Phaser.Scene {
           const feedState = intentRuntimeSession?.getDisplayFeedState(intentStep, this.time.now) ?? null;
           lastIntentFeedDiagnostics = summarizeMenuSceneRuntimeFeed({
             step: feedState?.step ?? null,
+            status: toRuntimeFeedStatus(feedState),
             visibleEntries: toRuntimeFeedEntries(feedState),
             previous: lastIntentFeedDiagnostics,
             nowMs: this.time.now
@@ -5628,6 +5777,20 @@ export const resolveMenuDemoSequence = (
   };
 };
 
+const resolveFailRitualCopy = (seed: number, mood: DemoMood): { title: string; subtitle: string } => {
+  const title = FAIL_RITUAL_TITLES[mix(seed, mood.charCodeAt(0), 0x4f12a9c3) % FAIL_RITUAL_TITLES.length];
+  const subtitles = FAIL_RITUAL_SUBTITLES[mood];
+  return {
+    title,
+    subtitle: subtitles[mix(seed, mood.charCodeAt(0), title.charCodeAt(0)) % subtitles.length]
+  };
+};
+
+const resolveRetryRitualCopy = (seed: number, mood: DemoMood): { title: string; subtitle: string } => ({
+  title: RETRY_RITUAL_TITLES[mix(seed, mood.charCodeAt(0), 0x2dd9a165) % RETRY_RITUAL_TITLES.length],
+  subtitle: RETRY_RITUAL_SUBTITLES[mood][0]
+});
+
 export const resolveMenuDemoPresentation = (
   episode: MazeEpisode,
   cycle: MenuDemoCycle,
@@ -5658,6 +5821,11 @@ export const resolveMenuDemoPresentation = (
   let boardHaloScale = 1;
   let metadataAlpha = moodProfile.metadataAlpha * variantProfile.metadataAlphaScale;
   let flashAlpha = safeVariant === 'loading' ? 0.24 : 0;
+  let ritualPhase: DemoRitualPhase = 'none';
+  let ritualProgress = 0;
+  let ritualAlpha = 0;
+  let ritualTitle = '';
+  let ritualSubtitle = '';
 
   switch (sequenceState.sequence) {
     case 'intro':
@@ -5730,6 +5898,35 @@ export const resolveMenuDemoPresentation = (
           ? 0.24
       : 0.18
     );
+  }
+  const ritualTuning = legacyTuning.demo.ritual;
+  if (sequenceState.sequence === 'reveal'
+    && progress >= ritualTuning.decisionWindowStartRatio
+    && progress <= ritualTuning.decisionWindowEndRatio) {
+    ritualPhase = 'decision';
+    ritualProgress = clamp(
+      (progress - ritualTuning.decisionWindowStartRatio)
+        / Math.max(0.01, ritualTuning.decisionWindowEndRatio - ritualTuning.decisionWindowStartRatio),
+      0,
+      1
+    );
+  } else if (sequenceState.sequence === 'fade') {
+    const reflectionRatio = clamp(ritualTuning.failReflectionRatio, 0.2, 0.8);
+    if (progress < reflectionRatio) {
+      const failCopy = resolveFailRitualCopy(episode.seed, cycle.mood);
+      ritualPhase = 'fail';
+      ritualProgress = clamp(progress / reflectionRatio, 0, 1);
+      ritualAlpha = lerp(0.18, ritualTuning.failCardAlpha, ritualProgress);
+      ritualTitle = failCopy.title;
+      ritualSubtitle = failCopy.subtitle;
+    } else {
+      const retryCopy = resolveRetryRitualCopy(episode.seed, cycle.mood);
+      ritualPhase = 'retry';
+      ritualProgress = clamp((progress - reflectionRatio) / Math.max(0.01, 1 - reflectionRatio), 0, 1);
+      ritualAlpha = lerp(ritualTuning.retryCardAlpha, 0.24, ritualProgress);
+      ritualTitle = retryCopy.title;
+      ritualSubtitle = retryCopy.subtitle;
+    }
   }
   const persistentFadeFloor = clamp(
     moodProfile.persistentFadeFloor
@@ -5863,7 +6060,12 @@ export const resolveMenuDemoPresentation = (
         * deploymentProfile.flashAlphaScale,
       0,
       0.84
-    )
+    ),
+    ritualPhase,
+    ritualProgress,
+    ritualAlpha: clamp(ritualAlpha, 0, 0.92),
+    ritualTitle,
+    ritualSubtitle
   };
 };
 

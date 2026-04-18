@@ -118,7 +118,7 @@ describe('menu intent runtime', () => {
     expect(secondState?.status).not.toBeNull();
     expect(secondState?.status?.kind).toBe('goal-observed');
     expect(secondState?.events?.length ?? secondState?.entries.length).toBeLessThanOrEqual(4);
-    expect(secondState?.status?.summary).toContain('exit route');
+    expect(secondState?.status?.summary).toContain('exit line');
   });
 
   test('holds feed entries for a minimum dwell and coalesces rapid replacements', () => {
@@ -150,29 +150,29 @@ describe('menu intent runtime', () => {
     });
 
     const first = controller.advance(
-      createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'reading gate timing', 'ignored tail']),
+      createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'waiting on gate timing', 'ignored tail']),
       0
     );
-    expect(first?.events?.map((entry) => entry.summary) ?? first?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(first?.events?.map((entry) => entry.summary) ?? first?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'waiting on gate timing']);
 
     const identical = controller.advance(
-      createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'reading gate timing', 'ignored tail']),
+      createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'waiting on gate timing', 'ignored tail']),
       1_400
     );
-    expect(identical?.events?.map((entry) => entry.summary) ?? identical?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(identical?.events?.map((entry) => entry.summary) ?? identical?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'waiting on gate timing']);
     expect(identical?.events?.map((entry) => entry.id) ?? identical?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
 
     const queued = controller.advance(
-      createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'tracking exit line', 'ignored tail']),
+      createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'committing exit line', 'ignored tail']),
       2_200
     );
-    expect(queued?.events?.map((entry) => entry.summary) ?? queued?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'reading gate timing']);
+    expect(queued?.events?.map((entry) => entry.summary) ?? queued?.entries.map((entry) => entry.summary)).toEqual(['scanning west branch', 'waiting on gate timing']);
 
     const changed = controller.advance(
-      createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'tracking exit line', 'ignored tail']),
+      createFeedState(['m', 'n', 'o'], 3, ['scanning east gate', 'committing exit line', 'ignored tail']),
       3_000
     );
-    expect(changed?.events?.map((entry) => entry.summary) ?? changed?.entries.map((entry) => entry.summary)).toEqual(['scanning east gate', 'tracking exit line']);
+    expect(changed?.events?.map((entry) => entry.summary) ?? changed?.entries.map((entry) => entry.summary)).toEqual(['scanning east gate', 'committing exit line']);
     expect(changed?.events?.map((entry) => entry.id) ?? changed?.entries.map((entry) => entry.id)).toEqual(['m', 'n']);
   });
 
@@ -183,11 +183,11 @@ describe('menu intent runtime', () => {
       replacementDebounceMs: 700
     });
 
-    const first = controller.advance(createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'reading gate timing', 'ignored tail'], 'scanning west branch'), 0);
+    const first = controller.advance(createFeedState(['a', 'b', 'c'], 1, ['scanning west branch', 'waiting on gate timing', 'ignored tail'], 'scanning west branch'), 0);
     expect(first?.status?.summary).toBe('scanning west branch');
 
-    const held = controller.advance(createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'reading gate timing', 'ignored tail'], 'locking exit route'), 500);
-    expect(held?.status?.summary).toBe('locking exit route');
+    const held = controller.advance(createFeedState(['x', 'y', 'z'], 2, ['scanning west branch', 'waiting on gate timing', 'ignored tail'], 'committing exit line'), 500);
+    expect(held?.status?.summary).toBe('committing exit line');
     expect(held?.events?.map((entry) => entry.id) ?? held?.entries.map((entry) => entry.id)).toEqual(['a', 'b']);
   });
 
@@ -224,10 +224,10 @@ describe('menu intent runtime', () => {
       replacementDebounceMs: 700
     });
 
-    const scanInitial = createFeedState(['scan-a', 'scan-b'], 1, ['scanning west branch', 'reading gate timing'], 'scanning west branch', 'frontier-chosen');
-    const scanReplacement = createFeedState(['scan-c', 'scan-d'], 2, ['scanning east gate', 'reading exit line'], 'scanning east gate', 'frontier-chosen');
-    const commitInitial = createFeedState(['commit-a', 'commit-b'], 1, ['locking exit route', 'recalling the branch'], 'locking exit route', 'route-commitment-changed');
-    const commitReplacement = createFeedState(['commit-c', 'commit-d'], 2, ['locking exit route', 'recalling the branch'], 'locking exit route', 'route-commitment-changed');
+    const scanInitial = createFeedState(['scan-a', 'scan-b'], 1, ['scanning west branch', 'waiting on gate timing'], 'scanning west branch', 'frontier-chosen');
+    const scanReplacement = createFeedState(['scan-c', 'scan-d'], 2, ['scanning east gate', 'committing exit line'], 'scanning east gate', 'frontier-chosen');
+    const commitInitial = createFeedState(['commit-a', 'commit-b'], 1, ['committing exit line', 'recalling the branch'], 'committing exit line', 'route-commitment-changed');
+    const commitReplacement = createFeedState(['commit-c', 'commit-d'], 2, ['committing exit line', 'recalling the branch'], 'committing exit line', 'route-commitment-changed');
 
     scanController.advance(scanInitial, 0);
     commitController.advance(commitInitial, 0);

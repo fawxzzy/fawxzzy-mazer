@@ -1020,7 +1020,7 @@ describe('demo-only build', () => {
     disposeMazeEpisode(second.episode);
   });
 
-  test('demo presentation sequence stays bounded across intro, reveal, arrival, and fade', () => {
+  test('demo presentation sequence stays bounded across intro, reveal, arrival, and fade ritual phases', () => {
     const cycle = resolveMenuDemoCycle(9001, 4);
     const resolved = generateMazeForDifficulty({
       scale: 50,
@@ -1083,7 +1083,31 @@ describe('demo-only build', () => {
       expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
+      expect(['none', 'decision', 'fail', 'retry']).toContain(presentation.ritualPhase);
+      expect(presentation.ritualProgress).toBeGreaterThanOrEqual(0);
+      expect(presentation.ritualProgress).toBeLessThanOrEqual(1);
+      expect(presentation.ritualAlpha).toBeGreaterThanOrEqual(0);
+      expect(presentation.ritualAlpha).toBeLessThanOrEqual(0.92);
     }
+
+    const decisionPresentation = resolveMenuDemoPresentation(
+      episode,
+      cycle,
+      config.cadence.spawnHoldMs + Math.max(1, Math.floor(traverseMs * 0.86)),
+      config,
+      'loading'
+    );
+    const retryPresentation = resolveMenuDemoPresentation(
+      episode,
+      cycle,
+      config.cadence.spawnHoldMs + traverseMs + config.cadence.goalHoldMs + Math.max(1, Math.floor(config.cadence.resetHoldMs * 0.86)),
+      config,
+      'loading'
+    );
+    expect(decisionPresentation.ritualPhase).toBe('decision');
+    expect(retryPresentation.ritualPhase).toBe('retry');
+    expect(retryPresentation.ritualTitle.length).toBeGreaterThan(0);
+    expect(retryPresentation.ritualSubtitle.length).toBeGreaterThan(0);
 
     const titlePresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'title');
     const ambientPresentation = resolveMenuDemoPresentation(episode, cycle, checkpoints[1].elapsedMs, config, 'ambient');
@@ -1253,6 +1277,9 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain('const scheduleIntentRuntimeSession = (episode: MazeEpisode): void => {');
     expect(menuSceneSource).toContain('intentRuntimeSession = createMenuIntentRuntimeSession(episode);');
     expect(menuSceneSource).toContain('createIntentFeedHud(this, {');
+    expect(menuSceneSource).toContain('ritualCard');
+    expect(menuSceneSource).toContain('resolvePresentationElapsedMs');
+    expect(menuSceneSource).toContain("presentation.ritualPhase === 'fail'");
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");
     expect(menuSceneSource).toContain("document.removeEventListener('visibilitychange', handleVisibilityChange);");

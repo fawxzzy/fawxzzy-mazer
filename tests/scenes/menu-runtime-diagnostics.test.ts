@@ -114,6 +114,12 @@ describe('menu runtime diagnostics', () => {
   test('tracks structured feed snapshots without inventing extra state changes', () => {
     const first = summarizeMenuSceneRuntimeFeed({
       step: 4,
+      status: {
+        speaker: 'Runner',
+        kind: 'frontier-chosen',
+        importance: 'medium',
+        summary: '  Screening   West branch.  '
+      },
       visibleEntries: [{
         id: 'intent-1',
         speaker: 'Runner',
@@ -127,6 +133,12 @@ describe('menu runtime diagnostics', () => {
 
     const stable = summarizeMenuSceneRuntimeFeed({
       step: 4,
+      status: {
+        speaker: 'Runner',
+        kind: 'frontier-chosen',
+        importance: 'medium',
+        summary: 'Screening West branch.'
+      },
       visibleEntries: [{
         id: 'intent-1',
         speaker: 'Runner',
@@ -141,6 +153,12 @@ describe('menu runtime diagnostics', () => {
 
     const changed = summarizeMenuSceneRuntimeFeed({
       step: 5,
+      status: {
+        speaker: 'Runner',
+        kind: 'route-commitment-changed',
+        importance: 'high',
+        summary: 'Committing west branch.'
+      },
       visibleEntries: [{
         id: 'intent-2',
         speaker: 'TrapNet',
@@ -154,6 +172,7 @@ describe('menu runtime diagnostics', () => {
     });
 
     expect(first.visibleEntryCount).toBe(1);
+    expect(first.status?.summary).toBe('Screening West branch.');
     expect(first.visibleEntries[0]?.summary).toBe('Scanning West branch from Junction A.');
     expect(first.changeCount).toBe(1);
     expect(first.lastChangedAt).toBe(120);

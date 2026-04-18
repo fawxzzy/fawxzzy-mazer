@@ -99,7 +99,7 @@ export class PlaybookIntentTemplates {
           kind: 'goal-observed',
           category: 'goal',
           importance: 'high',
-          summary: `Locking exit route from ${currentLabel}.`,
+          summary: `Committing exit line from ${currentLabel}.`,
           confidence: 0.99,
           anchor: {
             kind: 'objective',
@@ -112,7 +112,7 @@ export class PlaybookIntentTemplates {
           kind: 'enemy-seen',
           category: 'danger',
           importance: 'high',
-          summary: `Screening ${input.cue ?? 'warden'} pressure near ${currentLabel}.`,
+          summary: `Watching ${input.cue ?? 'warden'} pressure near ${currentLabel}.`,
           confidence: 0.86,
           anchor: {
             kind: 'tile',
@@ -125,7 +125,7 @@ export class PlaybookIntentTemplates {
           kind: 'trap-inferred',
           category: 'danger',
           importance: 'high',
-          summary: `Reading ${input.cue ?? 'trap'} rhythm from ${currentLabel}.`,
+          summary: `Spotting ${input.cue ?? 'trap'} timing at ${currentLabel}.`,
           confidence: 0.78,
           anchor: {
             kind: 'tile',
@@ -138,7 +138,7 @@ export class PlaybookIntentTemplates {
           kind: 'item-spotted',
           category: 'item',
           importance: 'medium',
-          summary: `Valuing ${input.cue ?? 'item'} detour off ${currentLabel}.`,
+          summary: `Checking ${input.cue ?? 'item'} value off ${currentLabel}.`,
           confidence: 0.74,
           anchor: {
             kind: 'tile',
@@ -151,7 +151,7 @@ export class PlaybookIntentTemplates {
           kind: 'puzzle-state-observed',
           category: 'infer',
           importance: 'medium',
-          summary: `Parsing ${input.cue ?? 'puzzle'} state at ${currentLabel}.`,
+          summary: `Reading ${input.cue ?? 'puzzle'} timing at ${currentLabel}.`,
           confidence: 0.72,
           anchor: {
             kind: 'tile',
@@ -166,7 +166,7 @@ export class PlaybookIntentTemplates {
           kind: 'dead-end-confirmed',
           category: 'infer',
           importance: 'medium',
-          summary: `Marking ${currentLabel} low value after ${describeCount(backtrackCount, '1 backtrack', `${backtrackCount} backtracks`)}.`,
+          summary: `Recalling ${currentLabel}; back out after ${describeCount(backtrackCount, '1 backtrack', `${backtrackCount} backtracks`)}.`,
           confidence: 0.89
         };
         }
@@ -191,7 +191,7 @@ export class PlaybookIntentTemplates {
           kind: 'replan-triggered',
           category: 'replan',
           importance: 'medium',
-          summary: `Replanning ${currentLabel} toward ${targetLabel} with ${describeCount(frontierCount, '1 option', `${frontierCount} options`)}.`,
+          summary: `Rejecting ${currentLabel}; testing ${targetLabel} with ${describeCount(frontierCount, '1 option', `${frontierCount} options`)}.`,
           confidence: 0.79,
           anchor: aggressiveMode ? buildRunnerAnchor(input.state) : undefined
         };
@@ -204,8 +204,8 @@ export class PlaybookIntentTemplates {
           category: goalCommit ? 'goal' : 'replan',
           importance: goalCommit ? 'high' : 'medium',
           summary: goalCommit
-            ? `Locking route to ${targetLabel} from ${currentLabel}.`
-            : `Tracking ${targetLabel} from ${currentLabel}.`,
+            ? `Committing ${targetLabel} from ${currentLabel}.`
+            : `Committing ${targetLabel} after ${currentLabel}.`,
           confidence: goalCommit ? 0.91 : 0.73,
           anchor: aggressiveMode
             ? buildRunnerAnchor(input.state, goalCommit ? 'objective' : 'tile')
@@ -218,7 +218,7 @@ export class PlaybookIntentTemplates {
           kind: 'gate-aligned',
           category: 'observe',
           importance: 'medium',
-          summary: `Timing ${connectorLabel} at ${currentLabel}.`,
+          summary: `Waiting on ${connectorLabel} timing at ${currentLabel}.`,
           confidence: 0.83,
           anchor: {
             kind: 'connector',

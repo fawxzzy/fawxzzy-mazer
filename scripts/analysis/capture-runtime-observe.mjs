@@ -175,6 +175,24 @@ const normalizeFeedEntry = (entry) => ({
   slot: Number.isFinite(entry?.slot) ? Math.max(0, Math.trunc(entry.slot)) : 0
 });
 
+const normalizeFeedStatus = (status) => {
+  if (!status || typeof status !== 'object') {
+    return null;
+  }
+
+  const summary = normalizeFeedText(status.summary);
+  if (summary.length === 0) {
+    return null;
+  }
+
+  return {
+    speaker: normalizeFeedText(status.speaker),
+    kind: normalizeFeedText(status.kind),
+    importance: normalizeFeedText(status.importance),
+    summary
+  };
+};
+
 const getRuntimeFeedSamples = (samples) => samples.map((sample) => {
   const entries = Array.isArray(sample?.feed?.visibleEntries)
     ? sample.feed.visibleEntries
@@ -182,6 +200,7 @@ const getRuntimeFeedSamples = (samples) => samples.map((sample) => {
       .filter((entry) => entry.summary.length > 0)
       .sort((left, right) => left.slot - right.slot)
     : [];
+  const status = normalizeFeedStatus(sample?.feed?.status);
   const key = entries
     .map((entry) => [entry.speaker, entry.kind, entry.importance, entry.summary, entry.slot].join('|'))
     .join(' || ');
@@ -193,8 +212,11 @@ const getRuntimeFeedSamples = (samples) => samples.map((sample) => {
       ? Math.max(0, Math.trunc(sample.feed.visibleEntryCount))
       : entries.length,
     entries,
+    status,
     key,
-    leadKey: leadEntry ? [leadEntry.speaker, leadEntry.kind, leadEntry.summary].join('|') : ''
+    leadKey: leadEntry ? [leadEntry.speaker, leadEntry.kind, leadEntry.summary].join('|') : '',
+    statusKey: status ? [status.speaker, status.kind, status.summary].join('|') : '',
+    hasVisibleFeed: entries.length > 0 || Boolean(status)
   };
 });
 
@@ -216,6 +238,7 @@ const estimateSampleIntervalMs = (feedSamples) => {
 
 export const buildFeedTimelineFromRuntimeSamples = (samples) => {
   const feedSamples = getRuntimeFeedSamples(samples);
+  const samplesWithVisibleFeed = feedSamples.filter((sample) => sample.hasVisibleFeed);
   const samplesWithEntries = feedSamples.filter((sample) => sample.visibleEntryCount > 0);
   const captureEndElapsedMs = feedSamples.at(-1)?.elapsedMs ?? 0;
   const sampleIntervalEstimateMs = estimateSampleIntervalMs(feedSamples);
@@ -264,6 +287,10 @@ export const buildFeedTimelineFromRuntimeSamples = (samples) => {
   });
 
   const uniqueMessages = [...new Set(samplesWithEntries.flatMap((sample) => sample.entries.map((entry) => `${entry.speaker} ${entry.summary}`.trim())))];
+  const uniqueStatuses = [...new Set(samplesWithVisibleFeed
+    .map((sample) => sample.status ? `${sample.status.speaker} ${sample.status.summary}`.trim() : '')
+    .filter((text) => text.length > 0)
+  )];
   const topMessages = uniqueMessages
     .map((text) => ({
       text,
@@ -302,6 +329,7 @@ export const buildFeedTimelineFromRuntimeSamples = (samples) => {
 
   return {
     sampleCount: feedSamples.length,
+    visibleFeedSampleCount: samplesWithVisibleFeed.length,
     sampleIntervalEstimateMs,
     visibleEntryCount: {
       start: visibleEntryCounts[0] ?? 0,
@@ -315,6 +343,8 @@ export const buildFeedTimelineFromRuntimeSamples = (samples) => {
     snapshotCount: snapshots.length,
     uniqueMessageCount: uniqueMessages.length,
     uniqueMessages,
+    uniqueStatusCount: uniqueStatuses.length,
+    uniqueStatuses,
     replacements,
     replacementsPerMinute: round(replacements / Math.max(durationMs / 60_000, 1 / 60)),
     averageDwellMs,
@@ -391,6 +421,7 @@ const buildMarkdownSummary = ({
     '## Thought Feed',
     '',
     `- Feed samples: ${feed.sampleCount}, snapshots: ${feed.snapshotCount}, unique messages: ${feed.uniqueMessageCount}`,
+    `- Status samples: ${feed.visibleFeedSampleCount}, unique statuses: ${feed.uniqueStatusCount}`,
     `- Visible entries: start ${feed.visibleEntryCount.start}, end ${feed.visibleEntryCount.end}, min ${feed.visibleEntryCount.min}, max ${feed.visibleEntryCount.max}, average ${feed.visibleEntryCount.average}`,
     `- Replacements/min: ${feed.replacementsPerMinute}, average dwell ${feed.averageDwellMs}ms, longest unchanged run ${feed.maxUnchangedRunMs}ms`,
     `- Duplicate streak: ${feed.maxDuplicateStreak}`,

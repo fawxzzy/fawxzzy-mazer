@@ -108,6 +108,22 @@ export const getLuminanceDelta = (left: number, right: number): number => (
   Math.abs(getRelativeLuminance(left) - getRelativeLuminance(right))
 );
 
+export type LocalBoardContrastMode = 'dark' | 'light';
+export type LocalBoardSupportRole = 'player' | 'trail';
+
+export interface LocalBoardSupportColors {
+  mode: LocalBoardContrastMode;
+  underlay: number;
+  line: number;
+  glow: number;
+  accent: number;
+}
+
+interface LocalBoardSupportModeOptions {
+  deadband?: number;
+  previousMode?: LocalBoardContrastMode | null;
+}
+
 export interface PaletteReadabilityCheckpoint {
   key: string;
   foreground: number;
@@ -125,6 +141,7 @@ export interface PaletteReadabilityReport {
 
 type ContrastPreference = 'dark' | 'light' | 'auto';
 type SemanticRole = 'route' | 'trail' | 'player' | 'start' | 'goal';
+const LOCAL_BOARD_SUPPORT_DEADBAND = 0.24;
 
 const BOARD_READABILITY_MINIMUMS = Object.freeze({
   wallVsFloor: 3.5,
@@ -170,6 +187,90 @@ const SIGNAL_CLEANUP_BLEND: Record<SemanticRole, number> = {
   player: 0.18,
   start: 0.18,
   goal: 0.22
+};
+
+const getContrastRatioFromLuminance = (left: number, right: number): number => {
+  const lighter = Math.max(left, right);
+  const darker = Math.min(left, right);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+const buildLocalBoardSupportPalette = (
+  board: PresentationPalette['board'],
+  role: LocalBoardSupportRole
+): Record<LocalBoardContrastMode, Omit<LocalBoardSupportColors, 'mode'>> => {
+  if (role === 'player') {
+    return {
+      dark: {
+        underlay: mixColor(board.shadow, board.playerShadow, 0.42),
+        line: mixColor(board.shadow, board.playerShadow, 0.16),
+        glow: mixColor(board.shadow, board.player, 0.18),
+        accent: mixColor(board.shadow, board.playerCore, 0.08)
+      },
+      light: {
+        underlay: mixColor(board.playerHalo, 0xffffff, 0.26),
+        line: mixColor(board.playerHalo, 0xffffff, 0.54),
+        glow: mixColor(board.playerHalo, board.playerCore, 0.46),
+        accent: mixColor(board.playerCore, 0xffffff, 0.16)
+      }
+    };
+  }
+
+  return {
+    dark: {
+      underlay: mixColor(board.shadow, board.trailGlow, 0.2),
+      line: mixColor(board.shadow, board.trailCore, 0.1),
+      glow: mixColor(board.shadow, board.trailGlow, 0.3),
+      accent: mixColor(board.shadow, board.trail, 0.16)
+    },
+    light: {
+      underlay: mixColor(board.trailGlow, 0xffffff, 0.34),
+      line: mixColor(board.trailCore, 0xffffff, 0.18),
+      glow: mixColor(board.trailGlow, 0xffffff, 0.46),
+      accent: mixColor(board.trailCore, 0xffffff, 0.3)
+    }
+  };
+};
+
+const resolveLocalBoardSupportMode = (
+  supportPalette: Record<LocalBoardContrastMode, Omit<LocalBoardSupportColors, 'mode'>>,
+  backgroundLuminance: number,
+  options: LocalBoardSupportModeOptions = {}
+): LocalBoardContrastMode => {
+  const lightContrast = (
+    getContrastRatioFromLuminance(getRelativeLuminance(supportPalette.light.underlay), backgroundLuminance)
+    + getContrastRatioFromLuminance(getRelativeLuminance(supportPalette.light.line), backgroundLuminance)
+  ) / 2;
+  const darkContrast = (
+    getContrastRatioFromLuminance(getRelativeLuminance(supportPalette.dark.underlay), backgroundLuminance)
+    + getContrastRatioFromLuminance(getRelativeLuminance(supportPalette.dark.line), backgroundLuminance)
+  ) / 2;
+  const previousMode = options.previousMode ?? null;
+  const deadband = Math.max(0, options.deadband ?? LOCAL_BOARD_SUPPORT_DEADBAND);
+
+  if (previousMode !== null) {
+    const previousContrast = previousMode === 'light' ? lightContrast : darkContrast;
+    const alternateContrast = previousMode === 'light' ? darkContrast : lightContrast;
+    if (Math.abs(alternateContrast - previousContrast) <= deadband) {
+      return previousMode;
+    }
+  }
+
+  return darkContrast >= lightContrast ? 'dark' : 'light';
+};
+
+export const resolveLocalBoardSupportColors = (
+  board: PresentationPalette['board'],
+  role: LocalBoardSupportRole,
+  backgroundLuminance: number,
+  options: LocalBoardSupportModeOptions = {}
+): LocalBoardSupportColors => {
+  const supportPalette = buildLocalBoardSupportPalette(board, role);
+  const mode = resolveLocalBoardSupportMode(supportPalette, backgroundLuminance, options);
+  return {
+    mode,
+    ...supportPalette[mode]
+  };
 };
 
 const resolveContrastTarget = (prefer: ContrastPreference, background?: number): number => {

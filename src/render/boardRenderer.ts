@@ -2,8 +2,8 @@ import Phaser from 'phaser';
 import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
-import { isTileFloor, isTilePath, resolveDirectionBetween, xFromIndex, yFromIndex } from '../domain/maze';
-import { palette } from './palette';
+import { getNeighborIndex, isTileFloor, isTilePath, resolveDirectionBetween, xFromIndex, yFromIndex } from '../domain/maze';
+import { getRelativeLuminance, palette, resolveLocalBoardSupportColors, type LocalBoardContrastMode } from './palette';
 import { resolveSceneViewport } from './viewport';
 
 export interface BoardLayout {
@@ -404,6 +404,8 @@ export class BoardRenderer {
   private baseOffsetX = 0;
   private baseOffsetY = 0;
   private lastTrailDiagnostics: TrailRenderDiagnostics = createEmptyTrailRenderDiagnostics();
+  private playerSupportMode: LocalBoardContrastMode | null = null;
+  private trailSupportModes = new Map<number, LocalBoardContrastMode>();
 
   public constructor(
     private readonly scene: Phaser.Scene,
@@ -440,6 +442,8 @@ export class BoardRenderer {
 
   public setEpisode(episode: MazeEpisode): void {
     this.episode = episode;
+    this.playerSupportMode = null;
+    this.trailSupportModes.clear();
   }
 
   private get colors(): typeof palette {
@@ -516,6 +520,64 @@ export class BoardRenderer {
       x: this.tileX(index) + (this.layout.tileSize / 2),
       y: this.tileY(index) + (this.layout.tileSize / 2)
     };
+  }
+
+  private resolveTileSurfaceLuminance(index: number): number {
+    const colors = this.colors;
+    if (!isTileFloor(this.episode.raster.tiles, index)) {
+      return getRelativeLuminance(colors.board.wall);
+    }
+
+    const floorBase = mixHexColor(
+      colors.board.path,
+      colors.board.floor,
+      Phaser.Math.Clamp(legacyTuning.board.tile.floorInsetAlpha * 0.88, 0, 1)
+    );
+    const highlighted = mixHexColor(
+      floorBase,
+      colors.board.topHighlight,
+      Phaser.Math.Clamp(legacyTuning.board.tile.floorHighlightAlpha * 0.08, 0, 1)
+    );
+    const shaded = mixHexColor(
+      highlighted,
+      colors.board.shadow,
+      Phaser.Math.Clamp(legacyTuning.board.tile.floorShadowAlpha * 0.12, 0, 1)
+    );
+
+    return getRelativeLuminance(shaded);
+  }
+
+  private resolveTileNeighborhoodLuminance(index: number): number {
+    const width = sanitizePositive(this.episode?.raster?.width, 1, 1);
+    const height = sanitizePositive(this.episode?.raster?.height, 1, 1);
+    const tiles = this.episode.raster.tiles;
+    let luminanceTotal = this.resolveTileSurfaceLuminance(index) * 0.68;
+    let weightTotal = 0.68;
+
+    for (const direction of [0, 1, 2, 3] as const) {
+      const neighbor = getNeighborIndex(index, width, height, direction);
+      if (neighbor === -1) {
+        continue;
+      }
+
+      const neighborWeight = isTileFloor(tiles, neighbor) ? 0.08 : 0.12;
+      luminanceTotal += this.resolveTileSurfaceLuminance(neighbor) * neighborWeight;
+      weightTotal += neighborWeight;
+    }
+
+    return luminanceTotal / Math.max(1e-6, weightTotal);
+  }
+
+  private resolveBlendedNeighborhoodLuminance(fromIndex: number, toIndex: number, progress: number): number {
+    if (fromIndex === toIndex) {
+      return this.resolveTileNeighborhoodLuminance(toIndex);
+    }
+
+    return Phaser.Math.Linear(
+      this.resolveTileNeighborhoodLuminance(fromIndex),
+      this.resolveTileNeighborhoodLuminance(toIndex),
+      Phaser.Math.Clamp(progress, 0, 1)
+    );
   }
 
   private resolveActorBodyCenter(
@@ -612,12 +674,19 @@ export class BoardRenderer {
     alpha: number,
     isBacktrack: boolean,
     now: number,
-    competingSignalScale = 1
+    competingSignalScale = 1,
+    previousSupportMode: LocalBoardContrastMode | null = null
   ): void {
     const tileSize = this.layout.tileSize;
     const tileX = this.tileX(index);
     const tileY = this.tileY(index);
     const colors = this.colors;
+    const support = resolveLocalBoardSupportColors(
+      colors.board,
+      'trail',
+      this.resolveTileNeighborhoodLuminance(index),
+      { previousMode: previousSupportMode }
+    );
     const fillInset = Math.max(1, tileSize * 0.14);
     const fillWidth = Math.max(1, tileSize - (fillInset * 2));
     const fillHeight = Math.max(1, tileSize - (fillInset * 2));
@@ -629,7 +698,7 @@ export class BoardRenderer {
     const progress = visibleLength <= 1 ? 1 : order / Math.max(1, visibleLength - 1);
     const motionWave = 0.5 + (Math.sin((now * 0.0052) + (index * 0.31)) * 0.5);
     const baseAlpha = Phaser.Math.Clamp(alpha * competingSignalScale * (isBacktrack ? 0.56 : 0.8), 0.04, 0.34);
-    const shellColor = mixHexColor(colors.board.shadow, colors.board.panel, 0.44);
+    const shellColor = mixHexColor(support.underlay, colors.board.panel, 0.18);
     const phase = (now / 1500) + (index * 0.33) + (order * 0.58);
 
     this.visitedFloor.fillStyle(shellColor, baseAlpha * 0.2);
@@ -646,7 +715,7 @@ export class BoardRenderer {
         ? tileY + fillInset + fillHeight
         : tileY + fillInset + ((band + 1) * bandHeight);
       const bandColor = resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + (band * 0.84));
-      const fillColor = mixHexColor(bandColor, colors.board.shadow, 0.16);
+      const fillColor = mixHexColor(bandColor, support.underlay, 0.22);
       const bandAlpha = Phaser.Math.Clamp(
         baseAlpha * (0.4 + (progress * 0.1) + (motionWave * 0.08) - (band * 0.08)),
         0.03,
@@ -659,16 +728,16 @@ export class BoardRenderer {
 
     const coreColor = mixHexColor(
       resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + 0.46),
-      colors.board.topHighlight,
-      0.16
+      support.accent,
+      0.18
     );
     this.visitedFloor.fillStyle(coreColor, Phaser.Math.Clamp(baseAlpha * (0.18 + (motionWave * 0.05)), 0.02, 0.12));
     this.visitedFloor.fillRect(tileX + coreInset, tileY + coreInset, coreWidth, coreHeight);
 
     const strokeColor = mixHexColor(
       resolveLoopingGradientColor(MIDNIGHT_RAINBOW_STOPS, phase + 1.18),
-      colors.board.innerStroke,
-      0.32
+      support.line,
+      0.36
     );
     this.visitedFloor.lineStyle(Math.max(1, tileSize * 0.034), strokeColor, Phaser.Math.Clamp(baseAlpha * 0.64, 0.06, 0.24));
     this.visitedFloor.strokeRect(
@@ -678,7 +747,7 @@ export class BoardRenderer {
       Math.max(1, fillHeight - 1)
     );
 
-    this.visitedFloor.fillStyle(colors.board.topHighlight, Phaser.Math.Clamp(baseAlpha * 0.14, 0.02, 0.08));
+    this.visitedFloor.fillStyle(support.glow, Phaser.Math.Clamp(baseAlpha * 0.14, 0.02, 0.08));
     this.visitedFloor.fillRect(
       tileX + fillInset + 1,
       tileY + fillInset + 1,
@@ -1220,6 +1289,8 @@ export class BoardRenderer {
       : demoEmphasis
         ? 0.96
         : 0.9;
+    const previousTrailSupportModes = new Map(this.trailSupportModes);
+    const nextTrailSupportModes = new Map<number, LocalBoardContrastMode>();
 
     let bridgeRendered = false;
     for (let i = trailStart; i < trailLength; i += 1) {
@@ -1277,7 +1348,8 @@ export class BoardRenderer {
           floorMaterialAlpha,
           isBacktrack,
           now,
-          competingSignalScale
+          competingSignalScale,
+          previousTrailSupportModes.get(index) ?? null
         );
       }
       const cellInset = tileSize * (
@@ -1306,17 +1378,30 @@ export class BoardRenderer {
         ? headRenderState?.visibleHeadCenter.y ?? centerY
         : centerY;
       const movingHead = isHead && headRenderState?.bridgeRendered === true && !isGoalStep;
+      const backgroundLuminance = isHead && hasActiveMotion && activeMotion
+        ? this.resolveBlendedNeighborhoodLuminance(activeMotion.fromIndex, activeMotion.toIndex, easedMotionProgress)
+        : this.resolveTileNeighborhoodLuminance(index);
+      const trailSupport = (!isGoalStep && !isBacktrack)
+        ? resolveLocalBoardSupportColors(colors.board, 'trail', backgroundLuminance, {
+          previousMode: previousTrailSupportModes.get(index) ?? null
+        })
+        : null;
+      if (trailSupport !== null) {
+        nextTrailSupportModes.set(index, trailSupport.mode);
+      }
       const segmentCoreColor = isGoalStep
         ? colors.board.goalCore
         : isBacktrack
           ? colors.board.topHighlight
-          : colors.board.trailCore;
+          : mixHexColor(colors.board.trailCore, trailSupport?.line ?? colors.board.trailCore, 0.58);
       const segmentGlowColor = isGoalStep
         ? colors.board.goal
         : isBacktrack
           ? colors.board.innerStroke
-          : colors.board.trailGlow;
-      const segmentFillColor = isGoalStep ? colors.board.goal : colors.board.trail;
+          : mixHexColor(colors.board.trailGlow, trailSupport?.glow ?? colors.board.trailGlow, 0.72);
+      const segmentFillColor = isGoalStep
+        ? colors.board.goal
+        : mixHexColor(colors.board.trail, trailSupport?.accent ?? colors.board.trail, 0.24);
       if (isHead) {
         headCenterX = renderCenterX;
         headCenterY = renderCenterY;
@@ -1462,6 +1547,7 @@ export class BoardRenderer {
           }
         : {})
     };
+    this.trailSupportModes = nextTrailSupportModes;
 
     if (options.targetIndex !== null
       && options.targetIndex !== undefined
@@ -1555,7 +1641,18 @@ export class BoardRenderer {
     const tileY = this.tileY(index);
     const centerX = tileX + tileSize / 2;
     const centerY = tileY + tileSize / 2;
-    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now, pulseBoost);
+    this.drawActorAt(
+      centerX,
+      centerY,
+      tileX,
+      tileY,
+      tileSize,
+      direction,
+      cue,
+      now,
+      pulseBoost,
+      this.resolveTileNeighborhoodLuminance(index)
+    );
   }
 
   public drawActorMotion(
@@ -1583,7 +1680,18 @@ export class BoardRenderer {
     const centerY = Phaser.Math.Linear(fromTileY + (tileSize / 2), toTileY + (tileSize / 2), easedProgress);
     const tileX = Phaser.Math.Linear(fromTileX, toTileX, easedProgress);
     const tileY = Phaser.Math.Linear(fromTileY, toTileY, easedProgress);
-    this.drawActorAt(centerX, centerY, tileX, tileY, tileSize, direction, cue, now, pulseBoost);
+    this.drawActorAt(
+      centerX,
+      centerY,
+      tileX,
+      tileY,
+      tileSize,
+      direction,
+      cue,
+      now,
+      pulseBoost,
+      this.resolveBlendedNeighborhoodLuminance(fromIndex, toIndex, easedProgress)
+    );
   }
 
   public drawActorOffset(
@@ -1605,7 +1713,18 @@ export class BoardRenderer {
     const tileY = this.tileY(index);
     const centerX = tileX + (tileSize / 2) + offsetX;
     const centerY = tileY + (tileSize / 2) + offsetY;
-    this.drawActorAt(centerX, centerY, tileX + offsetX, tileY + offsetY, tileSize, direction, cue, now, pulseBoost);
+    this.drawActorAt(
+      centerX,
+      centerY,
+      tileX + offsetX,
+      tileY + offsetY,
+      tileSize,
+      direction,
+      cue,
+      now,
+      pulseBoost,
+      this.resolveTileNeighborhoodLuminance(index)
+    );
   }
 
   private drawActorAt(
@@ -1617,7 +1736,8 @@ export class BoardRenderer {
     direction: 0 | 1 | 2 | 3 | null,
     cue: DemoWalkerCue,
     now: number,
-    pulseBoost: number
+    pulseBoost: number,
+    supportBackgroundLuminance: number
   ): void {
     const actorTuning = legacyTuning.board.actor;
     const colors = this.colors;
@@ -1671,19 +1791,23 @@ export class BoardRenderer {
     const resolvedOuterRingAlpha = Math.max(actorTuning.outerRingMinimumAlpha, outerRingAlpha);
     const neighborhoodRadius = Math.max(emphasisFloorRadius * 1.14, tileSize * 0.84);
     const neighborhoodAlpha = Math.min(0.46, actorTuning.emphasisFloorAlpha * 1.12);
+    const actorSupport = resolveLocalBoardSupportColors(colors.board, 'player', supportBackgroundLuminance, {
+      previousMode: this.playerSupportMode
+    });
+    this.playerSupportMode = actorSupport.mode;
 
     this.actor.clear();
-    this.actor.fillStyle(colors.board.shadow, neighborhoodAlpha);
+    this.actor.fillStyle(actorSupport.underlay, neighborhoodAlpha);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, neighborhoodRadius);
-    this.actor.fillStyle(colors.board.shadow, actorTuning.emphasisFloorAlpha);
+    this.actor.fillStyle(actorSupport.glow, actorTuning.emphasisFloorAlpha);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, emphasisFloorRadius);
     this.actor.lineStyle(focusRingWidth, colors.board.playerCore, actorTuning.focusRingAlpha);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, focusRingRadius);
-    this.actor.fillStyle(colors.board.shadow, 0.94);
+    this.actor.fillStyle(actorSupport.line, 0.94);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, silhouetteRadius);
-    this.actor.lineStyle(silhouetteStrokeWidth, colors.board.shadow, 0.98);
+    this.actor.lineStyle(silhouetteStrokeWidth, actorSupport.line, 0.98);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, silhouetteRadius + (silhouetteStrokeWidth / 2));
-    this.actor.fillStyle(colors.board.playerShadow, actorTuning.shadowAlpha * 0.74);
+    this.actor.fillStyle(actorSupport.glow, actorTuning.shadowAlpha * 0.74);
     this.actor.fillCircle(
       bodyCenterX,
       bodyCenterY + tileSize * actorTuning.shadowOffsetYRatio,
@@ -1695,7 +1819,7 @@ export class BoardRenderer {
 
     this.actor.lineStyle(Math.max(1, tileSize * 0.024), colors.board.playerCore, 0.68);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, coreRadius * 1.08);
-    this.actor.lineStyle(Math.max(1, tileSize * 0.028), colors.board.shadow, 0.96);
+    this.actor.lineStyle(Math.max(1, tileSize * 0.028), actorSupport.line, 0.96);
     this.actor.strokeCircle(bodyCenterX, bodyCenterY, coreRadius * 1.04);
     this.actor.fillStyle(colors.board.player, 1);
     this.actor.fillCircle(bodyCenterX, bodyCenterY, coreRadius * 1.04);

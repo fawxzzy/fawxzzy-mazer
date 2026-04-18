@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { resolveIntentSemanticTag } from '../../src/mazer-core/intent/IntentFeed';
 import {
   clampIntentFeedSummary,
   resolveIntentFeedLayout,
@@ -131,5 +132,14 @@ describe('intent feed renderer', () => {
     expect(resolveIntentFeedRoleLabel('trap-inferred')).toBe('HYPOTHESIS');
     expect(resolveIntentFeedRoleLabel('route-commitment-changed')).toBe('COMMIT');
     expect(resolveIntentFeedRoleLabel('dead-end-confirmed')).toBe('RECALL');
+  });
+
+  test('maps hazard, timing, route, recall, and progress events onto the spectator taxonomy', () => {
+    expect(resolveIntentSemanticTag('trap-inferred')).toBe('hazard_seen');
+    expect(resolveIntentSemanticTag('replan-triggered')).toBe('route_rejected');
+    expect(resolveIntentSemanticTag('route-commitment-changed')).toBe('route_committed');
+    expect(resolveIntentSemanticTag('gate-aligned')).toBe('timing_wait');
+    expect(resolveIntentSemanticTag('dead-end-confirmed')).toBe('memory_recall');
+    expect(resolveIntentSemanticTag('goal-observed')).toBe('goal_progress');
   });
 });

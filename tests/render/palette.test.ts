@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   applyPresentationContrastFloors,
   getContrastRatio,
-  getPaletteReadabilityReport
+  getPaletteReadabilityReport,
+  resolveLocalBoardSupportColors
 } from '../../src/render/palette';
 import { palette } from '../../src/render/palette';
 
@@ -76,5 +77,31 @@ describe('presentation palette', () => {
       expect(goalVsPlayer?.passes, `${theme}: goal-vs-player`).toBe(true);
       expect(trailVsPlayerLuminance?.passes, `${theme}: trail-vs-player-luminance`).toBe(true);
     }
+  });
+
+  test('selects opposing local support colors for light and dark board luminance', () => {
+    const lightPlayerSupport = resolveLocalBoardSupportColors(palette.board, 'player', 0.62);
+    const darkPlayerSupport = resolveLocalBoardSupportColors(palette.board, 'player', 0.08);
+    const lightTrailSupport = resolveLocalBoardSupportColors(palette.board, 'trail', 0.6);
+    const darkTrailSupport = resolveLocalBoardSupportColors(palette.board, 'trail', 0.1);
+
+    expect(lightPlayerSupport.mode).toBe('dark');
+    expect(darkPlayerSupport.mode).toBe('light');
+    expect(lightTrailSupport.mode).toBe('dark');
+    expect(darkTrailSupport.mode).toBe('light');
+  });
+
+  test('holds the prior local support mode inside the deadband', () => {
+    const heldDark = resolveLocalBoardSupportColors(palette.board, 'player', 0.3, {
+      previousMode: 'dark',
+      deadband: 10
+    });
+    const heldLight = resolveLocalBoardSupportColors(palette.board, 'trail', 0.3, {
+      previousMode: 'light',
+      deadband: 10
+    });
+
+    expect(heldDark.mode).toBe('dark');
+    expect(heldLight.mode).toBe('light');
   });
 });

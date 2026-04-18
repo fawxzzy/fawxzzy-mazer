@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import { describe, expect, test, vi } from 'vitest';
 import type { MazeEpisode } from '../../src/domain/maze';
 import type { DemoTrailStep } from '../../src/domain/ai';
-import { palette } from '../../src/render/palette';
+import { palette, resolveLocalBoardSupportColors } from '../../src/render/palette';
 import {
   BoardRenderer,
   resolveTrailHeadRenderState,
@@ -167,6 +167,34 @@ const getAlphaForColor = (
     : Number(call.args[2]);
 };
 
+const mixColor = (from: number, to: number, amount: number): number => {
+  const safeAmount = Math.max(0, Math.min(1, amount));
+  const start = {
+    r: (from >> 16) & 0xff,
+    g: (from >> 8) & 0xff,
+    b: from & 0xff
+  };
+  const end = {
+    r: (to >> 16) & 0xff,
+    g: (to >> 8) & 0xff,
+    b: to & 0xff
+  };
+
+  return (
+    ((Math.round(start.r + ((end.r - start.r) * safeAmount)) & 0xff) << 16)
+    | ((Math.round(start.g + ((end.g - start.g) * safeAmount)) & 0xff) << 8)
+    | (Math.round(start.b + ((end.b - start.b) * safeAmount)) & 0xff)
+  );
+};
+
+const createThemePalette = (board: Partial<typeof palette.board>) => ({
+  ...palette,
+  board: {
+    ...palette.board,
+    ...board
+  }
+});
+
 describe('board renderer', () => {
   test('attaches the trail head when the live head matches the actor transform', () => {
     const attached = resolveTrailHeadRenderState(
@@ -200,9 +228,7 @@ describe('board renderer', () => {
     expect(actorGraphics).toBeTruthy();
 
     const fillStyleCalls = actorGraphics!.calls.filter((call) => call.method === 'fillStyle');
-    const firstShadowFillIndex = actorGraphics!.calls.findIndex(
-      (call) => call.method === 'fillStyle' && call.args[0] === palette.board.shadow
-    );
+    const firstSupportFillIndex = actorGraphics!.calls.findIndex((call) => call.method === 'fillStyle');
     const haloFillIndex = actorGraphics!.calls.findIndex(
       (call) => call.method === 'fillStyle' && call.args[0] === palette.board.playerHalo
     );
@@ -214,10 +240,55 @@ describe('board renderer', () => {
     );
 
     expect(fillStyleCalls.length).toBeGreaterThan(0);
-    expect(firstShadowFillIndex).toBeGreaterThanOrEqual(0);
-    expect(haloFillIndex).toBeGreaterThan(firstShadowFillIndex);
+    expect(firstSupportFillIndex).toBeGreaterThanOrEqual(0);
+    expect(haloFillIndex).toBeGreaterThan(firstSupportFillIndex);
     expect(playerFillIndex).toBeGreaterThan(haloFillIndex);
     expect(coreFillIndex).toBeGreaterThan(playerFillIndex);
+  });
+
+  test('adapts player support against local board luminance', () => {
+    const lightPalette = createThemePalette({
+      floor: 0xf2f6fb,
+      path: 0xe0e7f0,
+      wall: 0x334051
+    });
+    const darkPalette = createThemePalette({
+      floor: 0x243243,
+      path: 0x0f1824,
+      wall: 0x05080d
+    });
+
+    const lightScene = createSceneStub(1_000);
+    const lightRenderer = new BoardRenderer(lightScene.scene, createEpisode(), createLayout(), {
+      theme: { palette: lightPalette }
+    });
+    const lightSupport = resolveLocalBoardSupportColors(
+      lightPalette.board,
+      'player',
+      (lightRenderer as any).resolveTileNeighborhoodLuminance(0)
+    );
+    lightRenderer.drawActor(0, 3, 'explore');
+
+    const darkScene = createSceneStub(1_000);
+    const darkRenderer = new BoardRenderer(darkScene.scene, createEpisode(), createLayout(), {
+      theme: { palette: darkPalette }
+    });
+    const darkSupport = resolveLocalBoardSupportColors(
+      darkPalette.board,
+      'player',
+      (darkRenderer as any).resolveTileNeighborhoodLuminance(0)
+    );
+    darkRenderer.drawActor(0, 3, 'explore');
+
+    const lightActorGraphics = lightScene.graphics.at(8);
+    const darkActorGraphics = darkScene.graphics.at(8);
+    const lightUnderlayColor = lightActorGraphics?.calls.find((call) => call.method === 'fillStyle')?.args[0];
+    const darkUnderlayColor = darkActorGraphics?.calls.find((call) => call.method === 'fillStyle')?.args[0];
+
+    expect(lightSupport.mode).toBe('dark');
+    expect(darkSupport.mode).toBe('light');
+    expect(lightUnderlayColor).toBe(lightSupport.underlay);
+    expect(darkUnderlayColor).toBe(darkSupport.underlay);
   });
 
   test('adds an always-on emphasis floor and a large focus ring around the player signal', () => {
@@ -263,17 +334,63 @@ describe('board renderer', () => {
     const playerTrailGraphics = playerScene.graphics.at(7);
     const playerSignalGraphics = playerScene.graphics.at(6);
 
-    const defaultTrailGlowAlpha = getAlphaForColor(defaultTrailGraphics!.calls, 'fillStyle', palette.board.trailGlow);
+    const defaultTrailGlowAlpha = defaultTrailGraphics!.calls.find((call) => call.method === 'fillStyle')?.args[1];
     const defaultSignalAlpha = getAlphaForColor(defaultSignalGraphics!.calls, 'lineStyle', palette.board.topHighlight);
-    const playerTrailGlowAlpha = getAlphaForColor(playerTrailGraphics!.calls, 'fillStyle', palette.board.trailGlow);
+    const playerTrailGlowAlpha = playerTrailGraphics!.calls.find((call) => call.method === 'fillStyle')?.args[1];
     const playerSignalAlpha = getAlphaForColor(playerSignalGraphics!.calls, 'lineStyle', palette.board.topHighlight);
 
     expect(defaultTrailGlowAlpha).toBeDefined();
     expect(defaultSignalAlpha).toBeDefined();
     expect(playerTrailGlowAlpha).toBeDefined();
     expect(playerSignalAlpha).toBeDefined();
-    expect(playerTrailGlowAlpha!).toBeLessThan(defaultTrailGlowAlpha!);
+    expect(Number(playerTrailGlowAlpha)).toBeLessThan(Number(defaultTrailGlowAlpha));
     expect(playerSignalAlpha!).toBeLessThan(defaultSignalAlpha!);
+  });
+
+  test('adapts trail floor support against local board luminance', () => {
+    const trail: Array<number | DemoTrailStep> = [0, 1];
+    const lightPalette = createThemePalette({
+      floor: 0xf2f6fb,
+      path: 0xe0e7f0,
+      wall: 0x334051
+    });
+    const darkPalette = createThemePalette({
+      floor: 0x243243,
+      path: 0x0f1824,
+      wall: 0x05080d
+    });
+
+    const lightScene = createSceneStub(1_000);
+    const lightRenderer = new BoardRenderer(lightScene.scene, createEpisode(), createLayout(), {
+      theme: { palette: lightPalette }
+    });
+    const lightSupport = resolveLocalBoardSupportColors(
+      lightPalette.board,
+      'trail',
+      (lightRenderer as any).resolveTileNeighborhoodLuminance(1)
+    );
+    lightRenderer.drawTrail(trail, { cue: 'anticipate' });
+
+    const darkScene = createSceneStub(1_000);
+    const darkRenderer = new BoardRenderer(darkScene.scene, createEpisode(), createLayout(), {
+      theme: { palette: darkPalette }
+    });
+    const darkSupport = resolveLocalBoardSupportColors(
+      darkPalette.board,
+      'trail',
+      (darkRenderer as any).resolveTileNeighborhoodLuminance(1)
+    );
+    darkRenderer.drawTrail(trail, { cue: 'anticipate' });
+
+    const lightVisitedGraphics = lightScene.graphics.at(2);
+    const darkVisitedGraphics = darkScene.graphics.at(2);
+    const lightShellColor = lightVisitedGraphics?.calls.find((call) => call.method === 'fillStyle')?.args[0];
+    const darkShellColor = darkVisitedGraphics?.calls.find((call) => call.method === 'fillStyle')?.args[0];
+
+    expect(lightSupport.mode).toBe('dark');
+    expect(darkSupport.mode).toBe('light');
+    expect(lightShellColor).toBe(mixColor(lightSupport.underlay, lightPalette.board.panel, 0.18));
+    expect(darkShellColor).toBe(mixColor(darkSupport.underlay, darkPalette.board.panel, 0.18));
   });
 
   test('exposes a live trail head when committed trail and motion head match', () => {

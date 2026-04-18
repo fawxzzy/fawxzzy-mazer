@@ -7,7 +7,8 @@ import {
 } from '../mazer-core/intent';
 import {
   formatIntentFeedRole,
-  resolveIntentFeedRole
+  resolveIntentFeedRole,
+  resolveIntentSemanticTag
 } from '../mazer-core/intent/IntentFeed';
 import { palette } from './palette';
 import { resolveSceneViewport } from './viewport';
@@ -463,6 +464,10 @@ export const createIntentFeedHud = (
             : ''
         )
         .setAlpha(0.98);
+      status.setName('intent-status');
+      status.setDataEnabled();
+      status.setData('intent-role', resolveIntentFeedRole(visibleStatus?.kind ?? null));
+      status.setData('intent-semantic-tag', resolveIntentSemanticTag(visibleStatus?.kind ?? null));
 
       const eventStartY = tuning.paddingYPx + (visibleStatus ? lineHeight + tuning.entryGapPx : 0);
 
@@ -500,6 +505,7 @@ export const createIntentFeedHud = (
         entry.setDataEnabled();
         entry.setData('intent-role', resolveIntentFeedRole(record.kind));
         entry.setData('intent-role-token', roleToken);
+        entry.setData('intent-semantic-tag', resolveIntentSemanticTag(record.kind));
       }
 
       lastSnapshot = {

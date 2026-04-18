@@ -41,6 +41,13 @@ const PERSISTENT_STATUS_KINDS = new Set([
   'frontier-chosen'
 ]);
 export type IntentFeedRole = 'scan' | 'hypothesis' | 'commit' | 'recall';
+export type IntentSemanticTag =
+  | 'hazard_seen'
+  | 'route_rejected'
+  | 'route_committed'
+  | 'timing_wait'
+  | 'memory_recall'
+  | 'goal_progress';
 const INTENT_ROLE_ORDER: Record<IntentFeedRole, number> = {
   scan: 0,
   hypothesis: 1,
@@ -60,6 +67,16 @@ const INTENT_ROLE_BY_KIND: Record<IntentKind, IntentFeedRole> = {
   'gate-aligned': 'commit',
   'dead-end-confirmed': 'recall'
 };
+const INTENT_SEMANTIC_TAG_BY_KIND: Partial<Record<IntentKind, IntentSemanticTag>> = {
+  'enemy-seen': 'hazard_seen',
+  'trap-inferred': 'hazard_seen',
+  'replan-triggered': 'route_rejected',
+  'route-commitment-changed': 'route_committed',
+  'gate-aligned': 'timing_wait',
+  'puzzle-state-observed': 'timing_wait',
+  'dead-end-confirmed': 'memory_recall',
+  'goal-observed': 'goal_progress'
+};
 
 const isFeedRecord = (record: IntentBusRecord): boolean => record.kind !== 'gate-aligned';
 
@@ -77,6 +94,10 @@ export const resolveIntentFeedRoleRank = (role: IntentFeedRole): number => (
 
 export const formatIntentFeedRole = (kind: IntentKind | null | undefined): string => (
   resolveIntentFeedRole(kind).toUpperCase()
+);
+
+export const resolveIntentSemanticTag = (kind: IntentKind | null | undefined): IntentSemanticTag | null => (
+  kind ? INTENT_SEMANTIC_TAG_BY_KIND[kind] ?? null : null
 );
 
 const compareVisibleRecords = (left: IntentBusRecord, right: IntentBusRecord): number => (

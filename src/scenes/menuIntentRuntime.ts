@@ -97,26 +97,26 @@ const resolveFeedRole = (state: IntentFeedState | null): IntentFeedRole => (
 const resolvePacingMultiplier = (role: IntentFeedRole): number => {
   switch (role) {
     case 'scan':
-      return 0.9;
+      return 0.84;
     case 'hypothesis':
-      return 1;
+      return 1.04;
     case 'commit':
-      return 1.18;
+      return 1.26;
     case 'recall':
-      return 1.28;
+      return 1.38;
   }
 };
 
 const resolveDebounceMultiplier = (role: IntentFeedRole): number => {
   switch (role) {
     case 'scan':
-      return 0.85;
+      return 0.8;
     case 'hypothesis':
-      return 1;
+      return 1.02;
     case 'commit':
-      return 1.1;
+      return 1.16;
     case 'recall':
-      return 1.2;
+      return 1.28;
   }
 };
 

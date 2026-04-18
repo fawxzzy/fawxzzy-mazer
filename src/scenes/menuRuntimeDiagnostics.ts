@@ -45,9 +45,17 @@ export interface MenuSceneRuntimeFeedEntrySnapshot {
   slot: number;
 }
 
+export interface MenuSceneRuntimeFeedStatusSnapshot {
+  speaker: string;
+  kind: string;
+  importance: string;
+  summary: string;
+}
+
 export interface MenuSceneRuntimeFeedDiagnostics {
   step: number | null;
   signature: string;
+  status: MenuSceneRuntimeFeedStatusSnapshot | null;
   visibleEntryCount: number;
   visibleEntries: MenuSceneRuntimeFeedEntrySnapshot[];
   changeCount: number;
@@ -286,10 +294,17 @@ export const summarizeMenuSceneFrameWindow = (
 
 export const summarizeMenuSceneRuntimeFeed = (options: {
   step?: number | null;
+  status?: MenuSceneRuntimeFeedStatusSnapshot | null;
   visibleEntries?: readonly MenuSceneRuntimeFeedEntrySnapshot[] | null;
   previous?: MenuSceneRuntimeFeedDiagnostics | null;
   nowMs: number;
 }): MenuSceneRuntimeFeedDiagnostics => {
+  const status = options.status
+    ? {
+        ...options.status,
+        summary: normalizeFeedSummary(options.status.summary)
+      }
+    : null;
   const visibleEntries = (options.visibleEntries ?? [])
     .slice()
     .sort((left, right) => left.slot - right.slot)
@@ -297,13 +312,24 @@ export const summarizeMenuSceneRuntimeFeed = (options: {
       ...entry,
       summary: normalizeFeedSummary(entry.summary)
     }));
-  const signature = buildFeedSignature(visibleEntries);
+  const statusSignature = status
+    ? [
+        status.speaker,
+        status.kind,
+        status.importance,
+        status.summary
+      ].join('|')
+    : '';
+  const signature = [statusSignature, buildFeedSignature(visibleEntries)]
+    .filter((value) => value.length > 0)
+    .join('||');
   const previous = options.previous;
   const changed = signature !== (previous?.signature ?? '');
 
   return {
     step: Number.isFinite(options.step) ? Math.max(0, Math.trunc(options.step ?? 0)) : null,
     signature,
+    status,
     visibleEntryCount: visibleEntries.length,
     visibleEntries,
     changeCount: (previous?.changeCount ?? 0) + (changed ? 1 : 0),
