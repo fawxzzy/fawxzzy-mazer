@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { DemoTrailStep, DemoWalkerCue } from '../domain/ai';
+import type { DemoBoardTelegraph, DemoTrailStep, DemoWalkerCue } from '../domain/ai';
 import type { MazeEpisode } from '../domain/maze';
 import { legacyTuning } from '../config/tuning';
 import { getNeighborIndex, isTileFloor, isTilePath, resolveDirectionBetween, xFromIndex, yFromIndex } from '../domain/maze';
@@ -39,6 +39,12 @@ interface BoardLayoutOptions {
 interface BaseRenderOptions {
   showSolutionPath?: boolean;
   solutionPathAlpha?: number;
+  lifecycle?: {
+    phase: 'build' | 'erase';
+    progress: number;
+    reducedMotion?: boolean;
+    chunkSize?: number;
+  };
 }
 
 export interface BoardThemeStyle {
@@ -150,6 +156,123 @@ const createEmptyTrailRenderDiagnostics = (): TrailRenderDiagnostics => ({
   bridgeRendered: false,
   attachedToActor: true
 });
+
+const MECHANIC_KIND_ORDER: readonly DemoBoardTelegraph['kind'][] = [
+  'key-item',
+  'pressure-plate',
+  'pressure-door',
+  'hazard-tile',
+  'timed-gate',
+  'patrol-lane'
+];
+
+const MECHANIC_KIND_LABELS: Record<DemoBoardTelegraph['kind'], string> = {
+  'key-item': 'key',
+  'pressure-plate': 'plate',
+  'pressure-door': 'door',
+  'hazard-tile': 'hazard',
+  'timed-gate': 'gate',
+  'patrol-lane': 'lane'
+};
+
+const MECHANIC_KIND_GLYPHS: Record<DemoBoardTelegraph['kind'], string> = {
+  'key-item': 'K',
+  'pressure-plate': 'P',
+  'pressure-door': 'D',
+  'hazard-tile': 'H',
+  'timed-gate': 'G',
+  'patrol-lane': 'L'
+};
+
+interface MechanicGuideEntry {
+  kind: DemoBoardTelegraph['kind'];
+  label: string;
+  glyph: string;
+  active: boolean;
+  readiness: number;
+  stateLabel: string;
+  riskLabel: string;
+  score: number;
+}
+
+const formatReadinessPct = (value: number): string => `${String(Math.round(Phaser.Math.Clamp(value, 0, 1) * 100)).padStart(3, ' ')}%`;
+
+const resolveMechanicStateLabel = (telegraph: DemoBoardTelegraph): string => {
+  const prefix = telegraph.active ? 'active' : 'inactive';
+  switch (telegraph.kind) {
+    case 'key-item':
+      return `${prefix}/${telegraph.active ? 'collected' : 'ready'}`;
+    case 'pressure-plate':
+      return `${prefix}/${telegraph.active ? 'pressed' : 'armed'}`;
+    case 'pressure-door':
+      return `${prefix}/${telegraph.active ? 'linked' : 'waiting'}`;
+    case 'hazard-tile':
+      return `${prefix}/${telegraph.active ? 'armed' : 'cooling'}`;
+    case 'timed-gate':
+      return `${prefix}/${telegraph.active ? 'open' : 'cycling'}`;
+    case 'patrol-lane':
+      return `${prefix}/${telegraph.active ? 'crossing' : 'watching'}`;
+  }
+};
+
+const resolveMechanicRiskLabel = (telegraph: DemoBoardTelegraph): string => {
+  switch (telegraph.kind) {
+    case 'key-item':
+      return 'key pickup';
+    case 'pressure-plate':
+      return 'plate link';
+    case 'pressure-door':
+      return 'door link';
+    case 'hazard-tile':
+      return 'hazard arming';
+    case 'timed-gate':
+      return 'gate cycle';
+    case 'patrol-lane':
+      return 'patrol crossing';
+  }
+};
+
+const resolveMechanicRiskScore = (telegraph: DemoBoardTelegraph): number => {
+  const kindBias = {
+    'key-item': 0.12,
+    'pressure-plate': 0.64,
+    'pressure-door': 0.74,
+    'hazard-tile': 1.08,
+    'timed-gate': 0.98,
+    'patrol-lane': 0.88
+  }[telegraph.kind];
+
+  return kindBias + (telegraph.active ? 0.24 : 0) + (telegraph.readiness * 0.44);
+};
+
+const resolveMechanicGuideEntries = (telegraphs: readonly DemoBoardTelegraph[]): MechanicGuideEntry[] => {
+  const selectedByKind = new Map<DemoBoardTelegraph['kind'], DemoBoardTelegraph>();
+
+  for (const telegraph of telegraphs) {
+    if (!telegraph.visible) {
+      continue;
+    }
+
+    const existing = selectedByKind.get(telegraph.kind);
+    if (!existing || resolveMechanicRiskScore(telegraph) > resolveMechanicRiskScore(existing)) {
+      selectedByKind.set(telegraph.kind, telegraph);
+    }
+  }
+
+  return MECHANIC_KIND_ORDER
+    .map((kind) => selectedByKind.get(kind))
+    .filter((telegraph): telegraph is DemoBoardTelegraph => Boolean(telegraph))
+    .map((telegraph) => ({
+      kind: telegraph.kind,
+      label: MECHANIC_KIND_LABELS[telegraph.kind],
+      glyph: MECHANIC_KIND_GLYPHS[telegraph.kind],
+      active: telegraph.active,
+      readiness: telegraph.readiness,
+      stateLabel: resolveMechanicStateLabel(telegraph),
+      riskLabel: resolveMechanicRiskLabel(telegraph),
+      score: resolveMechanicRiskScore(telegraph)
+    }));
+};
 export const resolveTrailHeadRenderState = (
   committedHeadCenter: {
     x: number;
@@ -294,6 +417,46 @@ export const isRenderableLayout = (layout: BoardLayout): boolean => (
   && layout.tileSize > 0
 );
 
+const resolveBoardOccupancyLimit = (
+  viewportWidth: number,
+  viewportHeight: number,
+  rasterSpan: number
+): number => {
+  const layoutTuning = legacyTuning.menu.layout;
+  const compactViewport = viewportWidth <= layoutTuning.narrowBreakpoint || viewportHeight < 640;
+
+  if (rasterSpan <= layoutTuning.smallMazeMaxSpanTiles) {
+    return compactViewport
+      ? layoutTuning.smallMazeMaxSafeOccupancyCompact
+      : layoutTuning.smallMazeMaxSafeOccupancyWide;
+  }
+
+  if (rasterSpan <= layoutTuning.mediumMazeMaxSpanTiles) {
+    return compactViewport
+      ? layoutTuning.mediumMazeMaxSafeOccupancyCompact
+      : layoutTuning.mediumMazeMaxSafeOccupancyWide;
+  }
+
+  return 1;
+};
+
+const resolveBoardTileSizeCap = (
+  viewportWidth: number,
+  viewportHeight: number,
+  rasterSpan: number
+): number => {
+  const layoutTuning = legacyTuning.menu.layout;
+  const compactViewport = viewportWidth <= layoutTuning.narrowBreakpoint || viewportHeight < 640;
+
+  if (rasterSpan <= layoutTuning.smallMazeMaxSpanTiles) {
+    return compactViewport
+      ? layoutTuning.smallMazeMaxTilePxCompact
+      : layoutTuning.smallMazeMaxTilePxWide;
+  }
+
+  return Number.POSITIVE_INFINITY;
+};
+
 export const createBoardLayout = (
   scene: Phaser.Scene,
   episode: MazeEpisode,
@@ -333,13 +496,34 @@ export const createBoardLayout = (
   );
   const rasterWidth = sanitizePositive(episode?.raster?.width, 1, 1);
   const rasterHeight = sanitizePositive(episode?.raster?.height, 1, 1);
+  const rasterSpan = Math.max(rasterWidth, rasterHeight);
   const availableWidth = Math.max(1, safeRight - safeLeft);
   const availableHeight = Math.max(1, safeBottom - safeTop);
-  const minimumBoardSize = Math.min(MIN_BOARD_SIZE, availableWidth, availableHeight);
-  const boardSize = Math.max(minimumBoardSize, Math.floor(Math.min(availableWidth, availableHeight) * boardScale));
-  const tileSize = Math.max(1, Math.floor(boardSize / Math.max(rasterWidth, rasterHeight)));
+  const occupancyLimit = resolveBoardOccupancyLimit(width, height, rasterSpan);
+  const tileSizeCap = resolveBoardTileSizeCap(width, height, rasterSpan);
+  const targetTileSize = Math.floor(
+    Math.min(
+      (availableWidth / rasterWidth) * boardScale,
+      (availableHeight / rasterHeight) * boardScale
+    )
+  );
+  const occupancyTileSize = Math.floor(
+    Math.min(
+      (availableWidth * occupancyLimit) / rasterWidth,
+      (availableHeight * occupancyLimit) / rasterHeight
+    )
+  );
+  const tileSize = Math.max(
+    1,
+    Math.min(
+      targetTileSize,
+      occupancyTileSize,
+      Number.isFinite(tileSizeCap) ? Math.floor(tileSizeCap) : Number.MAX_SAFE_INTEGER
+    )
+  );
   const boardWidth = tileSize * rasterWidth;
   const boardHeight = tileSize * rasterHeight;
+  const boardSize = Math.max(MIN_BOARD_SIZE, Math.max(boardWidth, boardHeight));
   const fitsWithinSafeWidth = boardWidth <= availableWidth;
   const fitsWithinSafeHeight = boardHeight <= availableHeight;
   const maxBoardX = fitsWithinSafeWidth
@@ -399,6 +583,8 @@ export class BoardRenderer {
   private readonly trail: Phaser.GameObjects.Graphics;
   private readonly actor: Phaser.GameObjects.Graphics;
   private readonly chromeFront: Phaser.GameObjects.Graphics;
+  private readonly guideOverlay: Phaser.GameObjects.Graphics;
+  private readonly guideText: Phaser.GameObjects.Text;
   private readonly ambientContainer: Phaser.GameObjects.Container;
   private ambientTween?: Phaser.Tweens.Tween;
   private baseOffsetX = 0;
@@ -406,6 +592,8 @@ export class BoardRenderer {
   private lastTrailDiagnostics: TrailRenderDiagnostics = createEmptyTrailRenderDiagnostics();
   private playerSupportMode: LocalBoardContrastMode | null = null;
   private trailSupportModes = new Map<number, LocalBoardContrastMode>();
+  private revealRanks = new Int32Array(0);
+  private revealStepCount = 0;
 
   public constructor(
     private readonly scene: Phaser.Scene,
@@ -426,6 +614,13 @@ export class BoardRenderer {
     this.trail = this.scene.add.graphics();
     this.actor = this.scene.add.graphics();
     this.chromeFront = this.scene.add.graphics();
+    this.guideOverlay = this.scene.add.graphics();
+    this.guideText = this.scene.add.text(0, 0, '', {
+      color: `#${this.colors.board.topHighlight.toString(16).padStart(6, '0')}`,
+      fontFamily: '"Courier New", monospace',
+      fontSize: '12px',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0).setVisible(false);
     this.ambientContainer.add([
       this.chromeBack,
       this.base,
@@ -436,14 +631,19 @@ export class BoardRenderer {
       this.signal,
       this.trail,
       this.actor,
-      this.chromeFront
+      this.chromeFront,
+      this.guideOverlay,
+      this.guideText
     ]);
+    this.rebuildPresentationTrace();
   }
 
   public setEpisode(episode: MazeEpisode): void {
     this.episode = episode;
     this.playerSupportMode = null;
     this.trailSupportModes.clear();
+    this.clearMechanicLegend();
+    this.rebuildPresentationTrace();
   }
 
   private get colors(): typeof palette {
@@ -452,6 +652,106 @@ export class BoardRenderer {
 
   private getScale(value: number | undefined, fallback = 1): number {
     return isFiniteNumber(value) ? value : fallback;
+  }
+
+  private rebuildPresentationTrace(): void {
+    const tiles = this.episode?.raster?.tiles;
+    const width = sanitizePositive(this.episode?.raster?.width, 1, 1);
+    if (!tiles || tiles.length === 0) {
+      this.revealRanks = new Int32Array(0);
+      this.revealStepCount = 0;
+      return;
+    }
+
+    this.revealRanks = new Int32Array(tiles.length);
+    this.revealRanks.fill(-1);
+    if (this.episode.generationTrace?.steps?.length) {
+      this.episode.generationTrace.steps.forEach((step, rank) => {
+        step.tileIndices.forEach((index) => {
+          if (index < 0 || index >= this.revealRanks.length || this.revealRanks[index] !== -1) {
+            return;
+          }
+
+          this.revealRanks[index] = rank;
+        });
+      });
+      const finalRank = Math.max(0, this.episode.generationTrace.steps.length - 1);
+      for (let index = 0; index < this.revealRanks.length; index += 1) {
+        if (this.revealRanks[index] === -1) {
+          this.revealRanks[index] = finalRank;
+        }
+      }
+      this.revealStepCount = Math.max(1, this.episode.generationTrace.steps.length);
+      return;
+    }
+
+    const startIndex = sanitizePositive(this.episode?.raster?.startIndex, 0, 0);
+    const startX = xFromIndex(startIndex, width);
+    const startY = yFromIndex(startIndex, width);
+    const order = Array.from({ length: tiles.length }, (_, index) => index);
+
+    order.sort((left, right) => {
+      const leftFloor = isTileFloor(tiles, left) ? 0 : 1;
+      const rightFloor = isTileFloor(tiles, right) ? 0 : 1;
+      if (leftFloor !== rightFloor) {
+        return leftFloor - rightFloor;
+      }
+
+      const leftX = xFromIndex(left, width);
+      const leftY = yFromIndex(left, width);
+      const rightX = xFromIndex(right, width);
+      const rightY = yFromIndex(right, width);
+      const leftDistance = Math.abs(leftX - startX) + Math.abs(leftY - startY);
+      const rightDistance = Math.abs(rightX - startX) + Math.abs(rightY - startY);
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+
+      const leftWave = ((leftX + leftY) & 1);
+      const rightWave = ((rightX + rightY) & 1);
+      if (leftWave !== rightWave) {
+        return leftWave - rightWave;
+      }
+
+      if (leftY !== rightY) {
+        return leftY - rightY;
+      }
+
+      if (leftX !== rightX) {
+        return leftX - rightX;
+      }
+
+      return left - right;
+    });
+
+    order.forEach((index, rank) => {
+      this.revealRanks[index] = rank;
+    });
+    this.revealStepCount = Math.max(1, order.length);
+  }
+
+  private resolveTileLifecycleAlpha(index: number, lifecycle?: BaseRenderOptions['lifecycle']): number {
+    if (!lifecycle || this.revealRanks.length === 0 || this.revealStepCount <= 0) {
+      return 1;
+    }
+
+    const chunkSize = Math.max(1, Math.trunc(
+      lifecycle.chunkSize
+      ?? (lifecycle.reducedMotion ? legacyTuning.demo.lifecycle.reducedMotionChunkSize : 1)
+    ));
+    const totalChunks = Math.max(1, Math.ceil(this.revealStepCount / chunkSize));
+    const rank = Math.max(0, this.revealRanks[index] ?? index);
+    const chunkIndex = Math.min(totalChunks - 1, Math.floor(rank / chunkSize));
+    const chunkProgress = chunkIndex / totalChunks;
+    const fadeWindow = lifecycle.reducedMotion ? 0.18 : 0.08;
+    const progress = Phaser.Math.Clamp(lifecycle.progress, 0, 1);
+
+    if (lifecycle.phase === 'build') {
+      return Phaser.Math.Clamp((progress - chunkProgress) / Math.max(0.01, fadeWindow), 0, 1);
+    }
+
+    const eraseStart = chunkIndex / totalChunks;
+    return 1 - Phaser.Math.Clamp((progress - eraseStart) / Math.max(0.01, fadeWindow), 0, 1);
   }
 
   private resolveTrailCompetingSignalScale(
@@ -930,6 +1230,7 @@ export class BoardRenderer {
       1
     );
     const showSolutionPath = solutionPathAlpha > 0;
+    const lifecycle = options.lifecycle;
     this.base.clear();
     this.visitedFloor.clear();
     this.grid.clear();
@@ -938,18 +1239,22 @@ export class BoardRenderer {
     this.base.fillRect(boardX, boardY, boardWidth, boardHeight);
 
     for (let index = 0; index < this.episode.raster.tiles.length; index += 1) {
+      const tileAlpha = this.resolveTileLifecycleAlpha(index, lifecycle);
+      if (tileAlpha <= 0) {
+        continue;
+      }
       const x = this.tileX(index);
       const y = this.tileY(index);
 
       if (isTileFloor(this.episode.raster.tiles, index)) {
-        this.base.fillStyle(colors.board.path, 0.7);
+        this.base.fillStyle(colors.board.path, 0.7 * tileAlpha);
         this.base.fillRect(x, y, tileSize, tileSize);
 
         const floorInset = tileSize * legacyTuning.board.tile.floorInsetRatio;
-        this.base.fillStyle(colors.board.floor, legacyTuning.board.tile.floorInsetAlpha * presetProfile.floorInsetAlphaScale);
+        this.base.fillStyle(colors.board.floor, legacyTuning.board.tile.floorInsetAlpha * presetProfile.floorInsetAlphaScale * tileAlpha);
         this.base.fillRect(x + floorInset, y + floorInset, tileSize - floorInset * 2, tileSize - floorInset * 2);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha * 0.46);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorHighlightAlpha * 0.46 * tileAlpha);
         this.base.fillRect(x + bevel, y + bevel, tileSize - (bevel * 2), bevel);
         this.base.fillRect(x + bevel, y + bevel, bevel, tileSize - (bevel * 2));
 
@@ -957,7 +1262,7 @@ export class BoardRenderer {
           const hintInset = tileSize * 0.26;
           this.base.fillStyle(
             colors.board.route,
-            0.22 * solutionPathAlpha * presetProfile.pathGlowAlphaScale
+            0.22 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * tileAlpha
           );
           this.base.fillRect(
             x + hintInset,
@@ -968,7 +1273,7 @@ export class BoardRenderer {
           this.grid.lineStyle(
             Math.max(1, tileSize * 0.048),
             colors.board.routeGlow,
-            0.24 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale
+            0.24 * solutionPathAlpha * presetProfile.pathGlowAlphaScale * solutionGlowScale * tileAlpha
           );
           this.grid.strokeRect(
             x + hintInset + 0.5,
@@ -979,7 +1284,7 @@ export class BoardRenderer {
           this.grid.lineStyle(
             Math.max(1, tileSize * 0.03),
             colors.board.routeCore,
-            0.54 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale
+            0.54 * solutionPathAlpha * presetProfile.pathCoreAlphaScale * solutionCoreScale * tileAlpha
           );
           this.grid.strokeRect(
             x + hintInset + tileSize * 0.08 + 0.5,
@@ -989,18 +1294,18 @@ export class BoardRenderer {
           );
         }
 
-        this.base.fillStyle(colors.board.shadow, legacyTuning.board.tile.floorShadowAlpha * 0.7);
+        this.base.fillStyle(colors.board.shadow, legacyTuning.board.tile.floorShadowAlpha * 0.7 * tileAlpha);
         this.base.fillRect(x + tileSize - (bevel * 2), y + bevel, bevel, tileSize - (bevel * 2));
         this.base.fillRect(x + bevel, y + tileSize - (bevel * 2), tileSize - (bevel * 2), bevel);
 
         const floorGridAlpha = legacyTuning.board.tile.floorGridAlpha * presetProfile.floorGridAlphaScale * 0.62;
-        this.grid.lineStyle(1, colors.board.innerStroke, floorGridAlpha);
+        this.grid.lineStyle(1, colors.board.innerStroke, floorGridAlpha * tileAlpha);
         this.grid.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
 
-        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha * 0.3);
+        this.base.fillStyle(colors.board.topHighlight, legacyTuning.board.tile.floorSheenAlpha * 0.3 * tileAlpha);
         this.base.fillRect(x + 1, y + 1, tileSize - 2, Math.max(1, tileSize * 0.2));
       } else {
-        this.base.fillStyle(colors.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale);
+        this.base.fillStyle(colors.board.wall, legacyTuning.board.tile.wallAlpha * presetProfile.wallAlphaScale * tileAlpha);
         this.base.fillRect(x, y, tileSize, tileSize);
       }
     }
@@ -1039,6 +1344,249 @@ export class BoardRenderer {
       for (let y = boardY + step; y < boardY + boardHeight - step; y += step) {
         this.grid.lineBetween(boardX + 1, y + 0.5, boardX + boardWidth - 1, y + 0.5);
       }
+    }
+  }
+
+  public clearStart(): void {
+    this.start.clear();
+  }
+
+  public clearGoal(): void {
+    this.goal.clear();
+  }
+
+  public clearTrail(): void {
+    this.visitedFloor.clear();
+    this.trail.clear();
+    this.signal.clear();
+    this.lastTrailDiagnostics = createEmptyTrailRenderDiagnostics();
+  }
+
+  public clearActor(): void {
+    this.actor.clear();
+  }
+
+  private clearMechanicLegend(): void {
+    this.guideOverlay.clear();
+    this.guideOverlay.setVisible(false);
+    this.guideText.setText('').setVisible(false);
+  }
+
+  public drawMechanicLegend(telegraphs: readonly DemoBoardTelegraph[]): void {
+    if (!isRenderableLayout(this.layout) || telegraphs.length === 0) {
+      this.clearMechanicLegend();
+      return;
+    }
+
+    const entries = resolveMechanicGuideEntries(telegraphs);
+    if (entries.length === 0) {
+      this.clearMechanicLegend();
+      return;
+    }
+
+    const { boardX, boardY, boardWidth, boardHeight, safeBounds, tileSize } = this.layout;
+    const colors = this.colors;
+    const riskEntry = entries.reduce((best, entry) => (entry.score > best.score ? entry : best), entries[0]);
+    const labelWidth = Math.max(5, ...entries.map((entry) => entry.label.length));
+    const stateWidth = Math.max(16, ...entries.map((entry) => entry.stateLabel.length));
+    const bodyLines = entries.map((entry) => (
+      `${entry.glyph} ${entry.label.padEnd(labelWidth, ' ')} ${entry.stateLabel.padEnd(stateWidth, ' ')} ${formatReadinessPct(entry.readiness)}`
+    ));
+    const titleLine = `NEXT RISK: ${riskEntry.riskLabel}`;
+    const combinedLines = [titleLine, ...bodyLines];
+    let fontSize = Math.max(10, Math.min(16, Math.round(tileSize * 0.36)));
+    const lineGap = Math.max(2, Math.round(fontSize * 0.16));
+    const titleGap = Math.max(4, Math.round(fontSize * 0.22));
+    const paddingX = Math.max(8, Math.round(tileSize * 0.32));
+    const paddingY = Math.max(7, Math.round(tileSize * 0.26));
+    const panelGap = Math.max(4, Math.round(tileSize * 0.2));
+    const maxPanelWidth = Math.max(180, Math.round(boardWidth - (tileSize * 0.5)));
+    const topGap = Math.max(0, boardY - safeBounds.top);
+    const bottomGap = Math.max(0, safeBounds.bottom - (boardY + boardHeight));
+    const dockTop = topGap >= bottomGap;
+    const availableGap = Math.max(0, dockTop ? topGap : bottomGap);
+    let lineHeight = Math.max(12, Math.round(fontSize * 1.28));
+    let panelWidth = Math.min(maxPanelWidth, Math.round((Math.max(...combinedLines.map((line) => line.length)) * fontSize * 0.62) + (paddingX * 2)));
+    let panelHeight = (paddingY * 2) + lineHeight + titleGap + (bodyLines.length * lineHeight) + (Math.max(0, bodyLines.length - 1) * lineGap);
+
+    while ((panelWidth > maxPanelWidth || panelHeight > availableGap) && fontSize > 10) {
+      fontSize -= 1;
+      lineHeight = Math.max(12, Math.round(fontSize * 1.28));
+      panelWidth = Math.min(maxPanelWidth, Math.round((Math.max(...combinedLines.map((line) => line.length)) * fontSize * 0.62) + (paddingX * 2)));
+      panelHeight = (paddingY * 2) + lineHeight + titleGap + (bodyLines.length * lineHeight) + (Math.max(0, bodyLines.length - 1) * lineGap);
+    }
+
+    const panelX = boardX + Math.max(0, Math.round((boardWidth - panelWidth) / 2));
+    const panelY = dockTop
+      ? Math.max(safeBounds.top, boardY - panelHeight - panelGap)
+      : Math.min(safeBounds.bottom - panelHeight, boardY + boardHeight + panelGap);
+    const textX = panelX + paddingX;
+    const textY = panelY + paddingY;
+
+    this.guideOverlay.clear();
+    this.guideOverlay.setVisible(true);
+    this.guideOverlay.fillStyle(colors.board.panel, 0.82);
+    this.guideOverlay.fillRect(panelX, panelY, panelWidth, panelHeight);
+    this.guideOverlay.lineStyle(Math.max(1, tileSize * 0.03), colors.board.panelStroke, 0.96);
+    this.guideOverlay.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1);
+    this.guideOverlay.fillStyle(colors.board.topHighlight, 0.08);
+    this.guideOverlay.fillRect(panelX + paddingX, panelY + paddingY, panelWidth - (paddingX * 2), Math.max(1, Math.round(lineHeight * 0.28)));
+
+    this.guideText
+      .setVisible(true)
+      .setAlpha(0.96)
+      .setFontSize(fontSize)
+      .setPosition(textX, textY)
+      .setFixedSize(panelWidth - (paddingX * 2), panelHeight - (paddingY * 2))
+      .setText(combinedLines.join('\n'))
+      .setColor(`#${colors.board.topHighlight.toString(16).padStart(6, '0')}`);
+    this.guideText.setName('mechanic-guide');
+  }
+
+  public drawMechanicTelegraphs(telegraphs: readonly DemoBoardTelegraph[]): void {
+    if (!isRenderableLayout(this.layout) || telegraphs.length === 0) {
+      this.clearMechanicLegend();
+      return;
+    }
+
+    this.drawMechanicLegend(telegraphs);
+
+    const { tileSize } = this.layout;
+    const telegraphTuning = legacyTuning.board.telegraph;
+    const colors = this.colors;
+    const now = normalizeAnimationTime(this.scene.time.now);
+    const tileInset = tileSize * telegraphTuning.tileInsetRatio;
+    const bracketInset = tileSize * 0.16;
+    const bracketLength = tileSize * 0.18;
+
+    for (const telegraph of telegraphs) {
+      if (!telegraph.visible) {
+        continue;
+      }
+
+      const pulse = telegraphTuning.pulseAlphaMin
+        + ((telegraphTuning.pulseAlphaMax - telegraphTuning.pulseAlphaMin) * telegraph.readiness)
+        + (Math.sin((now * 0.0052) + (telegraph.pathCursor * 0.7)) * 0.08);
+      const accentColor = telegraph.kind === 'key-item'
+        ? colors.board.start
+        : telegraph.kind === 'pressure-plate' || telegraph.kind === 'pressure-door'
+          ? colors.board.route
+          : telegraph.kind === 'patrol-lane'
+            ? colors.board.goal
+            : colors.board.topHighlight;
+      const coreColor = telegraph.kind === 'key-item'
+        ? colors.board.startCore
+        : telegraph.kind === 'patrol-lane'
+          ? colors.board.goalCore
+          : colors.board.playerCore;
+      const primaryX = this.tileX(telegraph.primaryTileIndex);
+      const primaryY = this.tileY(telegraph.primaryTileIndex);
+      const primaryCenter = this.tileCenter(telegraph.primaryTileIndex);
+
+      this.signal.fillStyle(accentColor, Phaser.Math.Clamp(pulse * telegraphTuning.readinessAlphaScale, 0.14, 0.92));
+
+      if (telegraph.kind === 'key-item') {
+        const keyRadius = tileSize * telegraphTuning.keyRadiusRatio;
+        this.signal.fillCircle(primaryCenter.x, primaryCenter.y, keyRadius * 1.5);
+        this.signal.lineStyle(Math.max(1, tileSize * telegraphTuning.ringWidthRatio), coreColor, 0.92);
+        this.signal.strokeCircle(primaryCenter.x, primaryCenter.y, keyRadius * 1.85);
+        this.signal.fillStyle(coreColor, 0.96);
+        this.signal.fillCircle(primaryCenter.x, primaryCenter.y, keyRadius * 0.72);
+        this.drawTileBrackets(this.signal, primaryX, primaryY, tileSize, bracketInset, bracketLength);
+        continue;
+      }
+
+      if (telegraph.kind === 'hazard-tile' || telegraph.kind === 'pressure-plate') {
+        this.signal.fillRect(
+          primaryX + tileInset,
+          primaryY + tileInset,
+          tileSize - (tileInset * 2),
+          tileSize - (tileInset * 2)
+        );
+        this.signal.lineStyle(Math.max(1, tileSize * telegraphTuning.ringWidthRatio), coreColor, 0.84);
+        this.signal.strokeRect(
+          primaryX + tileInset,
+          primaryY + tileInset,
+          tileSize - (tileInset * 2),
+          tileSize - (tileInset * 2)
+        );
+        this.signal.fillStyle(coreColor, 0.18 + (telegraph.readiness * 0.14));
+        this.signal.fillCircle(primaryCenter.x, primaryCenter.y, tileSize * 0.14);
+        this.signal.lineStyle(Math.max(1, tileSize * 0.025), coreColor, 0.4 + (telegraph.readiness * 0.28));
+        this.signal.strokeCircle(primaryCenter.x, primaryCenter.y, tileSize * (0.2 + (telegraph.readiness * 0.06)));
+        if (telegraph.kind === 'hazard-tile') {
+          this.signal.lineBetween(
+            primaryX + tileInset,
+            primaryY + tileInset,
+            primaryX + tileSize - tileInset,
+            primaryY + tileSize - tileInset
+          );
+          this.signal.lineBetween(
+            primaryX + tileSize - tileInset,
+            primaryY + tileInset,
+            primaryX + tileInset,
+            primaryY + tileSize - tileInset
+          );
+        }
+        this.drawTileBrackets(this.signal, primaryX, primaryY, tileSize, bracketInset, bracketLength);
+        continue;
+      }
+
+      if (telegraph.kind === 'patrol-lane') {
+        const linkedCenter = this.tileCenter(telegraph.linkedTileIndex ?? telegraph.primaryTileIndex);
+        const endCenter = this.tileCenter(telegraph.secondaryTileIndex ?? telegraph.primaryTileIndex);
+        const laneSegments = Math.max(3, Math.round(tileSize / 16));
+        for (let segment = 0; segment < laneSegments; segment += 1) {
+          const segmentStart = segment / laneSegments;
+          const segmentEnd = Math.min(1, segmentStart + 0.55 / laneSegments);
+          this.signal.lineStyle(Math.max(1, tileSize * telegraphTuning.laneWidthRatio), accentColor, 0.48 + (telegraph.readiness * 0.28));
+          this.signal.lineBetween(
+            Phaser.Math.Linear(linkedCenter.x, endCenter.x, segmentStart),
+            Phaser.Math.Linear(linkedCenter.y, endCenter.y, segmentStart),
+            Phaser.Math.Linear(linkedCenter.x, endCenter.x, segmentEnd),
+            Phaser.Math.Linear(linkedCenter.y, endCenter.y, segmentEnd)
+          );
+        }
+        this.signal.lineStyle(Math.max(1, tileSize * 0.02), coreColor, 0.42 + (telegraph.readiness * 0.24));
+        this.signal.lineBetween(linkedCenter.x, linkedCenter.y, endCenter.x, endCenter.y);
+        this.signal.fillStyle(accentColor, 0.32);
+        this.signal.fillCircle(linkedCenter.x, linkedCenter.y, tileSize * 0.18);
+        this.signal.fillCircle(endCenter.x, endCenter.y, tileSize * 0.18);
+        this.signal.fillStyle(coreColor, 0.98);
+        this.signal.fillCircle(primaryCenter.x, primaryCenter.y, tileSize * 0.2);
+        this.drawTileBrackets(this.signal, primaryX, primaryY, tileSize, bracketInset, bracketLength);
+        continue;
+      }
+
+      const secondaryCenter = this.tileCenter(telegraph.secondaryTileIndex ?? telegraph.primaryTileIndex);
+      const connectorOffset = tileSize * telegraphTuning.connectorOffsetRatio;
+      this.signal.lineStyle(Math.max(1, tileSize * telegraphTuning.laneWidthRatio), accentColor, 0.72);
+      this.signal.lineBetween(primaryCenter.x, primaryCenter.y, secondaryCenter.x, secondaryCenter.y);
+      this.signal.lineStyle(Math.max(2, tileSize * telegraphTuning.gateBarWidthRatio), coreColor, telegraph.active ? 0.94 : 0.58);
+      if (Math.abs(primaryCenter.x - secondaryCenter.x) > Math.abs(primaryCenter.y - secondaryCenter.y)) {
+        const midX = (primaryCenter.x + secondaryCenter.x) / 2;
+        this.signal.lineBetween(midX, primaryCenter.y - connectorOffset, midX, primaryCenter.y + connectorOffset);
+      } else {
+        const midY = (primaryCenter.y + secondaryCenter.y) / 2;
+        this.signal.lineBetween(primaryCenter.x - connectorOffset, midY, primaryCenter.x + connectorOffset, midY);
+      }
+      this.signal.lineStyle(Math.max(1, tileSize * 0.026), coreColor, 0.36 + (telegraph.readiness * 0.22));
+      this.signal.strokeRect(
+        primaryX + tileInset + 0.5,
+        primaryY + tileInset + 0.5,
+        tileSize - (tileInset * 2) - 1,
+        tileSize - (tileInset * 2) - 1
+      );
+      this.signal.strokeRect(
+        secondaryCenter.x - tileSize * 0.22,
+        secondaryCenter.y - tileSize * 0.22,
+        tileSize * 0.44,
+        tileSize * 0.44
+      );
+      this.signal.fillStyle(accentColor, 0.26 + (telegraph.readiness * 0.24));
+      this.signal.fillCircle(primaryCenter.x, primaryCenter.y, tileSize * 0.18);
+      this.signal.fillCircle(secondaryCenter.x, secondaryCenter.y, tileSize * 0.18);
+      this.drawTileBrackets(this.signal, primaryX, primaryY, tileSize, bracketInset, bracketLength);
     }
   }
 
@@ -1906,6 +2454,8 @@ export class BoardRenderer {
     this.trail.destroy();
     this.actor.destroy();
     this.chromeFront.destroy();
+    this.guideOverlay.destroy();
+    this.guideText.destroy();
     this.ambientContainer.destroy();
   }
 }

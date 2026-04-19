@@ -5,6 +5,7 @@ import type {
   PresentationChrome,
   PresentationDeploymentProfile,
   PresentationLaunchConfig,
+  PresentationMode,
   PresentationMood,
   PresentationThemeFamily
 } from '../boot/presentation';
@@ -29,10 +30,18 @@ import {
   type InstallSurfaceState
 } from '../boot/installSurface';
 import { buildBootTimingReport, logBootTimingReport, markBootTiming } from '../boot/bootTiming';
-import { resolveDemoWalkerViewFrame, type DemoWalkerConfig, type DemoWalkerCue, type DemoWalkerViewFrame } from '../domain/ai';
+import {
+  createDemoSpectatorPlan,
+  resolveDemoWalkerViewFrame,
+  type DemoWalkerConfig,
+  type DemoWalkerCue,
+  type DemoSegmentCue,
+  type DemoWalkerViewFrame
+} from '../domain/ai';
 import {
   disposeMazeEpisode,
   generateMazeForDifficulty,
+  resolveDirectionBetween,
   xFromIndex,
   yFromIndex,
   type MazeFamily,
@@ -57,14 +66,44 @@ import {
   type TrailRenderDiagnostics
 } from '../render/boardRenderer';
 import { createDemoStatusHud, type HudThemeStyle } from '../render/hudRenderer';
-import { createIntentFeedHud, type IntentFeedHudLayoutSnapshot } from '../render/intentFeedRenderer';
+import {
+  createIntentFeedHud,
+  resolveIntentFeedPanelMetrics,
+  type IntentFeedHudLayoutSnapshot
+} from '../render/intentFeedRenderer';
 import {
   applyPresentationContrastFloors,
   getPaletteReadabilityReport,
   palette,
   type PaletteReadabilityReport
 } from '../render/palette';
-import { createMenuIntentRuntimeSession, type MenuIntentRuntimeSession } from './menuIntentRuntime';
+import {
+  createRunProjection,
+  type RunProjectionMode,
+  type RunProjection,
+  type RunProjectionState
+} from '../projections/runProjection.ts';
+import {
+  HumanInputRepeatGate,
+  createTouchInputState,
+  resolveHumanKeyboardAction,
+  resolveHumanTouchAction,
+  resolveTouchControlLayout,
+  resolveTouchInputCapability,
+  releaseTouchPointer,
+  resetTouchInputState,
+  type HumanInputAction
+} from '../input-human';
+import {
+  summarizeTelemetrySemantics,
+  type TelemetryEvent,
+  type TelemetryEventKind
+} from '../telemetry';
+import {
+  createMenuIntentRuntimeSession,
+  type MenuIntentRuntimeSession,
+  type MenuRuntimeBoardState
+} from './menuIntentRuntime';
 import {
   clearMenuSceneRuntimeDiagnostics,
   nextMenuSceneInstanceId,
@@ -98,27 +137,26 @@ const LOADING_PHASE_LABELS: Record<MenuDemoSequence, readonly string[]> = {
   arrival: ['live system', 'pattern sync'],
   fade: ['routing', 'generating']
 };
-type DemoRitualPhase = 'none' | 'decision' | 'fail' | 'retry';
-const FAIL_RITUAL_TITLES = ['Timing missed', 'Route clipped', 'Loop collapsed'] as const;
-const FAIL_RITUAL_SUBTITLES: Record<DemoMood, readonly string[]> = {
-  solve: [
-    'Committed late at the live line. Hold the read, then rerun.',
-    'The exit line was visible, but the turn came a beat early.'
-  ],
-  scan: [
-    'Read the branch too shallow. Rebuild the picture, then retry.',
-    'The risk looked clean until the lane narrowed. Reset and scan again.'
-  ],
-  blueprint: [
-    'The pattern held until the gate phase slipped. Resetting the timing read.',
-    'The board was mapped, but the commit landed a beat off.'
-  ]
-};
+type DemoRitualPhase = 'none' | 'decision' | 'fail' | 'success' | 'retry';
+type DemoLifecyclePhase =
+  | 'pre-roll'
+  | 'build-reveal'
+  | 'settle-in'
+  | 'active-watch'
+  | 'clear-hold'
+  | 'reflection-beat'
+  | 'erase-wipe';
 const RETRY_RITUAL_TITLES = ['Retrying run', 'Resetting route'] as const;
 const RETRY_RITUAL_SUBTITLES: Record<DemoMood, readonly string[]> = {
   solve: ['Centering the line and rolling a calmer retry.'],
   scan: ['Reopening the branch read before the next commit.'],
   blueprint: ['Re-syncing the timing sketch before the next pass.']
+};
+export const SUCCESS_RITUAL_TITLES = ['Run cleared', 'Route held', 'Board solved'] as const;
+export const SUCCESS_RITUAL_SUBTITLES: Record<DemoMood, readonly string[]> = {
+  solve: ['Holding the clear long enough to read the full route.'],
+  scan: ['The next risk stayed readable, and the route stayed calm.'],
+  blueprint: ['The full pattern resolved before the board folded away.']
 };
 
 export type DemoMood = 'solve' | 'scan' | 'blueprint';
@@ -150,6 +188,14 @@ export interface MenuDemoPresentation {
   mood: DemoMood;
   theme: PresentationThemeFamily;
   sequence: MenuDemoSequence;
+  lifecyclePhase: DemoLifecyclePhase;
+  buildRevealProgress: number;
+  eraseWipeProgress: number;
+  showStartMarker: boolean;
+  showGoalMarker: boolean;
+  showActor: boolean;
+  showTrail: boolean;
+  showIntentFeed: boolean;
   phaseLabel: string;
   solutionPathAlpha: number;
   trailWindow: number;
@@ -180,6 +226,173 @@ export interface MenuDemoPresentation {
   ritualTitle: string;
   ritualSubtitle: string;
 }
+
+const hashProjectionSignature = (...parts: Array<string | number | boolean | null | undefined>): string => {
+  const signature = parts
+    .map((part) => String(part ?? ''))
+    .join('|');
+  let hash = 2166136261;
+
+  for (let index = 0; index < signature.length; index += 1) {
+    hash ^= signature.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return Math.abs(hash >>> 0).toString(16).padStart(8, '0');
+};
+
+const resolveRunProjectionStateFromPresentation = (
+  presentation: MenuDemoPresentation
+): RunProjectionState => {
+  switch (presentation.lifecyclePhase) {
+    case 'pre-roll':
+      return 'preroll';
+    case 'build-reveal':
+      return 'building';
+    case 'settle-in':
+      return 'waiting';
+    case 'active-watch':
+      return presentation.sequence === 'arrival' ? 'cleared' : 'watching';
+    case 'clear-hold':
+    case 'reflection-beat':
+      return 'cleared';
+    case 'erase-wipe':
+      return 'retrying';
+  }
+};
+
+const resolveRunProjectionRiskLevel = (
+  projectionState: RunProjectionState,
+  boardState: MenuRuntimeBoardState | null
+): RunProjection['riskLevel'] => {
+  if (projectionState === 'failed') {
+    return 'critical';
+  }
+  if (projectionState === 'retrying') {
+    return 'high';
+  }
+
+  const highestReadiness = boardState?.telegraphs.reduce((highest, telegraph) => (
+    Math.max(highest, telegraph.active ? 1 : telegraph.readiness)
+  ), 0) ?? 0;
+
+  if (highestReadiness >= 0.92 || projectionState === 'cleared') {
+    return 'high';
+  }
+  if (highestReadiness >= 0.6 || projectionState === 'watching') {
+    return 'medium';
+  }
+
+  return 'low';
+};
+
+const resolveRunProjectionProgressPct = (
+  presentation: MenuDemoPresentation,
+  pathLength: number,
+  renderedTrailLimit: number
+): number => {
+  const watchProgress = pathLength > 1
+    ? ((Math.max(0, renderedTrailLimit - 1)) / Math.max(1, pathLength - 1)) * 100
+    : 0;
+
+  switch (resolveRunProjectionStateFromPresentation(presentation)) {
+    case 'preroll':
+      return Math.max(0, Math.min(100, presentation.buildRevealProgress * 8));
+    case 'building':
+      return Math.max(6, Math.min(38, 10 + (presentation.buildRevealProgress * 28)));
+    case 'waiting':
+      return 42;
+    case 'watching':
+      return Math.max(18, Math.min(92, watchProgress));
+    case 'failed':
+      return Math.max(20, Math.min(96, watchProgress));
+    case 'retrying':
+      return Math.max(0, Math.min(100, 100 - (presentation.eraseWipeProgress * 100)));
+    case 'cleared':
+      return 100;
+  }
+};
+
+const PLAY_MODE_TOGGLE_CODES = new Set(['KeyM', 'Tab']);
+const PLAY_MOVE_ANIMATION_RATIO = 0.72;
+const PLAY_MODE_ONBOARDING_LABEL = 'WASD/Arrows move | P pause | R retry | T thoughts | M watch';
+const PLAY_MODE_TOUCH_ONBOARDING_LABEL = 'Tap D-pad | P pause | R retry | T thoughts | M watch';
+const TOUCH_CONTROL_LABELS: Record<HumanInputAction['kind'], string> = {
+  move_up: '↑',
+  move_down: '↓',
+  move_left: '←',
+  move_right: '→',
+  pause: 'P',
+  restart_attempt: 'R',
+  toggle_thoughts: 'T'
+};
+const TOUCH_CONTROL_TEXT: Record<HumanInputAction['kind'], string> = {
+  move_up: '^',
+  move_down: 'v',
+  move_left: '<',
+  move_right: '>',
+  pause: 'P',
+  restart_attempt: 'R',
+  toggle_thoughts: 'T'
+};
+void TOUCH_CONTROL_LABELS;
+
+const isModeToggleKey = (event: { code?: string | null }): boolean => (
+  typeof event.code === 'string' && PLAY_MODE_TOGGLE_CODES.has(event.code)
+);
+
+const createPlayLoopState = (mode: PresentationMode): PlayLoopState => ({
+  buildElapsedMs: 0,
+  clearElapsedMs: 0,
+  pathCursor: 0,
+  motion: null,
+  paused: false,
+  thoughtsVisible: mode !== 'play'
+});
+
+const resetPlayLoopState = (state: PlayLoopState, mode: PresentationMode): PlayLoopState => ({
+  ...createPlayLoopState(mode),
+  thoughtsVisible: state.thoughtsVisible
+});
+
+const resolvePlayRunMode = (mode: PresentationMode): RunProjectionMode => (
+  mode === 'play' ? 'play' : 'watch'
+);
+
+const buildPlayViewFrame = (
+  episode: MazeEpisode,
+  state: PlayLoopState,
+  trailWindow: number
+): DemoWalkerViewFrame => {
+  const path = episode.raster.pathIndices;
+  const lastCursor = Math.max(0, path.length - 1);
+  const currentCursor = Math.max(0, Math.min(state.pathCursor, lastCursor));
+  const motion = state.motion;
+  const currentIndex = path[currentCursor] ?? episode.raster.startIndex;
+  const nextCursor = motion ? Math.max(0, Math.min(motion.toCursor, lastCursor)) : currentCursor;
+  const nextIndex = path[nextCursor] ?? currentIndex;
+  const previousIndex = path[Math.max(0, currentCursor - 1)] ?? currentIndex;
+  const limit = Math.max(
+    1,
+    Math.min(
+      path.length,
+      motion ? Math.max(currentCursor + 1, nextCursor + 1) : currentCursor + 1
+    )
+  );
+  const start = Math.max(0, limit - Math.max(1, trailWindow));
+
+  return {
+    currentIndex,
+    nextIndex,
+    previousIndex,
+    direction: motion?.direction ?? null,
+    progress: motion ? Math.max(0, Math.min(1, motion.progress)) : 1,
+    cue: currentCursor <= 0 && !motion ? 'spawn' : currentCursor >= lastCursor ? 'goal' : 'explore',
+    trailStart: start,
+    trailLimit: limit,
+    cycleComplete: currentCursor >= lastCursor && !motion
+  };
+};
 
 interface VariantProfile {
   boardScaleWide: number;
@@ -326,6 +539,35 @@ interface ThemePaletteOverrides {
 interface ResizeRecoveryDecision {
   shouldRestart: boolean;
   restartKey?: string;
+}
+
+interface PlayMotionState {
+  fromCursor: number;
+  toCursor: number;
+  progress: number;
+  direction: 0 | 1 | 2 | 3 | null;
+}
+
+interface PlayLoopState {
+  buildElapsedMs: number;
+  clearElapsedMs: number;
+  pathCursor: number;
+  motion: PlayMotionState | null;
+  paused: boolean;
+  thoughtsVisible: boolean;
+}
+
+interface TouchControlButtonChrome {
+  control: HumanInputAction['kind'];
+  container: Phaser.GameObjects.Container;
+  shadow: Phaser.GameObjects.Rectangle;
+  body: Phaser.GameObjects.Rectangle;
+  label: Phaser.GameObjects.Text;
+}
+
+interface TouchControlChrome {
+  root: Phaser.GameObjects.Container;
+  buttons: Record<HumanInputAction['kind'], TouchControlButtonChrome>;
 }
 
 type AmbientSkyMovingFamily = 'shooting-star' | 'comet' | 'satellite' | 'ufo';
@@ -3584,19 +3826,6 @@ export function resolveBoardCompositionFrame(
     ? installFrame.top - boardBuffer
     : safeHeight - Math.max(viewportSafeInsets.bottom + boardBuffer, boardBuffer);
 
-  if (profile === 'obs' && !titleFrame) {
-    const symmetricMargin = Math.max(top, safeHeight - bottom);
-    top = symmetricMargin;
-    bottom = safeHeight - symmetricMargin;
-  }
-
-  if (bottom <= top + 24) {
-    const fallbackTop = Math.max(viewportSafeInsets.top + boardBuffer, boardBuffer);
-    const fallbackBottom = safeHeight - Math.max(viewportSafeInsets.bottom + boardBuffer, boardBuffer);
-    top = Math.min(top, fallbackBottom - 24);
-    bottom = Math.max(bottom, fallbackTop + 24);
-  }
-
   const presentationMode = resolveIntentFeedPresentationMode(
     safeWidth,
     safeHeight,
@@ -3610,6 +3839,31 @@ export function resolveBoardCompositionFrame(
     if (reservedRight >= left + 24) {
       right = reservedRight;
     }
+  } else {
+    const feedMetrics = resolveIntentFeedPanelMetrics({ width: safeWidth, height: safeHeight }, true);
+    const feedBottom = installFrame
+      ? installFrame.top - legacyTuning.menu.intentFeed.installGapPx
+      : safeHeight - Math.max(
+        viewportSafeInsets.bottom + legacyTuning.menu.intentFeed.insetYPx,
+        legacyTuning.menu.intentFeed.insetYPx
+      );
+    const reservedBottom = feedBottom - feedMetrics.height - legacyTuning.menu.intentFeed.boardGapPx;
+    if (reservedBottom >= top + 24) {
+      bottom = Math.min(bottom, reservedBottom);
+    }
+  }
+
+  if (profile === 'obs' && !titleFrame) {
+    const symmetricMargin = Math.max(top, safeHeight - bottom);
+    top = symmetricMargin;
+    bottom = safeHeight - symmetricMargin;
+  }
+
+  if (bottom <= top + 24) {
+    const fallbackTop = Math.max(viewportSafeInsets.top + boardBuffer, boardBuffer);
+    const fallbackBottom = safeHeight - Math.max(viewportSafeInsets.bottom + boardBuffer, boardBuffer);
+    top = Math.min(top, fallbackBottom - 24);
+    bottom = Math.max(bottom, fallbackTop + 24);
   }
 
   return createSceneBounds(left, top, right, bottom);
@@ -3638,6 +3892,7 @@ export function resolveIntentFeedPresentationMode(
     || sceneLayout.isTiny
     || sceneLayout.isNarrow
     || sceneLayout.isShort
+    || !legacyTuning.menu.intentFeed.commentaryRailEnabled
   ) {
     return 'bottom-panel';
   }
@@ -3693,6 +3948,7 @@ export class MenuScene extends Phaser.Scene {
     const deploymentProfileId = launchConfig.profile;
     const deploymentProfile = resolveDeploymentPresentationProfile(deploymentProfileId);
     const deterministicCapture = isDeterministicPresentationCapture(launchConfig);
+    let presentationMode: PresentationMode = launchConfig.mode;
     const moodOverride = resolveForcedDemoMood(launchConfig.mood);
     const viewportSafeInsets = resolveViewportSafeInsets();
     const presentationModel = resolveMenuPresentationModel(
@@ -3786,6 +4042,19 @@ export class MenuScene extends Phaser.Scene {
       changeCount: 0,
       lastChangedAt: null
     };
+    let lastProjection: RunProjection | null = null;
+    let telemetryEventSequence = 0;
+    let telemetryEventLogVersion = 0;
+    let telemetryCurrentRunId: string | null = null;
+    let telemetryCurrentMazeId: string | null = null;
+    let telemetryCurrentAttemptNo = 0;
+    let telemetryEvents: TelemetryEvent[] = [];
+    let telemetrySettingsInitialized = false;
+    let lastProjectionState: RunProjectionState | null = null;
+    let lastThoughtEventSignature = '';
+    let lastMemoryEventSignature = '';
+    let lastHazardEventSignature = '';
+    let runEndedForCurrentAttempt = false;
     let ambientSkyDeltaBudgetMs = 0;
     let lastRuntimeDiagnosticsPublishedAt = sceneStartedAt;
     let totalFrameCount = 0;
@@ -3797,6 +4066,18 @@ export class MenuScene extends Phaser.Scene {
     let hiddenRecoveryThrottleUntilMs = 0;
     let lastHeapPressureActive = false;
     let renderDemo: () => void = () => undefined;
+    let playLoopState = createPlayLoopState(presentationMode);
+    const pendingHumanActions: HumanInputAction[] = [];
+    const inputRepeatGate = new HumanInputRepeatGate({
+      moveRepeatMinIntervalMs: Math.max(72, Math.round(legacyTuning.demo.cadence.exploreStepMs * 0.82))
+    });
+    const touchInputSupported = resolveTouchInputCapability(typeof window !== 'undefined' ? window : undefined)
+      || Boolean((this.game as { device?: { input?: { touch?: boolean } } }).device?.input?.touch);
+    let touchControlsVisible = false;
+    let touchControlsChrome: TouchControlChrome | undefined;
+    let touchInputState = createTouchInputState();
+    let removeKeyboardInputListener: (() => void) | undefined;
+    let removeTouchInputListeners: (() => void) | undefined;
 
     const toRuntimeFeedEntries = (
       feedState: IntentFeedState | null
@@ -3822,6 +4103,87 @@ export class MenuScene extends Phaser.Scene {
           }
         : null
     );
+    const appendTelemetryEvent = <K extends TelemetryEventKind>(
+      kind: K,
+      payload: TelemetryEvent<K>['payload'],
+      overrides: Partial<Pick<TelemetryEvent, 'runId' | 'mazeId' | 'attemptNo' | 'elapsedMs' | 'createdAt'>> = {}
+    ): void => {
+      if (!telemetryCurrentRunId && !overrides.runId) {
+        return;
+      }
+
+      const event: TelemetryEvent = {
+        eventId: `${sceneInstanceId}-${String(++telemetryEventSequence).padStart(4, '0')}`,
+        kind,
+        runId: overrides.runId ?? telemetryCurrentRunId ?? `scene-${sceneInstanceId}`,
+        mazeId: overrides.mazeId ?? telemetryCurrentMazeId ?? undefined,
+        attemptNo: overrides.attemptNo ?? telemetryCurrentAttemptNo,
+        elapsedMs: overrides.elapsedMs ?? Math.max(0, Math.round(this.time.now - sceneStartedAt)),
+        createdAt: overrides.createdAt ?? new Date().toISOString(),
+        mode: presentationMode,
+        payload
+      };
+
+      telemetryEvents.push(event);
+      telemetryEventLogVersion += 1;
+      if (telemetryEvents.length > 256) {
+        telemetryEvents = telemetryEvents.slice(-256);
+      }
+    };
+    const ensureTelemetrySettings = (): void => {
+      if (telemetrySettingsInitialized) {
+        return;
+      }
+
+      telemetrySettingsInitialized = true;
+      appendTelemetryEvent('settings_changed', {
+        setting: 'reduced_motion',
+        nextValue: reducedMotion
+      }, {
+        runId: `scene-${sceneInstanceId}-settings`,
+        attemptNo: 0
+      });
+      appendTelemetryEvent('settings_changed', {
+        setting: 'launch_profile',
+        nextValue: deploymentProfileId ?? 'default'
+      }, {
+        runId: `scene-${sceneInstanceId}-settings`,
+        attemptNo: 0
+      });
+      appendTelemetryEvent('settings_changed', {
+        setting: 'mode',
+        nextValue: presentationMode
+      }, {
+        runId: `scene-${sceneInstanceId}-settings`,
+        attemptNo: 0
+      });
+    };
+    const beginTelemetryRun = (episode: MazeEpisode, phase: 'pre-roll' | 'build' | 'watch' | 'hold' | 'erase'): void => {
+      telemetryCurrentAttemptNo += 1;
+      telemetryCurrentMazeId = `maze-${episode.seed.toString(16)}`;
+      telemetryCurrentRunId = `scene-${sceneInstanceId}-attempt-${telemetryCurrentAttemptNo}`;
+      lastProjectionState = null;
+      lastThoughtEventSignature = '';
+      lastMemoryEventSignature = '';
+      lastHazardEventSignature = '';
+      runEndedForCurrentAttempt = false;
+      appendTelemetryEvent('run_started', {
+        phase,
+        mode: presentationMode
+      });
+    };
+    const finalizeTelemetryRun = (outcome: 'failed' | 'cleared' | 'aborted'): void => {
+      if (runEndedForCurrentAttempt || !telemetryCurrentRunId) {
+        return;
+      }
+
+      runEndedForCurrentAttempt = true;
+      appendTelemetryEvent('run_ended', {
+        outcome,
+        durationMs: Math.max(0, Math.round(this.time.now - sceneStartedAt))
+      });
+    };
+    ensureTelemetrySettings();
     const runOptional = (label: string, render: () => void): void => {
       try {
         render();
@@ -3961,6 +4323,7 @@ export class MenuScene extends Phaser.Scene {
       activeTweenCount = resolveActiveTweenCount();
       activeTimerCount = resolveActiveTimerCount();
       activeListenerCount = listenerCount;
+      const telemetrySummary = summarizeTelemetrySemantics(telemetryEvents);
       publishMenuSceneRuntimeDiagnostics({
         revision: ++runtimeDiagnosticsRevision,
         sceneInstanceId,
@@ -3990,6 +4353,15 @@ export class MenuScene extends Phaser.Scene {
           saveData: runtimeConfig.saveData
         },
         feed: lastIntentFeedDiagnostics,
+        projection: lastProjection,
+        telemetry: {
+          eventLogVersion: telemetryEventLogVersion,
+          currentRunId: telemetryCurrentRunId,
+          currentMazeId: telemetryCurrentMazeId,
+          currentAttemptNo: telemetryCurrentAttemptNo > 0 ? telemetryCurrentAttemptNo : null,
+          events: telemetryEvents,
+          summary: telemetrySummary
+        },
         resources: {
           activeTweens: activeTweenCount,
           activeTimers: activeTimerCount,
@@ -4033,11 +4405,15 @@ export class MenuScene extends Phaser.Scene {
         this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);
       }
       removeInstallSurfaceListener?.();
+      removeKeyboardInputListener?.();
+      removeTouchInputListeners?.();
       handleVisibilityChange = undefined;
       if (!options.keepResize) {
         handleResize = undefined;
       }
       removeInstallSurfaceListener = undefined;
+      removeKeyboardInputListener = undefined;
+      removeTouchInputListeners = undefined;
       updateDemo = undefined;
     };
     const destroyEpisodePresentationShell = (): void => {
@@ -4503,7 +4879,7 @@ export class MenuScene extends Phaser.Scene {
           deploymentProfileId
         );
         const layout = createBoardLayout(this, episode, {
-          boardScale: 1,
+          boardScale: sceneLayout.boardScale,
           safeBounds: boardCompositionFrame
         });
         const boardCenterX = layout.boardX + (layout.boardWidth / 2);
@@ -4929,10 +5305,14 @@ export class MenuScene extends Phaser.Scene {
             ? 1
             : presentation.ritualPhase === 'fail'
               ? lerp(0.985, 1, presentation.ritualProgress)
+              : presentation.ritualPhase === 'success'
+                ? lerp(0.992, 1, presentation.ritualProgress)
               : presentation.ritualPhase === 'retry'
                 ? lerp(1.01, 1, presentation.ritualProgress)
                 : 1;
-          const showRitual = presentation.ritualPhase === 'fail' || presentation.ritualPhase === 'retry';
+          const showRitual = presentation.ritualPhase === 'fail'
+            || presentation.ritualPhase === 'success'
+            || presentation.ritualPhase === 'retry';
 
           shell.ritualCard
             .setPosition(shell.boardCenterX + offsetX, ritualY)
@@ -4954,6 +5334,87 @@ export class MenuScene extends Phaser.Scene {
             .setAlpha(showRitual ? Math.min(0.96, presentation.ritualAlpha) : 0);
         });
       };
+      const renderBoardPresentation = (
+        shell: EpisodePresentationShell,
+        episode: MazeEpisode,
+        presentation: MenuDemoPresentation,
+        view: DemoWalkerViewFrame,
+        renderedTrail: { start: number; limit: number },
+        boardState: MenuRuntimeBoardState | null
+      ): void => {
+        shell.boardRenderer.drawBase({
+          solutionPathAlpha: presentation.solutionPathAlpha,
+          lifecycle: presentation.lifecyclePhase === 'build-reveal' || presentation.lifecyclePhase === 'pre-roll' || presentation.lifecyclePhase === 'settle-in'
+            ? {
+              phase: 'build',
+              progress: presentation.buildRevealProgress,
+              reducedMotion
+            }
+            : presentation.lifecyclePhase === 'erase-wipe'
+              ? {
+                phase: 'erase',
+                progress: presentation.eraseWipeProgress,
+                reducedMotion
+              }
+              : undefined
+        });
+
+        if (presentation.showStartMarker) {
+          shell.boardRenderer.drawStart(view.cue);
+        } else {
+          shell.boardRenderer.clearStart();
+        }
+
+        if (presentation.showGoalMarker) {
+          shell.boardRenderer.drawGoal(view.cue);
+        } else {
+          shell.boardRenderer.clearGoal();
+        }
+
+        if (presentation.showTrail) {
+          shell.boardRenderer.drawTrail(episode.raster.pathIndices, {
+            cue: view.cue,
+            limit: renderedTrail.limit,
+            start: renderedTrail.start,
+            emphasis: presentationMode === 'play' ? 'player' : 'demo',
+            persistentTrail: presentation.persistentTrail,
+            persistentFadeFloor: presentation.persistentFadeFloor,
+            pulseBoost: presentation.trailPulseBoost,
+            activeMotion: view.currentIndex === view.nextIndex
+              ? undefined
+              : {
+                fromIndex: view.currentIndex,
+                toIndex: view.nextIndex,
+                progress: view.progress
+              }
+          });
+        } else {
+          shell.boardRenderer.clearTrail();
+        }
+
+        const telegraphs = boardState?.telegraphs ?? [];
+        shell.boardRenderer.drawMechanicTelegraphs(telegraphs);
+        shell.boardRenderer.drawMechanicLegend(telegraphs);
+
+        if (!presentation.showActor) {
+          shell.boardRenderer.clearActor();
+          return;
+        }
+
+        if (view.currentIndex === view.nextIndex || view.progress <= 0 || presentation.lifecyclePhase === 'settle-in') {
+          shell.boardRenderer.drawActor(view.currentIndex, view.direction, view.cue, presentation.actorPulseBoost);
+          return;
+        }
+
+        shell.boardRenderer.drawActorMotion(
+          view.currentIndex,
+          view.nextIndex,
+          view.progress,
+          view.direction,
+          view.cue,
+          presentation.actorPulseBoost
+        );
+      };
       const applyEpisodePresentation = (): void => {
         if (!patternFrame) {
           return;
@@ -4971,7 +5432,8 @@ export class MenuScene extends Phaser.Scene {
           );
         }
         syncAmbientSkyReservedFrames();
-        demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan);
+        playLoopState = resetPlayLoopState(playLoopState, presentationMode);
+        demoConfig = resolveDemoConfig(patternFrame.episode, demoCyclePlan, presentationMode);
         demoPresentation = resolveMenuDemoPresentation(
           patternFrame.episode,
           demoCyclePlan,
@@ -4982,10 +5444,19 @@ export class MenuScene extends Phaser.Scene {
         );
         lastCue = 'spawn';
         recoveryEpisode = patternFrame.episode;
+        beginTelemetryRun(
+          patternFrame.episode,
+          demoPresentation.lifecyclePhase === 'pre-roll' ? 'pre-roll' : 'build'
+        );
         applyPresentationLayer(demoPresentation);
-        episodePresentationShell.boardRenderer.drawBase({ solutionPathAlpha: demoPresentation.solutionPathAlpha });
-        episodePresentationShell.boardRenderer.drawStart('spawn');
-        episodePresentationShell.boardRenderer.drawGoal();
+        renderBoardPresentation(
+          episodePresentationShell,
+          patternFrame.episode,
+          demoPresentation,
+          resolveDemoWalkerViewFrame(patternFrame.episode, 0, demoConfig, demoPresentation.trailWindow),
+          { start: 0, limit: 1 },
+          null
+        );
         if (!reducedMotion) {
           episodePresentationShell.boardRenderer.startAmbientMotion(
             demoPresentation.ambientDriftPxX,
@@ -5050,18 +5521,324 @@ export class MenuScene extends Phaser.Scene {
           return commitWindowStart + reducedCommit;
         }
 
-        if (presentation.ritualPhase === 'fail') {
+        if (
+          presentation.lifecyclePhase === 'clear-hold'
+          || presentation.lifecyclePhase === 'reflection-beat'
+          || presentation.lifecyclePhase === 'erase-wipe'
+        ) {
           return Math.max(
             spawnHoldMs,
             (spawnHoldMs + traverseMs) - Math.max(1, Math.floor(demoConfig.cadence.exploreStepMs * 0.45))
           );
         }
 
-        if (presentation.ritualPhase === 'retry') {
-          return Math.max(1, Math.floor(spawnHoldMs * (0.24 + (presentation.ritualProgress * 0.32))));
+        return elapsedMs;
+      };
+      const appendControlTelemetry = (
+        control: 'keyboard' | 'touch' | 'restart' | 'pause' | 'toggle_thoughts',
+        actionKind?: HumanInputAction['kind']
+      ): void => {
+        appendTelemetryEvent('control_used', {
+          control,
+          ...(actionKind ? { actionKind } : {}),
+          source: presentationMode === 'play' ? 'play-shell' : 'watch-shell'
+        });
+      };
+      const restartPlayAttempt = (): void => {
+        if (!patternFrame) {
+          return;
         }
 
-        return elapsedMs;
+        finalizeTelemetryRun('aborted');
+        playLoopState = resetPlayLoopState(playLoopState, presentationMode);
+        lastProjectionState = null;
+        lastThoughtEventSignature = '';
+        lastMemoryEventSignature = '';
+        lastHazardEventSignature = '';
+        beginTelemetryRun(patternFrame.episode, 'build');
+      };
+      const applyRuntimeMode = (nextMode: PresentationMode): void => {
+        if (nextMode === presentationMode) {
+          return;
+        }
+
+        const previousMode = presentationMode;
+        finalizeTelemetryRun('aborted');
+        presentationMode = nextMode;
+        playLoopState = resetPlayLoopState(playLoopState, presentationMode);
+        pendingHumanActions.length = 0;
+        resetTouchInputState(touchInputState);
+        touchControlsVisible = false;
+        touchControlsChrome?.root.setVisible(false);
+        appendTelemetryEvent('settings_changed', {
+          setting: 'mode',
+          previousValue: previousMode,
+          nextValue: nextMode
+        }, {
+          runId: `scene-${sceneInstanceId}-settings`,
+          attemptNo: 0
+        });
+
+        if (!patternEngine) {
+          return;
+        }
+
+        patternEngine.resumeFresh();
+        applyPatternFrame(patternEngine.next(0));
+      };
+      const createTouchButtonChrome = (
+        control: HumanInputAction['kind']
+      ): TouchControlButtonChrome => {
+        const container = this.add.container(0, 0);
+        const shadow = this.add.rectangle(0, 3, 48, 48, sceneThemeProfile.title.plateShadowColor, 0.16);
+        const body = this.add.rectangle(0, 0, 48, 48, sceneThemeProfile.title.buttonFillColor, 0.24)
+          .setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, 0.24);
+        const label = this.add.text(0, 0, TOUCH_CONTROL_TEXT[control], {
+          color: sceneThemeProfile.title.signatureColor,
+          fontFamily: sceneThemeProfile.title.fontFamily,
+          fontSize: `${Math.max(12, Math.round(legacyTuning.menu.intentFeed.statusFontPx * 0.94))}px`,
+          fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        container.add([shadow, body, label]);
+        return {
+          control,
+          container,
+          shadow,
+          body,
+          label
+        };
+      };
+      const ensureTouchControlsChrome = (): TouchControlChrome => {
+        if (touchControlsChrome) {
+          return touchControlsChrome;
+        }
+
+        const root = this.add.container(0, 0).setDepth(11.45).setVisible(false);
+        const buttons = Object.fromEntries(
+          ['move_up', 'move_down', 'move_left', 'move_right', 'pause', 'restart_attempt', 'toggle_thoughts']
+            .map((control) => [control, createTouchButtonChrome(control as HumanInputAction['kind'])])
+        ) as Record<HumanInputAction['kind'], TouchControlButtonChrome>;
+
+        root.add(Object.values(buttons).map((button) => button.container));
+        touchControlsChrome = {
+          root,
+          buttons
+        };
+        return touchControlsChrome;
+      };
+      const renderTouchControls = (): void => {
+        if (!touchInputSupported || presentationMode !== 'play') {
+          touchControlsVisible = false;
+          touchInputState = createTouchInputState();
+          touchControlsChrome?.root.setVisible(false);
+          return;
+        }
+
+        const chrome = ensureTouchControlsChrome();
+        const layout = resolveTouchControlLayout(
+          { width, height },
+          {
+            safeInsets: viewportSafeInsets,
+            compact: sceneLayout.isTiny || sceneLayout.isNarrow || sceneLayout.isPortrait
+          }
+        );
+
+        if (!touchControlsVisible) {
+          touchInputState = createTouchInputState();
+          touchControlsVisible = true;
+        }
+
+        chrome.root.setVisible(true);
+
+        const updateButton = (control: HumanInputAction['kind'], shortLabel: string): void => {
+          const button = chrome.buttons[control];
+          const rect = layout.controls[control];
+          const isActive = (touchInputState.activePointerCountByControl.get(control) ?? 0) > 0;
+          const bodyAlpha = isActive ? 0.34 : 0.22;
+          const strokeAlpha = isActive ? 0.72 : 0.24;
+
+          button.container.setPosition(rect.centerX, rect.centerY);
+          button.shadow
+            .setSize(rect.width + 6, rect.height + 6)
+            .setAlpha(isActive ? 0.24 : 0.16);
+          button.body
+            .setSize(rect.width, rect.height)
+            .setFillStyle(sceneThemeProfile.title.buttonFillColor, bodyAlpha)
+            .setStrokeStyle(1, sceneThemeProfile.title.buttonStrokeColor, strokeAlpha);
+          button.label
+            .setText(shortLabel)
+            .setFontSize(Math.max(12, Math.round(rect.height * 0.42)))
+            .setAlpha(isActive ? 1 : 0.92);
+        };
+
+        updateButton('move_up', TOUCH_CONTROL_TEXT.move_up);
+        updateButton('move_down', TOUCH_CONTROL_TEXT.move_down);
+        updateButton('move_left', TOUCH_CONTROL_TEXT.move_left);
+        updateButton('move_right', TOUCH_CONTROL_TEXT.move_right);
+        updateButton('pause', TOUCH_CONTROL_TEXT.pause);
+        updateButton('restart_attempt', TOUCH_CONTROL_TEXT.restart_attempt);
+        updateButton('toggle_thoughts', TOUCH_CONTROL_TEXT.toggle_thoughts);
+      };
+      const advancePlayLoop = (episode: MazeEpisode, deltaMs: number): void => {
+        const path = episode.raster.pathIndices;
+        const lastCursor = Math.max(0, path.length - 1);
+        const safeDeltaMs = Math.max(0, deltaMs);
+
+        while (pendingHumanActions.length > 0) {
+          const queuedAction = pendingHumanActions[0];
+          if (!queuedAction) {
+            pendingHumanActions.shift();
+            continue;
+          }
+
+          if (queuedAction.kind === 'pause') {
+            pendingHumanActions.shift();
+            playLoopState = {
+              ...playLoopState,
+              paused: !playLoopState.paused
+            };
+            appendControlTelemetry('pause', queuedAction.kind);
+            if (playLoopState.paused) {
+              return;
+            }
+            continue;
+          }
+
+          if (queuedAction.kind === 'restart_attempt') {
+            pendingHumanActions.shift();
+            appendControlTelemetry('restart', queuedAction.kind);
+            restartPlayAttempt();
+            return;
+          }
+
+          if (queuedAction.kind === 'toggle_thoughts') {
+            pendingHumanActions.shift();
+            playLoopState = {
+              ...playLoopState,
+              thoughtsVisible: !playLoopState.thoughtsVisible
+            };
+            appendControlTelemetry('toggle_thoughts', queuedAction.kind);
+            continue;
+          }
+
+          break;
+        }
+
+        if (playLoopState.paused) {
+          pendingHumanActions.length = 0;
+          return;
+        }
+
+        if (playLoopState.buildElapsedMs < demoConfig.cadence.spawnHoldMs) {
+          playLoopState = {
+            ...playLoopState,
+            buildElapsedMs: Math.min(demoConfig.cadence.spawnHoldMs, playLoopState.buildElapsedMs + safeDeltaMs)
+          };
+          return;
+        }
+
+        if (playLoopState.motion) {
+          const moveDurationMs = Math.max(72, Math.round(demoConfig.cadence.exploreStepMs * PLAY_MOVE_ANIMATION_RATIO));
+          const nextProgress = Math.min(1, playLoopState.motion.progress + (safeDeltaMs / moveDurationMs));
+
+          if (nextProgress >= 1) {
+            playLoopState = {
+              ...playLoopState,
+              pathCursor: playLoopState.motion.toCursor,
+              motion: null,
+              clearElapsedMs: playLoopState.motion.toCursor >= lastCursor ? 1 : playLoopState.clearElapsedMs
+            };
+          } else {
+            playLoopState = {
+              ...playLoopState,
+              motion: {
+                ...playLoopState.motion,
+                progress: nextProgress
+              }
+            };
+          }
+          return;
+        }
+
+        if (playLoopState.pathCursor >= lastCursor) {
+          playLoopState = {
+            ...playLoopState,
+            clearElapsedMs: playLoopState.clearElapsedMs + safeDeltaMs
+          };
+          return;
+        }
+
+        while (pendingHumanActions.length > 0) {
+          const action = pendingHumanActions.shift();
+          if (!action) {
+            continue;
+          }
+
+          const currentCursor = playLoopState.pathCursor;
+          const currentIndex = path[currentCursor] ?? episode.raster.startIndex;
+          const nextCursor = Math.min(lastCursor, currentCursor + 1);
+          const previousCursor = Math.max(0, currentCursor - 1);
+          const nextIndex = path[nextCursor] ?? currentIndex;
+          const previousIndex = path[previousCursor] ?? currentIndex;
+          const forwardDirection = currentCursor < lastCursor
+            ? resolveDirectionBetween(currentIndex, nextIndex, episode.raster.width)
+            : null;
+          const backwardDirection = currentCursor > 0
+            ? resolveDirectionBetween(currentIndex, previousIndex, episode.raster.width)
+            : null;
+          const requestedDirection = action.kind === 'move_up'
+            ? 0
+            : action.kind === 'move_down'
+              ? 1
+              : action.kind === 'move_left'
+                ? 2
+                : 3;
+
+          appendControlTelemetry(action.source === 'touch' ? 'touch' : 'keyboard', action.kind);
+          if (forwardDirection !== null && requestedDirection === forwardDirection) {
+            playLoopState = {
+              ...playLoopState,
+              motion: {
+                fromCursor: currentCursor,
+                toCursor: nextCursor,
+                progress: 0,
+                direction: forwardDirection
+              }
+            };
+            return;
+          }
+
+          if (backwardDirection !== null && requestedDirection === backwardDirection) {
+            playLoopState = {
+              ...playLoopState,
+              motion: {
+                fromCursor: currentCursor,
+                toCursor: previousCursor,
+                progress: 0,
+                direction: backwardDirection
+              }
+            };
+            return;
+          }
+        }
+      };
+      const resolvePlayElapsedMs = (episode: MazeEpisode): number => {
+        const pathSegments = Math.max(1, episode.raster.pathIndices.length - 1);
+        const traverseMs = Math.max(1, pathSegments * Math.max(1, demoConfig.cadence.exploreStepMs));
+        if (playLoopState.buildElapsedMs < demoConfig.cadence.spawnHoldMs) {
+          return playLoopState.buildElapsedMs;
+        }
+
+        if (playLoopState.clearElapsedMs > 0) {
+          return demoConfig.cadence.spawnHoldMs + traverseMs + playLoopState.clearElapsedMs;
+        }
+
+        const progressCursor = playLoopState.motion
+          ? playLoopState.motion.fromCursor + ((playLoopState.motion.toCursor - playLoopState.motion.fromCursor) * playLoopState.motion.progress)
+          : playLoopState.pathCursor;
+
+        return demoConfig.cadence.spawnHoldMs + ((Math.max(0, progressCursor) / pathSegments) * traverseMs);
       };
       renderDemo = (): void => {
         const shell = episodePresentationShell;
@@ -5070,80 +5847,107 @@ export class MenuScene extends Phaser.Scene {
         }
 
         const episode = patternFrame.episode;
+        const modeElapsedMs = presentationMode === 'play'
+          ? resolvePlayElapsedMs(episode)
+          : patternFrame.t * 1000;
         demoPresentation = resolveMenuDemoPresentation(
           episode,
           demoCyclePlan,
-          patternFrame.t * 1000,
+          modeElapsedMs,
           demoConfig,
           variant,
           deploymentProfileId
         );
-        const presentationElapsedMs = resolvePresentationElapsedMs(episode, patternFrame.t * 1000, demoPresentation);
-        const view = resolveDemoWalkerViewFrame(
-          episode,
-          presentationElapsedMs,
-          demoConfig,
-          demoPresentation.trailWindow
-        );
+        const presentationElapsedMs = presentationMode === 'play'
+          ? modeElapsedMs
+          : resolvePresentationElapsedMs(episode, patternFrame.t * 1000, demoPresentation);
+        const view = presentationMode === 'play'
+          ? (
+              playLoopState.buildElapsedMs < demoConfig.cadence.spawnHoldMs
+                ? resolveDemoWalkerViewFrame(
+                    episode,
+                    Math.max(0, playLoopState.buildElapsedMs),
+                    demoConfig,
+                    demoPresentation.trailWindow
+                  )
+                : buildPlayViewFrame(episode, playLoopState, demoPresentation.trailWindow)
+            )
+          : resolveDemoWalkerViewFrame(
+              episode,
+              presentationElapsedMs,
+              demoConfig,
+              demoPresentation.trailWindow
+            );
         const path = episode.raster.pathIndices;
-        const renderedTrail = resolveDemoTrailRenderBounds(path, view, demoPresentation.trailWindow);
+        const renderedTrail = presentationMode === 'play'
+          ? {
+              start: view.trailStart,
+              limit: view.trailLimit
+            }
+          : resolveDemoTrailRenderBounds(path, view, demoPresentation.trailWindow);
         const intentStep = Math.max(0, renderedTrail.limit - 1);
         lastTrailSegmentCount = Math.max(0, renderedTrail.limit - renderedTrail.start);
-
-        applyPresentationLayer(demoPresentation);
-
-        shell.boardRenderer.drawStart(view.cue);
-        shell.boardRenderer.drawGoal(view.cue);
-        shell.boardRenderer.drawTrail(path, {
-          cue: view.cue,
-          limit: renderedTrail.limit,
-          start: renderedTrail.start,
-          emphasis: 'demo',
-          persistentTrail: demoPresentation.persistentTrail,
-          persistentFadeFloor: demoPresentation.persistentFadeFloor,
-          pulseBoost: demoPresentation.trailPulseBoost,
-          activeMotion: view.currentIndex === view.nextIndex
-            ? undefined
-            : {
-              fromIndex: view.currentIndex,
-              toIndex: view.nextIndex,
-              progress: view.progress
-            }
-        });
-
-        if (view.currentIndex === view.nextIndex || view.progress <= 0) {
-          shell.boardRenderer.drawActor(view.currentIndex, view.direction, view.cue, demoPresentation.actorPulseBoost);
-        } else {
-          shell.boardRenderer.drawActorMotion(
-            view.currentIndex,
-            view.nextIndex,
-            view.progress,
-            view.direction,
-            view.cue,
-            demoPresentation.actorPulseBoost
-          );
-        }
         intentRuntimeSession?.advanceToStep(intentStep);
+        const boardState = intentRuntimeSession?.getBoardState(intentStep) ?? null;
+        const resolvedPresentation = boardState
+          && demoPresentation.ritualPhase === 'fail'
+          ? {
+              ...demoPresentation,
+              ritualTitle: boardState.failReasonTitle,
+              ritualSubtitle: boardState.failReasonSubtitle
+            }
+          : demoPresentation;
+        demoPresentation = resolvedPresentation;
+
+        applyPresentationLayer(resolvedPresentation);
+        renderBoardPresentation(shell, episode, resolvedPresentation, view, renderedTrail, boardState);
+        const rawFeedState = resolvedPresentation.showIntentFeed
+          ? (intentRuntimeSession?.getDisplayFeedState(intentStep, this.time.now) ?? null)
+          : null;
+        const feedState = presentationMode === 'play'
+          ? (
+              playLoopState.thoughtsVisible
+                ? (
+                    rawFeedState
+                      ? {
+                          ...rawFeedState,
+                          entries: rawFeedState.entries.slice(0, 1),
+                          events: rawFeedState.events?.slice(0, 1) ?? []
+                        }
+                      : null
+                  )
+                : (
+                    rawFeedState?.status
+                      ? {
+                          ...rawFeedState,
+                          entries: [],
+                          events: [],
+                          pings: []
+                        }
+                      : null
+                  )
+            )
+          : rawFeedState;
 
         runOptional('hud metadata', () => {
           shell.demoStatusHud.setState(
             episode,
-            demoPresentation.mood,
-            demoPresentation.sequence,
-            demoPresentation.variant,
-            demoPresentation.metadataAlpha,
-            demoPresentation.flashAlpha,
-            demoPresentation.phaseLabel,
-            demoPresentation.hudOffsetX,
-            demoPresentation.hudOffsetY
+            resolvedPresentation.mood,
+            resolvedPresentation.sequence,
+            resolvedPresentation.variant,
+            resolvedPresentation.metadataAlpha,
+            resolvedPresentation.flashAlpha,
+            `${presentationMode.toUpperCase()} | ${resolvedPresentation.phaseLabel}`,
+            resolvedPresentation.hudOffsetX,
+            resolvedPresentation.hudOffsetY
           );
         });
         runOptional('intent feed', () => {
           const trailDiagnostics = shell.boardRenderer.getTrailRenderDiagnostics();
           const presentedBoardBounds = resolveBoardPresentationBounds(
             shell.layout,
-            demoPresentation.frameOffsetX,
-            demoPresentation.frameOffsetY
+            resolvedPresentation.frameOffsetX,
+            resolvedPresentation.frameOffsetY
           );
           const fallbackPlayerX = shell.layout.boardX
             + (xFromIndex(view.currentIndex, episode.raster.width) * shell.layout.tileSize)
@@ -5158,7 +5962,6 @@ export class MenuScene extends Phaser.Scene {
             + (yFromIndex(episode.raster.endIndex, episode.raster.width) * shell.layout.tileSize)
             + (shell.layout.tileSize / 2);
           const anchorSize = legacyTuning.menu.intentFeed.anchorSizePx;
-          const feedState = intentRuntimeSession?.getDisplayFeedState(intentStep, this.time.now) ?? null;
           lastIntentFeedDiagnostics = summarizeMenuSceneRuntimeFeed({
             step: feedState?.step ?? null,
             status: toRuntimeFeedStatus(feedState),
@@ -5170,14 +5973,14 @@ export class MenuScene extends Phaser.Scene {
 
           shell.intentFeedHud.setState(feedState, {
             player: {
-              x: (trailDiagnostics.headCenter?.x ?? fallbackPlayerX) + demoPresentation.frameOffsetX,
-              y: (trailDiagnostics.headCenter?.y ?? fallbackPlayerY) + demoPresentation.frameOffsetY,
+              x: (trailDiagnostics.headCenter?.x ?? fallbackPlayerX) + resolvedPresentation.frameOffsetX,
+              y: (trailDiagnostics.headCenter?.y ?? fallbackPlayerY) + resolvedPresentation.frameOffsetY,
               width: anchorSize,
               height: anchorSize
             },
             objective: {
-              x: objectiveX + demoPresentation.frameOffsetX,
-              y: objectiveY + demoPresentation.frameOffsetY,
+              x: objectiveX + resolvedPresentation.frameOffsetX,
+              y: objectiveY + resolvedPresentation.frameOffsetY,
               width: anchorSize,
               height: anchorSize
             },
@@ -5221,8 +6024,98 @@ export class MenuScene extends Phaser.Scene {
                 }]
                 : [])
             ]
+          }, {
+            nextRiskLabel: boardState?.nextRiskLabel ?? null,
+            statusLabel: presentationMode === 'play'
+              ? (touchInputSupported ? PLAY_MODE_TOUCH_ONBOARDING_LABEL : PLAY_MODE_ONBOARDING_LABEL)
+              : null
           });
+          renderTouchControls();
         });
+        const projectionState = resolveRunProjectionStateFromPresentation(resolvedPresentation);
+        const leadSummary = feedState?.entries[0]?.summary ?? feedState?.status?.summary ?? resolvedPresentation.phaseLabel;
+        const leadKind = feedState?.entries[0]?.kind ?? feedState?.status?.kind ?? null;
+        const failReason = resolvedPresentation.ritualPhase === 'fail' && boardState
+          ? `${boardState.failReasonTitle}: ${boardState.failReasonSubtitle}`
+          : resolvedPresentation.ritualPhase === 'fail' && resolvedPresentation.ritualTitle.length > 0
+            ? `${resolvedPresentation.ritualTitle}: ${resolvedPresentation.ritualSubtitle}`
+            : null;
+        lastProjection = createRunProjection({
+          runId: telemetryCurrentRunId ?? `scene-${sceneInstanceId}`,
+          mazeId: telemetryCurrentMazeId ?? `maze-${episode.seed.toString(16)}`,
+          attemptNo: telemetryCurrentAttemptNo,
+          elapsedMs: Math.max(0, Math.round(modeElapsedMs)),
+          mode: resolvePlayRunMode(presentationMode),
+          state: projectionState,
+          failReason,
+          compactThought: leadSummary,
+          riskLevel: resolveRunProjectionRiskLevel(projectionState, boardState),
+          progressPct: resolveRunProjectionProgressPct(resolvedPresentation, path.length, renderedTrail.limit),
+          miniMapHash: hashProjectionSignature(
+            episode.seed,
+            projectionState,
+            intentStep,
+            renderedTrail.limit,
+            boardState?.telegraphs.map((telegraph) => `${telegraph.kind}:${telegraph.id}:${telegraph.active ? '1' : '0'}`).join(',') ?? 'none'
+          ),
+          updatedAt: new Date().toISOString()
+        });
+        if (projectionState !== lastProjectionState) {
+          if (projectionState === 'failed' && failReason) {
+            appendTelemetryEvent('fail_reason', {
+              failReason,
+              stage: resolvedPresentation.lifecyclePhase
+            });
+          }
+          if (projectionState === 'failed') {
+            finalizeTelemetryRun('failed');
+          } else if (projectionState === 'cleared') {
+            finalizeTelemetryRun('cleared');
+          }
+          lastProjectionState = projectionState;
+        }
+
+        const thoughtSignature = `${lastIntentFeedDiagnostics.signature}|${projectionState}`;
+        if (feedState && lastIntentFeedDiagnostics.signature.length > 0 && thoughtSignature !== lastThoughtEventSignature) {
+          lastThoughtEventSignature = thoughtSignature;
+          appendTelemetryEvent('thought_shown', {
+            compactThought: leadSummary,
+            density: lastIntentFeedDiagnostics.visibleEntryCount > 1 ? 'richer' : 'sparse'
+          });
+        }
+
+        const recallEntry = feedState?.entries.find((entry) => (
+          /\brecall\b|\bmemory\b/i.test(String(entry.kind)) || /\brecall\b|\bmemory\b/i.test(entry.summary)
+        )) ?? null;
+        const recallSummary = recallEntry?.summary ?? (feedState?.status && /\brecall\b|\bmemory\b/i.test(feedState.status.summary)
+          ? feedState.status.summary
+          : null);
+        if (recallSummary && recallSummary !== lastMemoryEventSignature) {
+          lastMemoryEventSignature = recallSummary;
+          appendTelemetryEvent('memory_recalled', {
+            memoryKey: recallEntry?.id ?? leadKind ?? undefined,
+            recalledFrom: recallSummary
+          });
+        }
+
+        const hazardTelegraph = boardState?.telegraphs.find((telegraph) => (
+          telegraph.kind === 'hazard-tile'
+          || telegraph.kind === 'timed-gate'
+          || telegraph.kind === 'patrol-lane'
+          || telegraph.kind === 'pressure-door'
+        )) ?? null;
+        const hazardSignature = hazardTelegraph
+          ? `${hazardTelegraph.id}:${hazardTelegraph.active ? '1' : '0'}:${hazardTelegraph.readiness.toFixed(2)}`
+          : '';
+        if (hazardSignature.length > 0 && hazardSignature !== lastHazardEventSignature) {
+          lastHazardEventSignature = hazardSignature;
+          appendTelemetryEvent('hazard_entered', {
+            hazardId: hazardTelegraph?.id,
+            telegraphStrength: hazardTelegraph && (hazardTelegraph.active || hazardTelegraph.readiness >= 0.72)
+              ? 'stronger'
+              : 'baseline'
+          });
+        }
         publishVisualDiagnostics(view, renderedTrail);
         if (view.cue !== lastCue) {
           runOptional('cue accent', () => {
@@ -5347,6 +6240,78 @@ export class MenuScene extends Phaser.Scene {
       };
 
       renderDemo();
+      const keyboardManager = this.input.keyboard;
+      if (keyboardManager) {
+        const handleKeydown = (event: KeyboardEvent): void => {
+          if (isModeToggleKey(event)) {
+            event.preventDefault();
+            applyRuntimeMode(presentationMode === 'watch' ? 'play' : 'watch');
+            return;
+          }
+
+          const action = resolveHumanKeyboardAction(event, this.time.now);
+          if (!action || !inputRepeatGate.accept(action, this.time.now)) {
+            return;
+          }
+
+          if (presentationMode === 'watch') {
+            return;
+          }
+
+          pendingHumanActions.push(action);
+        };
+
+        keyboardManager.on('keydown', handleKeydown);
+        removeKeyboardInputListener = () => {
+          keyboardManager.off('keydown', handleKeydown);
+        };
+      }
+      if (touchInputSupported) {
+        const inputPlugin = this.input;
+        const handlePointerDown = (pointer: Phaser.Input.Pointer): void => {
+          if (presentationMode !== 'play') {
+            return;
+          }
+
+          const action = resolveHumanTouchAction({
+            x: pointer.x,
+            y: pointer.y,
+            pointerId: pointer.id,
+            timeStamp: this.time.now
+          }, resolveTouchControlLayout(
+            { width, height },
+            {
+              safeInsets: viewportSafeInsets,
+              compact: sceneLayout.isTiny || sceneLayout.isNarrow || sceneLayout.isPortrait
+            }
+          ), touchInputState, this.time.now);
+          if (!action) {
+            return;
+          }
+
+          pendingHumanActions.push(action);
+          renderTouchControls();
+        };
+        const handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
+          releaseTouchPointer(touchInputState, pointer.id);
+          renderTouchControls();
+        };
+        const handleGameOut = (): void => {
+          resetTouchInputState(touchInputState);
+          renderTouchControls();
+        };
+
+        inputPlugin.on(Phaser.Input.Events.POINTER_DOWN, handlePointerDown);
+        inputPlugin.on(Phaser.Input.Events.POINTER_UP, handlePointerRelease);
+        inputPlugin.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, handlePointerRelease);
+        inputPlugin.on(Phaser.Input.Events.GAME_OUT, handleGameOut);
+        removeTouchInputListeners = () => {
+          inputPlugin.off(Phaser.Input.Events.POINTER_DOWN, handlePointerDown);
+          inputPlugin.off(Phaser.Input.Events.POINTER_UP, handlePointerRelease);
+          inputPlugin.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, handlePointerRelease);
+          inputPlugin.off(Phaser.Input.Events.GAME_OUT, handleGameOut);
+        };
+      }
       markBootTiming('menu-scene:create-core-ready');
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -5402,6 +6367,24 @@ export class MenuScene extends Phaser.Scene {
         }
 
         try {
+          if (presentationMode === 'play') {
+            if (!patternFrame) {
+              const initialFrame = patternEngine.next(0);
+              patternFrame = initialFrame;
+              recoveryEpisode = initialFrame.episode;
+            }
+
+            advancePlayLoop(patternFrame.episode, safeDelta);
+            if (playLoopState.clearElapsedMs > (demoConfig.cadence.goalHoldMs + demoConfig.cadence.resetHoldMs)) {
+              patternEngine.resumeFresh();
+              applyPatternFrame(patternEngine.next(0));
+            } else {
+              renderDemo();
+            }
+            publishRuntimeDiagnostics(false);
+            return;
+          }
+
           const nextFrame = patternEngine.next(safeDelta / 1000);
           if (!patternFrame) {
             patternFrame = nextFrame;
@@ -5426,6 +6409,7 @@ export class MenuScene extends Phaser.Scene {
       };
       this.events.on(Phaser.Scenes.Events.UPDATE, updateDemo);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        finalizeTelemetryRun('aborted');
         removeRuntimeListeners();
         destroyPresentation(true);
       });
@@ -5650,39 +6634,97 @@ const resolveTargetTraverseMs = (episode: MazeEpisode, cycle: MenuDemoCycle, pat
   );
 };
 
-export const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): DemoWalkerConfig => {
+const resolveTargetBuildMs = (episode: MazeEpisode, cycle: MenuDemoCycle): number => {
+  const traceSteps = Math.max(1, episode.generationTrace.steps.length);
+  const sizeBias = episode.size === 'small'
+    ? -70
+    : episode.size === 'medium'
+      ? 0
+      : episode.size === 'large'
+        ? 120
+        : 220;
+  const moodBias = cycle.mood === 'scan'
+    ? 60
+    : cycle.mood === 'blueprint'
+      ? 140
+      : 90;
+
+  return clamp(
+    760 + Math.min(1750, traceSteps * 3.6) + sizeBias + moodBias,
+    920,
+    2500
+  );
+};
+
+export const resolveDemoConfig = (
+  episode: MazeEpisode,
+  cycle: MenuDemoCycle,
+  mode: PresentationMode = 'watch'
+): DemoWalkerConfig => {
   const pathSegments = Math.max(1, episode.raster.pathIndices.length - 1);
+  const spectatorPlan = createDemoSpectatorPlan(episode);
+  const watchSlowdownFactor = mode === 'play' ? 1 : (1 / 0.75);
+  const buildSlowdownFactor = mode === 'play' ? 1.1 : 2;
   const baseSpawnHoldMs = legacyTuning.demo.cadence.spawnHoldMs + cycle.pacing.spawnHoldMs + (cycle.mood === 'blueprint' ? 60 : 0);
   const baseExploreStepMs = legacyTuning.demo.cadence.exploreStepMs + cycle.pacing.exploreStepMs + (cycle.mood === 'scan' ? 8 : 0);
   const baseGoalHoldMs = legacyTuning.demo.cadence.goalHoldMs + cycle.pacing.goalHoldMs + (episode.difficulty === 'brutal' ? 100 : 0);
   const baseResetHoldMs = legacyTuning.demo.cadence.resetHoldMs + cycle.pacing.resetHoldMs + (cycle.mood === 'solve' ? 18 : 0);
-  const targetExploreStepMs = resolveTargetTraverseMs(episode, cycle, pathSegments) / pathSegments;
+  const targetExploreStepMs = (resolveTargetTraverseMs(episode, cycle, pathSegments) / pathSegments) * watchSlowdownFactor;
+  const targetBuildMs = resolveTargetBuildMs(episode, cycle) * buildSlowdownFactor;
   const spawnHoldMs = roundClampedCadenceMs(
-    baseSpawnHoldMs
-      + (pathSegments <= 10 ? 34 : pathSegments >= 28 ? 10 : 20)
-      + (episode.size === 'small' ? 18 : episode.size === 'huge' ? -10 : 0),
-    180,
-    340
+    Math.max(
+      targetBuildMs,
+      baseSpawnHoldMs
+        + (pathSegments <= 10 ? 34 : pathSegments >= 28 ? 10 : 20)
+        + (episode.size === 'small' ? 18 : episode.size === 'huge' ? -10 : 0)
+    ),
+    mode === 'play' ? 420 : 920,
+    mode === 'play' ? 1600 : 2500
   );
   const exploreStepMs = roundClampedCadenceMs(
-    (baseExploreStepMs * 0.44) + (targetExploreStepMs * 0.56),
-    72,
-    132
+    ((baseExploreStepMs * watchSlowdownFactor) * 0.44) + (targetExploreStepMs * 0.56),
+    mode === 'play' ? 82 : 96,
+    mode === 'play' ? 132 : 176
   );
   const goalHoldMs = roundClampedCadenceMs(
     baseGoalHoldMs
       + Math.min(420, pathSegments * 9)
       + (episode.difficulty === 'chill' ? -90 : episode.difficulty === 'brutal' ? 120 : 0),
-    2400,
-    3900
+    mode === 'play' ? 840 : 2400,
+    mode === 'play' ? 1900 : 3900
   );
   const resetHoldMs = roundClampedCadenceMs(
     baseResetHoldMs
       + (pathSegments <= 10 ? 52 : 82)
       + (cycle.mood === 'blueprint' ? 24 : 0),
-    320,
-    520
+    mode === 'play' ? 220 : 320,
+    mode === 'play' ? 420 : 520
   );
+  const totalTraverseMs = exploreStepMs * pathSegments;
+  const segmentWeights = Array.from({ length: pathSegments }, () => 1);
+  const segmentCues: DemoSegmentCue[] = Array.from({ length: pathSegments }, () => 'explore');
+
+  spectatorPlan.riskWindows.forEach((window) => {
+    if (window.segmentIndex < 0 || window.segmentIndex >= pathSegments) {
+      return;
+    }
+
+    segmentWeights[window.segmentIndex] = Math.max(segmentWeights[window.segmentIndex], window.weight);
+    segmentCues[window.segmentIndex] = window.cue;
+    if (window.segmentIndex > 0 && window.cue === 'anticipate') {
+      segmentWeights[window.segmentIndex - 1] = Math.max(segmentWeights[window.segmentIndex - 1], 1 + ((window.weight - 1) * 0.42));
+      if (segmentCues[window.segmentIndex - 1] === 'explore') {
+        segmentCues[window.segmentIndex - 1] = 'anticipate';
+      }
+    }
+  });
+
+  const totalWeight = segmentWeights.reduce((total, value) => total + value, 0);
+  const segmentDurationsMs = segmentWeights.map((weight) => Math.max(1, Math.round((totalTraverseMs * weight) / totalWeight)));
+  const durationDelta = totalTraverseMs - segmentDurationsMs.reduce((total, value) => total + value, 0);
+  if (segmentDurationsMs.length > 0 && durationDelta !== 0) {
+    segmentDurationsMs[segmentDurationsMs.length - 1] = Math.max(1, segmentDurationsMs[segmentDurationsMs.length - 1] + durationDelta);
+  }
 
   return {
     ...legacyTuning.demo,
@@ -5692,6 +6734,11 @@ export const resolveDemoConfig = (episode: MazeEpisode, cycle: MenuDemoCycle): D
       exploreStepMs,
       goalHoldMs,
       resetHoldMs
+    },
+    behavior: {
+      ...legacyTuning.demo.behavior,
+      segmentDurationsMs,
+      segmentCues
     }
   };
 };
@@ -5777,14 +6824,10 @@ export const resolveMenuDemoSequence = (
   };
 };
 
-const resolveFailRitualCopy = (seed: number, mood: DemoMood): { title: string; subtitle: string } => {
-  const title = FAIL_RITUAL_TITLES[mix(seed, mood.charCodeAt(0), 0x4f12a9c3) % FAIL_RITUAL_TITLES.length];
-  const subtitles = FAIL_RITUAL_SUBTITLES[mood];
-  return {
-    title,
-    subtitle: subtitles[mix(seed, mood.charCodeAt(0), title.charCodeAt(0)) % subtitles.length]
-  };
-};
+const resolveSuccessRitualCopy = (seed: number, mood: DemoMood): { title: string; subtitle: string } => ({
+  title: SUCCESS_RITUAL_TITLES[mix(seed, mood.charCodeAt(0), 0x41b39a27) % SUCCESS_RITUAL_TITLES.length],
+  subtitle: SUCCESS_RITUAL_SUBTITLES[mood][0]
+});
 
 const resolveRetryRitualCopy = (seed: number, mood: DemoMood): { title: string; subtitle: string } => ({
   title: RETRY_RITUAL_TITLES[mix(seed, mood.charCodeAt(0), 0x2dd9a165) % RETRY_RITUAL_TITLES.length],
@@ -5826,6 +6869,14 @@ export const resolveMenuDemoPresentation = (
   let ritualAlpha = 0;
   let ritualTitle = '';
   let ritualSubtitle = '';
+  const ritualTuning = legacyTuning.demo.ritual;
+  const lifecycleTuning = legacyTuning.demo.lifecycle;
+  const reflectionRatio = clamp(ritualTuning.failReflectionRatio, 0.2, 0.8);
+  const clearHoldRatio = clamp(lifecycleTuning.clearHoldRatio, 0.08, reflectionRatio);
+  const eraseStartRatio = clamp(lifecycleTuning.eraseStartRatio, Math.max(clearHoldRatio + 0.08, 0.42), 0.92);
+  let lifecyclePhase: DemoLifecyclePhase = 'active-watch';
+  let buildRevealProgress = 1;
+  let eraseWipeProgress = 0;
 
   switch (sequenceState.sequence) {
     case 'intro':
@@ -5872,6 +6923,32 @@ export const resolveMenuDemoPresentation = (
       break;
   }
 
+  if (sequenceState.sequence === 'intro') {
+    const buildRevealStart = clamp(lifecycleTuning.buildRevealStartRatio, 0, 0.72);
+    const buildRevealEnd = clamp(
+      lifecycleTuning.buildRevealEndRatio,
+      Math.max(buildRevealStart + 0.08, 0.3),
+      0.96
+    );
+    buildRevealProgress = clamp(
+      (progress - buildRevealStart) / Math.max(0.01, buildRevealEnd - buildRevealStart),
+      0,
+      1
+    );
+    lifecyclePhase = progress < lifecycleTuning.buildPrerollRatio
+      ? 'pre-roll'
+      : buildRevealProgress < 1
+        ? 'build-reveal'
+        : 'settle-in';
+  } else if (sequenceState.sequence === 'fade') {
+    eraseWipeProgress = clamp((progress - eraseStartRatio) / Math.max(0.01, 1 - eraseStartRatio), 0, 1);
+    lifecyclePhase = progress < clearHoldRatio
+      ? 'clear-hold'
+      : progress < eraseStartRatio
+        ? 'reflection-beat'
+        : 'erase-wipe';
+  }
+
   if (safeVariant === 'title') {
     boardVeilAlpha += sequenceState.sequence === 'intro' ? 0.02 : 0.01;
     boardAuraAlpha -= 0.006;
@@ -5899,7 +6976,6 @@ export const resolveMenuDemoPresentation = (
       : 0.18
     );
   }
-  const ritualTuning = legacyTuning.demo.ritual;
   if (sequenceState.sequence === 'reveal'
     && progress >= ritualTuning.decisionWindowStartRatio
     && progress <= ritualTuning.decisionWindowEndRatio) {
@@ -5911,14 +6987,13 @@ export const resolveMenuDemoPresentation = (
       1
     );
   } else if (sequenceState.sequence === 'fade') {
-    const reflectionRatio = clamp(ritualTuning.failReflectionRatio, 0.2, 0.8);
     if (progress < reflectionRatio) {
-      const failCopy = resolveFailRitualCopy(episode.seed, cycle.mood);
-      ritualPhase = 'fail';
+      const successCopy = resolveSuccessRitualCopy(episode.seed, cycle.mood);
+      ritualPhase = 'success';
       ritualProgress = clamp(progress / reflectionRatio, 0, 1);
       ritualAlpha = lerp(0.18, ritualTuning.failCardAlpha, ritualProgress);
-      ritualTitle = failCopy.title;
-      ritualSubtitle = failCopy.subtitle;
+      ritualTitle = successCopy.title;
+      ritualSubtitle = successCopy.subtitle;
     } else {
       const retryCopy = resolveRetryRitualCopy(episode.seed, cycle.mood);
       ritualPhase = 'retry';
@@ -5966,7 +7041,27 @@ export const resolveMenuDemoPresentation = (
     mood: cycle.mood,
     theme: cycle.theme,
     sequence: sequenceState.sequence,
-    phaseLabel: resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
+    lifecyclePhase,
+    buildRevealProgress,
+    eraseWipeProgress,
+    showStartMarker: buildRevealProgress >= 0.18 && eraseWipeProgress < 0.96,
+    showGoalMarker: buildRevealProgress >= 0.56 && eraseWipeProgress < 0.9,
+    showActor: lifecyclePhase === 'settle-in' || lifecyclePhase === 'active-watch' || lifecyclePhase === 'clear-hold' || lifecyclePhase === 'reflection-beat',
+    showTrail: lifecyclePhase === 'active-watch' || lifecyclePhase === 'clear-hold' || lifecyclePhase === 'reflection-beat',
+    showIntentFeed: lifecyclePhase !== 'pre-roll',
+    phaseLabel: lifecyclePhase === 'pre-roll'
+      ? 'staging board'
+      : lifecyclePhase === 'build-reveal'
+        ? 'building maze'
+        : lifecyclePhase === 'settle-in'
+          ? 'settling read'
+          : lifecyclePhase === 'clear-hold'
+            ? 'holding clear'
+            : lifecyclePhase === 'reflection-beat'
+              ? 'reading clear'
+              : lifecyclePhase === 'erase-wipe'
+                ? 'deconstructing maze'
+                : resolvePhaseLabel(sequenceState.sequence, episode.seed, cycle.mood, safeVariant),
     solutionPathAlpha: showSolutionPathPreview
       ? clamp(
         moodProfile.solutionPathAlpha * variantProfile.solutionPathScale * themeProfile.presentation.solutionPathAlphaScale,

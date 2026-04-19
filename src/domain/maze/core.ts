@@ -4,6 +4,9 @@ import type {
   MazeEpisode,
   MazeCore,
   MazeFamily,
+  MazeGenerationPhase,
+  MazeGenerationTrace,
+  MazeGenerationTraceStep,
   MazeMetrics,
   MazePlacementStrategy,
   MazePresentationPreset,
@@ -53,11 +56,18 @@ interface CoreBuildOptions {
 
 interface CoreBuildResult {
   maze: MazeCore;
+  generationTrace: MazeGenerationTrace;
   solution: MazeSolveResult;
   metrics: MazeMetrics;
   topology: MazeTopologyStats;
   shortcutsCreated: number;
   accepted: boolean;
+}
+
+interface CoreGenerationTraceRecorder {
+  currentPhase: MazeGenerationPhase;
+  rootCellIndex: number;
+  steps: MazeGenerationTraceStep[];
 }
 
 interface MazeScratch {
@@ -461,7 +471,8 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
   let acceptedFallback: { result: CoreBuildResult; score: number } | null = null;
 
   for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
-    const maze = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
+    const generated = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
+    const maze = generated.maze;
     const shortestPath = solveCorridorGraph(maze, maze.start, maze.goal);
     if (!shortestPath.found) {
       continue;
@@ -472,6 +483,7 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     const shortcutsCreated = countOpeningsBeyondTree(maze);
     const built = {
       maze,
+      generationTrace: generated.generationTrace,
       solution: shortestPath,
       metrics,
       topology,
@@ -499,11 +511,13 @@ export const buildMazeCore = (options: CoreBuildOptions): CoreBuildResult => {
     return fallback.result;
   }
 
-  const maze = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
+  const generated = generateWilsonMaze(width, height, seed, braidRatio, family, presentationPreset, rng);
+  const maze = generated.maze;
   const solution = solveCorridorGraph(maze, maze.start, maze.goal);
   const topology = measureTopology(maze, solution.pathIndices);
   return {
     maze,
+    generationTrace: generated.generationTrace,
     solution,
     metrics: measureMaze(maze, solution.pathIndices),
     topology,
@@ -2007,24 +2021,29 @@ const downsampleCandidates = (
   return sampled.length >= 2 ? sampled : candidates.slice(0, maxCount);
 };
 
-const applyMazeFamilyPass = (maze: MazeCore, family: MazeFamily, rng: () => number): void => {
+const applyMazeFamilyPass = (
+  maze: MazeCore,
+  family: MazeFamily,
+  rng: () => number,
+  recorder?: CoreGenerationTraceRecorder
+): void => {
   switch (family) {
     case 'braided':
-      braidMaze(maze, 0.24, rng);
-      applyDenseWeavePass(maze, rng, 2, 2);
+      braidMaze(maze, 0.24, rng, recorder);
+      applyDenseWeavePass(maze, rng, 2, 2, recorder);
       break;
     case 'sparse':
-      applySparseFlowPass(maze, rng);
+      applySparseFlowPass(maze, rng, recorder);
       break;
     case 'dense':
-      braidMaze(maze, 0.14, rng);
-      applyDenseWeavePass(maze, rng, 4, 2);
+      braidMaze(maze, 0.14, rng, recorder);
+      applyDenseWeavePass(maze, rng, 4, 2, recorder);
       break;
     case 'framed':
-      applyFramedPass(maze, rng);
+      applyFramedPass(maze, rng, recorder);
       break;
     case 'split-flow':
-      applySplitFlowPass(maze, rng);
+      applySplitFlowPass(maze, rng, recorder);
       break;
     case 'classic':
     default:
@@ -2032,7 +2051,7 @@ const applyMazeFamilyPass = (maze: MazeCore, family: MazeFamily, rng: () => numb
   }
 };
 
-const applySparseFlowPass = (maze: MazeCore, rng: () => number): void => {
+const applySparseFlowPass = (maze: MazeCore, rng: () => number, recorder?: CoreGenerationTraceRecorder): void => {
   if (maze.width < 7 || maze.height < 7) {
     return;
   }
@@ -2044,18 +2063,24 @@ const applySparseFlowPass = (maze: MazeCore, rng: () => number): void => {
   const spurLength = Math.max(2, Math.floor((horizontal ? maze.height : maze.width) * 0.22));
 
   if (horizontal) {
-    carveLinearFeature(maze, 1, row, 1, 0, primaryLength);
-    carveLinearFeature(maze, clamp(primaryLength, 1, maze.width - 2), row, 0, 1, spurLength);
-    carveLinearFeature(maze, column, clamp(row + spurLength, 1, maze.height - 2), 1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
+    carveLinearFeature(maze, 1, row, 1, 0, primaryLength, recorder);
+    carveLinearFeature(maze, clamp(primaryLength, 1, maze.width - 2), row, 0, 1, spurLength, recorder);
+    carveLinearFeature(maze, column, clamp(row + spurLength, 1, maze.height - 2), 1, 0, Math.max(2, Math.floor(maze.width * 0.24)), recorder);
     return;
   }
 
-  carveLinearFeature(maze, column, 1, 0, 1, primaryLength);
-  carveLinearFeature(maze, column, clamp(primaryLength, 1, maze.height - 2), 1, 0, spurLength);
-  carveLinearFeature(maze, clamp(column + spurLength, 1, maze.width - 2), row, 0, 1, Math.max(2, Math.floor(maze.height * 0.24)));
+  carveLinearFeature(maze, column, 1, 0, 1, primaryLength, recorder);
+  carveLinearFeature(maze, column, clamp(primaryLength, 1, maze.height - 2), 1, 0, spurLength, recorder);
+  carveLinearFeature(maze, clamp(column + spurLength, 1, maze.width - 2), row, 0, 1, Math.max(2, Math.floor(maze.height * 0.24)), recorder);
 };
 
-const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: number, armLength: number): void => {
+const applyDenseWeavePass = (
+  maze: MazeCore,
+  rng: () => number,
+  clusterCount: number,
+  armLength: number,
+  recorder?: CoreGenerationTraceRecorder
+): void => {
   if (maze.width < 6 || maze.height < 6) {
     return;
   }
@@ -2063,15 +2088,15 @@ const applyDenseWeavePass = (maze: MazeCore, rng: () => number, clusterCount: nu
   for (let cluster = 0; cluster < clusterCount; cluster += 1) {
     const centerX = clamp(2 + randomInt(Math.max(1, maze.width - 4), rng), 1, maze.width - 2);
     const centerY = clamp(2 + randomInt(Math.max(1, maze.height - 4), rng), 1, maze.height - 2);
-    carveLinearFeature(maze, clamp(centerX - 1, 1, maze.width - 2), centerY, 1, 0, armLength);
-    carveLinearFeature(maze, centerX, clamp(centerY - 1, 1, maze.height - 2), 0, 1, armLength);
+    carveLinearFeature(maze, clamp(centerX - 1, 1, maze.width - 2), centerY, 1, 0, armLength, recorder);
+    carveLinearFeature(maze, centerX, clamp(centerY - 1, 1, maze.height - 2), 0, 1, armLength, recorder);
     if (rng() > 0.35) {
-      carveLinearFeature(maze, centerX, centerY, rng() > 0.5 ? 1 : -1, 0, 1);
+      carveLinearFeature(maze, centerX, centerY, rng() > 0.5 ? 1 : -1, 0, 1, recorder);
     }
   }
 };
 
-const applySplitFlowPass = (maze: MazeCore, rng: () => number): void => {
+const applySplitFlowPass = (maze: MazeCore, rng: () => number, recorder?: CoreGenerationTraceRecorder): void => {
   if (maze.width < 8 || maze.height < 8) {
     return;
   }
@@ -2083,34 +2108,39 @@ const applySplitFlowPass = (maze: MazeCore, rng: () => number): void => {
   const bridgeRow = clamp(Math.floor(maze.height * 0.62) + randomInt(5, rng) - 2, upperRow + 1, lowerRow);
   const midSpan = Math.max(2, Math.floor((rightColumn - leftColumn) * 0.42));
 
-  carveLinearFeature(maze, 1, upperRow, 1, 0, Math.max(2, leftColumn - 1));
-  carveLinearFeature(maze, leftColumn, upperRow, 0, 1, Math.max(2, bridgeRow - upperRow));
-  carveLinearFeature(maze, leftColumn, bridgeRow, 1, 0, midSpan);
-  carveLinearFeature(maze, maze.width - 2, lowerRow, -1, 0, Math.max(2, maze.width - rightColumn - 2));
-  carveLinearFeature(maze, rightColumn, lowerRow, 0, -1, Math.max(2, lowerRow - bridgeRow));
-  carveLinearFeature(maze, rightColumn, bridgeRow, -1, 0, midSpan);
+  carveLinearFeature(maze, 1, upperRow, 1, 0, Math.max(2, leftColumn - 1), recorder);
+  carveLinearFeature(maze, leftColumn, upperRow, 0, 1, Math.max(2, bridgeRow - upperRow), recorder);
+  carveLinearFeature(maze, leftColumn, bridgeRow, 1, 0, midSpan, recorder);
+  carveLinearFeature(maze, maze.width - 2, lowerRow, -1, 0, Math.max(2, maze.width - rightColumn - 2), recorder);
+  carveLinearFeature(maze, rightColumn, lowerRow, 0, -1, Math.max(2, lowerRow - bridgeRow), recorder);
+  carveLinearFeature(maze, rightColumn, bridgeRow, -1, 0, midSpan, recorder);
 
   if (rng() > 0.3) {
-    carveLinearFeature(maze, 1, lowerRow, 1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
+    carveLinearFeature(maze, 1, lowerRow, 1, 0, Math.max(2, Math.floor(maze.width * 0.24)), recorder);
   }
   if (rng() > 0.3) {
-    carveLinearFeature(maze, maze.width - 2, upperRow, -1, 0, Math.max(2, Math.floor(maze.width * 0.24)));
+    carveLinearFeature(maze, maze.width - 2, upperRow, -1, 0, Math.max(2, Math.floor(maze.width * 0.24)), recorder);
   }
 };
 
-const applyPresentationPreset = (maze: MazeCore, preset: MazePresentationPreset, rng: () => number): void => {
+const applyPresentationPreset = (
+  maze: MazeCore,
+  preset: MazePresentationPreset,
+  rng: () => number,
+  recorder?: CoreGenerationTraceRecorder
+): void => {
   switch (preset) {
     case 'braided':
-      braidMaze(maze, 0.2, rng);
+      braidMaze(maze, 0.2, rng, recorder);
       break;
     case 'framed':
-      braidMaze(maze, 0.06, rng);
-      applyFramedPass(maze, rng);
+      braidMaze(maze, 0.06, rng, recorder);
+      applyFramedPass(maze, rng, recorder);
       break;
     case 'blueprint-rare':
-      braidMaze(maze, 0.08, rng);
-      applyFramedPass(maze, rng);
-      applyArchitecturalPasses(maze, rng);
+      braidMaze(maze, 0.08, rng, recorder);
+      applyFramedPass(maze, rng, recorder);
+      applyArchitecturalPasses(maze, rng, recorder);
       break;
     case 'classic':
     default:
@@ -2118,7 +2148,7 @@ const applyPresentationPreset = (maze: MazeCore, preset: MazePresentationPreset,
   }
 };
 
-const applyFramedPass = (maze: MazeCore, rng: () => number): void => {
+const applyFramedPass = (maze: MazeCore, rng: () => number, recorder?: CoreGenerationTraceRecorder): void => {
   if (maze.width < 6 || maze.height < 6) {
     return;
   }
@@ -2134,17 +2164,22 @@ const applyFramedPass = (maze: MazeCore, rng: () => number): void => {
   const sideY = inset + 1 + verticalOffset;
   const gatewayDepth = Math.max(2, Math.floor(Math.min(maze.width, maze.height) * 0.16));
 
-  carveLinearFeature(maze, topX, inset, 1, 0, horizontalLength);
-  carveLinearFeature(maze, topX, maze.height - inset - 1, 1, 0, horizontalLength);
-  carveLinearFeature(maze, inset, sideY, 0, 1, verticalLength);
-  carveLinearFeature(maze, maze.width - inset - 1, sideY, 0, 1, verticalLength);
-  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), inset, 0, 1, gatewayDepth);
-  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), maze.height - inset - 1, 0, -1, gatewayDepth);
-  carveLinearFeature(maze, inset, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), 1, 0, gatewayDepth);
-  carveLinearFeature(maze, maze.width - inset - 1, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), -1, 0, gatewayDepth);
+  carveLinearFeature(maze, topX, inset, 1, 0, horizontalLength, recorder);
+  carveLinearFeature(maze, topX, maze.height - inset - 1, 1, 0, horizontalLength, recorder);
+  carveLinearFeature(maze, inset, sideY, 0, 1, verticalLength, recorder);
+  carveLinearFeature(maze, maze.width - inset - 1, sideY, 0, 1, verticalLength, recorder);
+  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), inset, 0, 1, gatewayDepth, recorder);
+  carveLinearFeature(maze, clamp(topX + Math.floor(horizontalLength / 2), inset + 1, maze.width - inset - 2), maze.height - inset - 1, 0, -1, gatewayDepth, recorder);
+  carveLinearFeature(maze, inset, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), 1, 0, gatewayDepth, recorder);
+  carveLinearFeature(maze, maze.width - inset - 1, clamp(sideY + Math.floor(verticalLength / 2), inset + 1, maze.height - inset - 2), -1, 0, gatewayDepth, recorder);
 };
 
-const applyFamilyAntiStraightnessPass = (maze: MazeCore, family: MazeFamily, rng: () => number): void => {
+const applyFamilyAntiStraightnessPass = (
+  maze: MazeCore,
+  family: MazeFamily,
+  rng: () => number,
+  recorder?: CoreGenerationTraceRecorder
+): void => {
   const tuning = FAMILY_TOPOLOGY_TUNING[family].antiStraightness;
   if (!tuning) {
     return;
@@ -2182,7 +2217,7 @@ const applyFamilyAntiStraightnessPass = (maze: MazeCore, family: MazeFamily, rng
       if (axis === null) {
         continue;
       }
-      applyCorridorIntervention(maze, edge.path[cursor], axis, tuning, rng);
+      applyCorridorIntervention(maze, edge.path[cursor], axis, tuning, rng, recorder);
     }
   }
 };
@@ -2192,7 +2227,8 @@ const applyCorridorIntervention = (
   cellIndex: number,
   axis: 'horizontal' | 'vertical',
   tuning: AntiStraightnessPassOptions,
-  rng: () => number
+  rng: () => number,
+  recorder?: CoreGenerationTraceRecorder
 ): void => {
   const perpendicularDirections = axis === 'horizontal'
     ? [0, 2] as const
@@ -2207,11 +2243,11 @@ const applyCorridorIntervention = (
     return;
   }
 
-  carvePassage(maze, cellIndex, branchCell);
+  carvePassage(maze, cellIndex, branchCell, recorder);
   let tip = branchCell;
 
   if (rng() < tuning.extendChance) {
-    const extended = extendIntervention(maze, tip, branchDirection);
+    const extended = extendIntervention(maze, tip, branchDirection, recorder);
     if (extended !== -1) {
       tip = extended;
     }
@@ -2225,7 +2261,7 @@ const applyCorridorIntervention = (
     if (doglegDirection !== null) {
       const dogleg = neighborIndexForDirection(maze, tip, doglegDirection);
       if (dogleg !== -1) {
-        carvePassage(maze, tip, dogleg);
+        carvePassage(maze, tip, dogleg, recorder);
         tip = dogleg;
       }
     }
@@ -2236,18 +2272,23 @@ const applyCorridorIntervention = (
     if (loopDirection !== null) {
       const loopTarget = neighborIndexForDirection(maze, tip, loopDirection);
       if (loopTarget !== -1) {
-        carvePassage(maze, tip, loopTarget);
+        carvePassage(maze, tip, loopTarget, recorder);
       }
     }
   }
 };
 
-const extendIntervention = (maze: MazeCore, start: number, direction: number): number => {
+const extendIntervention = (
+  maze: MazeCore,
+  start: number,
+  direction: number,
+  recorder?: CoreGenerationTraceRecorder
+): number => {
   const next = neighborIndexForDirection(maze, start, direction);
   if (next === -1 || isOpenBetween(maze, start, next)) {
     return -1;
   }
-  carvePassage(maze, start, next);
+  carvePassage(maze, start, next, recorder);
   return next;
 };
 
@@ -2329,21 +2370,21 @@ const pickClosedDirection = (
   return closed[randomInt(closed.length, rng)];
 };
 
-const applyArchitecturalPasses = (maze: MazeCore, rng: () => number): void => {
+const applyArchitecturalPasses = (maze: MazeCore, rng: () => number, recorder?: CoreGenerationTraceRecorder): void => {
   if (maze.width < 7 || maze.height < 7) {
     return;
   }
 
   const centerRow = Math.round((maze.height - 1) / 2) + randomInt(3, rng) - 1;
   const centerColumn = Math.round((maze.width - 1) / 2) + randomInt(3, rng) - 1;
-  carveLinearFeature(maze, 1, clamp(centerRow, 1, maze.height - 2), 1, 0, maze.width - 2);
-  carveLinearFeature(maze, clamp(centerColumn, 1, maze.width - 2), 1, 0, 1, maze.height - 2);
+  carveLinearFeature(maze, 1, clamp(centerRow, 1, maze.height - 2), 1, 0, maze.width - 2, recorder);
+  carveLinearFeature(maze, clamp(centerColumn, 1, maze.width - 2), 1, 0, 1, maze.height - 2, recorder);
 
   if (maze.width >= 10) {
-    carveLinearFeature(maze, 2, clamp(Math.floor(maze.height / 3), 1, maze.height - 2), 1, 0, maze.width - 4);
+    carveLinearFeature(maze, 2, clamp(Math.floor(maze.height / 3), 1, maze.height - 2), 1, 0, maze.width - 4, recorder);
   }
   if (maze.height >= 10) {
-    carveLinearFeature(maze, clamp(Math.floor(maze.width / 3), 1, maze.width - 2), 2, 0, 1, maze.height - 4);
+    carveLinearFeature(maze, clamp(Math.floor(maze.width / 3), 1, maze.width - 2), 2, 0, 1, maze.height - 4, recorder);
   }
 };
 
@@ -2353,7 +2394,8 @@ const carveLinearFeature = (
   startY: number,
   stepX: number,
   stepY: number,
-  length: number
+  length: number,
+  recorder?: CoreGenerationTraceRecorder
 ): void => {
   let currentX = clamp(startX, 0, maze.width - 1);
   let currentY = clamp(startY, 0, maze.height - 1);
@@ -2365,7 +2407,7 @@ const carveLinearFeature = (
       break;
     }
 
-    carvePassage(maze, indexOf(maze.width, currentX, currentY), indexOf(maze.width, nextX, nextY));
+    carvePassage(maze, indexOf(maze.width, currentX, currentY), indexOf(maze.width, nextX, nextY), recorder);
     currentX = nextX;
     currentY = nextY;
   }
@@ -2379,7 +2421,7 @@ const generateWilsonMaze = (
   family: MazeFamily,
   presentationPreset: MazePresentationPreset,
   rng: () => number
-): MazeCore => {
+): { maze: MazeCore; generationTrace: MazeGenerationTrace } => {
   const cellCount = width * height;
   const scratch = getMazeScratch(cellCount);
   const cells = new Uint8Array(cellCount);
@@ -2401,6 +2443,7 @@ const generateWilsonMaze = (
   scratch.inTree.fill(0);
 
   const root = randomInt(cellCount, rng);
+  const traceRecorder = createCoreGenerationTraceRecorder(root);
   scratch.inTree[root] = 1;
   let unvisited = cellCount - 1;
 
@@ -2422,7 +2465,8 @@ const generateWilsonMaze = (
       if (next < 0) {
         break;
       }
-      carvePassage(maze, cursor, next);
+      traceRecorder.currentPhase = 'carve';
+      carvePassage(maze, cursor, next, traceRecorder);
       scratch.inTree[cursor] = 1;
       unvisited -= 1;
       cursor = next;
@@ -2430,21 +2474,28 @@ const generateWilsonMaze = (
   }
 
   if (braidRatio > 0) {
-    braidMaze(maze, braidRatio, rng);
+    traceRecorder.currentPhase = 'braid';
+    braidMaze(maze, braidRatio, rng, traceRecorder);
   }
 
   // Preserve Wilson truth first, then express family identity through structural passes.
-  applyMazeFamilyPass(maze, family, rng);
-  applyPresentationPreset(maze, presentationPreset, rng);
-  applyFamilyAntiStraightnessPass(maze, family, rng);
+  traceRecorder.currentPhase = 'family';
+  applyMazeFamilyPass(maze, family, rng, traceRecorder);
+  traceRecorder.currentPhase = 'presentation';
+  applyPresentationPreset(maze, presentationPreset, rng, traceRecorder);
+  traceRecorder.currentPhase = 'anti-straightness';
+  applyFamilyAntiStraightnessPass(maze, family, rng, traceRecorder);
   const placement = placeFamilyEndpoints(maze, scratch);
   maze.start = placement.start;
   maze.goal = placement.goal;
   maze.placementStrategy = placement.strategy;
-  return maze;
+  return {
+    maze,
+    generationTrace: finalizeCoreGenerationTrace(traceRecorder)
+  };
 };
 
-const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
+const braidMaze = (maze: MazeCore, ratio: number, rng: () => number, recorder?: CoreGenerationTraceRecorder): void => {
   const candidates: number[] = [];
   for (let index = 0; index < maze.cells.length; index += 1) {
     if (countOpenNeighbors(maze, index) === 1) {
@@ -2462,7 +2513,7 @@ const braidMaze = (maze: MazeCore, ratio: number, rng: () => number): void => {
       continue;
     }
 
-    carvePassage(maze, candidates[cursor], chosen);
+    carvePassage(maze, candidates[cursor], chosen, recorder);
     opened += 1;
   }
 };
@@ -2795,7 +2846,44 @@ const pickRandomClosedNeighbor = (maze: MazeCore, idx: number, rng: () => number
   return -1;
 };
 
-const carvePassage = (maze: MazeCore, a: number, b: number): void => {
+const createCoreGenerationTraceRecorder = (rootCellIndex: number): CoreGenerationTraceRecorder => ({
+  currentPhase: 'seed',
+  rootCellIndex,
+  steps: [{
+    phase: 'seed',
+    tileIndices: [rootCellIndex]
+  }]
+});
+
+const finalizeCoreGenerationTrace = (recorder: CoreGenerationTraceRecorder): MazeGenerationTrace => {
+  const uniqueTiles = new Set<number>();
+  recorder.steps.forEach((step) => {
+    step.tileIndices.forEach((tileIndex) => uniqueTiles.add(tileIndex));
+  });
+
+  return {
+    rootTileIndex: recorder.rootCellIndex,
+    uniqueTileCount: uniqueTiles.size,
+    steps: recorder.steps
+  };
+};
+
+const recordGenerationCarve = (
+  recorder: CoreGenerationTraceRecorder | undefined,
+  a: number,
+  b: number
+): void => {
+  if (!recorder) {
+    return;
+  }
+
+  recorder.steps.push({
+    phase: recorder.currentPhase,
+    tileIndices: a === b ? [a] : [a, b]
+  });
+};
+
+const carvePassage = (maze: MazeCore, a: number, b: number, recorder?: CoreGenerationTraceRecorder): void => {
   const ax = xFromIndex(a, maze.width);
   const ay = yFromIndex(a, maze.width);
   const bx = xFromIndex(b, maze.width);
@@ -2811,6 +2899,7 @@ const carvePassage = (maze: MazeCore, a: number, b: number): void => {
 
     maze.cells[a] &= ~dir.bit;
     maze.cells[b] &= ~dir.opposite;
+    recordGenerationCarve(recorder, a, b);
     return;
   }
 

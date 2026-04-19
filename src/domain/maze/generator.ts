@@ -18,6 +18,7 @@ import type {
   MazeEpisode,
   MazeFamily,
   MazeFamilyMode,
+  MazeGenerationTrace,
   MazeGenerationState,
   MazeMetrics,
   MazePresentationPreset,
@@ -43,6 +44,7 @@ interface RasterizeOptions {
   seed: number;
   size: MazeSize;
   core: NonNullable<MazeEpisode['core']>;
+  generationTrace: MazeGenerationTrace;
   solution: MazeSolveResult;
   shortcutsCreated: number;
   footprint: MazeBuildOptions['footprint'];
@@ -373,6 +375,7 @@ export const buildMaze = (options: MazeBuildOptions): MazeEpisode => {
     seed,
     size,
     core: built.maze,
+    generationTrace: built.generationTrace,
     solution: built.solution,
     shortcutsCreated: built.shortcutsCreated,
     footprint: options.footprint ?? { width: options.width, height: options.height },
@@ -516,6 +519,7 @@ export const resetAndRegenerate = (state: MazeGenerationState, config: MazeConfi
 const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
   const {
     core,
+    generationTrace,
     solution,
     seed,
     size,
@@ -551,6 +555,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
 
   const startIndex = indexFromCoordinates(core.start.x * 2, core.start.y * 2, playableWidth);
   const endIndex = indexFromCoordinates(core.goal.x * 2, core.goal.y * 2, playableWidth);
+  const footprintOffset = resolveBoardFootprintOffset(playableWidth, playableHeight, footprint);
   const raster = adaptBoardFootprint({
     width: playableWidth,
     height: playableHeight,
@@ -560,6 +565,16 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     startIndex,
     endIndex
   }, footprint);
+  const rasterGenerationTrace = rasterizeGenerationTrace(
+    generationTrace,
+    core.width,
+    playableWidth,
+    playableHeight,
+    footprintOffset.left,
+    footprintOffset.top,
+    raster.width,
+    raster.height
+  );
 
   for (let pathCursor = 0; pathCursor < raster.pathIndices.length; pathCursor += 1) {
     raster.tiles[raster.pathIndices[pathCursor]] |= TILE_PATH;
@@ -574,6 +589,7 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
     seed,
     size,
     core: includeCore ? core : undefined,
+    generationTrace: rasterGenerationTrace,
     raster: {
       ...raster
     },
@@ -588,6 +604,103 @@ const rasterizeMaze = (options: RasterizeOptions): MazeEpisode => {
   };
 };
 
+const rasterizeGenerationTrace = (
+  trace: MazeGenerationTrace,
+  coreWidth: number,
+  playableWidth: number,
+  playableHeight: number,
+  offsetLeft: number,
+  offsetTop: number,
+  rasterWidth: number,
+  rasterHeight: number
+): MazeGenerationTrace => {
+  const clampX = (value: number): number => clamp(value, 0, playableWidth - 1);
+  const clampY = (value: number): number => clamp(value, 0, playableHeight - 1);
+  const pushUnique = (tiles: number[], seen: Set<number>, value: number): void => {
+    if (value < 0 || value >= (rasterWidth * rasterHeight) || seen.has(value)) {
+      return;
+    }
+
+    seen.add(value);
+    tiles.push(value);
+  };
+  const expandCoreTileWindow = (tileIndices: readonly number[]): number[] => {
+    if (tileIndices.length === 0) {
+      return [];
+    }
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const cellIndex of tileIndices) {
+      const cellX = xFromIndex(cellIndex, coreWidth) * 2;
+      const cellY = yFromIndex(cellIndex, coreWidth) * 2;
+      minX = Math.min(minX, cellX);
+      minY = Math.min(minY, cellY);
+      maxX = Math.max(maxX, cellX);
+      maxY = Math.max(maxY, cellY);
+    }
+
+    if (tileIndices.length >= 2) {
+      const fromIndex = tileIndices[0];
+      const toIndex = tileIndices[tileIndices.length - 1];
+      const fromX = xFromIndex(fromIndex, coreWidth) * 2;
+      const fromY = yFromIndex(fromIndex, coreWidth) * 2;
+      const toX = xFromIndex(toIndex, coreWidth) * 2;
+      const toY = yFromIndex(toIndex, coreWidth) * 2;
+      minX = Math.min(minX, fromX, toX, fromX + Math.sign(toX - fromX));
+      minY = Math.min(minY, fromY, toY, fromY + Math.sign(toY - fromY));
+      maxX = Math.max(maxX, fromX, toX, fromX + Math.sign(toX - fromX));
+      maxY = Math.max(maxY, fromY, toY, fromY + Math.sign(toY - fromY));
+    }
+
+    const expanded: number[] = [];
+    const seen = new Set<number>();
+    for (let y = clampY(minY - 1); y <= clampY(maxY + 1); y += 1) {
+      for (let x = clampX(minX - 1); x <= clampX(maxX + 1); x += 1) {
+        pushUnique(
+          expanded,
+          seen,
+          indexFromCoordinates(x + offsetLeft, y + offsetTop, rasterWidth)
+        );
+      }
+    }
+    return expanded;
+  };
+  const uniqueTiles = new Set<number>();
+  const steps = trace.steps.map((step) => {
+    const stepTiles = expandCoreTileWindow(step.tileIndices);
+    stepTiles.forEach((tileIndex) => uniqueTiles.add(tileIndex));
+    return {
+      phase: step.phase,
+      tileIndices: stepTiles
+    };
+  });
+  const rootX = clampX(xFromIndex(Math.max(0, trace.rootTileIndex), coreWidth) * 2);
+  const rootY = clampY(yFromIndex(Math.max(0, trace.rootTileIndex), coreWidth) * 2);
+
+  return {
+    rootTileIndex: indexFromCoordinates(rootX + offsetLeft, rootY + offsetTop, rasterWidth),
+    uniqueTileCount: uniqueTiles.size,
+    steps
+  };
+};
+
+const resolveBoardFootprintOffset = (
+  width: number,
+  height: number,
+  target?: MazeBuildOptions['footprint']
+): { left: number; top: number } => {
+  const targetWidth = Math.max(width, target?.width ?? width);
+  const targetHeight = Math.max(height, target?.height ?? height);
+  return {
+    left: Math.floor((targetWidth - width) / 2),
+    top: Math.floor((targetHeight - height) / 2)
+  };
+};
+
 const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footprint']): TileBoard => {
   const targetWidth = Math.max(board.width, target?.width ?? board.width);
   const targetHeight = Math.max(board.height, target?.height ?? board.height);
@@ -596,8 +709,7 @@ const adaptBoardFootprint = (board: TileBoard, target?: MazeBuildOptions['footpr
     return board;
   }
 
-  const left = Math.floor((targetWidth - board.width) / 2);
-  const top = Math.floor((targetHeight - board.height) / 2);
+  const { left, top } = resolveBoardFootprintOffset(board.width, board.height, target);
   const tiles = createGrid(targetWidth, targetHeight);
 
   for (let index = 0; index < board.tiles.length; index += 1) {

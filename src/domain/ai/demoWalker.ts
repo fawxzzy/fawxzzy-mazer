@@ -1,4 +1,5 @@
 import { resolveDirectionBetween, type MazeEpisode } from '../maze';
+import type { DemoSegmentCue } from './demoSpectator';
 
 export interface DemoWalkerConfig {
   seed: number;
@@ -20,6 +21,8 @@ export interface DemoWalkerConfig {
     emulateLogicSwitchPotentialCheckBug: boolean;
     regenerateSeedStep: number;
     prerollSteps?: number;
+    segmentDurationsMs?: readonly number[];
+    segmentCues?: readonly DemoSegmentCue[];
   };
 }
 
@@ -85,8 +88,36 @@ const defaultConfig: DemoWalkerConfig = {
     preserveVisitedOnAiReset: true,
     emulateLogicSwitchPotentialCheckBug: true,
     regenerateSeedStep: 1,
-    prerollSteps: 0
+    prerollSteps: 0,
+    segmentDurationsMs: [],
+    segmentCues: []
   }
+};
+
+const resolveSegmentDurations = (
+  pathSegmentCount: number,
+  config: DemoWalkerConfig
+): number[] => {
+  const configured = config.behavior.segmentDurationsMs ?? [];
+  if (configured.length === pathSegmentCount && configured.every((value) => Number.isFinite(value) && value > 0)) {
+    return configured.map((value) => Math.max(1, Math.round(value)));
+  }
+
+  return Array.from({ length: pathSegmentCount }, () => Math.max(1, config.cadence.exploreStepMs));
+};
+
+const resolveSegmentCue = (
+  segmentIndex: number,
+  lastPathIndex: number,
+  progress: number,
+  config: DemoWalkerConfig
+): DemoWalkerCue => {
+  const configuredCue = config.behavior.segmentCues?.[segmentIndex];
+  if (configuredCue === 'anticipate' || configuredCue === 'reacquire') {
+    return configuredCue;
+  }
+
+  return segmentIndex >= lastPathIndex - 2 && progress >= 0.42 ? 'anticipate' : 'explore';
 };
 
 export const createDemoWalkerState = (episode: MazeEpisode): DemoWalkerState => ({
@@ -179,6 +210,7 @@ export const resolveDemoWalkerViewFrame = (
   const resetHoldMs = Math.max(0, config.cadence.resetHoldMs);
   const visibleWindow = Math.max(1, trailWindow);
   const lastPathIndex = Math.max(0, path.length - 1);
+  const segmentDurations = resolveSegmentDurations(lastPathIndex, config);
 
   if (path.length <= 1) {
     return {
@@ -208,18 +240,24 @@ export const resolveDemoWalkerViewFrame = (
     };
   }
 
-  const traverseMs = lastPathIndex * stepMs;
+  const traverseMs = segmentDurations.reduce((total, value) => total + value, 0);
   const moveElapsedMs = elapsedMs - spawnHoldMs;
   if (moveElapsedMs <= traverseMs) {
     const clampedMoveElapsedMs = Math.min(moveElapsedMs, traverseMs);
-    const segment = Math.min(
-      lastPathIndex - 1,
-      Math.max(0, Math.floor(Math.max(0, clampedMoveElapsedMs - 1) / stepMs))
-    );
-    const segmentElapsedMs = clampedMoveElapsedMs - (segment * stepMs);
+    let segment = 0;
+    let segmentStartMs = 0;
+    for (; segment < lastPathIndex; segment += 1) {
+      const nextBoundaryMs = segmentStartMs + segmentDurations[segment];
+      if (clampedMoveElapsedMs <= nextBoundaryMs || segment === lastPathIndex - 1) {
+        break;
+      }
+      segmentStartMs = nextBoundaryMs;
+    }
+    const segmentElapsedMs = clampedMoveElapsedMs - segmentStartMs;
+    const segmentDurationMs = Math.max(1, segmentDurations[segment] ?? stepMs);
     const progress = segment === lastPathIndex - 1 && clampedMoveElapsedMs >= traverseMs
       ? 1
-      : Math.min(1, segmentElapsedMs / stepMs);
+      : Math.min(1, segmentElapsedMs / segmentDurationMs);
     const currentIndex = path[segment];
     const nextIndex = path[segment + 1];
     const visibleCursor = Math.min(lastPathIndex, segment + (progress >= 0.16 ? 1 : 0));
@@ -231,7 +269,7 @@ export const resolveDemoWalkerViewFrame = (
       previousIndex: segment === 0 ? startIndex : path[segment - 1],
       direction: resolveDirectionBetween(currentIndex, nextIndex, episode.raster.width),
       progress,
-      cue: segment >= lastPathIndex - 2 && progress >= 0.42 ? 'anticipate' : 'explore',
+      cue: resolveSegmentCue(segment, lastPathIndex, progress, config),
       trailStart: 0,
       trailLimit,
       cycleComplete: false

@@ -3,7 +3,8 @@ import { resolveIntentSemanticTag } from '../../src/mazer-core/intent/IntentFeed
 import {
   clampIntentFeedSummary,
   resolveIntentFeedLayout,
-  resolveIntentFeedRoleLabel
+  resolveIntentFeedRoleLabel,
+  resolveNextRiskLabel
 } from '../../src/render/intentFeedRenderer';
 
 vi.mock('phaser', () => ({
@@ -31,8 +32,8 @@ describe('intent feed renderer', () => {
     const withoutStatus = resolveIntentFeedLayout({ width: 1280, height: 720 }, 4, {}, false);
 
     expect(withStatus.rect.height).toBeGreaterThan(withoutStatus.rect.height);
-    expect(withStatus.mode).toBe('rail');
-    expect(withoutStatus.mode).toBe('rail');
+    expect(withStatus.mode).toBe('bottom');
+    expect(withoutStatus.mode).toBe('bottom');
   });
 
   test('defaults to a bottom-center dock and uses one quick-thought line on standard phone heights', () => {
@@ -53,7 +54,7 @@ describe('intent feed renderer', () => {
     expect(layout.rect.top).toBeGreaterThanOrEqual(328 + (278 / 2) + 10);
   });
 
-  test('promotes landscape desktops into a right-side commentary rail', () => {
+  test('keeps landscape desktops in a bottom-docked panel with a wider readable line', () => {
     const layout = resolveIntentFeedLayout(
       { width: 1440, height: 900 },
       4,
@@ -64,10 +65,11 @@ describe('intent feed renderer', () => {
       }
     );
 
-    expect(layout.mode).toBe('rail');
-    expect(layout.dock).toBe('right-rail');
-    expect(layout.rect.left).toBeGreaterThan(900);
-    expect(layout.rect.top).toBeGreaterThan(200);
+    expect(layout.mode).toBe('bottom');
+    expect(layout.dock).toBe('bottom-center');
+    expect(layout.rect.width).toBeGreaterThanOrEqual(700);
+    expect(layout.rect.top).toBeGreaterThan(600);
+    expect(layout.maxVisibleEvents).toBe(3);
   });
 
   test('keeps short phone landscape layouts in the bottom panel instead of forcing a rail', () => {
@@ -98,6 +100,78 @@ describe('intent feed renderer', () => {
     expect(layout.dock).toBe('bottom-center');
     expect(layout.maxVisibleEvents).toBe(2);
     expect(layout.rect.top + layout.rect.height).toBeLessThanOrEqual(932);
+  });
+
+  test('keeps the next-risk strip compact and mechanic-first', () => {
+    const nextRisk = resolveNextRiskLabel({
+      step: 4,
+      status: {
+        speaker: 'Runner',
+        category: 'observe',
+        kind: 'frontier-chosen',
+        importance: 'low',
+        summary: 'Scanning West branch from Junction A.',
+        confidence: 0.62,
+        step: 4
+      },
+      events: [
+        {
+          id: 'trap-1',
+          speaker: 'TrapNet',
+          category: 'danger',
+          kind: 'trap-inferred',
+          importance: 'high',
+          summary: 'Hazard timing near Junction A.',
+          confidence: 0.82,
+          step: 4,
+          ttlSteps: 7,
+          ageSteps: 0,
+          slot: 0,
+          opacity: 1
+        },
+        {
+          id: 'gate-1',
+          speaker: 'Puzzle',
+          category: 'observe',
+          kind: 'gate-aligned',
+          importance: 'medium',
+          summary: 'Waiting on gate at Junction A.',
+          confidence: 0.79,
+          step: 4,
+          ttlSteps: 4,
+          ageSteps: 0,
+          slot: 1,
+          opacity: 0.7
+        }
+      ],
+      entries: [],
+      pings: [],
+      metrics: {
+        emittedCount: 2,
+        highImportanceEventCount: 1,
+        speakerCount: 2,
+        totalSteps: 5,
+        intentEmissionRate: 0.4,
+        worldPingCount: 0,
+        worldPingEmissionRate: 0,
+        maxConsecutiveEmissionStreak: 1,
+        maxVisibleWorldPings: 0,
+        debouncedEventCount: 0,
+        debouncedWorldPingCount: 0,
+        statusRepeatCount: 0,
+        verbFirstPass: true,
+        statusPresencePass: true,
+        importanceTtlPass: true,
+        slotOpacityPass: true,
+        feedReadabilityPass: true,
+        intentDebouncePass: true,
+        worldPingSpamPass: true,
+        highImportanceStickyPass: true,
+        intentStackOverlapPass: true
+      }
+    } as never);
+
+    expect(nextRisk).toBe('Next risk: hazard');
   });
 
   test('shifts off dead-center when the lower board lane would cover the player or objective', () => {

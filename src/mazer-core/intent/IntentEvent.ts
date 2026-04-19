@@ -137,6 +137,7 @@ export const INTENT_SUMMARY_VERB_FIRST_WORDS = Object.freeze([
   'marking',
   'noting',
   'replanning',
+  'recalling',
   'tracking',
   'locking',
   'committing',

@@ -169,6 +169,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'hide',
       theme: 'auto',
+      mode: 'watch',
       profile: 'tv'
     });
     expect(resolveBootPresentationConfig('?profile=obs')).toEqual({
@@ -177,6 +178,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'hide',
       theme: 'auto',
+      mode: 'watch',
       profile: 'obs'
     });
     expect(resolveBootPresentationConfig('?profile=mobile')).toEqual({
@@ -185,6 +187,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'show',
       theme: 'auto',
+      mode: 'watch',
       profile: 'mobile'
     });
     expect(resolveBootPresentationConfig('?presentation=loading&chrome=minimal&mood=scan&theme=aurora&seed=42&size=large&difficulty=spicy&title=hide')).toEqual({
@@ -192,6 +195,7 @@ describe('demo-only build', () => {
       chrome: 'minimal',
       mood: 'scan',
       theme: 'aurora',
+      mode: 'watch',
       seed: 42,
       size: 'large',
       difficulty: 'spicy',
@@ -205,6 +209,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'show',
       theme: 'auto',
+      mode: 'watch',
       profile: 'tv'
     });
     expect(resolveBootPresentationConfig('?profile=obs&presentation=loading&theme=noir')).toEqual({
@@ -213,6 +218,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'hide',
       theme: 'noir',
+      mode: 'watch',
       profile: 'obs'
     });
     expect(resolveBootPresentationConfig('?profile=mobile&chrome=none')).toEqual({
@@ -221,6 +227,7 @@ describe('demo-only build', () => {
       mood: 'auto',
       title: 'show',
       theme: 'auto',
+      mode: 'watch',
       profile: 'mobile'
     });
     expect(resolveBootPresentationConfig('?presentation=nope&chrome=loud&mood=chaos&seed=-4&size=massive&difficulty=nightmare&title=gone')).toEqual(
@@ -230,6 +237,8 @@ describe('demo-only build', () => {
       .toEqual(DEFAULT_PRESENTATION_LAUNCH_CONFIG);
     expect(resolveBootPresentationConfig('?theme=monolith').theme).toBe('monolith');
     expect(resolveBootPresentationConfig('?theme=bad-value').theme).toBe('auto');
+    expect(resolveBootPresentationConfig('?mode=play').mode).toBe('play');
+    expect(resolveBootPresentationConfig('?mode=nope').mode).toBe('watch');
     expect(resolveEffectivePresentationChrome({
       ...DEFAULT_PRESENTATION_LAUNCH_CONFIG,
       chrome: 'full',
@@ -435,7 +444,7 @@ describe('demo-only build', () => {
     disposeMazeEpisode(episode);
   });
 
-  test('board composition frame keeps the title and CTA at a tight 5px shell buffer', () => {
+  test('board composition frame keeps the title tight while reserving a dedicated HUD lane above the CTA', () => {
     const resolved = generateMazeForDifficulty({
       scale: 50,
       seed: 9124,
@@ -466,22 +475,21 @@ describe('demo-only build', () => {
       installFrame
     );
     const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
-      boardScale: 1,
+      boardScale: presentationModel.layout.boardScale,
       safeBounds: boardFrame
     });
 
     expect(boardFrame.top - titleBand.bottom).toBe(5);
-    expect(installFrame.top - boardFrame.bottom).toBe(5);
+    expect(installFrame.top - boardFrame.bottom).toBeGreaterThan(legacyTuning.menu.intentFeed.minHeightPx);
     expect(layout.boardY - titleBand.bottom).toBeGreaterThanOrEqual(5);
-    expect(layout.boardY - titleBand.bottom).toBeLessThanOrEqual(12);
-    expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThanOrEqual(5);
-    expect(installFrame.top - layout.boardBounds.bottom).toBeLessThanOrEqual(12);
-    expect(layout.boardHeight).toBeGreaterThan(550);
+    expect(layout.boardY - titleBand.bottom).toBeLessThanOrEqual(18);
+    expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThan(legacyTuning.menu.intentFeed.minHeightPx);
+    expect(layout.boardHeight).toBeGreaterThan(430);
 
     disposeMazeEpisode(episode);
   });
 
-  test('watch layout keeps portrait phones bottom-docked and promotes roomy landscape viewports into a commentary rail', () => {
+  test('watch layout keeps phones, tablets, and desktops on the bottom spectator panel', () => {
     const phonePortrait = resolveMenuPresentationModel(390, 844, 'ambient', 'full', true, 'mobile');
     const phoneLandscape = resolveMenuPresentationModel(844, 390, 'ambient', 'full', true, 'mobile');
     const tabletLandscape = resolveMenuPresentationModel(1024, 768, 'ambient', 'full', true, 'mobile');
@@ -504,15 +512,15 @@ describe('demo-only build', () => {
       tabletLandscape.viewport.height,
       tabletLandscape.layout,
       'mobile'
-    )).toBe('commentary-rail');
+    )).toBe('bottom-panel');
     expect(resolveIntentFeedPresentationMode(
       desktopLandscape.viewport.width,
       desktopLandscape.viewport.height,
       desktopLandscape.layout
-    )).toBe('commentary-rail');
+    )).toBe('bottom-panel');
   });
 
-  test('desktop board composition reserves a right commentary rail while keeping the maze dominant', () => {
+  test('desktop board composition reserves a bottom HUD lane while keeping the maze centered on the action', () => {
     const resolved = generateMazeForDifficulty({
       scale: 50,
       seed: 9166,
@@ -543,15 +551,16 @@ describe('demo-only build', () => {
       installFrame
     );
     const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
-      boardScale: 1,
+      boardScale: presentationModel.layout.boardScale,
       safeBounds: boardFrame
     });
-    const reservedRightLane = presentationModel.viewport.width - boardFrame.right;
 
-    expect(reservedRightLane).toBeGreaterThan(legacyTuning.menu.intentFeed.minWidthPx);
-    expect(boardFrame.centerX).toBeLessThan(presentationModel.viewport.width / 2);
-    expect(layout.boardBounds.centerX).toBeLessThan(presentationModel.viewport.width / 2);
-    expect(layout.boardHeight).toBeGreaterThan(550);
+    expect(boardFrame.left).toBeGreaterThanOrEqual(0);
+    expect(boardFrame.right).toBeLessThanOrEqual(presentationModel.viewport.width);
+    expect(installFrame.top - boardFrame.bottom).toBeGreaterThan(legacyTuning.menu.intentFeed.minHeightPx);
+    expect(Math.abs(layout.boardBounds.centerX - (presentationModel.viewport.width / 2))).toBeLessThanOrEqual(0.5);
+    expect(layout.boardBounds.bottom).toBeLessThanOrEqual(boardFrame.bottom);
+    expect(layout.boardHeight).toBeGreaterThan(420);
 
     disposeMazeEpisode(episode);
   });
@@ -586,14 +595,14 @@ describe('demo-only build', () => {
       'obs'
     );
     const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
-      boardScale: 1,
+      boardScale: presentationModel.layout.boardScale,
       safeBounds: boardFrame
     });
 
     expect(Math.abs(layout.boardBounds.centerX - (presentationModel.viewport.width / 2))).toBeLessThanOrEqual(0.5);
     expect(Math.abs(layout.boardBounds.centerY - (presentationModel.viewport.height / 2))).toBeLessThanOrEqual(0.5);
     expect(installFrame.top - layout.boardBounds.bottom).toBeGreaterThanOrEqual(5);
-    expect(layout.boardHeight).toBeGreaterThan(900);
+    expect(layout.boardHeight).toBeGreaterThan(400);
 
     disposeMazeEpisode(episode);
   });
@@ -633,19 +642,62 @@ describe('demo-only build', () => {
       'mobile'
     );
     const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
-      boardScale: 1,
+      boardScale: presentationModel.layout.boardScale,
       safeBounds: boardFrame
     });
 
     expect(boardFrame.top - titleBand.bottom).toBe(6);
-    expect(installFrame.top - boardFrame.bottom).toBe(6);
-    expect(layout.tileSize).toBe(7);
-    expect(layout.boardWidth).toBe(350);
-    expect(layout.boardHeight).toBe(350);
+    expect(installFrame.top - boardFrame.bottom).toBeGreaterThan(legacyTuning.menu.intentFeed.minHeightPx);
+    expect(layout.tileSize).toBe(6);
+    expect(layout.boardWidth).toBe(300);
+    expect(layout.boardHeight).toBe(300);
     expect(layout.boardBounds.left).toBeGreaterThanOrEqual(boardFrame.left);
     expect(layout.boardBounds.right).toBeLessThanOrEqual(boardFrame.right);
     expect(layout.boardBounds.top).toBeGreaterThanOrEqual(boardFrame.top);
     expect(layout.boardBounds.bottom).toBeLessThanOrEqual(boardFrame.bottom);
+
+    disposeMazeEpisode(episode);
+  });
+
+  test('small mazes stay inside a stable desktop presentation frame instead of inflating to fill it', () => {
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 20260418,
+      size: 'small',
+      checkPointModifier: 0.35,
+      shortcutCountModifier: 0.13
+    }, 'standard', 0, 1);
+    const episode = resolved.episode;
+    const presentationModel = resolveMenuPresentationModel(1440, 900, 'ambient', 'full', true);
+    const titleBand = resolveTitleBandFrame(
+      presentationModel.viewport.width,
+      presentationModel.layout,
+      undefined
+    );
+    const installFrame = resolveInstallChromeFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      undefined,
+      126,
+      25
+    );
+    const boardFrame = resolveBoardCompositionFrame(
+      presentationModel.viewport.width,
+      presentationModel.viewport.height,
+      presentationModel.layout,
+      titleBand,
+      installFrame
+    );
+    const layout = createBoardLayout(createViewportSceneStub(presentationModel.viewport.width, presentationModel.viewport.height), episode, {
+      boardScale: presentationModel.layout.boardScale,
+      safeBounds: boardFrame
+    });
+
+    expect(layout.boardBounds.width / boardFrame.width).toBeLessThanOrEqual(0.78);
+    expect(layout.boardBounds.height / boardFrame.height).toBeLessThanOrEqual(0.78);
+    expect(Math.abs(layout.boardBounds.centerX - boardFrame.centerX)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(layout.boardBounds.centerY - boardFrame.centerY)).toBeLessThanOrEqual(0.5);
 
     disposeMazeEpisode(episode);
   });
@@ -1049,7 +1101,32 @@ describe('demo-only build', () => {
       expect(presentation.variant).toBe('loading');
       expect(['noir', 'ember', 'aurora', 'vellum', 'monolith']).toContain(presentation.theme);
       expect(['solve', 'scan', 'blueprint']).toContain(presentation.mood);
-      expect(['generating', 'solving', 'pattern sync', 'routing', 'live system']).toContain(presentation.phaseLabel);
+      expect([
+        'generating',
+        'solving',
+        'pattern sync',
+        'routing',
+        'live system',
+        'staging board',
+        'building maze',
+        'settling read',
+        'holding clear',
+        'reading clear',
+        'deconstructing maze'
+      ]).toContain(presentation.phaseLabel);
+      expect([
+        'pre-roll',
+        'build-reveal',
+        'settle-in',
+        'active-watch',
+        'clear-hold',
+        'reflection-beat',
+        'erase-wipe'
+      ]).toContain(presentation.lifecyclePhase);
+      expect(presentation.buildRevealProgress).toBeGreaterThanOrEqual(0);
+      expect(presentation.buildRevealProgress).toBeLessThanOrEqual(1);
+      expect(presentation.eraseWipeProgress).toBeGreaterThanOrEqual(0);
+      expect(presentation.eraseWipeProgress).toBeLessThanOrEqual(1);
       expect(presentation.solutionPathAlpha).toBeGreaterThanOrEqual(0.14);
       expect(presentation.solutionPathAlpha).toBeLessThanOrEqual(1);
       expect(presentation.trailWindow).toBeGreaterThanOrEqual(4);
@@ -1083,7 +1160,7 @@ describe('demo-only build', () => {
       expect(presentation.metadataAlpha).toBeLessThanOrEqual(0.82);
       expect(presentation.flashAlpha).toBeGreaterThanOrEqual(0);
       expect(presentation.flashAlpha).toBeLessThanOrEqual(0.84);
-      expect(['none', 'decision', 'fail', 'retry']).toContain(presentation.ritualPhase);
+      expect(['none', 'decision', 'fail', 'success', 'retry']).toContain(presentation.ritualPhase);
       expect(presentation.ritualProgress).toBeGreaterThanOrEqual(0);
       expect(presentation.ritualProgress).toBeLessThanOrEqual(1);
       expect(presentation.ritualAlpha).toBeGreaterThanOrEqual(0);
@@ -1140,6 +1217,48 @@ describe('demo-only build', () => {
     disposeMazeEpisode(episode);
   });
 
+  test('demo config stretches the generator-trace build hold by maze size without dragging forever', () => {
+    const smallCycle = resolveMenuDemoCycle(2211, 0, {
+      size: 'small',
+      difficulty: 'chill'
+    });
+    const largeCycle = resolveMenuDemoCycle(2211, 0, {
+      size: 'huge',
+      difficulty: 'brutal'
+    });
+    const smallResolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 2211,
+      size: smallCycle.size,
+      family: smallCycle.family,
+      presentationPreset: smallCycle.presentationPreset,
+      checkPointModifier: smallCycle.entropy.checkPointModifier,
+      shortcutCountModifier: smallCycle.entropy.shortcutCountModifier
+    }, smallCycle.difficulty, 0, 1);
+    const largeResolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 2212,
+      size: largeCycle.size,
+      family: largeCycle.family,
+      presentationPreset: largeCycle.presentationPreset,
+      checkPointModifier: largeCycle.entropy.checkPointModifier,
+      shortcutCountModifier: largeCycle.entropy.shortcutCountModifier
+    }, largeCycle.difficulty, 0, 1);
+
+    const smallConfig = resolveDemoConfig(smallResolved.episode, smallCycle);
+    const largeConfig = resolveDemoConfig(largeResolved.episode, largeCycle);
+
+    expect(smallResolved.episode.generationTrace.steps.length).toBeGreaterThan(0);
+    expect(largeResolved.episode.generationTrace.steps.length).toBeGreaterThan(smallResolved.episode.generationTrace.steps.length);
+    expect(smallConfig.cadence.spawnHoldMs).toBeGreaterThanOrEqual(920);
+    expect(smallConfig.cadence.spawnHoldMs).toBeLessThanOrEqual(5000);
+    expect(largeConfig.cadence.spawnHoldMs).toBeGreaterThanOrEqual(smallConfig.cadence.spawnHoldMs);
+    expect(largeConfig.cadence.spawnHoldMs).toBeLessThanOrEqual(5000);
+
+    disposeMazeEpisode(largeResolved.episode);
+    disposeMazeEpisode(smallResolved.episode);
+  });
+
   test('demo walker reaches the end cleanly and keeps the completed route visible', () => {
     const cycle = resolveMenuDemoCycle(90210, 5);
     const resolved = generateMazeForDifficulty({
@@ -1176,6 +1295,29 @@ describe('demo-only build', () => {
     expect(lateHoldFrame.trailLimit).toBe(episode.raster.pathIndices.length);
 
     disposeMazeEpisode(episode);
+  });
+
+  test('play mode trims build and hold pacing without changing the shared episode contract', () => {
+    const cycle = resolveMenuDemoCycle(3311, 2);
+    const resolved = generateMazeForDifficulty({
+      scale: 50,
+      seed: 3311,
+      size: cycle.size,
+      family: cycle.family,
+      presentationPreset: cycle.presentationPreset,
+      checkPointModifier: cycle.entropy.checkPointModifier,
+      shortcutCountModifier: cycle.entropy.shortcutCountModifier
+    }, cycle.difficulty, 0, 1);
+
+    const watchConfig = resolveDemoConfig(resolved.episode, cycle, 'watch');
+    const playConfig = resolveDemoConfig(resolved.episode, cycle, 'play');
+
+    expect(playConfig.cadence.spawnHoldMs).toBeLessThan(watchConfig.cadence.spawnHoldMs);
+    expect(playConfig.cadence.goalHoldMs).toBeLessThan(watchConfig.cadence.goalHoldMs);
+    expect(playConfig.cadence.resetHoldMs).toBeLessThan(watchConfig.cadence.resetHoldMs);
+    expect(playConfig.behavior.segmentDurationsMs?.length).toBe(watchConfig.behavior.segmentDurationsMs?.length);
+
+    disposeMazeEpisode(resolved.episode);
   });
 
   test('demo trail render bounds stop at the live actor instead of previewing ahead', () => {
@@ -1279,6 +1421,8 @@ describe('demo-only build', () => {
     expect(menuSceneSource).toContain('createIntentFeedHud(this, {');
     expect(menuSceneSource).toContain('ritualCard');
     expect(menuSceneSource).toContain('resolvePresentationElapsedMs');
+    expect(menuSceneSource).toContain('const telegraphs = boardState?.telegraphs ?? [];');
+    expect(menuSceneSource).toContain('shell.boardRenderer.drawMechanicLegend(telegraphs);');
     expect(menuSceneSource).toContain("presentation.ritualPhase === 'fail'");
     expect(menuSceneSource).toContain("this.scale.off(Phaser.Scale.Events.RESIZE, handleResize);");
     expect(menuSceneSource).toContain("this.events.off(Phaser.Scenes.Events.UPDATE, updateDemo);");

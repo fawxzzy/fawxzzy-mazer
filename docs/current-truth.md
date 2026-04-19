@@ -22,14 +22,21 @@ If an older note conflicts with the screenshot gate or `demo-build.test.ts`, tre
 - Trail attach and no-future-preview are the live contract now. The trail should promote into the moving head tile and stop previewing ahead of the actor.
 - The player must remain the dominant local visual signal in the shipping 2D runtime, including worst-case high-contrast or noisy board states.
 - Theme-specific palette tuning must never allow trail or goal to outrank the player's local signal.
+- Player readability is permanent. Trail/player support should oppose local tile luminance during watch, build, and erase phases.
 - Readable HUD thought text uses a bounded queue plus minimum dwell time. It should not replace entries at raw event speed.
 - The layout-proof path should be one command plus one preset config. Responsive captures should not depend on one-off ad hoc scripts.
 - Thought HUD status and quick-thought lanes are separate responsibilities now. Persistent route context should not share the same lane contract as short-lived observation updates.
 - Contrast that only works on some board presets is not sufficient for the live shipping surface.
 - Desktop, TV, and OBS now use the tight 5px board-fit composition frame between the title band and the bottom-center install CTA lane.
+- The bottom panel is the universal shell lane for now. Reopening a desktop side rail would regress maze/commentary cohesion and is not current truth.
 - Floating thought HUDs in the gameplay core are a failure mode. The live shell should favor the lower safe lane and keep the maze attention core clean.
 - Title/header cleanup landed. Current visual polish favors clearer lockup contrast, lower shadow mud, and tighter readout spacing.
 - Start/end diversity improved materially, but generator-side endpoint strategy spread is still not finished and remains too region-opposed heavy.
+- Build/rebuild is part of the spectator story, not a loading effect. The demo loop should read as `generator-step build -> watch run -> fail/clear hold -> reflection beat -> erase/wipe -> next build`.
+- The build reveal should consume a real bounded generator trace emitted behind `buildMaze`, with pacing scaled by maze size and reduced-motion-safe chunking instead of a fake presentation-only sweep.
+- Small mazes fit a fixed presentation frame; spare space becomes framing, not larger tiles.
+- Future glance or proof surfaces should consume compact `RunProjection` state with `full`, `compact`, or `private` privacy transforms instead of raw renderer/frame state.
+- Spectator tuning decisions should come from repo-owned experiment receipts. `runtime:observe` and `edge:live` now carry variant ids and telemetry summaries for that purpose.
 
 ## Release rule
 

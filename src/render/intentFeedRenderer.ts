@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { legacyTuning } from '../config/tuning';
 import {
   MAX_INTENT_VISIBLE_ENTRIES,
-  formatIntentSpeakerHandle,
   type IntentFeedState
 } from '../mazer-core/intent';
 import {
   formatIntentFeedRole,
   resolveIntentFeedRole,
+  resolveIntentRiskCue,
   resolveIntentSemanticTag
 } from '../mazer-core/intent/IntentFeed';
 import { palette } from './palette';
@@ -38,6 +38,14 @@ export interface IntentFeedLayout {
   maxVisibleEvents: number;
 }
 
+export interface IntentFeedPanelMetrics {
+  compact: boolean;
+  mode: FeedPlacementMode;
+  width: number;
+  height: number;
+  maxVisibleEvents: number;
+}
+
 export interface IntentFeedHudLayoutSnapshot {
   visible: boolean;
   dock?: FeedDock;
@@ -47,6 +55,8 @@ export interface IntentFeedHudLayoutSnapshot {
   statusVisible: boolean;
   quickThoughtCount: number;
   maxVisibleEvents: number;
+  riskVisible: boolean;
+  nextRiskLabel: string | null;
 }
 
 export interface IntentFeedLayoutAnchors {
@@ -67,6 +77,11 @@ interface IntentFeedPalette {
 
 interface IntentFeedHudOptions {
   palette?: typeof palette;
+}
+
+interface IntentFeedRiskMeta {
+  nextRiskLabel?: string | null;
+  statusLabel?: string | null;
 }
 
 interface WeightedIntentFeedRect extends IntentFeedRect {
@@ -160,6 +175,55 @@ export const resolveIntentFeedRoleLabel = (kind: Parameters<typeof resolveIntent
   formatIntentFeedRole(kind)
 );
 
+const RISK_PRIORITY: Record<NonNullable<ReturnType<typeof resolveIntentSemanticTag>>, number> = {
+  hazard_seen: 5,
+  timing_wait: 4,
+  route_committed: 3,
+  route_rejected: 3,
+  memory_recall: 2,
+  goal_progress: 1
+};
+
+type RiskRecord = {
+  kind: Parameters<typeof resolveIntentFeedRole>[0];
+  summary: string;
+  step: number;
+};
+
+export const resolveNextRiskLabel = (state: IntentFeedState | null): string | null => {
+  const records: RiskRecord[] = state
+    ? [
+        ...(state.status ? [state.status] : []),
+        ...(state.events ?? state.entries ?? [])
+      ]
+    : [];
+
+  const candidates = records
+    .map((record) => {
+      const semanticTag = resolveIntentSemanticTag(record.kind);
+      const riskCue = resolveIntentRiskCue(record.kind);
+      return {
+        record,
+        semanticTag,
+        riskCue,
+        priority: semanticTag ? RISK_PRIORITY[semanticTag] ?? 0 : 0
+      };
+    })
+    .filter((item): item is {
+      record: RiskRecord;
+      semanticTag: NonNullable<ReturnType<typeof resolveIntentSemanticTag>> | null;
+      riskCue: NonNullable<ReturnType<typeof resolveIntentRiskCue>>;
+      priority: number;
+    } => item.riskCue !== null)
+    .sort((left, right) => (
+      right.priority - left.priority
+      || right.record.step - left.record.step
+    ));
+
+  const candidate = candidates[0] ?? null;
+  return candidate ? `Next risk: ${candidate.riskCue}` : null;
+};
+
 const dedupeRects = (rects: Array<WeightedIntentFeedRect | null | undefined>): WeightedIntentFeedRect[] => {
   const seen = new Set<string>();
   const result: WeightedIntentFeedRect[] = [];
@@ -186,8 +250,14 @@ const resolveMaxVisibleEvents = (
   compact: boolean
 ): number => {
   const tuning = legacyTuning.menu.intentFeed;
+  const wideThreeThoughtViewport = viewport.width >= tuning.microThoughtThirdMinWidthPx
+    && viewport.height >= tuning.microThoughtThirdMinHeightPx;
   const tallEnough = viewport.height >= tuning.microThoughtMinHeightPx;
   const wideEnough = viewport.width >= tuning.microThoughtMinWidthPx && viewport.height >= 640;
+
+  if (wideThreeThoughtViewport) {
+    return 3;
+  }
 
   if (tallEnough || wideEnough) {
     return 2;
@@ -203,17 +273,26 @@ const resolveFeedWidth = (
 ): number => {
   const tuning = legacyTuning.menu.intentFeed;
   const insetX = tuning.insetXPx;
+  const wideBottomPanel = !compact && !railMode && viewportWidth >= tuning.commentaryRailMinViewportWidthPx;
   const maxWidth = compact
     ? tuning.compactWidthPx
     : railMode
       ? Math.min(tuning.widthPx, Math.round(viewportWidth * 0.28))
-      : tuning.widthPx;
-  const minWidth = compact ? tuning.compactMinWidthPx : tuning.minWidthPx;
+      : wideBottomPanel
+        ? Math.min(tuning.desktopBottomWidthPx, Math.round(viewportWidth * tuning.desktopBottomMaxWidthRatio))
+        : tuning.widthPx;
+  const minWidth = compact
+    ? tuning.compactMinWidthPx
+    : wideBottomPanel
+      ? tuning.desktopBottomMinWidthPx
+      : tuning.minWidthPx;
   const widthRatio = compact
     ? tuning.compactMaxWidthRatio
     : railMode
       ? Math.min(tuning.maxWidthRatio, 0.28)
-      : tuning.maxWidthRatio;
+      : wideBottomPanel
+        ? tuning.desktopBottomMaxWidthRatio
+        : tuning.maxWidthRatio;
   const availableWidth = Math.max(96, viewportWidth - (insetX * 2));
   const desiredWidth = Math.round(viewportWidth * widthRatio);
   const cappedWidth = Math.min(maxWidth, availableWidth);
@@ -229,7 +308,7 @@ const resolveFeedHeight = (
 ): number => {
   const tuning = legacyTuning.menu.intentFeed;
   const lineHeight = compact ? tuning.compactLineHeightPx : tuning.lineHeightPx;
-  const lineCount = Math.max(0, quickThoughtCount) + (hasStatus ? 1 : 0);
+  const lineCount = Math.max(0, quickThoughtCount) + (hasStatus ? 1 : 0) + 1;
   const gaps = Math.max(0, lineCount - 1);
 
   return Math.max(
@@ -244,11 +323,32 @@ const resolveRailMode = (viewport: { width: number; height: number }): boolean =
   const tuning = legacyTuning.menu.intentFeed;
   const aspectRatio = viewport.width / Math.max(1, viewport.height);
 
+  if (!tuning.commentaryRailEnabled) {
+    return false;
+  }
+
   return (
     viewport.width >= tuning.commentaryRailMinViewportWidthPx
     && viewport.height >= tuning.commentaryRailMinViewportHeightPx
     && aspectRatio >= tuning.commentaryRailMinAspectRatio
   );
+};
+
+export const resolveIntentFeedPanelMetrics = (
+  viewport: { width: number; height: number },
+  hasStatus = true
+): IntentFeedPanelMetrics => {
+  const compact = viewport.width <= legacyTuning.menu.layout.narrowBreakpoint;
+  const railMode = resolveRailMode(viewport);
+  const maxVisibleEvents = resolveMaxVisibleEvents(viewport, compact);
+
+  return {
+    compact,
+    mode: railMode ? 'rail' : 'bottom',
+    width: resolveFeedWidth(viewport.width, compact, railMode),
+    height: resolveFeedHeight(compact, maxVisibleEvents, hasStatus),
+    maxVisibleEvents
+  };
 };
 
 export const resolveIntentFeedLayout = (
@@ -258,11 +358,11 @@ export const resolveIntentFeedLayout = (
   hasStatus = true
 ): IntentFeedLayout => {
   const tuning = legacyTuning.menu.intentFeed;
-  const compact = viewport.width <= legacyTuning.menu.layout.narrowBreakpoint;
-  const railMode = resolveRailMode(viewport);
-  const maxVisibleEvents = resolveMaxVisibleEvents(viewport, compact);
-  const visibleEventCount = Math.max(0, Math.min(maxVisibleEvents, Math.trunc(entryCount)));
-  const feedWidth = resolveFeedWidth(viewport.width, compact, railMode);
+  const metrics = resolveIntentFeedPanelMetrics(viewport, hasStatus);
+  const compact = metrics.compact;
+  const railMode = metrics.mode === 'rail';
+  const visibleEventCount = Math.max(0, Math.min(metrics.maxVisibleEvents, Math.trunc(entryCount)));
+  const feedWidth = metrics.width;
   const feedHeight = resolveFeedHeight(compact, visibleEventCount, hasStatus);
   const boardRect = normalizeAnchorRect('board', anchors.board, 0);
   const titleRect = normalizeAnchorRect('title', anchors.title, 0);
@@ -341,7 +441,7 @@ export const resolveIntentFeedLayout = (
       rect,
       compact,
       mode: railMode ? 'rail' as const : 'bottom' as const,
-      maxVisibleEvents,
+      maxVisibleEvents: metrics.maxVisibleEvents,
       overlapCount: overlaps.length,
       overlapScore,
       laneOverflow,
@@ -371,7 +471,7 @@ export const resolveIntentFeedLayout = (
     mode: candidates[0].mode,
     rect: candidates[0].rect,
     compact,
-    maxVisibleEvents
+    maxVisibleEvents: metrics.maxVisibleEvents
   };
 };
 
@@ -388,19 +488,26 @@ export const createIntentFeedHud = (
   const root = scene.add.container(0, 0).setDepth(10.6).setVisible(false);
   const background = scene.add.rectangle(0, 0, 0, 0, colors.panel, 0.84).setOrigin(0);
   const border = scene.add.rectangle(0, 0, 0, 0).setOrigin(0).setStrokeStyle(1, colors.panelStroke, 0.94);
+  const intentFontFamily = '"Segoe UI", "Trebuchet MS", sans-serif';
   const status = scene.add.text(0, 0, '', {
     color: `#${colors.accent.toString(16).padStart(6, '0')}`,
-    fontFamily: '"Courier New", monospace',
+    fontFamily: intentFontFamily,
     fontSize: `${legacyTuning.menu.intentFeed.statusFontPx}px`,
     fontStyle: 'bold'
   }).setOrigin(0, 0);
   const entries = Array.from({ length: MAX_INTENT_VISIBLE_ENTRIES }, () => (
     scene.add.text(0, 0, '', {
       color: `#${colors.hintText.toString(16).padStart(6, '0')}`,
-      fontFamily: '"Courier New", monospace',
+      fontFamily: intentFontFamily,
       fontSize: `${legacyTuning.menu.intentFeed.entryFontPx}px`
     }).setOrigin(0, 0)
   ));
+  const risk = scene.add.text(0, 0, '', {
+    color: `#${colors.accent.toString(16).padStart(6, '0')}`,
+    fontFamily: intentFontFamily,
+    fontSize: `${Math.max(9, legacyTuning.menu.intentFeed.statusFontPx - 1)}px`,
+    fontStyle: 'bold'
+  }).setOrigin(0, 0);
   const entryTransitions = entries.map(() => ({
     key: '',
     changedAtMs: Number.NEGATIVE_INFINITY
@@ -410,24 +517,46 @@ export const createIntentFeedHud = (
     compact: false,
     statusVisible: false,
     quickThoughtCount: 0,
-    maxVisibleEvents: 1
+    maxVisibleEvents: 1,
+    riskVisible: false,
+    nextRiskLabel: null
   };
 
-  root.add([background, border, status, ...entries]);
+  root.add([background, border, status, ...entries, risk]);
 
   return {
     setState(
       state: IntentFeedState | null,
-      anchors: IntentFeedLayoutAnchors = {}
+      anchors: IntentFeedLayoutAnchors = {},
+      riskMeta: IntentFeedRiskMeta = {}
     ): void {
       const tuning = legacyTuning.menu.intentFeed;
       const visibleStatus = state?.status ?? null;
       const rawEntries = state?.events ?? state?.entries ?? [];
       const viewport = resolveSceneViewport(scene);
-      const layout = resolveIntentFeedLayout(viewport, rawEntries.length, anchors, Boolean(visibleStatus));
-      const visibleEntries = rawEntries.slice(0, layout.maxVisibleEvents);
+      const hasStatusOverride = typeof riskMeta.statusLabel === 'string' && riskMeta.statusLabel.trim().length > 0;
+      const layout = resolveIntentFeedLayout(viewport, rawEntries.length, anchors, hasStatusOverride || Boolean(visibleStatus));
+      const preferredVisibleEntryCount = layout.maxVisibleEvents >= 3
+        ? (
+            rawEntries.length >= 3
+            && (
+              rawEntries[2]?.importance === 'high'
+              || resolveIntentFeedRole(rawEntries[2]?.kind ?? null) !== 'scan'
+            )
+          )
+          ? 3
+          : Math.min(2, layout.maxVisibleEvents)
+        : layout.maxVisibleEvents;
+      const visibleEntries = rawEntries.slice(0, preferredVisibleEntryCount);
+      const statusMaxChars = layout.compact ? tuning.compactStatusMaxChars : tuning.statusMaxChars;
+      const statusLabel = hasStatusOverride
+        ? clampIntentFeedSummary(riskMeta.statusLabel ?? '', statusMaxChars)
+        : visibleStatus
+          ? `${resolveIntentFeedRoleLabel(visibleStatus.kind)}: ${clampIntentFeedSummary(visibleStatus.summary, statusMaxChars)}`
+          : '';
+      const hasStatusLine = statusLabel.length > 0;
 
-      if (!visibleStatus && visibleEntries.length === 0) {
+      if (!hasStatusLine && visibleEntries.length === 0) {
         root.setVisible(false);
         lastSnapshot = {
           visible: false,
@@ -435,7 +564,9 @@ export const createIntentFeedHud = (
           mode: layout.mode,
           statusVisible: false,
           quickThoughtCount: 0,
-          maxVisibleEvents: layout.maxVisibleEvents
+          maxVisibleEvents: layout.maxVisibleEvents,
+          riskVisible: false,
+          nextRiskLabel: null
         };
         return;
       }
@@ -444,32 +575,28 @@ export const createIntentFeedHud = (
       const statusFontPx = layout.compact ? tuning.compactStatusFontPx : tuning.statusFontPx;
       const entryFontPx = layout.compact ? tuning.compactEntryFontPx : tuning.entryFontPx;
       const maxSummaryChars = layout.compact ? tuning.compactSummaryMaxChars : tuning.summaryMaxChars;
-      const statusMaxChars = layout.compact ? tuning.compactStatusMaxChars : tuning.statusMaxChars;
       const transitionMs = Math.max(1, tuning.transitionMs);
       const transitionStartAlpha = Phaser.Math.Clamp(tuning.transitionStartAlpha, 0, 1);
       const nowMs = scene.time.now;
+      const nextRiskLabel = riskMeta.nextRiskLabel ?? resolveNextRiskLabel(state);
 
       root.setPosition(layout.rect.left, layout.rect.top).setVisible(true);
       background.setSize(layout.rect.width, layout.rect.height);
       border.setSize(layout.rect.width, layout.rect.height);
 
       status
-        .setVisible(Boolean(visibleStatus))
+        .setVisible(hasStatusLine)
         .setFontSize(statusFontPx)
         .setPosition(tuning.paddingXPx, tuning.paddingYPx)
         .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
-        .setText(
-          visibleStatus
-            ? `${formatIntentSpeakerHandle(visibleStatus.speaker)} ${resolveIntentFeedRoleLabel(visibleStatus.kind)}: ${clampIntentFeedSummary(visibleStatus.summary, statusMaxChars)}`
-            : ''
-        )
+        .setText(statusLabel)
         .setAlpha(0.98);
       status.setName('intent-status');
       status.setDataEnabled();
       status.setData('intent-role', resolveIntentFeedRole(visibleStatus?.kind ?? null));
       status.setData('intent-semantic-tag', resolveIntentSemanticTag(visibleStatus?.kind ?? null));
 
-      const eventStartY = tuning.paddingYPx + (visibleStatus ? lineHeight + tuning.entryGapPx : 0);
+      const eventStartY = tuning.paddingYPx + (hasStatusLine ? lineHeight + tuning.entryGapPx : 0);
 
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index];
@@ -489,7 +616,7 @@ export const createIntentFeedHud = (
         const transitionProgress = Phaser.Math.Clamp((nowMs - transition.changedAtMs) / transitionMs, 0, 1);
         const transitionAlpha = Phaser.Math.Linear(transitionStartAlpha, 1, transitionProgress);
         const roleToken = resolveIntentFeedRoleLabel(record.kind);
-        const isMicroThought = layout.mode === 'rail' ? index === 1 : index === 1 && layout.maxVisibleEvents > 1;
+        const isMicroThought = index >= 2;
 
         entry
           .setVisible(true)
@@ -499,7 +626,7 @@ export const createIntentFeedHud = (
             eventStartY + (index * (lineHeight + tuning.entryGapPx))
           )
           .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
-          .setText(`${formatIntentSpeakerHandle(record.speaker)} ${roleToken}: ${clampIntentFeedSummary(record.summary, maxSummaryChars)}`)
+          .setText(`${index === 0 ? 'Now' : 'Note'}: ${clampIntentFeedSummary(record.summary, maxSummaryChars)}`)
           .setAlpha(record.opacity * transitionAlpha);
         entry.setName(isMicroThought ? 'micro-thought' : 'quick-thought');
         entry.setDataEnabled();
@@ -508,15 +635,31 @@ export const createIntentFeedHud = (
         entry.setData('intent-semantic-tag', resolveIntentSemanticTag(record.kind));
       }
 
+      risk
+        .setVisible(Boolean(nextRiskLabel))
+        .setFontSize(Math.max(9, statusFontPx - 1))
+        .setPosition(
+          tuning.paddingXPx,
+          eventStartY + (visibleEntries.length * (lineHeight + tuning.entryGapPx))
+        )
+        .setFixedSize(layout.rect.width - (tuning.paddingXPx * 2), 0)
+        .setText(nextRiskLabel ?? '')
+        .setAlpha(0.9);
+      risk.setName('next-risk');
+      risk.setDataEnabled();
+      risk.setData('intent-risk-label', nextRiskLabel);
+
       lastSnapshot = {
         visible: true,
         dock: layout.dock,
         mode: layout.mode,
         compact: layout.compact,
         rect: { ...layout.rect },
-        statusVisible: Boolean(visibleStatus),
+        statusVisible: hasStatusLine,
         quickThoughtCount: visibleEntries.length,
-        maxVisibleEvents: layout.maxVisibleEvents
+        maxVisibleEvents: layout.maxVisibleEvents,
+        riskVisible: Boolean(nextRiskLabel),
+        nextRiskLabel
       };
     },
     getLayoutSnapshot(): IntentFeedHudLayoutSnapshot {

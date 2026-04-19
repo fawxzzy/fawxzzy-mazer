@@ -28,6 +28,28 @@ const createCorridorEpisode = (): MazeEpisode => ({
   size: 'small'
 } as unknown as MazeEpisode);
 
+const createSpectatorEpisode = (): MazeEpisode => ({
+  accepted: true,
+  checkpointsCreated: 0,
+  difficulty: 'standard',
+  family: 'classic',
+  pathLength: 8,
+  placementStrategy: 'farthest-pair',
+  presentationPreset: 'classic',
+  raster: {
+    width: 8,
+    height: 1,
+    tiles: new Uint8Array([1, 1, 1, 1, 1, 1, 1, 1]),
+    startIndex: 0,
+    endIndex: 7,
+    pathIndices: [0, 1, 2, 3, 4, 5, 6, 7]
+  },
+  score: 0,
+  seed: 1204,
+  shortcutsCreated: 0,
+  size: 'medium'
+} as unknown as MazeEpisode);
+
 const createEntry = (id: string, slot = 0, summary = `scanning ${id}`): IntentVisibleEntry => ({
   id,
   speaker: 'Runner',
@@ -235,10 +257,31 @@ describe('menu intent runtime', () => {
     scanController.advance(scanReplacement, 800);
     commitController.advance(commitReplacement, 800);
 
-    const scanReleased = scanController.advance(scanReplacement, 1_450);
-    const commitHeld = commitController.advance(commitReplacement, 1_450);
+    const scanReleased = scanController.advance(scanReplacement, 1_900);
+    const commitHeld = commitController.advance(commitReplacement, 1_900);
 
     expect(scanReleased?.events?.map((entry) => entry.id) ?? scanReleased?.entries.map((entry) => entry.id)).toEqual(['scan-c', 'scan-d']);
     expect(commitHeld?.events?.map((entry) => entry.id) ?? commitHeld?.entries.map((entry) => entry.id)).toEqual(['commit-a', 'commit-b']);
+  });
+
+  test('emits spectator-first trap, patrol, plate, and key semantics for longer shipping paths', () => {
+    const session = createMenuIntentRuntimeSession(createSpectatorEpisode());
+
+    session.advanceToStep(6);
+    const boardState = session.getBoardState(6);
+    const allKinds = new Set(
+      session.intentDeliveries.flatMap((delivery) => delivery.bus.records.map((record) => record.kind))
+    );
+
+    expect(boardState).not.toBeNull();
+    expect(boardState?.telegraphs.some((entry) => entry.kind === 'timed-gate')).toBe(true);
+    expect(boardState?.telegraphs.some((entry) => entry.kind === 'hazard-tile')).toBe(true);
+    expect(boardState?.telegraphs.some((entry) => entry.kind === 'pressure-plate')).toBe(true);
+    expect(boardState?.telegraphs.some((entry) => entry.kind === 'key-item')).toBe(true);
+    expect(boardState?.failReasonTitle.length ?? 0).toBeGreaterThan(0);
+    expect(allKinds).toContain('trap-inferred');
+    expect(allKinds).toContain('enemy-seen');
+    expect(allKinds).toContain('item-spotted');
+    expect(allKinds).toContain('puzzle-state-observed');
   });
 });

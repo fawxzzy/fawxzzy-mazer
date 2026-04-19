@@ -54,6 +54,30 @@ const describeCount = (value: number, singular: string, plural: string): string 
   value === 1 ? singular : plural
 );
 
+const describeMechanicCue = (cue: string | null | undefined, fallback: string): string => {
+  const normalized = cue?.trim().toLowerCase() ?? '';
+  if (normalized.includes('gate')) {
+    return 'gate';
+  }
+  if (normalized.includes('patrol') || normalized.includes('warden') || normalized.includes('enemy')) {
+    return 'patrol';
+  }
+  if (normalized.includes('hazard') || normalized.includes('trap')) {
+    return 'hazard tile';
+  }
+  if (normalized.includes('switch') || normalized.includes('plate')) {
+    return 'switch';
+  }
+  if (normalized.includes('door')) {
+    return 'door';
+  }
+  if (normalized.includes('key')) {
+    return 'key';
+  }
+
+  return fallback;
+};
+
 const buildRunnerAnchor = (
   state: PlaybookIntentState,
   fallbackKind: Extract<IntentAnchor['kind'], 'tile' | 'objective'> = 'tile'
@@ -89,7 +113,6 @@ export class PlaybookIntentTemplates {
   summarizeIntent(input: PlaybookIntentSummaryInput): PlaybookIntentSummary {
     const targetLabel = normalizeLabel(input.state.targetTileLabel, 'the next frontier');
     const currentLabel = normalizeLabel(input.state.currentTileLabel, 'this branch');
-    const connectorLabel = normalizeLabel(input.state.traversedConnectorLabel, 'connector');
     const aggressiveMode = input.aggressiveMode === true;
 
     switch (input.kind) {
@@ -99,7 +122,7 @@ export class PlaybookIntentTemplates {
           kind: 'goal-observed',
           category: 'goal',
           importance: 'high',
-          summary: `Committing exit line from ${currentLabel}.`,
+          summary: `Committing the exit line from ${currentLabel}.`,
           confidence: 0.99,
           anchor: {
             kind: 'objective',
@@ -112,7 +135,7 @@ export class PlaybookIntentTemplates {
           kind: 'enemy-seen',
           category: 'danger',
           importance: 'high',
-          summary: `Watching ${input.cue ?? 'warden'} pressure near ${currentLabel}.`,
+          summary: `Watching ${describeMechanicCue(input.cue, 'patrol')} pressure near ${currentLabel}.`,
           confidence: 0.86,
           anchor: {
             kind: 'tile',
@@ -125,7 +148,7 @@ export class PlaybookIntentTemplates {
           kind: 'trap-inferred',
           category: 'danger',
           importance: 'high',
-          summary: `Spotting ${input.cue ?? 'trap'} timing at ${currentLabel}.`,
+          summary: `Spotting ${describeMechanicCue(input.cue, 'hazard tile')} timing at ${currentLabel}.`,
           confidence: 0.78,
           anchor: {
             kind: 'tile',
@@ -138,7 +161,7 @@ export class PlaybookIntentTemplates {
           kind: 'item-spotted',
           category: 'item',
           importance: 'medium',
-          summary: `Checking ${input.cue ?? 'item'} value off ${currentLabel}.`,
+          summary: `Checking the ${describeMechanicCue(input.cue, 'key')} near ${currentLabel}.`,
           confidence: 0.74,
           anchor: {
             kind: 'tile',
@@ -151,7 +174,7 @@ export class PlaybookIntentTemplates {
           kind: 'puzzle-state-observed',
           category: 'infer',
           importance: 'medium',
-          summary: `Reading ${input.cue ?? 'puzzle'} timing at ${currentLabel}.`,
+          summary: `Reading the ${describeMechanicCue(input.cue, 'gate')} timing at ${currentLabel}.`,
           confidence: 0.72,
           anchor: {
             kind: 'tile',
@@ -161,14 +184,14 @@ export class PlaybookIntentTemplates {
       case 'dead-end-confirmed':
         {
           const backtrackCount = Math.max(1, input.state.backtrackCount ?? 1);
-        return {
-          speaker: 'Runner',
-          kind: 'dead-end-confirmed',
-          category: 'infer',
-          importance: 'medium',
-          summary: `Recalling ${currentLabel}; back out after ${describeCount(backtrackCount, '1 backtrack', `${backtrackCount} backtracks`)}.`,
-          confidence: 0.89
-        };
+          return {
+            speaker: 'Runner',
+            kind: 'dead-end-confirmed',
+            category: 'infer',
+            importance: 'medium',
+            summary: `Recalling ${currentLabel}; backing out after ${describeCount(backtrackCount, '1 retry', `${backtrackCount} retries`)}.`,
+            confidence: 0.89
+          };
         }
       case 'landmark-spotted':
         return {
@@ -186,15 +209,15 @@ export class PlaybookIntentTemplates {
       case 'replan-triggered':
         {
           const frontierCount = Math.max(1, input.state.frontierCount ?? 1);
-        return {
-          speaker: 'Runner',
-          kind: 'replan-triggered',
-          category: 'replan',
-          importance: 'medium',
-          summary: `Rejecting ${currentLabel}; testing ${targetLabel} with ${describeCount(frontierCount, '1 option', `${frontierCount} options`)}.`,
-          confidence: 0.79,
-          anchor: aggressiveMode ? buildRunnerAnchor(input.state) : undefined
-        };
+          return {
+            speaker: 'Runner',
+            kind: 'replan-triggered',
+            category: 'replan',
+            importance: 'medium',
+            summary: `Replanning from ${currentLabel}; trying ${targetLabel} with ${describeCount(frontierCount, '1 option', `${frontierCount} options`)}.`,
+            confidence: 0.79,
+            anchor: aggressiveMode ? buildRunnerAnchor(input.state) : undefined
+          };
         }
       case 'route-commitment-changed': {
         const goalCommit = input.state.targetKind === 'goal';
@@ -218,7 +241,7 @@ export class PlaybookIntentTemplates {
           kind: 'gate-aligned',
           category: 'observe',
           importance: 'medium',
-          summary: `Waiting on ${connectorLabel} timing at ${currentLabel}.`,
+          summary: `Waiting for the gate at ${currentLabel}.`,
           confidence: 0.83,
           anchor: {
             kind: 'connector',

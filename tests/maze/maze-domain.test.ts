@@ -165,6 +165,42 @@ describe('maze domain generation', () => {
     expect(episode.presentationPreset).toBe('braided');
   });
 
+  test('buildMaze emits a deterministic bounded generation trace for spectator rebuilds', () => {
+    const episode = buildMaze({
+      width: 37,
+      height: 37,
+      seed: 711,
+      family: 'classic',
+      presentationPreset: 'classic',
+      minSolutionLength: 20
+    });
+    const replay = buildMaze({
+      width: 37,
+      height: 37,
+      seed: 711,
+      family: 'classic',
+      presentationPreset: 'classic',
+      minSolutionLength: 20
+    });
+
+    expect(episode.generationTrace.steps.length).toBeGreaterThan(0);
+    expect(episode.generationTrace.uniqueTileCount).toBeGreaterThan(0);
+    expect(episode.generationTrace.rootTileIndex).toBeGreaterThanOrEqual(0);
+    expect(episode.generationTrace.rootTileIndex).toBeLessThan(episode.raster.tiles.length);
+    expect(episode.generationTrace).toEqual(replay.generationTrace);
+
+    for (const step of episode.generationTrace.steps) {
+      expect(step.tileIndices.length).toBeGreaterThan(0);
+      for (const tileIndex of step.tileIndices) {
+        expect(tileIndex).toBeGreaterThanOrEqual(0);
+        expect(tileIndex).toBeLessThan(episode.raster.tiles.length);
+      }
+    }
+
+    disposeMazeEpisode(replay);
+    disposeMazeEpisode(episode);
+  });
+
   test('compressed corridor solving matches canonical A* on representative mazes', () => {
     const cases = [
       { seed: 1401, size: 'small', preset: 'classic' },

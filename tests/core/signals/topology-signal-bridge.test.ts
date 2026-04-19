@@ -100,6 +100,52 @@ const makeWardenObservation = (): WardenLocalObservation => ({
 });
 
 describe('TopologySignalBridge', () => {
+  test('keeps trap danger inferable before the anchor is entered when readable signals are visible', () => {
+    const trapSystem = new TrapTopologySystem([
+      {
+        id: 'timed-gate',
+        label: 'Timed gate',
+        severity: 'medium',
+        anchor: {
+          kind: 'checkpoint',
+          checkpointId: 'checkpoint-gate',
+          tileId: 'gate-tile'
+        },
+        visibility: {
+          timing: {
+            period: 4,
+            activeResidues: [1],
+            label: 'gate cycle'
+          },
+          landmarkId: 'gate-post',
+          connectorId: 'gate-connector'
+        }
+      }
+    ]);
+
+    const bundle = buildTopologySignalBundle({
+      trapSnapshot: trapSystem.getSnapshot(),
+      trapStep: trapSystem.evaluate({
+        step: 1,
+        currentTileId: 'approach-tile',
+        rotationPhase: 'stable',
+        activeJunctionIds: [],
+        activeLoopIds: [],
+        activeCheckpointIds: [],
+        visibleLandmarkIds: ['gate-post'],
+        visibleProxyIds: [],
+        nearbyConnectorIds: ['gate-connector'],
+        traversedConnectorId: null
+      })
+    });
+
+    expect(bundle.localCues).toContain('trap Timed gate');
+    expect(bundle.localCues).toContain('timing gate cycle');
+    expect(bundle.localCues).toContain('gate cycle');
+    expect(bundle.candidateSignals['gate-tile']?.trapRisk ?? 0).toBeGreaterThan(0);
+    expect(bundle.candidateSignals['gate-tile']?.timingWindow ?? 0).toBeGreaterThan(0);
+  });
+
   test('builds bounded local cues and candidate advisories from topology-bound systems', () => {
     const trapSystem = new TrapTopologySystem(baseTrapContracts);
     const trapStep = trapSystem.evaluate(makeTrapObservation(1));
@@ -146,6 +192,7 @@ describe('TopologySignalBridge', () => {
 
     expect(bundle.localCues.some((cue) => cue.includes('trap'))).toBe(true);
     expect(bundle.localCues.some((cue) => cue.includes('enemy'))).toBe(true);
+    expect(bundle.localCues.some((cue) => cue.includes('patrol crossing'))).toBe(true);
     expect(bundle.localCues.some((cue) => cue.includes('item'))).toBe(true);
     expect(bundle.localCues.some((cue) => cue.includes('puzzle'))).toBe(true);
     expect(bundle.candidateSignals['trap-branch']?.trapRisk ?? 0).toBeGreaterThan(0);

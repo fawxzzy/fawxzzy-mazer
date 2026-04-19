@@ -28,15 +28,35 @@ npm run lint
 npm run test
 npm run test:playbook-adoption
 npm run test:soak
+npm run runtime:observe
 npm run visual:capture
 npm run visual:matrix
+npm run edge:live
 npm run visual:gate
+npm run projection:export-pack
 ```
 
 `npm run preview` serves the production build locally on port `4173`.
 `dist/` is generated build output and is ignored by git.
 `npm run visual:matrix` captures the shipping layout across the core viewport matrix into `../tmp/captures/mazer-layout-matrix/<run-id>/`.
 `npm run visual:matrix -- --url https://<preview-host>` reuses a hosted preview instead of launching a local preview server.
+`npm run edge:live -- --base-url http://127.0.0.1:4173` runs the same core viewport set through Microsoft Edge (`channel: msedge`) and saves screenshots, videos, and JSON summaries under `../tmp/captures/mazer-edge-live/<run-id>/`.
+`npm run edge:live -- --url https://<preview-host>` targets an explicit preview URL instead of launching a local preview server.
+`/?mode=play` switches the shared simulation shell into desktop keyboard play without forking the watcher core. Controls are `WASD` or arrows to move, `P` or `Space` to pause, `R` to restart the attempt, `T` to toggle thoughts, and `M` or `Tab` to return to watch mode.
+`/proof-surfaces.html?surface=all&fixture=watching&skin=ios&mode=all` hosts the reduced proof-surface pack for Snapshot Card, Active-Run Tracker, and Ambient Tile on the dedicated proof route.
+`/watch-pass-preview.html` hosts the Watch Pass preview + settings shell on top of those same reduced surfaces, with local-only privacy, reduced-motion, thought-density, and pacing controls.
+`/watch-pass-paywall.html` hosts the local-first Watch Pass paywall shell with monthly/yearly plan selection, a quiet dismiss path, and the same reduced preview surfaces.
+`/watch-pass-setup.html` hosts the Watch Pass setup shell for Snapshot Card, Active-Run Tracker, and Ambient Tile with platform framing, privacy mode, reduced motion, thought density, and pacing controls.
+`npm run edge:live -- --run projection-proof-shell --skip-build true --headless true` captures the proof-surface shell routes through the same repo-owned Edge harness, and the sibling `projection-proof-snapshot`, `projection-proof-active`, and `projection-proof-ambient` runs target each reduced surface directly.
+`npm run edge:live -- --run watch-pass-preview --skip-build true --headless true` captures the Watch Pass preview route across full, compact, and private shells.
+`npm run edge:live -- --run watch-play-shell --skip-build true --headless true` and `npm run edge:live -- --run play-mode-smoke --skip-build true --headless true` now resolve to play-mode captures automatically.
+`npm run edge:live -- --run play-mode-interactive --skip-build true --headless true` actively switches into play mode, presses desktop controls, and fails if live receipts do not record non-zero `control_used` events.
+`npm run edge:live -- --run mobile-touch-smoke --skip-build true --headless true` emulates a phone-touch play shell, taps the on-screen D-pad and control buttons, and records the same shared play-mode receipts.
+`npm run runtime:observe -- --duration-seconds 120 --label play-mode-a` now targets the play shell automatically so receipts carry `mode=play` without a manual URL override.
+`npm run runtime:observe -- --duration-seconds 120 --label play-mode-b` reuses that same play shell label for active-play KPI follow-through.
+`npm run runtime:observe -- --duration-seconds 120 --label pacing-a` captures a repo-owned runtime observe receipt under `../tmp/captures/mazer-runtime-observe/` and now includes experiment metadata plus a stable variant id.
+`npm run projection:export-pack -- --fixture watching --label watch-pass-preview` emits iOS and Android projection export packs under `../tmp/captures/mazer-projections/`.
+`npm run edge:live -- --base-url http://127.0.0.1:4173 --run experiment-smoke --pacing 0.7x` carries the same experiment metadata into Edge live receipts so visual decisions can be compared against explicit toggles instead of ad hoc notes.
 
 ## Branch lanes
 
@@ -53,8 +73,11 @@ npm run visual:gate
 - The latest local baseline is only production truth after that visual pass is committed and deployed.
 - Trail attach plus no-future-preview is the active trail contract.
 - Desktop, TV, and OBS composition now targets the tight 5px board-fit between the title band and the bottom-center install CTA lane.
+- Player readability stays permanent, and the bottom panel remains the universal shell lane for now.
+- Demo build/rebuild is part of the spectator story now. The live reveal consumes a real bounded generator trace from `buildMaze` instead of a presentation-only fake reveal.
 - Generator-side endpoint strategy spread is improved but still unfinished; variety work is not closed.
 - Runtime observe/soak visibility rollup work remains repo-local analysis WIP and is not part of the shipping claim yet.
+- Compact glance surfaces should consume `RunProjection` state plus privacy transforms, not raw renderer/frame state.
 - See `docs/current-truth.md` when older notes or pasted diffs disagree.
 
 ## Launch profiles
@@ -133,12 +156,15 @@ Defaults stay unchanged. Launch profiles tune packaging and presentation for dep
 - Wilson remains the maze generation truth.
 - Solving now runs on a compressed corridor graph, then expands back to tile indices only for rendering.
 - The current 2D Phaser runtime remains the shipping lane and local freeze target.
+- Spectator build/rebuild now uses a real bounded generator trace emitted behind `buildMaze`, then replays that trace through build, settle, watch, hold, reflection, erase, and next-build phases while keeping the board frame stable.
 - Ambient presentation can route mazes through deterministic `classic`, `braided`, `framed`, and rare `blueprint-rare` presets without adding storage or gameplay state.
 - Ambient topology can also route mazes through deterministic `classic`, `braided`, `sparse`, `dense`, `framed`, and `split-flow` families while keeping Wilson as the base generator truth and shifting variety into topology and endpoint behavior before theme noise.
 - Auto family exposure is curated on purpose: hero families (`braided`, `dense`, `split-flow`) carry the loop, `classic` and `framed` support, and `sparse` stays rare so its contrast remains noticeable.
 - Ambient themes (`noir`, `ember`, `aurora`, `vellum`, `monolith`) are presentation families layered above the same maze substrate; they are not generator forks.
 - `theme=auto` rotates those families on a curated schedule that is independent from mood scheduling, while explicit `theme=` values lock capture output to one family.
 - Install behavior is intentionally ephemeral and runtime-only; no install preference or launcher state is written into app storage.
+- Projection artifacts are local-first and repo-owned. `src/projections/` exposes `RunProjection`, surface adapters, and iOS/Android export payloads plus `full`, `compact`, and `private` privacy transforms. `writeRunProjectionArtifact(...)` and `writeNativeProjectionArtifactSet(...)` write JSON artifacts for proof surfaces or tooling under `tmp/captures/mazer-projections/`.
+- Telemetry and experiment receipts are local-first and repo-owned. `src/telemetry/` defines the event schema plus pacing, thought-density, fail-card, memory-beat, trap-telegraph, and business-surface events. Both `runtime:observe` and `edge:live` now record variant ids, privacy metadata, and KPI summaries in their local capture receipts.
 - Future-runtime and `planet3d` proof code remain deferred and must not be presented as the shipping runtime.
 - Deployment profiles tune presentation defaults only:
   - TV ambient loop: `?profile=tv`

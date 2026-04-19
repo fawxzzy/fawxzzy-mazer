@@ -48,6 +48,7 @@ export type IntentSemanticTag =
   | 'timing_wait'
   | 'memory_recall'
   | 'goal_progress';
+export type IntentRiskCue = 'hazard' | 'gate' | 'patrol' | 'route' | 'backtrack' | 'key' | 'landmark';
 const INTENT_ROLE_ORDER: Record<IntentFeedRole, number> = {
   scan: 0,
   hypothesis: 1,
@@ -77,6 +78,19 @@ const INTENT_SEMANTIC_TAG_BY_KIND: Partial<Record<IntentKind, IntentSemanticTag>
   'dead-end-confirmed': 'memory_recall',
   'goal-observed': 'goal_progress'
 };
+const INTENT_RISK_CUE_BY_KIND: Partial<Record<IntentKind, IntentRiskCue>> = {
+  'enemy-seen': 'patrol',
+  'trap-inferred': 'hazard',
+  'replan-triggered': 'route',
+  'route-commitment-changed': 'route',
+  'gate-aligned': 'gate',
+  'puzzle-state-observed': 'gate',
+  'dead-end-confirmed': 'backtrack',
+  'goal-observed': 'route',
+  'item-spotted': 'key',
+  'landmark-spotted': 'landmark',
+  'frontier-chosen': 'route'
+};
 
 const isFeedRecord = (record: IntentBusRecord): boolean => record.kind !== 'gate-aligned';
 
@@ -98,6 +112,10 @@ export const formatIntentFeedRole = (kind: IntentKind | null | undefined): strin
 
 export const resolveIntentSemanticTag = (kind: IntentKind | null | undefined): IntentSemanticTag | null => (
   kind ? INTENT_SEMANTIC_TAG_BY_KIND[kind] ?? null : null
+);
+
+export const resolveIntentRiskCue = (kind: IntentKind | null | undefined): IntentRiskCue | null => (
+  kind ? INTENT_RISK_CUE_BY_KIND[kind] ?? null : null
 );
 
 const compareVisibleRecords = (left: IntentBusRecord, right: IntentBusRecord): number => (

@@ -55,6 +55,33 @@ const applyTileSignal = (
   );
 };
 
+const pushMechanicCue = (
+  cues: string[],
+  seenCues: Set<string>,
+  label: string,
+  fallback: string
+): void => {
+  const normalized = label.trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+
+  pushCue(cues, seenCues, normalized.includes('gate') ? 'gate cycle' : fallback);
+  if (normalized.includes('gate')) {
+    pushCue(cues, seenCues, 'gate cycle');
+    pushCue(cues, seenCues, 'gate link');
+  }
+  if (normalized.includes('hazard')) {
+    pushCue(cues, seenCues, 'hazard arming');
+  }
+  if (normalized.includes('door')) {
+    pushCue(cues, seenCues, 'door link');
+  }
+  if (normalized.includes('plate')) {
+    pushCue(cues, seenCues, 'plate link');
+  }
+};
+
 const buildTrapSignals = (
   cues: string[],
   seenCues: Set<string>,
@@ -63,6 +90,7 @@ const buildTrapSignals = (
   step: TrapStepResult
 ): void => {
   const contractById = new Map(snapshot.contracts.map((contract) => [contract.id, contract]));
+  const triggeredTrapIds = new Set(step.triggered.map((activation) => activation.trapId));
 
   for (const activation of step.triggered) {
     const contract = contractById.get(activation.trapId);
@@ -70,13 +98,55 @@ const buildTrapSignals = (
 
     pushCue(cues, seenCues, `trap ${activation.trapLabel}`);
     pushCue(cues, seenCues, `hazard ${activation.anchorKind}`);
+    pushMechanicCue(cues, seenCues, activation.trapLabel, `trap ${activation.trapLabel}`);
     if (activation.visibleSignals.timing) {
       pushCue(cues, seenCues, `timing ${contract?.visibility.timing?.label ?? 'trap window'}`);
+      pushCue(cues, seenCues, 'gate cycle');
     }
 
     applyTileSignal(candidateSignals, tileId, {
       trapRisk: TRAP_SEVERITY_RISK[activation.severity],
       timingWindow: activation.visibleSignals.timing ? 1 : 0
+    });
+  }
+
+  for (const state of step.states) {
+    if (triggeredTrapIds.has(state.trapId) || !state.inferable) {
+      continue;
+    }
+
+    const contract = contractById.get(state.trapId);
+    if (!contract) {
+      continue;
+    }
+
+    const tileId = contract.anchor.tileId ?? step.tileId;
+    const visibilityScore = (
+      (state.visibleSignals.timing ? 0.42 : 0)
+      + (state.visibleSignals.landmark ? 0.24 : 0)
+      + (state.visibleSignals.proxy ? 0.18 : 0)
+      + (state.visibleSignals.connector ? 0.16 : 0)
+    );
+    const boundedRisk = Math.min(
+      TRAP_SEVERITY_RISK[contract.severity] * (state.anchorMatched ? 0.86 : 0.58),
+      TRAP_SEVERITY_RISK[contract.severity]
+    );
+
+    pushCue(cues, seenCues, `trap ${contract.label}`);
+    pushCue(cues, seenCues, `hazard ${contract.anchor.kind}`);
+    pushMechanicCue(cues, seenCues, contract.label, `trap ${contract.label}`);
+    if (state.visibleSignals.timing) {
+      pushCue(cues, seenCues, `timing ${contract.visibility.timing?.label ?? 'trap window'}`);
+      pushCue(cues, seenCues, 'gate cycle');
+    }
+    if (state.visibleSignals.connector && contract.visibility.connectorId) {
+      pushCue(cues, seenCues, `connector ${contract.label}`);
+      pushCue(cues, seenCues, contract.label.toLowerCase().includes('gate') ? 'gate link' : 'door link');
+    }
+
+    applyTileSignal(candidateSignals, tileId, {
+      trapRisk: Number(Math.max(0.18, boundedRisk).toFixed(4)),
+      timingWindow: Number(Math.min(1, visibilityScore).toFixed(4))
     });
   }
 };
@@ -89,6 +159,7 @@ const buildWardenSignals = (
 ): void => {
   pushCue(cues, seenCues, `warden ${decision.intent}`);
   pushCue(cues, seenCues, `enemy ${decision.reason}`);
+  pushCue(cues, seenCues, 'patrol lane');
 
   for (const candidate of decision.candidates) {
     const enemyPressure = candidate.features.directPlayerContact
@@ -102,6 +173,10 @@ const buildWardenSignals = (
             : candidate.features.junctionCandidate
               ? 0.52
               : 0.36;
+
+    if (candidate.features.directPlayerContact || candidate.features.lastKnownPlayerContact) {
+      pushCue(cues, seenCues, 'patrol crossing');
+    }
 
     applyTileSignal(candidateSignals, candidate.nextTileId, {
       enemyPressure,
@@ -145,6 +220,7 @@ const buildItemSignals = (
     }
     if (definition.kind === 'signal-node') {
       pushCue(cues, seenCues, `signal ${definition.label}`);
+      pushCue(cues, seenCues, `switch ${definition.label}`);
     }
     if (definition.kind === 'shell-unlock') {
       pushCue(cues, seenCues, `shell unlock ${definition.label}`);
@@ -182,8 +258,9 @@ const buildPuzzleSignals = (
     }
 
     pushCue(cues, seenCues, `puzzle ${definition.label}`);
+    pushCue(cues, seenCues, `door ${definition.label}`);
   }
-};
+}
 
 export const buildTopologySignalBundle = ({
   trapSnapshot,

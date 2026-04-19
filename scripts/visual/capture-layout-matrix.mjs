@@ -26,6 +26,7 @@ const VISUAL_DIAGNOSTICS_KEY = '__MAZER_VISUAL_DIAGNOSTICS__';
 const LAYOUT_MATRIX_ROOT = resolve(STACK_ROOT, 'tmp', 'captures', 'mazer-layout-matrix');
 const DEFAULT_ROUTE = '/';
 const CAPTURE_RETRIES = 3;
+export const LAYOUT_MATRIX_READYNESS_TIMEOUT_CODE = 'LAYOUT_MATRIX_READINESS_TIMEOUT';
 const LAYOUT_MATRIX_CAPTURE_CONFIG = Object.freeze({
   enabled: true,
   forceInstallMode: 'available'
@@ -53,6 +54,21 @@ const runNpmCommand = (args) => {
     cwd: REPO_ROOT,
     stdio: 'inherit'
   });
+};
+
+const launchLayoutMatrixBrowser = async () => {
+  try {
+    return await chromium.launch({
+      channel: 'msedge',
+      headless: true,
+      args: ['--use-angle=swiftshader']
+    });
+  } catch {
+    return chromium.launch({
+      headless: true,
+      args: ['--use-gl=swiftshader']
+    });
+  }
 };
 
 const normalizeRoute = (value) => {
@@ -95,30 +111,98 @@ const toClip = (bounds, viewport) => {
   };
 };
 
-const waitForLayoutDiagnostics = async (page, timeoutMs) => {
+const hasFiniteRect = (bounds) => (
+  Boolean(bounds)
+  && Number.isFinite(bounds.left)
+  && Number.isFinite(bounds.top)
+  && Number.isFinite(bounds.width)
+  && Number.isFinite(bounds.height)
+);
+
+export const resolveLayoutMatrixReadiness = ({
+  diagnostics,
+  route,
+  url,
+  viewport
+} = {}) => {
+  const boardBoundsReady = hasFiniteRect(diagnostics?.board?.bounds);
+  const hudBoundsReady = hasFiniteRect(diagnostics?.intentFeed?.bounds);
+  const dockModeReady = typeof diagnostics?.intentFeed?.dock === 'string' && diagnostics.intentFeed.dock.length > 0;
+  const routeMetadataReady = typeof route === 'string'
+    && route.length > 0
+    && typeof url === 'string'
+    && url.length > 0
+    && typeof viewport?.id === 'string'
+    && viewport.id.length > 0;
+  const missing = [];
+
+  if (!boardBoundsReady) {
+    missing.push('board-bounds');
+  }
+  if (!hudBoundsReady) {
+    missing.push('hud-bounds');
+  }
+  if (!dockModeReady) {
+    missing.push('hud-dock');
+  }
+  if (!routeMetadataReady) {
+    missing.push('route-metadata');
+  }
+
+  const reasonMap = {
+    'board-bounds': 'waiting for board bounds',
+    'hud-bounds': 'waiting for HUD bounds',
+    'hud-dock': 'waiting for HUD dock mode',
+    'route-metadata': 'waiting for route metadata'
+  };
+
+  return {
+    ready: missing.length === 0,
+    reason: missing.length === 0 ? null : reasonMap[missing[0]] ?? `waiting for ${missing[0]}`,
+    missing,
+    snapshot: {
+      revision: diagnostics?.revision ?? null,
+      updatedAt: diagnostics?.updatedAt ?? null,
+      boardBoundsReady,
+      hudBoundsReady,
+      dockModeReady,
+      routeMetadataReady,
+      boardBounds: diagnostics?.board?.bounds ?? null,
+      safeBounds: diagnostics?.board?.safeBounds ?? null,
+      hudBounds: diagnostics?.intentFeed?.bounds ?? null,
+      hudDock: diagnostics?.intentFeed?.dock ?? null,
+      route,
+      url,
+      viewport: viewport ?? null
+    }
+  };
+};
+
+const waitForLayoutDiagnostics = async (page, timeoutMs, context) => {
   const startedAt = Date.now();
   let lastDiagnostics = null;
+  let lastReadiness = resolveLayoutMatrixReadiness(context);
 
   while ((Date.now() - startedAt) < timeoutMs) {
     lastDiagnostics = await page.evaluate((diagnosticsKey) => window[diagnosticsKey] ?? null, VISUAL_DIAGNOSTICS_KEY);
-    const ready = Boolean(
-      lastDiagnostics
-      && lastDiagnostics.board?.bounds
-      && lastDiagnostics.board?.safeBounds
-      && lastDiagnostics.intentFeed
-      && lastDiagnostics.intentFeed.visible === true
-      && (!lastDiagnostics.title?.expected || lastDiagnostics.title?.visible === true)
-      && (!lastDiagnostics.install?.expected || lastDiagnostics.install?.visible === true)
-    );
-    if (ready) {
+    lastReadiness = resolveLayoutMatrixReadiness({
+      ...context,
+      diagnostics: lastDiagnostics
+    });
+
+    if (lastReadiness.ready) {
       return lastDiagnostics;
     }
 
     await page.waitForTimeout(200);
   }
 
-  const error = new Error('Timed out waiting for layout matrix diagnostics to become ready.');
+  const error = new Error(
+    `Timed out waiting for layout matrix diagnostics to become ready: ${lastReadiness.reason ?? 'unknown readiness drift'}.`
+  );
+  error.code = LAYOUT_MATRIX_READYNESS_TIMEOUT_CODE;
   error.lastDiagnostics = lastDiagnostics;
+  error.lastReadiness = lastReadiness;
   throw error;
 };
 
@@ -129,6 +213,44 @@ const formatBounds = (bounds) => (
     ? `${Math.round(bounds.left)},${Math.round(bounds.top)} ${Math.round(bounds.width)}x${Math.round(bounds.height)}`
     : '-'
 );
+
+const writeLayoutMatrixFailureReceipt = async ({
+  error,
+  route,
+  url,
+  viewport,
+  runDir,
+  metadataPath,
+  consoleMessages,
+  screenshotPath
+}) => {
+  const receipt = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    route,
+    url,
+    viewport,
+    failure: {
+      code: error?.code ?? 'LAYOUT_MATRIX_CAPTURE_FAILURE',
+      reason: error?.lastReadiness?.reason ?? error?.message ?? 'unknown error',
+      message: error?.message ?? 'unknown error'
+    },
+    lastKnownDiagnosticsSnapshot: error?.lastReadiness?.snapshot ?? {
+      route,
+      url,
+      viewport
+    },
+    lastKnownDiagnostics: error?.lastDiagnostics ?? null,
+    consoleMessages,
+    files: {
+      metadata: relativeToRun(runDir, metadataPath),
+      screenshot: screenshotPath ? relativeToRun(runDir, screenshotPath) : null
+    }
+  };
+
+  await writeFile(metadataPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+  return receipt;
+};
 
 const buildMarkdownSummary = ({ runId, sourceMode, baseUrl, presetGroup, captures, contactSheetPath }) => {
   const lines = [
@@ -198,10 +320,16 @@ const captureViewport = async ({
   const fullPath = resolve(fullDir, `${viewport.id}.png`);
   const gameplayPath = resolve(gameplayDir, `${viewport.id}.png`);
   const metadataPath = resolve(metadataDir, `${viewport.id}.json`);
+  const failureMetadataPath = resolve(metadataDir, `${viewport.id}.failure.json`);
+  const failureScreenshotPath = resolve(fullDir, `${viewport.id}.failure.png`);
 
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-    const diagnostics = await waitForLayoutDiagnostics(page, timeoutMs);
+    const diagnostics = await waitForLayoutDiagnostics(page, timeoutMs, {
+      route,
+      url,
+      viewport
+    });
     await page.screenshot({
       path: fullPath,
       fullPage: false,
@@ -227,6 +355,31 @@ const captureViewport = async ({
     };
     await writeFile(metadataPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
     return record;
+  } catch (error) {
+    let partialScreenshotPath = null;
+
+    try {
+      await page.screenshot({
+        path: failureScreenshotPath,
+        fullPage: false,
+        animations: 'disabled'
+      });
+      partialScreenshotPath = failureScreenshotPath;
+    } catch {
+      partialScreenshotPath = null;
+    }
+
+    await writeLayoutMatrixFailureReceipt({
+      error,
+      route,
+      url,
+      viewport,
+      runDir,
+      metadataPath: failureMetadataPath,
+      consoleMessages,
+      screenshotPath: partialScreenshotPath
+    });
+    throw error;
   } finally {
     await context.close();
   }
@@ -240,6 +393,9 @@ const captureViewportWithRetries = async (options) => {
       return await captureViewport(options);
     } catch (error) {
       lastError = error;
+      if (error?.code === LAYOUT_MATRIX_READYNESS_TIMEOUT_CODE) {
+        break;
+      }
     }
   }
 
@@ -291,7 +447,7 @@ export const captureLayoutMatrix = async ({
       });
     })();
   const resolvedBaseUrl = normalizeBaseUrl(preview?.baseUrl ?? baseUrl);
-  const browser = await chromium.launch({ headless: true, args: ['--use-gl=swiftshader'] });
+  const browser = await launchLayoutMatrixBrowser();
 
   try {
     const viewports = resolveLayoutMatrixViewports(presetGroup);

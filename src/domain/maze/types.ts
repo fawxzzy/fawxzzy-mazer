@@ -71,6 +71,25 @@ export interface MazeMetrics {
   coverage: number;
 }
 
+export type MazeGenerationPhase =
+  | 'seed'
+  | 'carve'
+  | 'braid'
+  | 'family'
+  | 'presentation'
+  | 'anti-straightness';
+
+export interface MazeGenerationTraceStep {
+  phase: MazeGenerationPhase;
+  tileIndices: readonly number[];
+}
+
+export interface MazeGenerationTrace {
+  rootTileIndex: number;
+  uniqueTileCount: number;
+  steps: readonly MazeGenerationTraceStep[];
+}
+
 export interface BoardFootprintTarget {
   width?: number;
   height?: number;
@@ -90,6 +109,7 @@ export interface MazeEpisode {
   seed: number;
   size: MazeSize;
   core?: MazeCore;
+  generationTrace: MazeGenerationTrace;
   raster: TileBoard;
   metrics: MazeMetrics;
   shortcutsCreated: number;

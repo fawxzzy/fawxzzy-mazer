@@ -212,7 +212,7 @@ describe('intent bus', () => {
     expect(state?.status?.kind).toBe('frontier-chosen');
     expect(state?.status?.summary).toContain('West branch');
     expect(visible[0]?.kind).toBe('trap-inferred');
-    expect(visible[0]?.summary).toContain('trap rhythm');
+    expect(visible[0]?.summary).toContain('hazard');
     expect(visible[0]?.summary).not.toBe(state?.status?.summary);
     expect(resolveIntentFeedRole(state?.status?.kind ?? null)).toBe('scan');
     expect(resolveIntentFeedRole(visible[0]?.kind ?? null)).toBe('hypothesis');
@@ -369,7 +369,7 @@ describe('intent bus', () => {
     expect(new Set(summaries).size).toBe(summaries.length);
     expect(summaries.some((summary) => summary.includes('West branch'))).toBe(true);
     expect(summaries.some((summary) => summary.includes('Signal post'))).toBe(true);
-    expect(summaries.some((summary) => summary.includes('trap rhythm'))).toBe(true);
+    expect(summaries.some((summary) => summary.includes('hazard'))).toBe(true);
     expect(summaries.some((summary) => summary.includes('exit'))).toBe(true);
     expect(feed.metrics.verbFirstPass).toBe(true);
   });

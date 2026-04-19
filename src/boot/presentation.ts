@@ -14,6 +14,7 @@ export type PresentationChrome = 'full' | 'minimal' | 'none';
 export type PresentationMood = 'auto' | 'solve' | 'scan' | 'blueprint';
 export type PresentationTitleMode = 'show' | 'hide';
 export type PresentationDeploymentProfile = 'tv' | 'obs' | 'mobile';
+export type PresentationMode = 'watch' | 'play';
 export type PresentationTheme = 'auto' | 'noir' | 'ember' | 'aurora' | 'vellum' | 'monolith';
 export type PresentationThemeFamily = Exclude<PresentationTheme, 'auto'>;
 
@@ -23,6 +24,7 @@ export interface PresentationLaunchConfig {
   mood: PresentationMood;
   title: PresentationTitleMode;
   theme: PresentationTheme;
+  mode: PresentationMode;
   profile?: PresentationDeploymentProfile;
   seed?: number;
   size?: MazeSize;
@@ -35,6 +37,7 @@ export const DEFAULT_PRESENTATION_CHROME: PresentationChrome = 'full';
 export const DEFAULT_PRESENTATION_MOOD: PresentationMood = 'auto';
 export const DEFAULT_PRESENTATION_TITLE_MODE: PresentationTitleMode = 'show';
 export const DEFAULT_PRESENTATION_THEME: PresentationTheme = 'auto';
+export const DEFAULT_PRESENTATION_MODE: PresentationMode = 'watch';
 export const PRESENTATION_THEME_FAMILIES: readonly PresentationThemeFamily[] = [
   'noir',
   'ember',
@@ -221,7 +224,8 @@ export const DEFAULT_PRESENTATION_LAUNCH_CONFIG: PresentationLaunchConfig = {
   chrome: DEFAULT_PRESENTATION_CHROME,
   mood: DEFAULT_PRESENTATION_MOOD,
   title: DEFAULT_PRESENTATION_TITLE_MODE,
-  theme: DEFAULT_PRESENTATION_THEME
+  theme: DEFAULT_PRESENTATION_THEME,
+  mode: DEFAULT_PRESENTATION_MODE
 };
 
 const PRESENTATION_QUERY_KEYS = {
@@ -230,6 +234,7 @@ const PRESENTATION_QUERY_KEYS = {
   chrome: 'chrome',
   mood: 'mood',
   theme: 'theme',
+  mode: 'mode',
   seed: 'seed',
   size: 'size',
   difficulty: 'difficulty',
@@ -278,6 +283,10 @@ export const isPresentationTitleMode = (value: string | null | undefined): value
   value === 'show' || value === 'hide'
 );
 
+export const isPresentationMode = (value: string | null | undefined): value is PresentationMode => (
+  value === 'watch' || value === 'play'
+);
+
 export const isPresentationSize = (value: string | null | undefined): value is MazeSize => (
   value === 'small' || value === 'medium' || value === 'large' || value === 'huge'
 );
@@ -320,6 +329,11 @@ export const sanitizePresentationChrome = (value: unknown): PresentationChrome =
 export const sanitizePresentationMood = (value: unknown): PresentationMood => {
   const normalized = normalizeString(value);
   return isPresentationMood(normalized) ? normalized : DEFAULT_PRESENTATION_MOOD;
+};
+
+export const sanitizePresentationMode = (value: unknown): PresentationMode => {
+  const normalized = normalizeString(value);
+  return isPresentationMode(normalized) ? normalized : DEFAULT_PRESENTATION_MODE;
 };
 
 export const sanitizePresentationTheme = (value: unknown): PresentationTheme => {
@@ -383,6 +397,7 @@ export const sanitizePresentationLaunchConfig = (value: unknown): PresentationLa
     mood: sanitizePresentationMood(candidate.mood),
     title: sanitizePresentationTitleMode(candidate.title),
     theme: sanitizePresentationTheme(candidate.theme),
+    mode: sanitizePresentationMode(candidate.mode),
     ...(profile ? { profile } : {}),
     ...(seed !== undefined ? { seed } : {}),
     ...(size ? { size } : {}),
@@ -398,6 +413,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     mood: DEFAULT_PRESENTATION_MOOD,
     title: 'hide',
     theme: DEFAULT_PRESENTATION_THEME,
+    mode: DEFAULT_PRESENTATION_MODE,
     profile: 'tv'
   },
   obs: {
@@ -406,6 +422,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     mood: DEFAULT_PRESENTATION_MOOD,
     title: 'hide',
     theme: DEFAULT_PRESENTATION_THEME,
+    mode: DEFAULT_PRESENTATION_MODE,
     profile: 'obs'
   },
   mobile: {
@@ -414,6 +431,7 @@ const PRESENTATION_PROFILE_DEFAULTS: Record<PresentationDeploymentProfile, Omit<
     mood: DEFAULT_PRESENTATION_MOOD,
     title: DEFAULT_PRESENTATION_TITLE_MODE,
     theme: DEFAULT_PRESENTATION_THEME,
+    mode: DEFAULT_PRESENTATION_MODE,
     profile: 'mobile'
   }
 };
@@ -457,6 +475,7 @@ export const resolveBootPresentationConfig = (
     const chrome = params.get(PRESENTATION_QUERY_KEYS.chrome);
     const mood = params.get(PRESENTATION_QUERY_KEYS.mood);
     const theme = params.get(PRESENTATION_QUERY_KEYS.theme);
+    const mode = params.get(PRESENTATION_QUERY_KEYS.mode);
     const title = params.get(PRESENTATION_QUERY_KEYS.title);
     const seed = params.get(PRESENTATION_QUERY_KEYS.seed);
     const size = params.get(PRESENTATION_QUERY_KEYS.size);
@@ -474,6 +493,9 @@ export const resolveBootPresentationConfig = (
     }
     if (theme !== null) {
       resolved.theme = sanitizePresentationTheme(theme);
+    }
+    if (mode !== null) {
+      resolved.mode = sanitizePresentationMode(mode);
     }
     if (title !== null) {
       resolved.title = sanitizePresentationTitleMode(title);

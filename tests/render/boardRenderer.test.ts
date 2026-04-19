@@ -23,6 +23,11 @@ type GraphicsCall = {
   args: unknown[];
 };
 
+type TextCall = {
+  method: string;
+  args: unknown[];
+};
+
 const createGraphicsStub = () => {
   const calls: GraphicsCall[] = [];
   const stub = {
@@ -55,6 +60,10 @@ const createGraphicsStub = () => {
       calls.push({ method: 'lineStyle', args });
       return stub;
     }),
+    setVisible: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setVisible', args });
+      return stub;
+    }),
     lineBetween: vi.fn((...args: unknown[]) => {
       calls.push({ method: 'lineBetween', args });
       return stub;
@@ -72,6 +81,71 @@ const createGraphicsStub = () => {
   return stub;
 };
 
+const createTextStub = () => {
+  const calls: TextCall[] = [];
+  const stub = {
+    calls,
+    text: '',
+    visible: true,
+    setAlpha: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setAlpha', args });
+      return stub;
+    }),
+    setColor: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setColor', args });
+      return stub;
+    }),
+    setData: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setData', args });
+      return stub;
+    }),
+    setDataEnabled: vi.fn(() => {
+      calls.push({ method: 'setDataEnabled', args: [] });
+      return stub;
+    }),
+    setFixedSize: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setFixedSize', args });
+      return stub;
+    }),
+    setFontSize: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setFontSize', args });
+      return stub;
+    }),
+    setName: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setName', args });
+      return stub;
+    }),
+    setOrigin: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setOrigin', args });
+      return stub;
+    }),
+    setPosition: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setPosition', args });
+      return stub;
+    }),
+    setText: vi.fn((value: string) => {
+      stub.text = value;
+      calls.push({ method: 'setText', args: [value] });
+      return stub;
+    }),
+    setVisible: vi.fn((value: boolean) => {
+      stub.visible = value;
+      calls.push({ method: 'setVisible', args: [value] });
+      return stub;
+    }),
+    setWordWrapWidth: vi.fn((...args: unknown[]) => {
+      calls.push({ method: 'setWordWrapWidth', args });
+      return stub;
+    }),
+    destroy: vi.fn(() => {
+      calls.push({ method: 'destroy', args: [] });
+      return stub;
+    })
+  };
+
+  return stub;
+};
+
 const createContainerStub = () => ({
   add: vi.fn(),
   destroy: vi.fn(),
@@ -80,12 +154,18 @@ const createContainerStub = () => ({
 
 const createSceneStub = (now = 0) => {
   const graphics: ReturnType<typeof createGraphicsStub>[] = [];
+  const texts: ReturnType<typeof createTextStub>[] = [];
   const scene = {
     time: { now },
     add: {
       graphics: vi.fn(() => {
         const stub = createGraphicsStub();
         graphics.push(stub);
+        return stub;
+      }),
+      text: vi.fn(() => {
+        const stub = createTextStub();
+        texts.push(stub);
         return stub;
       }),
       container: vi.fn(() => createContainerStub())
@@ -96,7 +176,7 @@ const createSceneStub = (now = 0) => {
     }
   };
 
-  return { scene: scene as unknown as Phaser.Scene, graphics };
+  return { scene: scene as unknown as Phaser.Scene, graphics, texts };
 };
 
 const createEpisode = (): MazeEpisode => {
@@ -105,6 +185,14 @@ const createEpisode = (): MazeEpisode => {
     checkpointsCreated: 0,
     difficulty: 'standard',
     family: 'classic',
+    generationTrace: {
+      rootTileIndex: 0,
+      uniqueTileCount: 2,
+      steps: [
+        { phase: 'seed', tileIndices: [0] },
+        { phase: 'carve', tileIndices: [1] }
+      ]
+    },
     pathLength: 2,
     placementStrategy: 'farthest-pair',
     presentationPreset: 'classic',
@@ -414,5 +502,119 @@ describe('board renderer', () => {
     expect(diagnostics.attachedToActor).toBe(true);
     expect(diagnostics.bridgeRendered).toBe(true);
     expect(diagnostics.headCenter).toEqual(diagnostics.motionHeadCenter);
+  });
+
+  test('reveals more board surface as lifecycle build progress advances', () => {
+    const { scene, graphics } = createSceneStub(1_000);
+    const renderer = new BoardRenderer(scene, createEpisode(), createLayout());
+
+    renderer.drawBase({
+      lifecycle: {
+        phase: 'build',
+        progress: 0.1
+      }
+    });
+    const earlyFillRects = graphics.at(1)!.calls.filter((call) => call.method === 'fillRect').length;
+
+    renderer.drawBase({
+      lifecycle: {
+        phase: 'build',
+        progress: 1
+      }
+    });
+    const lateFillRects = graphics.at(1)!.calls.filter((call) => call.method === 'fillRect').length;
+
+    expect(lateFillRects).toBeGreaterThan(earlyFillRects);
+  });
+
+  test('clears trail and actor layers when the lifecycle hides them', () => {
+    const { scene, graphics } = createSceneStub(1_000);
+    const renderer = new BoardRenderer(scene, createEpisode(), createLayout());
+
+    renderer.drawTrail([0, 1], { cue: 'explore' });
+    renderer.drawActor(0, 3, 'explore');
+    renderer.clearTrail();
+    renderer.clearActor();
+
+    expect(graphics.at(2)!.calls.at(-1)?.method).toBe('clear');
+    expect(graphics.at(7)!.calls.at(-1)?.method).toBe('clear');
+    expect(graphics.at(6)!.calls.at(-1)?.method).toBe('clear');
+    expect(graphics.at(8)!.calls.at(-1)?.method).toBe('clear');
+  });
+
+  test('renders spectator trap telegraphs into the signal layer without obscuring the actor layer', () => {
+    const { scene, graphics } = createSceneStub(1_000);
+    const renderer = new BoardRenderer(scene, createEpisode(), createLayout());
+
+    renderer.clearTrail();
+    renderer.drawMechanicTelegraphs([
+      {
+        id: 'timed-gate',
+        kind: 'timed-gate',
+        label: 'Timed gate',
+        primaryTileIndex: 0,
+        secondaryTileIndex: 1,
+        pathCursor: 0,
+        active: true,
+        visible: true,
+        readiness: 1,
+        cycleProgress: 0.4
+      },
+      {
+        id: 'hazard-tile',
+        kind: 'hazard-tile',
+        label: 'Hazard tile',
+        primaryTileIndex: 1,
+        pathCursor: 1,
+        active: false,
+        visible: true,
+        readiness: 0.5,
+        cycleProgress: 0.2
+      }
+    ]);
+
+    const signalGraphics = graphics.at(6);
+    const actorGraphics = graphics.at(8);
+
+    expect(signalGraphics?.calls.some((call) => call.method === 'lineBetween')).toBe(true);
+    expect(signalGraphics?.calls.some((call) => call.method === 'strokeRect' || call.method === 'strokeCircle')).toBe(true);
+    expect(actorGraphics?.calls.length ?? 0).toBe(0);
+  });
+
+  test('renders a run-local mechanic guide with a next-risk callout for visible mechanics', () => {
+    const { scene, texts } = createSceneStub(1_000);
+    const renderer = new BoardRenderer(scene, createEpisode(), createLayout());
+
+    renderer.drawMechanicLegend([
+      {
+        id: 'timed-gate',
+        kind: 'timed-gate',
+        label: 'Timed gate',
+        primaryTileIndex: 0,
+        secondaryTileIndex: 1,
+        pathCursor: 0,
+        active: true,
+        visible: true,
+        readiness: 1,
+        cycleProgress: 0.5
+      },
+      {
+        id: 'hazard-tile',
+        kind: 'hazard-tile',
+        label: 'Hazard tile',
+        primaryTileIndex: 1,
+        pathCursor: 1,
+        active: false,
+        visible: true,
+        readiness: 0.62,
+        cycleProgress: 0.25
+      }
+    ]);
+
+    const guideText = texts.at(0);
+    expect(guideText?.visible).toBe(true);
+    expect(guideText?.text).toContain('NEXT RISK: gate cycle');
+    expect(guideText?.text).toContain('G gate');
+    expect(guideText?.text).toContain('H hazard');
   });
 });

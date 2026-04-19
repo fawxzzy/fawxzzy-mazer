@@ -1,0 +1,212 @@
+:root {
+  color-scheme: dark;
+}
+
+#watch-pass-paywall-root {
+  min-height: 100vh;
+}
+
+.watch-pass-paywall {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(99, 167, 255, 0.22), transparent 32%),
+    radial-gradient(circle at 85% 12%, rgba(139, 255, 206, 0.12), transparent 22%),
+    linear-gradient(180deg, rgba(5, 13, 24, 0.98), rgba(10, 22, 36, 0.98));
+}
+
+.watch-pass-paywall__hero,
+.watch-pass-paywall__layout {
+  display: grid;
+  gap: 20px;
+}
+
+.watch-pass-paywall__hero {
+  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 0.95fr);
+  margin-bottom: 20px;
+}
+
+.watch-pass-paywall__copy,
+.watch-pass-paywall__summary,
+.watch-pass-paywall__stage,
+.watch-pass-paywall__panel,
+.watch-pass-paywall__surface-card {
+  border: 1px solid rgba(167, 214, 255, 0.16);
+  border-radius: 28px;
+  background:
+    linear-gradient(155deg, rgba(18, 35, 56, 0.92), rgba(7, 15, 27, 0.94)),
+    rgba(8, 16, 28, 0.92);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+  padding: 20px;
+}
+
+.watch-pass-paywall__eyebrow,
+.watch-pass-paywall__section-eyebrow,
+.watch-pass-paywall__summary-label,
+.watch-pass-paywall__surface-eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  color: rgba(207, 232, 255, 0.74);
+}
+
+.watch-pass-paywall h1,
+.watch-pass-paywall h2,
+.watch-pass-paywall h3,
+.watch-pass-paywall p {
+  margin-top: 0;
+}
+
+.watch-pass-paywall__lede {
+  max-width: 62ch;
+  color: rgba(230, 243, 255, 0.82);
+}
+
+.watch-pass-paywall__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.watch-pass-paywall__chips span,
+.watch-pass-paywall__purchase,
+.watch-pass-paywall__surface-action,
+.watch-pass-paywall__plan-card {
+  border: 1px solid rgba(174, 219, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(10, 18, 31, 0.8);
+  color: #eff8ff;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.watch-pass-paywall__summary {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.watch-pass-paywall__summary-note {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(208, 226, 242, 0.68);
+}
+
+.watch-pass-paywall__layout {
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.watch-pass-paywall__section-header,
+.watch-pass-paywall__surface-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.watch-pass-paywall__surface-grid,
+.watch-pass-paywall__plan-list {
+  display: grid;
+  gap: 14px;
+}
+
+.watch-pass-paywall__surface-card[data-active="true"] {
+  border-color: rgba(118, 201, 255, 0.42);
+}
+
+.watch-pass-paywall__plans {
+  display: grid;
+  gap: 18px;
+}
+
+.watch-pass-paywall__plan-card {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.watch-pass-paywall__plan-card[data-active="true"] {
+  border-color: rgba(118, 201, 255, 0.42);
+  background: rgba(18, 36, 58, 0.92);
+}
+
+.watch-pass-paywall__plan-card[data-emphasis="emphasized"] {
+  box-shadow: inset 0 0 0 1px rgba(196, 247, 152, 0.18);
+}
+
+.watch-pass-paywall__plan-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.watch-pass-paywall__plan-detail,
+.watch-pass-paywall__plan-cta {
+  color: rgba(230, 243, 255, 0.78);
+}
+
+.watch-pass-paywall__plan-cta {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.watch-pass-paywall__kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.watch-pass-paywall__kpis div {
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(143, 204, 255, 0.08);
+  border: 1px solid rgba(166, 214, 255, 0.12);
+}
+
+.watch-pass-paywall__kpis dt {
+  margin-bottom: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(213, 232, 248, 0.64);
+}
+
+.watch-pass-paywall__kpis dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.watch-pass-paywall__event-summary {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: rgba(208, 225, 241, 0.7);
+}
+
+@media (max-width: 980px) {
+  .watch-pass-paywall {
+    padding: 18px;
+  }
+
+  .watch-pass-paywall__hero,
+  .watch-pass-paywall__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .watch-pass-paywall__section-header,
+  .watch-pass-paywall__surface-header,
+  .watch-pass-paywall__kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .watch-pass-paywall__section-header,
+  .watch-pass-paywall__surface-header {
+    display: grid;
+  }
+}

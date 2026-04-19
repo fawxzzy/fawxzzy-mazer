@@ -15,10 +15,20 @@ import {
 } from '../visual/common.mjs';
 import { launchPreviewServer, stopPreviewServer } from '../visual/preview-server.mjs';
 import { buildVisibilityRollup } from './runtime-visibility-rollup.mjs';
+import {
+  buildTelemetryBusinessKpis,
+  buildTelemetryPlayMetrics,
+  buildExperimentManifest,
+  buildTelemetryReceipt,
+  normalizeExperimentToggles,
+  resolveExperimentVariantId,
+  summarizeTelemetrySemantics
+} from '../../src/telemetry/index.ts';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === SCRIPT_PATH;
 const RUNTIME_DIAGNOSTICS_KEY = '__MAZER_RUNTIME_DIAGNOSTICS__';
+const PROOF_SURFACE_SIGNAL_KEY = '__MAZER_PROOF_SURFACES__';
 const DEFAULT_ARTIFACT_ROOT = resolve(STACK_ROOT, 'tmp', 'captures', 'mazer-runtime-observe');
 const DEFAULT_CAPTURE_TIMEOUT_MS = 30_000;
 const DEFAULT_DURATION_SECONDS = 90;
@@ -26,6 +36,10 @@ const DEFAULT_SAMPLE_INTERVAL_MS = 1_000;
 const DEFAULT_SCREENSHOT_COUNT = 2;
 const DEFAULT_CAPTURE_SCREENSHOTS = false;
 const DEFAULT_VIEWPORT = Object.freeze({ width: 1440, height: 1024 });
+const RUNTIME_OBSERVE_SPECIAL_ROUTES = Object.freeze({
+  'play-mode-a': '/?mode=play&theme=aurora',
+  'play-mode-b': '/?mode=play&theme=aurora'
+});
 
 const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
@@ -38,9 +52,68 @@ const round = (value, digits = 3) => {
   return Math.round(value * factor) / factor;
 };
 
+export const resolveRuntimeObserveBaseUrl = (baseUrl, label) => {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const specialRoute = typeof label === 'string' ? RUNTIME_OBSERVE_SPECIAL_ROUTES[label] : undefined;
+  if (!specialRoute) {
+    return normalizedBaseUrl;
+  }
+
+  const url = new URL(normalizedBaseUrl);
+  const isRootPath = url.pathname === '/' || url.pathname === '';
+  const hasExplicitRoute = !isRootPath || url.searchParams.size > 0;
+  if (hasExplicitRoute) {
+    return normalizedBaseUrl;
+  }
+
+  return new URL(specialRoute, normalizedBaseUrl).toString();
+};
+
+const normalizeTelemetryMode = (value) => (
+  value === 'watch' || value === 'play' ? value : null
+);
+
 const maxOrFallback = (values, fallback = 0) => (
   values.length > 0 ? Math.max(...values) : fallback
 );
+
+const resolveExperimentSelection = (args) => {
+  const readToggle = (camelKey, kebabKey) => (
+    typeof args[camelKey] === 'string'
+      ? args[camelKey]
+      : typeof args[kebabKey] === 'string'
+        ? args[kebabKey]
+        : undefined
+  );
+  const toggles = normalizeExperimentToggles({
+    pacing: typeof args.pacing === 'string' ? args.pacing : undefined,
+    thoughtDensity: readToggle('thoughtDensity', 'thought-density'),
+    failCardTiming: readToggle('failCardTiming', 'fail-card-timing'),
+    memoryBeat: typeof args.memoryBeat === 'string'
+      ? args.memoryBeat
+      : typeof args['memory-beat'] === 'string'
+        ? args['memory-beat']
+        : args.memoryBeat === true || args['memory-beat'] === true
+          ? 'on'
+          : undefined,
+    trapTelegraph: readToggle('trapTelegraph', 'trap-telegraph')
+  });
+
+  return {
+    toggles,
+    variantId: resolveExperimentVariantId(toggles)
+  };
+};
+
+export const buildRuntimeObserveExperiment = (options = {}) => buildExperimentManifest({
+  kind: 'runtime-observe',
+  label: typeof options.label === 'string' ? options.label : 'runtime-observe',
+  runId: typeof options.runId === 'string' ? options.runId : null,
+  mazeId: typeof options.mazeId === 'string' ? options.mazeId : null,
+  attemptNo: Number.isFinite(options.attemptNo) ? options.attemptNo : null,
+  toggles: options.toggles ?? resolveExperimentSelection(options).toggles,
+  generatedAt: typeof options.generatedAt === 'string' ? options.generatedAt : undefined
+});
 
 const runNpmCommand = (args) => {
   if (process.platform === 'win32') {
@@ -70,16 +143,184 @@ const isWorktreeDirty = () => {
   }
 };
 
+const createProofSurfaceObserveDiagnostics = (proofSurface) => {
+  const receipt = proofSurface?.receipt ?? null;
+  const eventCounts = receipt?.eventCounts ?? {};
+  const eventKinds = Array.isArray(receipt?.eventKinds) ? receipt.eventKinds : [];
+
+  return {
+    sceneInstanceId: `proof:${proofSurface?.surface ?? 'unknown'}`,
+    captureEpoch: 0,
+    revision: eventKinds.length,
+    runtimeMs: 0,
+    performance: {
+      recentAverageFrameMs: 0,
+      worstRecentFrameMs: 0,
+      worstFrameMs: 0,
+      spikeCount: 0,
+      estimatedFps: 0
+    },
+    resources: {
+      activeTweens: 0,
+      activeTimers: 0,
+      listenerCount: 0,
+      trailSegmentCount: 0,
+      intentEntryCount: 0,
+      deferredVisualTasksRemaining: 0,
+      jsHeap: null,
+      background: {
+        moving: 0
+      }
+    },
+    visibility: {
+      hidden: typeof document !== 'undefined' ? document.hidden : false,
+      changeCount: 0,
+      suspendCount: 0
+    },
+    feed: {
+      visibleEntryCount: 0,
+      visibleEntries: [],
+      status: null
+    },
+    telemetry: receipt
+      ? {
+          summary: {
+            eventCount: receipt.eventCount,
+            eventCounts,
+            eventKinds,
+            timingWindows: receipt.timingWindows ?? [],
+            failToRetryContinuation: receipt.failToRetryContinuation ?? null,
+            thoughtDwell: receipt.thoughtDwell ?? null,
+            playMetrics: receipt.playMetrics ?? null
+          },
+          events: Array.isArray(proofSurface?.events) ? proofSurface.events : []
+        }
+      : {
+          summary: {
+            eventCount: 0,
+            eventCounts,
+            eventKinds,
+            timingWindows: [],
+            failToRetryContinuation: null,
+            thoughtDwell: null,
+            playMetrics: null
+          },
+          events: []
+        },
+    projection: proofSurface?.projection ?? null,
+    proofSurface: {
+      surface: proofSurface?.surface ?? null,
+      fixture: proofSurface?.fixture ?? null,
+      skin: proofSurface?.skin ?? null
+    }
+  };
+};
+
+const readObserveDiagnostics = async (page) => page.evaluate(({ runtimeKey, proofKey }) => {
+  const runtimeDiagnostics = window[runtimeKey];
+  if (
+    runtimeDiagnostics
+    && runtimeDiagnostics.sceneInstanceId
+    && runtimeDiagnostics.performance
+    && runtimeDiagnostics.resources
+  ) {
+    return runtimeDiagnostics;
+  }
+
+  const proofSurface = window[proofKey]?.getDiagnostics?.() ?? window[proofKey];
+  if (proofSurface?.ready) {
+    return {
+      sceneInstanceId: `proof:${proofSurface.surface ?? 'unknown'}`,
+      captureEpoch: 0,
+      revision: Array.isArray(proofSurface.receipt?.eventKinds) ? proofSurface.receipt.eventKinds.length : 0,
+      runtimeMs: 0,
+      performance: {
+        recentAverageFrameMs: 0,
+        worstRecentFrameMs: 0,
+        worstFrameMs: 0,
+        spikeCount: 0,
+        estimatedFps: 0
+      },
+      resources: {
+        activeTweens: 0,
+        activeTimers: 0,
+        listenerCount: 0,
+        trailSegmentCount: 0,
+        intentEntryCount: 0,
+        deferredVisualTasksRemaining: 0,
+        jsHeap: null,
+        background: {
+          moving: 0
+        }
+      },
+      visibility: {
+        hidden: document.hidden,
+        changeCount: 0,
+        suspendCount: 0
+      },
+      feed: {
+        visibleEntryCount: 0,
+        visibleEntries: [],
+        status: null
+      },
+      telemetry: proofSurface.receipt
+        ? {
+            summary: {
+              eventCount: proofSurface.receipt.eventCount,
+              eventCounts: proofSurface.receipt.eventCounts,
+              eventKinds: proofSurface.receipt.eventKinds,
+              timingWindows: proofSurface.receipt.timingWindows ?? [],
+              failToRetryContinuation: proofSurface.receipt.failToRetryContinuation ?? null,
+              thoughtDwell: proofSurface.receipt.thoughtDwell ?? null,
+              playMetrics: proofSurface.receipt.playMetrics ?? null
+            },
+            events: Array.isArray(proofSurface.events) ? proofSurface.events : []
+          }
+        : {
+            summary: {
+              eventCount: 0,
+              eventCounts: {},
+              eventKinds: [],
+              timingWindows: [],
+              failToRetryContinuation: null,
+              thoughtDwell: null,
+              playMetrics: null
+            },
+            events: []
+          },
+      projection: proofSurface.projection ?? null,
+      proofSurface: {
+        surface: proofSurface.surface ?? null,
+        fixture: proofSurface.fixture ?? null,
+        skin: proofSurface.skin ?? null
+      }
+    };
+  }
+
+  return null;
+}, {
+  runtimeKey: RUNTIME_DIAGNOSTICS_KEY,
+  proofKey: PROOF_SURFACE_SIGNAL_KEY
+});
+
 const waitForRuntimeDiagnostics = async (page, timeoutMs) => {
-  await page.waitForFunction((diagnosticsKey) => {
-    const diagnostics = window[diagnosticsKey];
-    return Boolean(
-      diagnostics
-      && diagnostics.sceneInstanceId
-      && diagnostics.performance
-      && diagnostics.resources
-    );
-  }, RUNTIME_DIAGNOSTICS_KEY, { timeout: timeoutMs });
+  await page.waitForFunction(({ runtimeKey, proofKey }) => {
+    const runtimeDiagnostics = window[runtimeKey];
+    if (
+      runtimeDiagnostics
+      && runtimeDiagnostics.sceneInstanceId
+      && runtimeDiagnostics.performance
+      && runtimeDiagnostics.resources
+    ) {
+      return true;
+    }
+
+    const proofSurface = window[proofKey]?.getDiagnostics?.() ?? window[proofKey];
+    return Boolean(proofSurface?.ready);
+  }, {
+    runtimeKey: RUNTIME_DIAGNOSTICS_KEY,
+    proofKey: PROOF_SURFACE_SIGNAL_KEY
+  }, { timeout: timeoutMs });
 };
 
 const createMetricWindow = (samples, selector, fallback = 0) => {
@@ -162,6 +403,133 @@ export const buildRuntimeSummary = (samples) => {
       : null,
     initial: first,
     final: last
+  };
+};
+
+const normalizeTelemetryEventKey = (event) => (
+  event?.eventId
+  ?? [
+    event?.kind ?? '',
+    event?.runId ?? '',
+    event?.mazeId ?? '',
+    event?.attemptNo ?? '',
+    event?.elapsedMs ?? '',
+    event?.createdAt ?? ''
+  ].join('|')
+);
+
+const resolveTelemetryModeFromSamples = (samples) => {
+  const telemetryModes = samples.flatMap((sample) => {
+    const events = Array.isArray(sample?.telemetry?.events) ? sample.telemetry.events : [];
+    return events.flatMap((event) => {
+      const settingsMode = event?.kind === 'settings_changed'
+        ? normalizeTelemetryMode(event?.payload?.nextValue)
+        : null;
+
+      return [normalizeTelemetryMode(event?.mode), settingsMode].filter((value) => value !== null);
+    });
+  });
+
+  return telemetryModes.at(-1)
+    ?? normalizeTelemetryMode([...samples].reverse().find((sample) => sample?.projection)?.projection?.mode)
+    ?? null;
+};
+
+export const collectTelemetryEventsFromRuntimeSamples = (samples) => {
+  const deduped = new Map();
+
+  for (const sample of samples) {
+    const events = Array.isArray(sample?.telemetry?.events) ? sample.telemetry.events : [];
+    for (const event of events) {
+      const key = normalizeTelemetryEventKey(event);
+      if (!deduped.has(key)) {
+        deduped.set(key, event);
+      }
+    }
+  }
+
+  return [...deduped.values()].sort((left, right) => (
+    (Number.isFinite(left?.elapsedMs) ? left.elapsedMs : Number.MAX_SAFE_INTEGER)
+    - (Number.isFinite(right?.elapsedMs) ? right.elapsedMs : Number.MAX_SAFE_INTEGER)
+  ));
+};
+
+export const buildTelemetrySummaryFromRuntimeSamples = (samples) => {
+  const events = collectTelemetryEventsFromRuntimeSamples(samples);
+  const summary = summarizeTelemetrySemantics(events);
+  const latestTelemetry = samples.at(-1)?.telemetry?.summary ?? null;
+  const latestProjection = [...samples].reverse().find((sample) => sample?.projection)?.projection ?? null;
+  const mode = resolveTelemetryModeFromSamples(samples);
+  const kpis = buildTelemetryBusinessKpis(events, {
+    privacyMode: 'full',
+    sessionCount: 1
+  });
+  const playMetrics = buildTelemetryPlayMetrics(kpis);
+  const sourceCtas = [...new Set(events
+    .flatMap((event) => {
+      if (event.kind === 'paywall_viewed') {
+        return [event.payload.sourceCta ?? event.payload.ctaLabel];
+      }
+
+      if (event.kind === 'plan_selected') {
+        return [event.payload.sourceCta];
+      }
+
+      if (event.kind === 'purchase_completed') {
+        return [event.payload.sourceCta];
+      }
+
+      if (event.kind === 'purchase_churned') {
+        return [event.payload.sourceCta];
+      }
+
+      return [];
+    })
+    .filter((value) => typeof value === 'string' && value.trim().length > 0))].slice(0, 8);
+  const planIds = [...new Set(events
+    .flatMap((event) => (event.kind === 'plan_selected' ? [event.payload.planId] : []))
+    .filter((value) => typeof value === 'string' && value.trim().length > 0))].slice(0, 8);
+
+  return {
+    events,
+    summary: latestTelemetry && typeof latestTelemetry === 'object'
+      ? {
+          ...summary,
+          ...latestTelemetry
+        }
+      : summary,
+    latestProjection,
+    mode,
+    privacyMode: 'full',
+    sourceCta: sourceCtas[0] ?? null,
+    sourceCtas,
+    planIds,
+    experimentIds: [...new Set(events
+      .flatMap((event) => [
+        event.experimentId,
+        event.kind === 'run_started' ? event.payload.variantId : null
+      ])
+      .filter((value) => typeof value === 'string' && value.length > 0)
+    )],
+    kpis,
+    playMetrics: latestTelemetry && typeof latestTelemetry === 'object' && latestTelemetry.playMetrics
+      ? latestTelemetry.playMetrics
+      : playMetrics,
+    watchPass: {
+      mode,
+      sourceCta: sourceCtas[0] ?? null,
+      sourceCtas,
+      planIds,
+      paywallViewCount: kpis.paywallViewCount,
+      planSelectedCount: kpis.planSelectedCount,
+      paywallViewToPlanSelect: kpis.paywall_view_to_plan_select,
+      paywallViewToPurchaseCompleted: kpis.paywall_view_to_purchase_completed,
+      purchaseCompletedCount: kpis.purchaseCompletedCount,
+      widgetAttachRate: kpis.widgetAttachRate,
+      liveActivityStartRate: kpis.liveActivityStartRate,
+      reducedMotionAdoption: kpis.reducedMotionAdoptionRate,
+      privateModeAdoption: kpis.privateModeAdoptionRate
+    }
   };
 };
 
@@ -387,12 +755,15 @@ const buildMarkdownSummary = ({
   durationSeconds,
   sampleIntervalMs,
   captureScreenshots,
+  experiment,
   runtime,
   feed,
+  telemetry,
   screenshotPaths,
   consoleMessages
 }) => {
   const consoleErrors = consoleMessages.filter((entry) => entry.type === 'error' || entry.type === 'pageerror');
+  const playMetrics = telemetry.playMetrics ?? telemetry.kpis;
   const worstFrame = runtime.frame.worstFrameMs ?? 0;
   const endFrame = runtime.frame.endAverageMs ?? 0;
   const heapLine = runtime.heap
@@ -403,10 +774,15 @@ const buildMarkdownSummary = ({
     `# Runtime Observe Summary: ${label}`,
     '',
     `- Source: ${sourceMode}`,
+    `- Mode: ${telemetry.mode ?? 'n/a'}`,
     `- URL: ${url}`,
     `- Commit: ${commitSha}${dirtyWorktree ? ' (dirty worktree)' : ''}`,
     `- Duration: ${durationSeconds}s sampled every ${sampleIntervalMs}ms`,
+    `- Variant: ${experiment.variantId}`,
+    `- Toggles: pacing ${experiment.toggles.pacing}, thought ${experiment.toggles.thoughtDensity}, fail card ${experiment.toggles.failCardTiming}, memory ${experiment.toggles.memoryBeat}, trap ${experiment.toggles.trapTelegraph}`,
     `- Feed source: structured runtime diagnostics visible entries`,
+    `- Semantic events: ${telemetry.summary.eventCount}, thought density ${telemetry.summary.thoughtDwell.densityPerMinute}/min`,
+    `- Reduced projection: ${telemetry.latestProjection?.state ?? 'not published'}`,
     `- Screenshot mode: ${captureScreenshots ? 'captured outside the measured window only' : 'disabled during measured window'}`,
     '',
     '## Runtime',
@@ -426,6 +802,44 @@ const buildMarkdownSummary = ({
     `- Replacements/min: ${feed.replacementsPerMinute}, average dwell ${feed.averageDwellMs}ms, longest unchanged run ${feed.maxUnchangedRunMs}ms`,
     `- Duplicate streak: ${feed.maxDuplicateStreak}`,
     `- Top messages: ${feed.topMessages.map((entry) => `${entry.text} (${entry.snapshotCount})`).join('; ') || 'none captured'}`,
+    '',
+    '## Semantic Events',
+    '',
+    `- Event counts: ${telemetry.summary.eventKinds.map((kind) => `${kind} ${telemetry.summary.eventCounts[kind]}`).join(', ') || 'none captured'}`,
+    `- Timing windows: ${telemetry.summary.timingWindows.map((window) => `${window.kind} ${window.windowMs ?? 0}ms`).join(', ') || 'none captured'}`,
+    `- Fail to retry proxy: ${telemetry.summary.failToRetryContinuation.averageMs ?? 'n/a'}ms average across ${telemetry.summary.failToRetryContinuation.continuationCount} transitions`,
+    `- Thought dwell proxy: average ${telemetry.summary.thoughtDwell.averageDwellMs ?? 'n/a'}ms, max ${telemetry.summary.thoughtDwell.maximumDwellMs ?? 'n/a'}ms`,
+    '',
+    '## Business / KPI',
+    '',
+    `- Privacy mode: ${telemetry.privacyMode ?? 'n/a'}`,
+    `- Source CTA: ${telemetry.sourceCta ?? 'n/a'}`,
+    `- Experiment ids: ${(telemetry.experimentIds ?? []).join(', ') || experiment.variantId}`,
+    `- Runs watched / session: ${telemetry.kpis.runsWatchedPerSession}`,
+    `- Avg watch time: ${telemetry.kpis.averageWatchTimeMs ?? 'n/a'}ms`,
+    `- Thought-box dwell: ${telemetry.kpis.thoughtBoxDwellMs ?? 'n/a'}ms`,
+    `- Fail-to-retry continuation rate: ${telemetry.kpis.failToRetryContinuationRate ?? 'n/a'}`,
+    `- Widget attach rate: ${telemetry.kpis.widgetAttachRate}`,
+    `- Live activity rate: ${telemetry.kpis.liveActivityStartRate}`,
+    `- Paywall view to purchase: ${telemetry.kpis.paywallToPurchaseConversion ?? 'n/a'}`,
+    `- Reduced motion adoption: ${telemetry.kpis.reducedMotionAdoptionRate}`,
+    `- Private mode adoption: ${telemetry.kpis.privateModeAdoptionRate}`,
+    '',
+    '## Play Metrics',
+    '',
+    `- Controls used: total ${playMetrics.controlUsedCount}; keyboard ${playMetrics.controlUsedByControl.keyboard}; touch ${playMetrics.controlUsedByControl.touch}; restart ${playMetrics.controlUsedByControl.restart}; pause ${playMetrics.controlUsedByControl.pause}; toggle ${playMetrics.controlUsedByControl.toggle_thoughts}`,
+    `- Action mix: move ${playMetrics.controlUsedByAction.move}; pause ${playMetrics.controlUsedByAction.pause}; restart ${playMetrics.controlUsedByAction.restart}; toggle thoughts ${playMetrics.controlUsedByAction.toggle_thoughts}`,
+    `- Watch -> play switch: count ${playMetrics.watchToPlaySwitchCount}, rate ${playMetrics.watchToPlaySwitchRate ?? 'n/a'}`,
+    `- Play fail -> retry continuation: count ${playMetrics.playFailToRetryContinuationCount}, rate ${playMetrics.playFailToRetryContinuationRate ?? 'n/a'}`,
+    '',
+    '## Watch Pass Funnel',
+    '',
+    `- Paywall views: ${telemetry.watchPass.paywallViewCount}`,
+    `- Plan selects: ${telemetry.watchPass.planSelectedCount}`,
+    `- Paywall -> plan select: ${telemetry.watchPass.paywallViewToPlanSelect ?? 'n/a'}`,
+    `- Paywall -> purchase completed: ${telemetry.watchPass.paywallViewToPurchaseCompleted ?? 'n/a'}`,
+    `- Purchase completed: ${telemetry.watchPass.purchaseCompletedCount}`,
+    `- Source CTA: ${telemetry.watchPass.sourceCta ?? 'n/a'}`,
     '',
     '## Artifacts',
     '',
@@ -461,7 +875,8 @@ const captureRuntimeObserve = async ({
   screenshotCount,
   captureScreenshots,
   screenshotDir,
-  screenshotLabel
+  screenshotLabel,
+  experiment
 }) => {
   const browser = await chromium.launch({ headless: true, args: ['--disable-gpu'] });
   try {
@@ -513,7 +928,7 @@ const captureRuntimeObserve = async ({
 
     while (Date.now() < finishedAt) {
       const elapsedMs = Date.now() - startedAt;
-      const diagnostics = await page.evaluate((diagnosticsKey) => window[diagnosticsKey], RUNTIME_DIAGNOSTICS_KEY);
+      const diagnostics = await readObserveDiagnostics(page);
       if (diagnostics) {
         samples.push({
           capturedAt: new Date().toISOString(),
@@ -558,7 +973,8 @@ export const runRuntimeObserveCapture = async ({
   screenshotCount = DEFAULT_SCREENSHOT_COUNT,
   captureScreenshots = DEFAULT_CAPTURE_SCREENSHOTS,
   skipBuild = false,
-  useExistingUrl = false
+  useExistingUrl = false,
+  experiment = resolveExperimentSelection({})
 } = {}) => {
   await ensureDir(artifactRoot);
 
@@ -575,7 +991,7 @@ export const runRuntimeObserveCapture = async ({
       });
 
   try {
-    const resolvedBaseUrl = preview?.baseUrl ?? baseUrl;
+    const resolvedBaseUrl = resolveRuntimeObserveBaseUrl(preview?.baseUrl ?? baseUrl, label);
     const screenshotDir = resolve(artifactRoot, `${label}.screenshots`);
     const capture = await captureRuntimeObserve({
       baseUrl: resolvedBaseUrl,
@@ -585,15 +1001,25 @@ export const runRuntimeObserveCapture = async ({
       screenshotCount,
       captureScreenshots,
       screenshotDir,
-      screenshotLabel: label
+      screenshotLabel: label,
+      experiment
     });
+    const telemetry = buildTelemetrySummaryFromRuntimeSamples(capture.samples);
+    const telemetryMode = normalizeTelemetryMode(new URL(capture.url).searchParams.get('mode')) ?? telemetry.mode;
 
     const runtime = buildRuntimeSummary(capture.samples);
     const feed = buildFeedTimelineFromRuntimeSamples(capture.samples);
+    const generatedAt = new Date().toISOString();
+    const experimentManifest = buildRuntimeObserveExperiment({
+      label,
+      runId: label,
+      toggles: experiment.toggles,
+      generatedAt
+    });
 
     const summary = {
       schemaVersion: 2,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       label,
       source: {
         mode: sourceMode,
@@ -606,21 +1032,49 @@ export const runRuntimeObserveCapture = async ({
         captureScreenshots,
         screenshotsDuringMeasuredWindow: false
       },
+      experiment: experimentManifest,
       durationSeconds,
       sampleIntervalMs,
       runtime,
       feed,
+      telemetry: {
+        ...telemetry.summary,
+        latestProjection: telemetry.latestProjection,
+        mode: telemetryMode,
+        privacyMode: telemetry.privacyMode,
+        sourceCta: telemetry.sourceCta,
+        sourceCtas: telemetry.sourceCtas,
+        planIds: telemetry.planIds,
+        experimentIds: telemetry.experimentIds,
+        kpis: telemetry.kpis,
+        playMetrics: telemetry.playMetrics,
+        watchPass: telemetry.watchPass
+      },
       consoleMessages: capture.consoleMessages,
       screenshots: capture.screenshots
     };
 
     const captureArtifact = {
       schemaVersion: 2,
-      capturedAt: new Date().toISOString(),
+      capturedAt: generatedAt,
       label,
+      experiment: experimentManifest,
       durationSeconds,
       sampleIntervalMs,
       source: summary.source,
+      telemetry: {
+        ...telemetry.summary,
+        latestProjection: telemetry.latestProjection,
+        mode: telemetryMode,
+        privacyMode: telemetry.privacyMode,
+        sourceCta: telemetry.sourceCta,
+        sourceCtas: telemetry.sourceCtas,
+        planIds: telemetry.planIds,
+        experimentIds: telemetry.experimentIds,
+        kpis: telemetry.kpis,
+        playMetrics: telemetry.playMetrics,
+        watchPass: telemetry.watchPass
+      },
       url: capture.url,
       samples: capture.samples,
       consoleMessages: capture.consoleMessages,
@@ -629,7 +1083,21 @@ export const runRuntimeObserveCapture = async ({
 
     const summaryPath = resolve(artifactRoot, `${label}.summary.json`);
     const capturePath = resolve(artifactRoot, `${label}.capture.json`);
+    const experimentPath = resolve(artifactRoot, `${label}.experiment.json`);
+    const receiptPath = resolve(artifactRoot, `${label}.receipt.json`);
     const markdownPath = resolve(artifactRoot, `${label}.summary.md`);
+    const receipt = buildTelemetryReceipt({
+      kind: 'runtime-observe',
+      label,
+      runId: label,
+      toggles: experiment.toggles,
+      events: telemetry.events,
+      mode: telemetryMode,
+      privacyMode: telemetry.privacyMode,
+      experimentIds: telemetry.experimentIds,
+      sessionCount: 1,
+      generatedAt
+    });
     const markdown = buildMarkdownSummary({
       url: capture.url,
       sourceMode,
@@ -639,19 +1107,26 @@ export const runRuntimeObserveCapture = async ({
       durationSeconds,
       sampleIntervalMs,
       captureScreenshots,
+      experiment,
       runtime,
       feed,
+      telemetry,
+      telemetryMode,
       screenshotPaths: summary.screenshots,
       consoleMessages: capture.consoleMessages
     });
 
     await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
     await writeFile(capturePath, `${JSON.stringify(captureArtifact, null, 2)}\n`, 'utf8');
+    await writeFile(experimentPath, `${JSON.stringify(experimentManifest, null, 2)}\n`, 'utf8');
+    await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     await writeFile(markdownPath, `${markdown}\n`, 'utf8');
 
     return {
       summaryPath,
       capturePath,
+      experimentPath,
+      receiptPath,
       markdownPath,
       screenshots: summary.screenshots,
       summary
@@ -665,6 +1140,7 @@ export const runRuntimeObserveCapture = async ({
 
 const main = async () => {
   const args = parseCliArgs();
+  const experiment = resolveExperimentSelection(args);
   const result = await runRuntimeObserveCapture({
     baseUrl: args['base-url'] ?? DEFAULT_BASE_URL,
     previewTimeoutMs: parseIntegerArg(args['preview-timeout'], DEFAULT_PREVIEW_TIMEOUT_MS),
@@ -676,19 +1152,23 @@ const main = async () => {
     screenshotCount: parseIntegerArg(args['screenshot-count'], DEFAULT_SCREENSHOT_COUNT),
     captureScreenshots: args['capture-screenshots'] === true || args['capture-screenshots'] === 'true',
     skipBuild: args['skip-build'] === true || args['skip-build'] === 'true',
-    useExistingUrl: typeof args['base-url'] === 'string'
+    useExistingUrl: typeof args['base-url'] === 'string',
+    experiment
   });
 
   process.stdout.write(`${JSON.stringify({
     summaryPath: result.summaryPath,
     capturePath: result.capturePath,
+    experimentPath: result.experimentPath,
+    receiptPath: result.receiptPath,
     markdownPath: result.markdownPath,
     screenshots: result.screenshots,
     sampleCount: result.summary.runtime.sampleCount,
     uniqueMessages: result.summary.feed.uniqueMessageCount,
     duplicateStreak: result.summary.feed.maxDuplicateStreak,
     replacementsPerMinute: result.summary.feed.replacementsPerMinute,
-    captureScreenshots: result.summary.measurement.captureScreenshots
+    captureScreenshots: result.summary.measurement.captureScreenshots,
+    variantId: result.summary.experiment.variantId
   }, null, 2)}\n`);
 };
 

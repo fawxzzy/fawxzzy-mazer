@@ -1,3 +1,6 @@
+import type { RunProjection } from '../projections/runProjection.ts';
+import type { TelemetryEvent, TelemetrySemanticSummary } from '../telemetry';
+
 export const MENU_SCENE_RUNTIME_DIAGNOSTICS_KEY = '__MAZER_RUNTIME_DIAGNOSTICS__' as const;
 
 export type MenuScenePerformanceMode = 'full' | 'throttled' | 'hidden';
@@ -91,6 +94,15 @@ export interface MenuSceneRuntimeDiagnostics {
     saveData: boolean;
   };
   feed: MenuSceneRuntimeFeedDiagnostics;
+  projection: RunProjection | null;
+  telemetry: {
+    eventLogVersion: number;
+    currentRunId: string | null;
+    currentMazeId: string | null;
+    currentAttemptNo: number | null;
+    events: TelemetryEvent[];
+    summary: TelemetrySemanticSummary;
+  };
   resources: {
     activeTweens: number;
     activeTimers: number;
